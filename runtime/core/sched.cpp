@@ -87,6 +87,20 @@ void sched_reset() {
     hk_budget = 0;
 }
 
+void sched_idle(uint64_t ticks) {
+    fold();
+    const uint64_t end = g_base + ticks;
+    for (;;) {
+        uint64_t due = next_due();
+        if (due > end) break;
+        g_base = std::max(g_base, due);
+        sched_sync();                 // runs everything due at g_base
+        fold();
+    }
+    g_base = end;
+    regrant();
+}
+
 void sched_kick() {
     fold();                       // the next poll / interpreter step syncs immediately
 }

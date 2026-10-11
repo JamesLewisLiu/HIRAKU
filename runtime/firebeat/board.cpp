@@ -21,6 +21,8 @@
 #include "../dev/flash29f016a.h"
 #include "../dev/k057714.h"
 #include "../dev/rtc65271.h"
+#include "../spu/spu.h"
+#include "spectrum.h"
 
 namespace hk::fb {
 
@@ -293,11 +295,9 @@ uint32_t bus_read(uint32_t p, int size) {
         return (r >> lane_shift(p, size)) & size_mask(size);
     }
     if (p >= 0x7d000400 && p <= 0x7d000401) return 0;              // YMZ280B: not in M2
-    if (p >= 0x74000000 && p <= 0x740003ff) {
-        return bytes_read(p, size, 0x74000000, [](uint32_t o) -> uint8_t {
-            if (o == 0x3ff) cpu403::set_irq_line(cpu403::irq_ext(3), false);   // mailbox read acknowledges
-            return g_dpram[o];
-        });
+    if (p >= 0x74000000 && p <= 0x740003ff) {                       // SPU dual-port RAM (right side)
+        if (spu::present()) return bytes_read(p, size, 0x74000000, [](uint32_t o) { return spu::ppc_read(o); });
+        return bytes_read(p, size, 0x74000000, [](uint32_t o) -> uint8_t { return g_dpram[o]; });
     }
     if (p >= 0x7000a000 && p <= 0x7000a003) return bytes_read(p, size, 0x7000a000, [](uint32_t) { return (uint8_t)~g_ext_irq_active; });
     if (g_cfg.family == "bm3") {
@@ -323,7 +323,8 @@ uint32_t bus_read(uint32_t p, int size) {
             return (p & 3) == 0 ? (uint32_t)g_midi[((p - 0x70000000) >> 8) >> 3 & 1].read(((p - 0x70000000) >> 8) & 7) << (8 * (size - 1)) : 0;
         if (p >= 0x70001000 && p <= 0x70001fff)                      // FDC37C665GT, lane 0: ISA port = offset / 4
             return (p & 3) == 0 ? (uint32_t)g_fdc->read((int)((p - 0x70001000) >> 2)) << (8 * (size - 1)) : 0;
-        if (p >= 0x70008000 && p <= 0x7000807f) return 0;           // spectrum analyzer: silence
+        if (p >= 0x70008000 && p <= 0x7000807f)                      // spectrum analyser (fed by the SPU's output)
+            return bytes_read(p, size, 0x70008000, [](uint32_t o) { return spectrum::read(o); });
     }
     unmapped("R", p, size, 0);
     return 0;
@@ -361,10 +362,8 @@ void bus_write(uint32_t p, uint32_t v, int size) {
     if ((p >= 0x7d000320 && p <= 0x7d000327) || (p >= 0x7d000804 && p <= 0x7d000807)) return;   // lamps, status LEDs
     if (p >= 0x7d000400 && p <= 0x7d000401) return;                 // YMZ280B: not in M2
     if (p >= 0x74000000 && p <= 0x740003ff) {
-        bytes_write(p, size, v, 0x74000000, [](uint32_t o, uint8_t b) {
-            g_dpram[o] = b;
-            // o == 0x3fe interrupts the SPU's 68000 (IRQ4): the SPU arrives in M4
-        });
+        if (spu::present()) bytes_write(p, size, v, 0x74000000, [](uint32_t o, uint8_t b) { spu::ppc_write(o, b); });
+        else bytes_write(p, size, v, 0x74000000, [](uint32_t o, uint8_t b) { g_dpram[o] = b; });
         return;
     }
     if (p >= 0x70006000 && p <= 0x70006003) {                       // extend board IRQ enable/ack

@@ -129,12 +129,23 @@ void glue_exception(hk_ctx *c, uint32_t vector, uint32_t ret) {
     const bool from_user = c->msr & msr::PR;
     const uint32_t my_frame = c->r[1] - 384;    // where the vector code will push our frame
     g_stats.exceptions++;
+    if (!from_user) {
+        // From supervisor state (e.g. an interrupt handler calling a kernel service
+        // through `sc`): the vector code pushes the frame on the current stack and
+        // its exit path returns to the same context - no thread switch is possible.
+        const uint32_t msr0 = c->msr;
+        take_exception(c, vector, ret);
+        for (uint64_t n = 0; !(c->pc == ret && c->msr == msr0); n++) {
+            interp_step(c);
+            if (n > 50'000'000) fatal(c, "supervisor exception %04x from %08x never returned", vector, ret);
+        }
+        return;
+    }
     take_exception(c, vector, ret);
     for (uint64_t n = 0; !(c->msr & msr::PR); n++) {
         interp_step(c);
         if (n > 50'000'000) fatal(c, "exception %04x from %08x never returned to user state", vector, ret);
     }
-    if (!from_user) fatal(c, "exception %04x taken in supervisor state at %08x", vector, ret);
     const uint32_t target = c->sprg[3];
     if (target == my_frame && c->pc == ret) return;
     if (!g_fibers_enabled) fatal(c, "thread switch with fibers disabled");

@@ -12,5 +12,8 @@ bool window_open(const char *title, int scale);
 // of real time. Returns false when the user closed the window.
 bool window_frame(const uint32_t *rgb, int w, int h, double virtual_seconds);
 void window_close();
+// Queue stereo float audio for playback (44.1 kHz). Drops audio if more than
+// ~150 ms is already queued, so latency stays bounded while video paces time.
+void audio_push(const float *lr, int frames);
 
 }  // namespace hk::host

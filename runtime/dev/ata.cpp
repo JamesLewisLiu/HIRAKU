@@ -51,6 +51,24 @@ bool DiscImage::read_sector(uint32_t lba, uint8_t *out) const {
     return fread(out, 1, 2048, f_) == 2048;
 }
 
+DiskImage::~DiskImage() {
+    if (f_) fclose(f_);
+}
+
+bool DiskImage::open(const std::string &path) {
+    f_ = fopen(path.c_str(), "rb");
+    if (!f_) return false;
+    fseeko(f_, 0, SEEK_END);
+    nsectors_ = (uint32_t)((uint64_t)ftello(f_) / 512);
+    return nsectors_ > 0;
+}
+
+bool DiskImage::read_sector(uint32_t lba, uint8_t *out) const {
+    if (lba >= nsectors_) return false;
+    fseeko(f_, (off_t)lba * 512, SEEK_SET);
+    return fread(out, 1, 512, f_) == 512;
+}
+
 // ---------------------------------------------------------------------------
 // ATA registers
 // ---------------------------------------------------------------------------
@@ -62,9 +80,31 @@ enum : uint8_t { IR_COD = 0x01, IR_IO = 0x02 };
 
 AtaBus::AtaBus() = default;
 
-void AtaBus::attach(int unit, std::unique_ptr<AtapiDrive> d) { drives_[unit & 1] = std::move(d); }
+void AtaBus::attach(int unit, std::unique_ptr<AtaDevice> d) {
+    // power-on state: a hard disk is ready (DRDY|DSC); an ATAPI device shows 0 and its signature
+    if ((unit & 1) == 0 && !d->atapi_) status_ = ST_DRDY | ST_DSC;
+    drives_[unit & 1] = std::move(d);
+}
 
-AtapiDrive *AtaBus::cur() { return drives_[(device_ >> 4) & 1].get(); }
+AtaDevice *AtaBus::cur() { return drives_[(device_ >> 4) & 1].get(); }
+
+uint32_t AtaBus::lba() const {
+    if (device_ & 0x40) return (uint32_t)(device_ & 0x0f) << 24 | (uint32_t)cyl_hi_ << 16 | (uint32_t)cyl_lo_ << 8 | sector_;
+    // CHS with the geometry IDENTIFY reports: 16 heads, 63 sectors per track
+    uint32_t cyl = (uint32_t)cyl_hi_ << 8 | cyl_lo_;
+    return (cyl * 16 + (device_ & 0x0f)) * 63 + (sector_ ? sector_ - 1 : 0);
+}
+
+uint16_t AtaBus::read_dma() {
+    if (phase_ != Phase::dma_in || data_pos_ >= data_.size()) return 0;
+    uint16_t v = data_[data_pos_] | (data_pos_ + 1 < data_.size() ? data_[data_pos_ + 1] << 8 : 0);
+    data_pos_ += 2;
+    if (data_pos_ >= data_.size()) {
+        if (dmarq) dmarq(false);
+        finish(false);
+    }
+    return v;
+}
 
 void AtaBus::set_irq(bool on) {
     bool line = on && !(devctl_ & 0x02);    // nIEN masks the line
@@ -87,6 +127,10 @@ uint16_t AtaBus::read(int cs, int reg) {
         if (data_pos_ >= chunk_end_) {
             if (data_pos_ >= data_.size()) {
                 finish(false);
+            } else if (!cur()->atapi_) {                 // hard disk: next block of sectors
+                chunk_end_ = std::min(data_.size(), data_pos_ + (size_t)512 * multiple_);
+                status_ = ST_DRDY | ST_DSC | ST_DRQ;
+                set_irq(true);
             } else {                                     // next DRQ block
                 size_t n = std::min<size_t>(byte_limit_, data_.size() - data_pos_);
                 chunk_end_ = data_pos_ + n;
@@ -117,15 +161,16 @@ void AtaBus::write(int cs, int reg, uint16_t v) {
         if (reg == 6) {                                  // device control
             uint8_t old = devctl_;
             devctl_ = v & 0xff;
-            if ((old & 0x04) && !(devctl_ & 0x04)) {     // end of soft reset: ATAPI signature
+            if ((old & 0x04) && !(devctl_ & 0x04)) {     // end of soft reset: device signature
                 phase_ = Phase::idle;
-                status_ = 0;
                 error_ = 1;
                 nsector_ = 1;
                 sector_ = 1;
-                cyl_lo_ = 0x14;
-                cyl_hi_ = 0xeb;
                 device_ = 0;
+                bool atapi = drives_[0] && drives_[0]->atapi_;
+                status_ = atapi ? 0 : (ST_DRDY | ST_DSC);
+                cyl_lo_ = atapi ? 0x14 : 0;
+                cyl_hi_ = atapi ? 0xeb : 0;
                 set_irq(false);
             }
             set_irq(irq_);
@@ -156,6 +201,12 @@ void AtaBus::finish(bool error, uint8_t key, uint8_t asc) {
     int u = (device_ >> 4) & 1;
     phase_ = Phase::idle;
     data_.clear();
+    if (cur() && !cur()->atapi_) {                       // hard disk: DRDY/DSC, error register = ABRT etc.
+        status_ = ST_DRDY | ST_DSC | (error ? ST_ERR : 0);
+        error_ = error ? key : 0;
+        set_irq(true);
+        return;
+    }
     sense_key_[u] = key;
     asc_[u] = asc;
     status_ = error ? ST_ERR : 0;
@@ -182,9 +233,93 @@ void AtaBus::start_data_in(std::vector<uint8_t> d) {
     set_irq(true);
 }
 
+void AtaBus::disk_command(uint8_t cmd) {
+    AtaDevice *d = cur();
+    switch (cmd) {
+    case 0xec: {                                         // IDENTIFY DEVICE
+        std::vector<uint8_t> id(512, 0);
+        auto w = [&](int i, uint16_t v) { id[2 * i] = v & 0xff; id[2 * i + 1] = v >> 8; };
+        auto str = [&](int i, int words, const char *s) {
+            for (int k = 0; k < words * 2; k++) id[2 * i + (k ^ 1)] = (uint8_t)((size_t)k < strlen(s) ? s[k] : ' ');
+        };
+        uint32_t n = d->disk->sectors();
+        uint32_t cyls = std::min<uint32_t>(n / (16 * 63), 16383);
+        w(0, 0x0040);                                    // fixed disk
+        w(1, (uint16_t)cyls);
+        w(3, 16);
+        w(6, 63);
+        str(10, 10, "HIRAKU0000000001");
+        str(23, 4, "1.0");
+        str(27, 20, "HIRAKU ATA DISK");
+        w(47, 0x8010);                                   // READ/WRITE MULTIPLE: up to 16 sectors
+        w(49, 0x0300);                                   // LBA, DMA
+        w(53, 0x0003);
+        w(54, (uint16_t)cyls);
+        w(55, 16);
+        w(56, 63);
+        w(57, (uint16_t)(cyls * 16 * 63));
+        w(58, (uint16_t)((cyls * 16 * 63) >> 16));
+        w(60, (uint16_t)n);
+        w(61, (uint16_t)(n >> 16));
+        w(63, 0x0007);                                   // multiword DMA 0-2
+        data_ = std::move(id);
+        data_pos_ = 0;
+        chunk_end_ = 512;
+        phase_ = Phase::data_in;
+        status_ = ST_DRDY | ST_DSC | ST_DRQ;
+        set_irq(true);
+        return;
+    }
+    case 0x20: case 0x21:                                // READ SECTORS
+    case 0xc4:                                           // READ MULTIPLE
+    case 0xc8: case 0xc9: {                              // READ DMA
+        uint32_t count = nsector_ ? nsector_ : 256, first = lba();
+        std::vector<uint8_t> buf((size_t)count * 512);
+        for (uint32_t k = 0; k < count; k++)
+            if (!d->disk->read_sector(first + k, buf.data() + (size_t)k * 512)) {
+                finish(true, 0x10);                      // IDNF: sector not found
+                return;
+            }
+        data_ = std::move(buf);
+        data_pos_ = 0;
+        if (cmd == 0xc8 || cmd == 0xc9) {
+            phase_ = Phase::dma_in;
+            status_ = ST_DRDY | ST_DSC | ST_DRQ;
+            if (dmarq) dmarq(true);
+        } else {
+            phase_ = Phase::data_in;
+            chunk_end_ = std::min(data_.size(), (size_t)512 * (cmd == 0xc4 ? multiple_ : 1));
+            status_ = ST_DRDY | ST_DSC | ST_DRQ;
+            set_irq(true);
+        }
+        return;
+    }
+    case 0xc6:                                           // SET MULTIPLE MODE
+        multiple_ = nsector_ ? nsector_ : 1;
+        finish(false);
+        return;
+    case 0x40: case 0x41:                                // READ VERIFY
+    case 0x10:                                           // RECALIBRATE
+    case 0x91:                                           // INITIALIZE DEVICE PARAMETERS
+    case 0xef:                                           // SET FEATURES
+    case 0xe0: case 0xe1: case 0xe3:                     // STANDBY / IDLE
+    case 0xe7:                                           // FLUSH CACHE
+        finish(false);
+        return;
+    case 0x00:                                           // NOP: always aborts (ATA spec)
+        finish(true, 0x04);
+        return;
+    default:
+        fprintf(stderr, "ata: %s: unsupported ATA command %02x\n", d->name_.c_str(), cmd);
+        finish(true, 0x04);                              // ABRT
+        return;
+    }
+}
+
 void AtaBus::command(uint8_t cmd) {
-    AtapiDrive *d = cur();
+    AtaDevice *d = cur();
     if (log) fprintf(stderr, "ata: %s command %02x\n", d->name_.c_str(), cmd);
+    if (!d->atapi_) { disk_command(cmd); return; }
     switch (cmd) {
     case 0xa0:                                           // PACKET
         phase_ = Phase::packet_in;
@@ -230,7 +365,7 @@ void AtaBus::command(uint8_t cmd) {
 }
 
 void AtaBus::packet_done() {
-    AtapiDrive *d = cur();
+    AtaDevice *d = cur();
     const uint8_t *p = packet_;
     int u = (device_ >> 4) & 1;
     if (log) {

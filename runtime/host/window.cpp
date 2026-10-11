@@ -14,6 +14,7 @@ namespace {
 SDL_Window *g_win = nullptr;
 SDL_Renderer *g_ren = nullptr;
 SDL_Texture *g_tex = nullptr;
+SDL_AudioStream *g_audio = nullptr;
 int g_tw = 0, g_th = 0;
 std::chrono::steady_clock::time_point g_t0;
 bool g_started = false;
@@ -40,7 +41,10 @@ void key(SDL_Keycode k, bool down) {
 }  // namespace
 
 bool window_open(const char *title, int scale) {
-    if (!SDL_Init(SDL_INIT_VIDEO)) return false;
+    if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO)) return false;
+    SDL_AudioSpec spec{SDL_AUDIO_F32, 2, 44100};
+    g_audio = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &spec, nullptr, nullptr);
+    if (g_audio) SDL_ResumeAudioStreamDevice(g_audio);
     if (!SDL_CreateWindowAndRenderer(title, 640 * scale, 480 * scale, SDL_WINDOW_RESIZABLE, &g_win, &g_ren)) return false;
     SDL_SetRenderLogicalPresentation(g_ren, 640, 480, SDL_LOGICAL_PRESENTATION_LETTERBOX);
     return true;
@@ -78,7 +82,14 @@ bool window_frame(const uint32_t *rgb, int w, int h, double vsec) {
     return true;
 }
 
+void audio_push(const float *lr, int frames) {
+    if (!g_audio) return;
+    if (SDL_GetAudioStreamQueued(g_audio) > (int)(44100 * 8 * 0.15)) return;
+    SDL_PutAudioStreamData(g_audio, lr, frames * 8);
+}
+
 void window_close() {
+    if (g_audio) SDL_DestroyAudioStream(g_audio);
     if (g_tex) SDL_DestroyTexture(g_tex);
     if (g_ren) SDL_DestroyRenderer(g_ren);
     if (g_win) SDL_DestroyWindow(g_win);

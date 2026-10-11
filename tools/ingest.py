@@ -45,6 +45,8 @@ def main() -> int:
     ap.add_argument("--out", default=os.path.join(ROOT, "dumps"), help="output root (default: dumps/)")
     ap.add_argument("--check", metavar="RAW", help="compare the unpacked image to a known-good raw dump")
     ap.add_argument("--romset", metavar="ZIP", help="MAME ROM set zip to copy into dumps/<game>/rom/")
+    ap.add_argument("--hdd", metavar="IMG", help="raw HDD image on the SPU's ATA bus (beatmania III)")
+    ap.add_argument("--dvd", metavar="ISO", help="DVD image on the SPU's ATA bus (pop'n music)")
     args = ap.parse_args()
 
     if args.exe:
@@ -100,6 +102,13 @@ def main() -> int:
             fh.write(f"dongle={board['dongle']}\n")
         if args.disc:
             fh.write(f"cd_master={os.path.abspath(args.disc)}\n")
+        spu = (game or {}).get("spu", {})
+        if spu.get("rom"):
+            fh.write(f"spu_rom={spu['rom']}\n")
+        if args.hdd:
+            fh.write(f"spu_hdd={os.path.abspath(args.hdd)}\n")
+        if args.dvd:
+            fh.write(f"spu_dvd={os.path.abspath(args.dvd)}\n")
     print(f"wrote    {os.path.relpath(os.path.join(outdir, 'machine.txt'), ROOT)}")
 
     if args.romset:

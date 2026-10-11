@@ -21,6 +21,16 @@ target_include_directories(hiraku_ppc PUBLIC src)
 add_executable(hiraku-recomp recomp/main.cpp)
 target_link_libraries(hiraku-recomp PRIVATE hiraku_ppc)
 
+# --- Musashi 68000 core (MIT licence), configured as a plain 68000 ---------------
+add_library(musashi STATIC
+  third_party/musashi/m68kcpu.c
+  third_party/musashi/m68kops.c
+  third_party/musashi/m68kdasm.c
+  third_party/musashi/softfloat/softfloat.c)
+target_include_directories(musashi PUBLIC third_party/musashi runtime/spu)
+target_compile_definitions(musashi PUBLIC MUSASHI_CNF="hk_m68kconf.h")
+target_compile_options(musashi PRIVATE -w)
+
 # --- runtime core ------------------------------------------------------------
 add_library(hiraku_rt STATIC
   runtime/core/state.cpp
@@ -34,9 +44,13 @@ add_library(hiraku_rt STATIC
   runtime/dev/rtc65271.cpp
   runtime/dev/flash29f016a.cpp
   runtime/dev/fdc.cpp
-  runtime/firebeat/board.cpp)
+  runtime/dev/rf5c400.cpp
+  runtime/spu/spu.cpp
+  runtime/host/script.cpp
+  runtime/firebeat/board.cpp
+  runtime/firebeat/spectrum.cpp)
 target_include_directories(hiraku_rt PUBLIC runtime)
-target_link_libraries(hiraku_rt PUBLIC hiraku_ppc)
+target_link_libraries(hiraku_rt PUBLIC hiraku_ppc musashi)
 
 # --- host front end (optional: SDL3) ---------------------------------------------
 find_package(SDL3 CONFIG QUIET)

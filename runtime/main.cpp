@@ -10,6 +10,10 @@
 //     --shadow K        compare native vs interpreted for the first K calls of each function
 //     --ata-log         log ATA/ATAPI commands
 //     --image FILE      program image (default dumps/<game>/program.bin)
+//     --script FILE     run an oracle input script (.his): same inputs, same frames as in MAME
+//     --wav FILE        record the sound output (16-bit stereo, 44.1 kHz)
+//     --bios-seconds S  time the skipped BIOS would have taken (default 21.65, as measured in
+//                       MAME for beatmania III); boards like the SPU boot during it
 //     --window [SCALE]  show the game in a window, in real time (SDL3 builds);
 //                       F2 test, 9 service, 5 coin, 1 start, Z S X D C keys, Esc quits
 //
@@ -27,6 +31,8 @@
 #include "core/runtime.h"
 #include "core/sched.h"
 #include "firebeat/board.h"
+#include "spu/spu.h"
+#include "host/script.h"
 #ifdef HK_WITH_SDL
 #include "host/window.h"
 #endif
@@ -80,6 +86,8 @@ int main(int argc, char **argv) {
     uint64_t frames = 0, snap_every = 0, debug_every = 0;
     bool trace = false, ata_log = false;
     int window_scale = 0;
+    std::string wav_path, script_path;
+    double bios_seconds = 21.65;
     for (int k = 1; k < argc; k++) {
         std::string a = argv[k];
         auto val = [&]() -> std::string {
@@ -96,6 +104,9 @@ int main(int argc, char **argv) {
         else if (a == "--ata-log") ata_log = true;
         else if (a == "--itrace") g_interp.trace = true;
         else if (a == "--debug-every") debug_every = std::stoull(val());
+        else if (a == "--wav") wav_path = val();
+        else if (a == "--script") script_path = val();
+        else if (a == "--bios-seconds") bios_seconds = std::stod(val());
         else if (a == "--window") window_scale = (k + 1 < argc && argv[k + 1][0] != '-') ? std::stoi(val()) : 2;
         else { fprintf(stderr, "unknown option %s\n", a.c_str()); return 2; }
     }
@@ -124,6 +135,56 @@ int main(int argc, char **argv) {
     cfg.ata_log = ata_log;
     fb::init(cfg);
 
+    // the sound board, when the machine has one
+    FILE *wav = nullptr;
+    uint64_t wav_frames = 0;
+    if (!machine["spu_rom"].empty()) {
+        spu::Config sc;
+        sc.rom = cfg.rom_dir + "/" + machine["spu_rom"];
+        sc.hdd = machine["spu_hdd"];
+        sc.dvd = machine["spu_dvd"];
+        sc.mix_effect = cfg.family == "bm3";
+        sc.log = ata_log;
+        if (!spu::init(sc)) { fprintf(stderr, "cannot start the SPU (%s)\n", sc.rom.c_str()); return 1; }
+        if (!wav_path.empty()) {
+            wav = fopen(wav_path.c_str(), "wb");
+            uint8_t hdr[44] = {};
+            if (wav) fwrite(hdr, 1, 44, wav);   // header written at shutdown
+        }
+        spu::set_audio_sink([&](const float *lr, int n) {
+#ifdef HK_WITH_SDL
+            if (window_scale) host::audio_push(lr, n);
+#endif
+            if (!wav) return;
+            for (int k = 0; k < 2 * n; k++) {
+                float f = lr[k] * 32767.0f;
+                int16_t v = (int16_t)(f > 32767 ? 32767 : f < -32768 ? -32768 : f);
+                fwrite(&v, 2, 1, wav);
+            }
+            wav_frames += (uint64_t)n;
+        });
+    }
+    auto close_wav = [&]() {
+        if (!wav) return;
+        uint32_t data = (uint32_t)(wav_frames * 4), riff = data + 36, rate = 44100, brate = rate * 4, fmt = 16;
+        uint16_t pcm = 1, ch = 2, align = 4, bits = 16;
+        fseek(wav, 0, SEEK_SET);
+        fwrite("RIFF", 1, 4, wav); fwrite(&riff, 4, 1, wav); fwrite("WAVEfmt ", 1, 8, wav);
+        fwrite(&fmt, 4, 1, wav); fwrite(&pcm, 2, 1, wav); fwrite(&ch, 2, 1, wav); fwrite(&rate, 4, 1, wav);
+        fwrite(&brate, 4, 1, wav); fwrite(&align, 2, 1, wav); fwrite(&bits, 2, 1, wav);
+        fwrite("data", 1, 4, wav); fwrite(&data, 4, 1, wav);
+        fclose(wav);
+        wav = nullptr;
+    };
+
+    // HIRAKU starts in the game, not the BIOS. On the real machine (and in MAME)
+    // everything else powered up with the BIOS: the SPU's 68000, for one, tests
+    // its 32 MiB of wave RAM meanwhile. Give the machine that time.
+    if (bios_seconds > 0) {
+        sched_idle((uint64_t)(bios_seconds * CPU_HZ));
+        spu::catch_up();
+    }
+
     static hk_ctx ctx;
     memset(&ctx, 0, sizeof ctx);
     ctx.pc = HK_ENTRY;
@@ -141,8 +202,15 @@ int main(int argc, char **argv) {
         if (g_interp.shadow_checks)
             printf("shadow: %llu identical, %llu MISMATCHED, %llu impure\n", (unsigned long long)g_stats.shadow_ok,
                    (unsigned long long)g_stats.shadow_bad, (unsigned long long)g_stats.shadow_impure);
+        if (spu::present()) {
+            auto &st = spu::stats();
+            printf("spu: pc %06x sr %04x, %.2f M 68000 cycles, IRQ2 %llu IRQ4 %llu IRQ6 %llu, %llu ATA commands, %.1f MiB DMA, %llu key-ons\n",
+                   st.pc, st.sr, st.cycles / 1e6, (unsigned long long)st.irq2, (unsigned long long)st.irq4, (unsigned long long)st.irq6,
+                   (unsigned long long)st.ata_commands, st.dma_words * 2 / 1048576.0, (unsigned long long)st.key_ons);
+        }
+        close_wav();
     };
-    g_on_fatal = [&]() { fb::shutdown(); report(); };
+    g_on_fatal = [&]() { script::close(); fb::shutdown(); report(); };
 
 #ifdef HK_WITH_SDL
     if (window_scale && !host::window_open(("HIRAKU - " + game).c_str(), window_scale)) {
@@ -152,7 +220,22 @@ int main(int argc, char **argv) {
 #else
     if (window_scale) { fprintf(stderr, "this build has no SDL3 front end\n"); return 1; }
 #endif
+    if (!script_path.empty() && !script::load(script_path, out)) return 2;
+    int script_snaps = 0;
     fb::set_frame_hook([&](uint64_t f, const uint32_t *rgb, int w, int h) {
+        if (!script_path.empty()) {
+            bool keep = script::frame(f, [&]() {
+                char name[64];
+                snprintf(name, sizeof name, "/snap%04d-f%06llu.ppm", script_snaps++, (unsigned long long)f);
+                write_ppm(out + name, rgb, w, h);
+            });
+            if (!keep) {
+                script::close();
+                fb::shutdown();
+                report();
+                exit(g_stats.shadow_bad ? 1 : 0);
+            }
+        }
 #ifdef HK_WITH_SDL
         if (window_scale && !host::window_frame(rgb, w, h, (double)now() / CPU_HZ)) {
             fb::shutdown();

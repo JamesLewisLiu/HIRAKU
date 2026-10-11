@@ -12,17 +12,19 @@ HIRAKU ships no game data. You provide your own dumps. The tools extract the pro
 Done so far:
 - **M0:** infrastructure.
 - **M1:** translator and interpreter.
-- **M2:** kernel glue, interrupts, devices. beatmania III The Final runs natively through its STARTUP self-test.
+- **M2:** kernel glue, interrupts, devices.
+- **M4:** sound board. beatmania III The Final runs natively with sound: self-test, attract mode, and songs.
 
-**M3** (attract and BGA) and **M4** (sound board) are next. See [PLAN.md](PLAN.md).
+Next are M3 (exact rendering against MAME) and M5 (a full play session). See [PLAN.md](PLAN.md).
 
 ```bash
-tools/ingest.py path/to/program-disc.cue --romset path/to/bm3final.zip   # → dumps/<game>/
+tools/ingest.py path/to/program-disc.cue --romset path/to/bm3final.zip --hdd path/to/hdd.img   # → dumps/<game>/
 analyze/ghidra.sh bm3final                  # → build/bm3final/manifest.json
 analyze/prep.py bm3final                    # → build/bm3final/recomp.txt
 cmake -S . -B build/cmake -G Ninja && ninja -C build/cmake
 ctest --test-dir build/cmake                # instruction semantics vs QEMU
-build/cmake/hiraku-bm3final --window        # real time; F2 test, 5 coin, 1 start, Z S X D C keys
+build/cmake/hiraku-bm3final --window        # real time with sound; F2 test, 5 coin, 1 start, Z S X D C keys
+build/cmake/hiraku-bm3final --script oracle/scripts/bm3final-practice.his --wav out/practice.wav
 build/cmake/hiraku-bm3final --frames 1800 --snap-every 300 --trace   # headless, PPM frames + MMIO trace
 ```
 

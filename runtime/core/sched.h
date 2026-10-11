@@ -44,6 +44,10 @@ uint64_t now();                      // current virtual tick (includes ticks con
 void charge(uint64_t ticks);         // account work outside the poll mechanism (e.g. DMA)
 void sched_sync();                   // fold consumed budget into now() and run due events
 void sched_reset();
+// Let `ticks` of time pass with the main CPU idle: every device event in that
+// span runs, in order. Used for the BIOS time HIRAKU skips (other boards,
+// like the SPU, boot during it).
+void sched_idle(uint64_t ticks);
 
 // Called when something may have made an interrupt deliverable: forces the
 // next poll / interpreter step to look.
