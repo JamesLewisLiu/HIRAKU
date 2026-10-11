@@ -47,27 +47,4 @@ void hk_bad_return(hk_ctx *c, uint32_t expected) {
     fatal(c, "returned to %08x, but the caller expected %08x (longjmp / context switch?)", c->pc, expected);
 }
 
-// M1: no interrupt sources exist yet.
-void hk_poll(hk_ctx *, uint32_t) { hk_irq_pending = 0; }
-
-// `sc` from recompiled code. Until the host glue exists (M2), run the guest's
-// own vector code in the interpreter until it leaves supervisor state again.
-// If it comes back to us, fine; if the kernel switched threads (rfi to another
-// thread's frame), stop: following the other thread on this host stack is
-// exactly what the M2 fibers exist for.
-void hk_syscall(hk_ctx *c) {
-    if (shadow_native_active()) shadow_abandon();
-    uint32_t ret = c->pc;
-    take_exception(c, 0xc00, ret);
-    for (uint64_t n = 0; n < 100'000'000; n++) {
-        interp_step(c);
-        if (c->msr & msr::PR) {                     // back in user state: the rfi happened
-            if (c->pc == ret) return;
-            fatal(c, "context switch: syscall from %08x resumed another thread at %08x "
-                     "(frame %08x) - needs the M2 fiber glue", ret - 4, c->pc, c->sprg[3]);
-        }
-    }
-    fatal(c, "syscall from %08x did not leave the kernel", ret - 4);
-}
-
 }  // extern "C"

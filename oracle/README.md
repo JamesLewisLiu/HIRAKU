@@ -11,7 +11,15 @@ oracle/mame.sh bm3final oracle/scripts/bm3final-practice.his    # -> practice so
 oracle/trace.py summary out/oracle/bm3final/bm3final-practice --frames 5000:12000
 oracle/trace.py dump    out/oracle/bm3final/bm3final-practice --group dpram --limit 50
 oracle/compare.py out/oracle/bm3final/run-a out/oracle/bm3final/run-b
+oracle/align.py   out/oracle/bm3final/bm3final-practice out/run/bm3final   # MAME vs the HIRAKU runtime
 ```
+
+The runtime writes the same `mmio.bin` format (`hiraku-<game> --trace`).
+
+`align.py` compares MAME with the runtime:
+- **Start point:** both streams are cut at the first UART access, because MAME's trace includes the BIOS and HIRAKU starts at the game's entry.
+- **Interrupt noise:** the status LEDs and the VBlank handler's accesses are dropped, since their position depends on interrupt timing.
+- **RTC:** read data is ignored.
 
 Runs land in `out/oracle/<game>/<run>/` (gitignored). Each run starts with an empty NVRAM directory, so the machine boots from the ROM set's default NVRAM/RTC image.
 

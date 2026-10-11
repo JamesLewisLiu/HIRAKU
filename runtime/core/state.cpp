@@ -7,10 +7,11 @@
 #include <fstream>
 #include <vector>
 
+#include "cpu403.h"
 #include "runtime.h"
+#include "sched.h"
 
 uint8_t *hk_ram = nullptr;
-volatile int hk_irq_pending = 0;
 
 namespace hk {
 
@@ -23,6 +24,8 @@ void ram_init() {
     else memset(hk_ram, 0, HK_RAM_SIZE);
     g_cpu = Cpu403{};
     g_cpu.sprs[spr::PVR] = PVR_403GCX;
+    sched_reset();
+    cpu403::reset();
 }
 
 bool ram_load(const std::string &path, uint32_t phys) {
@@ -60,39 +63,63 @@ using namespace hk;
 
 extern "C" {
 
+// The 403's own serial port sits in the physical map at 0x40000000.
+// A shadow check's native half must not touch devices: their state cannot be
+// rolled back, so the check is abandoned before the access happens.
 uint32_t hk_mmio_read(hk_ctx *c, uint32_t phys, int size) {
+    if (shadow_native_active()) shadow_abandon();
+    if ((phys & 0xfffffff0u) == 0x40000000u && size == 1) return cpu403::spu_read(phys & 15);
     if (!g_mmio.read) fatal(c, "MMIO read %08x/%d with no bus", phys, size);
     return g_mmio.read(phys, size);
 }
 
 void hk_mmio_write(hk_ctx *c, uint32_t phys, uint32_t value, int size) {
+    if (shadow_native_active()) shadow_abandon();
+    if ((phys & 0xfffffff0u) == 0x40000000u && size == 1) { cpu403::spu_write(phys & 15, (uint8_t)value); return; }
     if (!g_mmio.write) fatal(c, "MMIO write %08x/%d = %08x with no bus", phys, size, value);
     g_mmio.write(phys, value, size);
 }
 
 uint32_t hk_mfspr(hk_ctx *c, uint32_t n) {
+    if (shadow_native_active() && (n == spr::TBLO || n == spr::TBHI || n == spr::TBLU || n == spr::TBHU || n == spr::PIT))
+        shadow_abandon();   // time differs between the two halves
     switch (n) {
     case spr::SRR0: return c->srr0;
     case spr::SRR1: return c->srr1;
     case spr::SRR2: return c->srr2;
     case spr::SRR3: return c->srr3;
     case spr::SPRG0: case spr::SPRG1: case spr::SPRG2: case spr::SPRG3: return c->sprg[n - spr::SPRG0];
-    case spr::TBLO: return (uint32_t)g_cpu.tb;
-    case spr::TBHI: return (uint32_t)(g_cpu.tb >> 32);
+    case spr::TBLO:
+    case spr::TBLU: return (uint32_t)(now() + g_cpu.tb_offset);
+    case spr::TBHI:
+    case spr::TBHU: return (uint32_t)((now() + g_cpu.tb_offset) >> 32) & 0x00ffffff;
+    case spr::PIT: return cpu403::read_pit();
     default: return g_cpu.sprs[n & 1023];
     }
 }
 
 void hk_mtspr(hk_ctx *c, uint32_t n, uint32_t v) {
+    if (shadow_native_active() && (n == spr::TCR || n == spr::TSR || n == spr::PIT || n == spr::TBLO || n == spr::TBHI))
+        shadow_abandon();   // timer state cannot be rolled back
     switch (n) {
     case spr::SRR0: c->srr0 = v; break;
     case spr::SRR1: c->srr1 = v; break;
     case spr::SRR2: c->srr2 = v; break;
     case spr::SRR3: c->srr3 = v; break;
     case spr::SPRG0: case spr::SPRG1: case spr::SPRG2: case spr::SPRG3: c->sprg[n - spr::SPRG0] = v; break;
-    case spr::TBLO: g_cpu.tb = (g_cpu.tb & ~0xffffffffull) | v; break;
-    case spr::TBHI: g_cpu.tb = (g_cpu.tb & 0xffffffffull) | (uint64_t)v << 32; break;
-    case spr::TSR: g_cpu.sprs[n] &= ~v; break;      // write 1 to clear
+    case spr::TBLO: {
+        uint64_t tb = now() + g_cpu.tb_offset;
+        g_cpu.tb_offset = (int64_t)(((tb & ~0xffffffffull) | v) - now());
+        break;
+    }
+    case spr::TBHI: {
+        uint64_t tb = now() + g_cpu.tb_offset;
+        g_cpu.tb_offset = (int64_t)(((tb & 0xffffffffull) | (uint64_t)(v & 0x00ffffff) << 32) - now());
+        break;
+    }
+    case spr::TSR: cpu403::write_tsr(v); break;     // write 1 to clear
+    case spr::TCR: cpu403::write_tcr(v); break;
+    case spr::PIT: cpu403::write_pit(v); break;
     case spr::PVR: break;                           // read-only
     default: g_cpu.sprs[n & 1023] = v; break;
     }
@@ -101,11 +128,14 @@ void hk_mtspr(hk_ctx *c, uint32_t n, uint32_t v) {
 uint32_t hk_mfdcr(hk_ctx *, uint32_t n) { return g_cpu.dcrs[n & 1023]; }
 
 void hk_mtdcr(hk_ctx *, uint32_t n, uint32_t v) {
-    if (n == dcr::EXISR) g_cpu.dcrs[n] &= ~v;      // write 1 to clear
-    else g_cpu.dcrs[n & 1023] = v;
+    if (shadow_native_active()) shadow_abandon();
+    cpu403::dcr_written(n & 1023, v);
 }
 
-void hk_mtmsr(hk_ctx *c, uint32_t v) { c->msr = v; }
+void hk_mtmsr(hk_ctx *c, uint32_t v) {
+    c->msr = v;
+    if ((v & msr::EE) && cpu403::irq_pending()) sched_kick();
+}
 
 void hk_trap(hk_ctx *c, uint32_t pc) { fatal(c, "trap at %08x", pc); }
 

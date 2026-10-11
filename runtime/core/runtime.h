@@ -18,6 +18,7 @@ constexpr uint32_t XER = 1, LR = 8, CTR = 9, SRR0 = 26, SRR1 = 27;
 constexpr uint32_t SPRG0 = 272, SPRG1 = 273, SPRG2 = 274, SPRG3 = 275, PVR = 287;
 constexpr uint32_t ESR = 0x3d4, DEAR = 0x3d5, EVPR = 0x3d6, TSR = 0x3d8, TCR = 0x3da, PIT = 0x3db;
 constexpr uint32_t TBHI = 0x3dc, TBLO = 0x3dd, SRR2 = 0x3de, SRR3 = 0x3df;
+constexpr uint32_t TBHU = 0x3cc, TBLU = 0x3cd;   // user-mode read-only aliases of the time base
 }  // namespace spr
 
 namespace dcr {
@@ -33,7 +34,7 @@ constexpr uint32_t PVR_403GCX = 0x00201400;
 struct Cpu403 {
     uint32_t sprs[1024] = {};   // privileged SPRs not mirrored in hk_ctx
     uint32_t dcrs[1024] = {};
-    uint64_t tb = 0;            // time base, advanced by the scheduler (M2); the interpreter ticks it per insn
+    int64_t tb_offset = 0;      // time base = virtual time (sched::now) + offset
 };
 extern Cpu403 g_cpu;
 
@@ -60,6 +61,7 @@ hk_func lookup(uint32_t guest_addr);               // nullptr if not recompiled
 // ---------------------------------------------------------------------------
 struct InterpOptions {
     bool call_native = true;      // `bl` to a recompiled function runs the native version
+    bool lle = false;             // exceptions handled purely in the interpreter (no fibers): --interp-only
     unsigned shadow_checks = 0;   // per function: run native AND interpreted, compare (0 = off)
     bool trace = false;           // print every instruction
 };
@@ -70,15 +72,21 @@ enum class Stop { returned, max_steps, halted };
 struct InterpStats {
     uint64_t insns = 0, native_calls = 0, exceptions = 0;
     uint64_t shadow_ok = 0, shadow_bad = 0, shadow_impure = 0;
+    uint64_t threads_started = 0, thread_switches = 0;
 };
 extern InterpStats g_stats;
 
 // Interpret from c->pc until c->pc == stop_pc with r1 == stop_sp (a function
 // returning), max_steps instructions, or a halt (hang loop / fatal vector).
 Stop interp_run(hk_ctx *c, uint32_t stop_pc, uint32_t stop_sp, uint64_t max_steps);
-void interp_step(hk_ctx *c);
+bool interp_step(hk_ctx *c);                 // false: an interrupt was taken instead of an instruction
 void take_exception(hk_ctx *c, uint32_t vector, uint32_t return_pc);
 bool shadow_native_active();                 // native half of a shadow check is running
+bool shadow_interp_active();                 // interpreted half of a shadow check is running
+
+// Exception glue and guest threads (glue.cpp)
+void glue_init(hk_ctx *c);
+void glue_exception(hk_ctx *c, uint32_t vector, uint32_t ret);
 [[noreturn]] void shadow_abandon();          // ...and just hit something impure (sc)
 
 [[noreturn]] void fatal(hk_ctx *c, const char *fmt, ...);

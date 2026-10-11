@@ -2,12 +2,15 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Extract and identify a Firebeat program from a user-supplied disc image.
 
-    tools/ingest.py DISC [--out dumps/] [--exe FILE] [--check RAW]
+    tools/ingest.py DISC [--out dumps/] [--exe FILE] [--check RAW] [--romset SET.zip]
 
 DISC is the program CD (.iso, .cue/.bin, or a raw MODE1 track); --exe takes a
 loose HIKARU.EXE / FIREBEAT.EXE instead. The unpacked image is identified
 against games/*/game.toml by SHA-1 and written to dumps/<game id>/program.bin
 (dumps/ is gitignored - nothing derived from a game goes in the repo).
+
+--romset copies the files of a MAME ROM set (dongle image, default RTC NVRAM,
+SPU program, BIOS) into dumps/<game id>/rom/, where the runtime looks for them.
 """
 from __future__ import annotations
 
@@ -17,6 +20,7 @@ import hashlib
 import os
 import sys
 import tomllib
+import zipfile
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import fbexe  # noqa: E402
@@ -40,6 +44,7 @@ def main() -> int:
     src.add_argument("--exe", help="a loose HIKARU.EXE / FIREBEAT.EXE")
     ap.add_argument("--out", default=os.path.join(ROOT, "dumps"), help="output root (default: dumps/)")
     ap.add_argument("--check", metavar="RAW", help="compare the unpacked image to a known-good raw dump")
+    ap.add_argument("--romset", metavar="ZIP", help="MAME ROM set zip to copy into dumps/<game>/rom/")
     args = ap.parse_args()
 
     if args.exe:
@@ -86,6 +91,27 @@ def main() -> int:
     with open(os.path.join(outdir, "program.bin"), "wb") as fh:
         fh.write(prog.image)
     print(f"wrote    {os.path.relpath(os.path.join(outdir, 'program.bin'), ROOT)}")
+
+    # what the runtime needs to build the machine (it reads no TOML)
+    board = (game or {}).get("board", {})
+    with open(os.path.join(outdir, "machine.txt"), "w") as fh:
+        fh.write(f"family={(game or {}).get('family', 'bm3')}\n")
+        if board.get("dongle"):
+            fh.write(f"dongle={board['dongle']}\n")
+        if args.disc:
+            fh.write(f"cd_master={os.path.abspath(args.disc)}\n")
+    print(f"wrote    {os.path.relpath(os.path.join(outdir, 'machine.txt'), ROOT)}")
+
+    if args.romset:
+        romdir = os.path.join(outdir, "rom")
+        os.makedirs(romdir, exist_ok=True)
+        with zipfile.ZipFile(args.romset) as z:
+            for name in z.namelist():
+                if name.endswith("/"):
+                    continue
+                with open(os.path.join(romdir, os.path.basename(name)), "wb") as fh:
+                    fh.write(z.read(name))
+                print(f"rom      {os.path.basename(name)}")
     return 0
 
 

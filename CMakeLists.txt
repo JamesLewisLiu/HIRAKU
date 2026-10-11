@@ -25,9 +25,28 @@ target_link_libraries(hiraku-recomp PRIVATE hiraku_ppc)
 add_library(hiraku_rt STATIC
   runtime/core/state.cpp
   runtime/core/interp.cpp
-  runtime/core/dispatch.cpp)
+  runtime/core/dispatch.cpp
+  runtime/core/sched.cpp
+  runtime/core/cpu403.cpp
+  runtime/core/glue.cpp
+  runtime/dev/k057714.cpp
+  runtime/dev/ata.cpp
+  runtime/dev/rtc65271.cpp
+  runtime/dev/flash29f016a.cpp
+  runtime/dev/fdc.cpp
+  runtime/firebeat/board.cpp)
 target_include_directories(hiraku_rt PUBLIC runtime)
 target_link_libraries(hiraku_rt PUBLIC hiraku_ppc)
+
+# --- host front end (optional: SDL3) ---------------------------------------------
+find_package(SDL3 CONFIG QUIET)
+if(SDL3_FOUND)
+  add_library(hiraku_host STATIC runtime/host/window.cpp)
+  target_include_directories(hiraku_host PUBLIC runtime)
+  target_link_libraries(hiraku_host PUBLIC SDL3::SDL3 hiraku_rt)
+  target_compile_definitions(hiraku_host PUBLIC HK_WITH_SDL=1)
+  message(STATUS "hiraku: SDL3 front end enabled")
+endif()
 
 # --- tests -------------------------------------------------------------------
 enable_testing()
@@ -67,9 +86,11 @@ function(hiraku_game id entry)
   target_compile_options(hiraku_${id}_code PRIVATE -w -O2 -fwrapv)
   add_executable(hiraku-${id} runtime/main.cpp)
   target_compile_definitions(hiraku-${id} PRIVATE
-    HK_GAME_ID="${id}" HK_ENTRY=${entry}u
-    HK_DEFAULT_IMAGE="${CMAKE_SOURCE_DIR}/dumps/${id}/program.bin")
+    HK_GAME_ID="${id}" HK_ENTRY=${entry}u HK_ROOT="${CMAKE_SOURCE_DIR}")
   target_link_libraries(hiraku-${id} PRIVATE hiraku_rt hiraku_${id}_code hiraku_rt)
+  if(TARGET hiraku_host)
+    target_link_libraries(hiraku-${id} PRIVATE hiraku_host)
+  endif()
 endfunction()
 
 hiraku_game(bm3final 0x80003000)

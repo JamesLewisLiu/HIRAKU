@@ -1,0 +1,544 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Konami Firebeat board. Address map, port semantics, the DS1991 dongle
+// protocol and the interrupt wiring follow MAME's firebeat.cpp
+// (license BSD-3-Clause, copyright-holders: Ville Linde); this is a
+// re-implementation for HIRAKU's runtime, not a copy of MAME's device model.
+#include "board.h"
+
+#include <cstdio>
+#include <cstring>
+#include <fstream>
+#include <memory>
+#include <set>
+#include <string>
+#include <vector>
+
+#include "../core/cpu403.h"
+#include "../core/runtime.h"
+#include "../core/sched.h"
+#include "../dev/ata.h"
+#include "../dev/fdc.h"
+#include "../dev/flash29f016a.h"
+#include "../dev/k057714.h"
+#include "../dev/rtc65271.h"
+
+namespace hk::fb {
+
+namespace {
+
+Config g_cfg;
+Inputs g_in;
+K057714 *g_gcu = nullptr;
+AtaBus *g_ata = nullptr;
+Rtc65271 *g_rtc = nullptr;
+Flash29F016A *g_flash = nullptr;   // [3]: main, snd1, snd2
+Fdc37c665 *g_fdc = nullptr;        // beatmania III extend board
+uint8_t g_dpram[0x400];
+uint8_t g_ext_irq_enable = 0x3f, g_ext_irq_active = 0;
+uint8_t g_control = 0;
+uint32_t g_cabinet_info = 0;
+FrameHook g_frame_hook;
+uint64_t g_frame = 0;
+std::vector<uint32_t> g_fb;
+
+// ---- DS1991 iButton on the 403 serial port (MAME firebeat.cpp) ---------------
+struct IButton {
+    uint8_t subkey[3][64]{};   // 8 id + 8 password + 48 data each
+    int state = 0, ptr = 0;
+    uint8_t buf[0x40]{};
+} g_ib;
+
+void security_w(uint8_t data) {
+    int r = -1;
+    if (g_ib.state == 0) {
+        switch (data) {
+        case 0xc1: r = 0xcd; break;                      // DS2480B reset
+        case 0xe1: case 0xe3: break;                     // DS2480B data / command mode
+        case 0x66: r = 0x66; g_ib.state = 1; g_ib.ptr = 0; break;   // DS1991 read subkey
+        case 0xcc: r = 0xcc; break;                      // skip ROM
+        default: fatal(nullptr, "ibutton: unknown command %02x", data);
+        }
+    } else {
+        if (g_ib.ptr == 0) {
+            int sk = (data >> 6) & 3;
+            r = data;
+            if (sk < 3) memcpy(g_ib.buf, g_ib.subkey[sk], 0x40);
+            else memset(g_ib.buf, 0, 0x40);
+        } else if (g_ib.ptr == 1) {
+            r = data;
+        } else {
+            r = g_ib.buf[g_ib.ptr - 2];
+        }
+        if (++g_ib.ptr >= 0x42) g_ib.state = 0;
+    }
+    if (r >= 0) cpu403::spu_receive((uint8_t)r);
+}
+
+// ---- 16550 UARTs ---------------------------------------------------------------
+// Nothing is attached (the ST-224 effector is not emulated, as in MAME), so a
+// transmitted byte simply leaves after one character time; the transmitter-
+// empty interrupt is modelled because the game enables and services it.
+struct Uart {
+    uint8_t ier = 0, lcr = 0, mcr = 0, scr = 0, dll = 0, dlm = 0, fcr = 0;
+    bool thre_int = false;      // transmitter-empty interrupt pending
+    bool thr_empty = true;      // holding register
+    bool tsr_busy = false;      // shift register sending a byte
+    std::function<void(bool)> irq;
+    Timer *tx = nullptr;
+
+    void update() { if (irq) irq((ier & 0x02) && thre_int); }
+    uint8_t read(int reg) {
+        switch (reg) {
+        case 0: return (lcr & 0x80) ? dll : 0;
+        case 1: return (lcr & 0x80) ? dlm : ier;
+        case 2: {                                        // IIR: reading it clears a THRE interrupt
+            uint8_t iir = ((ier & 0x02) && thre_int) ? 0x02 : 0x01;
+            if (iir == 0x02) { thre_int = false; update(); }
+            return iir | ((fcr & 0x01) ? 0xc0 : 0x00);  // FIFOs enabled
+        }
+        case 3: return lcr;
+        case 4: return mcr;
+        case 5: return (thr_empty ? 0x20 : 0) | (thr_empty && !tsr_busy ? 0x40 : 0);   // THRE, TEMT
+        case 6: return 0x00;
+        default: return scr;
+        }
+    }
+    void write(int reg, uint8_t v) {
+        switch (reg) {
+        case 0:
+            if (lcr & 0x80) { dll = v; break; }
+            if (!tsr_busy) {                             // straight into the shift register: THR empty again
+                tsr_busy = true;
+                thr_empty = true;
+                thre_int = true;
+                if (tx) tx->in(ticks_from_us(320));      // 10 bits at 31250 baud (MIDI)
+            } else {
+                thr_empty = false;
+                thre_int = false;
+            }
+            update();
+            break;
+        case 1:
+            if (lcr & 0x80) { dlm = v; break; }
+            if (!(ier & 0x02) && (v & 0x02) && thr_empty) thre_int = true;   // enabling THRE with THR empty
+            ier = v;
+            update();
+            break;
+        case 2: fcr = v & 0xc9; break;                   // FIFO control (reset bits self-clear)
+        case 3: lcr = v; break;
+        case 4: mcr = v; break;
+        case 7: scr = v; break;
+        default: break;
+        }
+    }
+    void tx_done() {                                     // shift register finished its byte
+        if (!thr_empty) {                                // the waiting byte moves in
+            thr_empty = true;
+            thre_int = true;
+            if (tx) tx->in(ticks_from_us(320));
+        } else {
+            tsr_busy = false;
+        }
+        update();
+    }
+} g_com[2], g_midi[2];
+Timer g_midi_tx0("midi-tx0", [] { g_midi[0].tx_done(); });
+Timer g_midi_tx1("midi-tx1", [] { g_midi[1].tx_done(); });
+Timer g_com_tx0("com-tx0", [] { g_com[0].tx_done(); });
+Timer g_com_tx1("com-tx1", [] { g_com[1].tx_done(); });
+
+// ---- extend board interrupt latch -------------------------------------------
+// As in MAME: device callbacks drive the CPU's EXT1 line; the active bits are
+// sticky until the game acknowledges them by writing 0x70006000.
+void ext1_line(bool on) { cpu403::set_irq_line(cpu403::irq_ext(1), on); }
+
+// ---- the oracle-format trace (oracle/trace.py) --------------------------------
+struct Tracer {
+    FILE *f = nullptr;
+    // folding state, identical to oracle/lua/hiraku.lua
+    bool have = false;
+    uint8_t kind = 0, group = 0;
+    uint32_t addr = 0, mask = 0, data = 0, hash = 0, frame = 0, pc = 0;
+    uint16_t n = 0;
+    bool varied = false;
+    double time = 0;
+    static uint32_t fnv(uint32_t h, uint32_t v) {
+        for (int sh = 0; sh <= 24; sh += 8) h = (h ^ ((v >> sh) & 0xff)) * 0x01000193u;
+        return h;
+    }
+    void emit() {
+        if (!have || !f) return;
+        uint8_t rec[32];
+        auto put32 = [&](int o, uint32_t v) { memcpy(rec + o, &v, 4); };
+        put32(0, frame);
+        memcpy(rec + 4, &time, 8);
+        put32(12, pc);
+        put32(16, addr);
+        put32(20, varied ? hash : data);
+        put32(24, mask);
+        rec[28] = kind | (varied ? 2 : 0);
+        rec[29] = group;
+        memcpy(rec + 30, &n, 2);
+        fwrite(rec, 1, 32, f);
+        have = false;
+    }
+    void record(uint8_t k, uint8_t g, uint32_t a, uint32_t d, uint32_t m, uint32_t cur_pc) {
+        if (!f) return;
+        if (have && n < 0xffff && k == kind && a == addr && m == mask && g == group) {
+            n++;
+            hash = fnv(hash, d);
+            if (d != data) varied = true;
+            return;
+        }
+        emit();
+        have = true;
+        kind = k; group = g; addr = a; mask = m; data = d; n = 1;
+        hash = fnv(0x811c9dc5u, d);
+        varied = false;
+        frame = (uint32_t)g_frame;
+        time = (double)now() / (double)CPU_HZ;
+        pc = cur_pc;
+    }
+} g_trace;
+
+hk_ctx *g_ctx_for_trace = nullptr;
+
+uint8_t trace_group(uint32_t p) {
+    if (p >= 0x7e800000 && p <= 0x7e8001ff) return 1;
+    if (p >= 0x74000000 && p <= 0x740003ff) return 2;
+    if ((p >= 0x7fe00000 && p <= 0x7fe0000f) || (p >= 0x7fe80000 && p <= 0x7fe8000f)) return 3;
+    if (p >= 0x7d000000 && p <= 0x7d0008ff) return 4;
+    if (p >= 0x7dc00000 && p <= 0x7dc0000f) return 5;
+    if (p >= 0x7e000000 && p <= 0x7e00013f) return 6;
+    if (p >= 0x70000000 && p <= 0x7000ffff) return 7;
+    if (p >= 0x7d400000 && p <= 0x7dbfffff) return 8;
+    return 0;
+}
+
+// ---- unmapped access reporting ------------------------------------------------
+std::set<uint32_t> g_unmapped;
+void unmapped(const char *rw, uint32_t p, int size, uint32_t v) {
+    if (g_unmapped.insert(p).second) fprintf(stderr, "board: unmapped %s %08x/%d = %08x\n", rw, p, size, v);
+}
+
+// ---- byte-lane helpers: a (phys, size) access on the 32-bit big-endian bus ----
+inline uint32_t lane_shift(uint32_t p, int size) { return (uint32_t)(4 - (int)(p & 3) - size) * 8; }
+inline uint32_t size_mask(int size) { return size == 4 ? 0xffffffffu : ((1u << (8 * size)) - 1); }
+
+// Byte-wide devices: call `f(offset)` for each byte of the access, assembling the value.
+template <typename F>
+uint32_t bytes_read(uint32_t p, int size, uint32_t base, F f) {
+    uint32_t v = 0;
+    for (int k = 0; k < size; k++) v = (v << 8) | f(p + k - base);
+    return v;
+}
+template <typename F>
+void bytes_write(uint32_t p, int size, uint32_t v, uint32_t base, F f) {
+    for (int k = 0; k < size; k++) f(p + k - base, (uint8_t)(v >> (8 * (size - 1 - k))));
+}
+
+uint16_t swap16(uint16_t v) { return (uint16_t)(v << 8 | v >> 8); }
+
+// Flash chips: main 0x7d400000, sound 1 0x7d800000, sound 2 0x7da00000 (2 MiB each)
+int flash_chip(uint32_t p, uint32_t &base) {
+    if (p >= 0x7d400000 && p <= 0x7d5fffff) { base = 0x7d400000; return 0; }
+    if (p >= 0x7d800000 && p <= 0x7d9fffff) { base = 0x7d800000; return 1; }
+    if (p >= 0x7da00000 && p <= 0x7dbfffff) { base = 0x7da00000; return 2; }
+    return -1;
+}
+
+// ATA on the Firebeat: 16-bit registers at base + 2*reg, byte-swapped (MAME cs*_swap_*)
+uint32_t ata_read(int cs, uint32_t p, int size) {
+    uint32_t v = 0;
+    for (uint32_t a = p & ~1u; a < p + size; a += 2) {
+        uint16_t r = swap16(g_ata->read(cs, (a & 0xf) >> 1));
+        v = (v << 16) | r;
+    }
+    if (size == 1) v = (p & 1) ? (v & 0xff) : (v >> 8);
+    return v;
+}
+void ata_write(int cs, uint32_t p, int size, uint32_t v) {
+    if (size == 1) {   // byte write to a 16-bit register: place it in its lane
+        g_ata->write(cs, (p & 0xf) >> 1, swap16((p & 1) ? (uint16_t)v : (uint16_t)(v << 8)));
+        return;
+    }
+    for (int k = size / 2 - 1; k >= 0; k--, v >>= 16) {
+        uint32_t a = (p & ~1u) + 2 * k;
+        g_ata->write(cs, (a & 0xf) >> 1, swap16((uint16_t)v));
+    }
+}
+
+// ---- the bus ---------------------------------------------------------------------
+uint32_t bus_read(uint32_t p, int size) {
+    // GCU: 32-bit registers
+    if (p >= 0x7e800000 && p <= 0x7e8000ff) {
+        uint32_t r = g_gcu->read(p & 0xfc);
+        return (r >> lane_shift(p, size)) & size_mask(size);
+    }
+    if (p >= 0x7e800100 && p <= 0x7e8001ff) return 0;              // second GCU (Keyboardmania only)
+    if (p >= 0x7fe00000 && p <= 0x7fe0000f) return ata_read(0, p, size);
+    if (p >= 0x7fe80000 && p <= 0x7fe8000f) return ata_read(1, p, size);
+    if (p >= 0x7e000000 && p <= 0x7e00003f) return bytes_read(p, size, 0x7e000000, [](uint32_t o) { return g_rtc->read(false, o); });
+    if (p >= 0x7e000100 && p <= 0x7e00013f) return bytes_read(p, size, 0x7e000100, [](uint32_t o) { return g_rtc->read(true, o); });
+    {
+        uint32_t base;
+        int chip = flash_chip(p, base);
+        if (chip >= 0) return bytes_read(p, size, base, [chip](uint32_t o) { return g_flash[chip].read(o); });
+    }
+    if (p >= 0x7dc00000 && p <= 0x7dc0000f)
+        return bytes_read(p, size, 0x7dc00000, [](uint32_t o) { return g_com[(o >> 3) & 1].read(o & 7); });
+    if (p >= 0x7d000800 && p <= 0x7d000803) return bytes_read(p, size, 0x7d000800, [](uint32_t o) { return g_in.in[o & 3]; });
+    if (p >= 0x7d000200 && p <= 0x7d00021f) {
+        uint32_t r = ((p - 0x7d000200) >> 2) == 0 ? g_cabinet_info << 28 : 0;
+        return (r >> lane_shift(p, size)) & size_mask(size);
+    }
+    if (p >= 0x7d000400 && p <= 0x7d000401) return 0;              // YMZ280B: not in M2
+    if (p >= 0x74000000 && p <= 0x740003ff) {
+        return bytes_read(p, size, 0x74000000, [](uint32_t o) -> uint8_t {
+            if (o == 0x3ff) cpu403::set_irq_line(cpu403::irq_ext(3), false);   // mailbox read acknowledges
+            return g_dpram[o];
+        });
+    }
+    if (p >= 0x7000a000 && p <= 0x7000a003) return bytes_read(p, size, 0x7000a000, [](uint32_t) { return (uint8_t)~g_ext_irq_active; });
+    if (g_cfg.family == "bm3") {
+        if (p >= 0x7d000340 && p <= 0x7d00035f) {                  // sensors: 16-bit
+            uint32_t v = 0;
+            for (uint32_t a = p & ~1u; a < p + size; a += 2) {
+                uint32_t o = (a - 0x7d000340) >> 1;
+                uint16_t r = 0;
+                switch (o) {
+                case 0: case 1: case 2: case 3: r = g_in.io[o] | 0x100; break;
+                case 5: r = (g_in.turntable[0] >> 8) | 0x100; break;
+                case 6: r = (g_in.turntable[0] & 0xff) | 0x100; break;
+                case 7: r = (g_in.turntable[1] >> 8) | 0x100; break;
+                case 8: r = (g_in.turntable[1] & 0xff) | 0x100; break;
+                default: if (o >= 9 && o <= 15) r = g_in.effect[o - 9] | 0x100; break;
+                }
+                v = (v << 16) | r;
+            }
+            if (size == 1) v = (p & 1) ? (v & 0xff) : (v >> 8);
+            return v;
+        }
+        if (p >= 0x70000000 && p <= 0x70000fff)                      // MIDI UART, lane 0 only
+            return (p & 3) == 0 ? (uint32_t)g_midi[((p - 0x70000000) >> 8) >> 3 & 1].read(((p - 0x70000000) >> 8) & 7) << (8 * (size - 1)) : 0;
+        if (p >= 0x70001000 && p <= 0x70001fff)                      // FDC37C665GT, lane 0: ISA port = offset / 4
+            return (p & 3) == 0 ? (uint32_t)g_fdc->read((int)((p - 0x70001000) >> 2)) << (8 * (size - 1)) : 0;
+        if (p >= 0x70008000 && p <= 0x7000807f) return 0;           // spectrum analyzer: silence
+    }
+    unmapped("R", p, size, 0);
+    return 0;
+}
+
+void bus_write(uint32_t p, uint32_t v, int size) {
+    if (p >= 0x7e800000 && p <= 0x7e8000ff) {
+        uint32_t sh = lane_shift(p, size);
+        g_gcu->write(p & 0xfc, v << sh, size_mask(size) << sh);
+        return;
+    }
+    if (p >= 0x7e800100 && p <= 0x7e8001ff) return;
+    if (p >= 0x7fe00000 && p <= 0x7fe0000f) { ata_write(0, p, size, v); return; }
+    if (p >= 0x7fe80000 && p <= 0x7fe8000f) { ata_write(1, p, size, v); return; }
+    if (p >= 0x7e000000 && p <= 0x7e00003f) { bytes_write(p, size, v, 0x7e000000, [](uint32_t o, uint8_t b) { g_rtc->write(false, o, b); }); return; }
+    if (p >= 0x7e000100 && p <= 0x7e00013f) { bytes_write(p, size, v, 0x7e000100, [](uint32_t o, uint8_t b) { g_rtc->write(true, o, b); }); return; }
+    {
+        uint32_t base;
+        int chip = flash_chip(p, base);
+        if (chip >= 0) {
+            bytes_write(p, size, v, base, [chip](uint32_t o, uint8_t b) { g_flash[chip].write(o, b); });
+            return;
+        }
+    }
+    if (p >= 0x7dc00000 && p <= 0x7dc0000f) {
+        bytes_write(p, size, v, 0x7dc00000, [](uint32_t o, uint8_t b) { g_com[(o >> 3) & 1].write(o & 7, b); });
+        return;
+    }
+    if (p >= 0x7d000500 && p <= 0x7d000501) {                       // control
+        uint8_t d = (uint8_t)v;
+        if ((d & 1) != (g_control & 1)) g_gcu->set_pixclock((d & 1) ? 16'666'600.0 : 25'175'000.0);
+        g_control = d;
+        return;
+    }
+    if ((p >= 0x7d000320 && p <= 0x7d000327) || (p >= 0x7d000804 && p <= 0x7d000807)) return;   // lamps, status LEDs
+    if (p >= 0x7d000400 && p <= 0x7d000401) return;                 // YMZ280B: not in M2
+    if (p >= 0x74000000 && p <= 0x740003ff) {
+        bytes_write(p, size, v, 0x74000000, [](uint32_t o, uint8_t b) {
+            g_dpram[o] = b;
+            // o == 0x3fe interrupts the SPU's 68000 (IRQ4): the SPU arrives in M4
+        });
+        return;
+    }
+    if (p >= 0x70006000 && p <= 0x70006003) {                       // extend board IRQ enable/ack
+        bool fdd_was = g_ext_irq_enable & 0x04;
+        g_ext_irq_active &= ~(uint8_t)v;
+        g_ext_irq_enable = (uint8_t)v;
+        if (bool(g_ext_irq_enable & 0x04) != fdd_was) ext1_line(false);   // MAME: helps the FDD not get stuck
+        return;
+    }
+    if (g_cfg.family == "bm3") {
+        if (p >= 0x7d000330 && p <= 0x7d00033f) return;
+        if (p >= 0x70000000 && p <= 0x70000fff) {
+            if ((p & 3) == 0) g_midi[((p - 0x70000000) >> 8) >> 3 & 1].write(((p - 0x70000000) >> 8) & 7, (uint8_t)(v >> (8 * (size - 1))));
+            return;
+        }
+        if (p >= 0x70001000 && p <= 0x70001fff) {
+            if ((p & 3) == 0) g_fdc->write((int)((p - 0x70001000) >> 2), (uint8_t)(v >> (8 * (size - 1))));
+            return;
+        }
+    }
+    unmapped("W", p, size, v);
+}
+
+uint32_t traced_read(uint32_t p, int size) {
+    uint32_t v = bus_read(p, size);
+    if (g_trace.f) {
+        if (uint8_t g = trace_group(p)) {
+            uint32_t sh = lane_shift(p, size);
+            // MAME's tap sees what the device's handler returned: for 32-bit devices
+            // (the GCU) that is the whole register, not just the lanes asked for.
+            uint32_t d = (g == 1 && p <= 0x7e8000ff) ? g_gcu->read(p & 0xfc) : v << sh;
+            g_trace.record(0, g, p & ~3u, d, size_mask(size) << sh, g_ctx_for_trace ? g_ctx_for_trace->pc : 0);
+        }
+    }
+    return v;
+}
+
+void traced_write(uint32_t p, uint32_t v, int size) {
+    if (g_trace.f) {
+        if (uint8_t g = trace_group(p)) {
+            uint32_t sh = lane_shift(p, size);
+            g_trace.record(1, g, p & ~3u, v << sh, size_mask(size) << sh, g_ctx_for_trace ? g_ctx_for_trace->pc : 0);
+        }
+    }
+    bus_write(p, v, size);
+}
+
+// ---- video timing ---------------------------------------------------------------------
+void vblank_fire();
+Timer g_vblank("vblank", vblank_fire);
+
+uint64_t frame_ticks() {
+    double period = (double)g_gcu->htotal() * g_gcu->vtotal() / g_gcu->pixclock();
+    return (uint64_t)(period * CPU_HZ + 0.5);
+}
+
+void vblank_fire() {
+    g_frame++;
+    g_vblank.in(frame_ticks());
+    g_gcu->vblank(true);
+    if (g_frame_hook) {
+        int w = g_gcu->hvisible(), h = g_gcu->vvisible();
+        g_fb.resize((size_t)w * h);
+        g_gcu->draw(g_fb.data(), w, h);
+        g_frame_hook(g_frame, g_fb.data(), w, h);
+    }
+}
+
+bool read_file(const std::string &path, std::vector<uint8_t> &out) {
+    std::ifstream in(path, std::ios::binary);
+    if (!in) return false;
+    out.assign(std::istreambuf_iterator<char>(in), {});
+    return true;
+}
+
+}  // namespace
+
+void init(const Config &cfg) {
+    g_cfg = cfg;
+    g_gcu = new K057714;
+    g_ata = new AtaBus;
+    g_rtc = new Rtc65271;
+    g_flash = new Flash29F016A[3];
+    g_fdc = new Fdc37c665;
+    // FDC interrupt -> extend board bit 0x04 (if enabled: bit clear) -> EXT1 (MAME floppy_irq_callback)
+    g_fdc->irq = [](bool on) {
+        if (on && !(g_ext_irq_enable & 0x04)) {
+            g_ext_irq_active |= 0x04;
+            ext1_line(true);
+        }
+    };
+    // MIDI UART channel 1 (to the ST-224) -> extend board bit 0x01 (MAME midi_st224_irq_callback)
+    g_midi[1].irq = [](bool on) {
+        if (!(g_ext_irq_enable & 0x01) && on) {
+            g_ext_irq_active |= 0x01;
+            ext1_line(true);
+        } else {
+            ext1_line(false);
+        }
+    };
+    g_midi[0].tx = &g_midi_tx0;
+    g_midi[1].tx = &g_midi_tx1;
+    g_com[0].tx = &g_com_tx0;
+    g_com[1].tx = &g_com_tx1;
+    g_ata->log = cfg.ata_log;
+
+    g_gcu->irq = [](bool on) { cpu403::set_irq_line(cpu403::irq_ext(0), on); };
+    g_ata->irq = [](bool on) { cpu403::set_irq_line(cpu403::irq_ext(4), on); };
+
+    auto master = std::make_unique<AtapiDrive>("cd0");
+    if (!cfg.cd_master.empty()) {
+        master->disc = std::make_unique<DiscImage>();
+        if (!master->disc->open(cfg.cd_master)) fatal(nullptr, "cannot open disc image %s", cfg.cd_master.c_str());
+    }
+    g_ata->attach(0, std::move(master));
+    auto slave = std::make_unique<AtapiDrive>("cd1");
+    if (!cfg.cd_slave.empty()) {
+        slave->disc = std::make_unique<DiscImage>();
+        if (!slave->disc->open(cfg.cd_slave)) fatal(nullptr, "cannot open disc image %s", cfg.cd_slave.c_str());
+    }
+    g_ata->attach(1, std::move(slave));
+
+    // dongle: 3 x (8 id + 8 password + 48 data)
+    std::vector<uint8_t> dongle;
+    if (!cfg.dongle_file.empty() && read_file(cfg.rom_dir + "/" + cfg.dongle_file, dongle) && dongle.size() >= 0xc0)
+        memcpy(g_ib.subkey, dongle.data(), 0xc0);
+    else
+        fprintf(stderr, "board: no dongle image (%s/%s): the security check will fail\n", cfg.rom_dir.c_str(), cfg.dongle_file.c_str());
+    cpu403::spu_set_tx_handler(security_w);
+
+    // RTC/NVRAM: saved state, else the ROM set's default, else blank
+    std::vector<uint8_t> nv;
+    if (!(!cfg.nvram_dir.empty() && read_file(cfg.nvram_dir + "/rtc.nv", nv) && g_rtc->load_nvram(nv.data(), nv.size())))
+        if (!(read_file(cfg.rom_dir + "/rtc", nv) && g_rtc->load_nvram(nv.data(), nv.size())))
+            fprintf(stderr, "board: no RTC NVRAM image: starting blank\n");
+    g_rtc->set_time(2002, 7, 26, 6, 12, 0, 0);   // fixed, so runs are reproducible
+    for (int k = 0; k < 3; k++) {
+        std::vector<uint8_t> f;
+        if (!cfg.nvram_dir.empty() && read_file(cfg.nvram_dir + "/flash" + std::to_string(k) + ".bin", f) && f.size() == 0x200000)
+            g_flash[k].data() = f;
+    }
+
+    g_cabinet_info = 0;   // JP, non-rental (all known beatmania III data)
+    g_ext_irq_enable = 0x3f;
+    g_ext_irq_active = 0;
+    memset(g_dpram, 0, sizeof g_dpram);
+
+    if (!cfg.trace_dir.empty()) {
+        g_trace.f = fopen((cfg.trace_dir + "/mmio.bin").c_str(), "wb");
+        if (!g_trace.f) fatal(nullptr, "cannot write %s/mmio.bin", cfg.trace_dir.c_str());
+    }
+    mmio_set_handler({traced_read, traced_write});
+
+    // first vertical blank at the end of the first visible field
+    g_vblank.in((uint64_t)((double)frame_ticks() * g_gcu->vvisible() / g_gcu->vtotal()));
+}
+
+void shutdown() {
+    g_trace.emit();
+    if (g_trace.f) fclose(g_trace.f);
+    g_trace.f = nullptr;
+    if (!g_cfg.nvram_dir.empty()) {
+        std::ofstream(g_cfg.nvram_dir + "/rtc.nv", std::ios::binary) << g_rtc->save_nvram();
+        for (int k = 0; k < 3; k++)
+            if (g_flash[k].dirty) {
+                std::ofstream o(g_cfg.nvram_dir + "/flash" + std::to_string(k) + ".bin", std::ios::binary);
+                o.write((const char *)g_flash[k].data().data(), 0x200000);
+            }
+    }
+}
+
+Inputs &inputs() { return g_in; }
+void set_frame_hook(FrameHook h) { g_frame_hook = std::move(h); }
+uint64_t frame_count() { return g_frame; }
+void set_trace_ctx(hk_ctx *c) { g_ctx_for_trace = c; }
+
+}  // namespace hk::fb

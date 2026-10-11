@@ -203,14 +203,16 @@ struct Emitter {
             if (inside(hi)) labels.insert(hi);
     }
 
-    void poll(uint32_t at) {
-        if (!f.nopoll) o << "    HK_POLL(c, " << hex(at) << ");\n";
+    // A poll charges virtual time: at a back-edge, the loop body's length in
+    // instructions; at a function entry, a fixed call overhead.
+    void poll(uint32_t at, uint32_t cost) {
+        if (!f.nopoll) o << "    HK_POLL(c, " << hex(at) << ", " << cost << ");\n";
     }
 
     // Leave the function towards `target`: a jump inside, a tail call, or the dynamic path.
     void go(uint32_t from, uint32_t target) {
         if (inside(target)) {
-            if (target <= from) poll(from);
+            if (target <= from) poll(from, (from - target) / 4 + 1);
             o << "goto " << lbl(target) << ";";
         } else if (g_funcs.count(target) || g_secondary.count(target)) {
             o << fn(target) << "(c); return;";
@@ -323,7 +325,7 @@ struct Emitter {
         o << "void " << fn(entry) << "(hk_ctx *c) {\n";
         // the entry need not be the first range (Ghidra lists ranges by address)
         bool entry_first = !f.ranges.empty() && f.ranges.front().first == entry;
-        poll(entry);
+        poll(entry, 8);
         if (!entry_first) {
             labels.insert(entry);
             o << "    goto " << lbl(entry) << ";\n";

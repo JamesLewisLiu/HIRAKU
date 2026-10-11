@@ -63,7 +63,19 @@ public class ExportManifest extends GhidraScript {
             if (listing.getInstructionAt(xa) == null) new DisassembleCommand(xa, null, true).applyTo(currentProgram, monitor);
             if (fm.getFunctionAt(xa) == null) new CreateFunctionCmd(xa).applyTo(currentProgram, monitor);
         }
-        println("manifest: promoted " + promoted + " pointer targets to functions");
+        // Decoded code outside every function that nothing falls into is an entry
+        // point reached through an address built in code (lis/addi), e.g. an
+        // interrupt handler or a callback registered at run time.
+        int orphans = 0;
+        for (Instruction in : listing.getInstructions(true)) {
+            Address ia = in.getAddress();
+            if (fm.getFunctionContaining(ia) != null) continue;
+            Instruction prev = listing.getInstructionContaining(ia.subtract(1));
+            boolean fallsIn = prev != null && prev.getFallThrough() != null && prev.getFallThrough().equals(ia);
+            if (fallsIn) continue;
+            if (new CreateFunctionCmd(ia).applyTo(currentProgram, monitor)) orphans++;
+        }
+        println("manifest: promoted " + promoted + " pointer targets and " + orphans + " orphan entries to functions");
 
         Set<Long> starts = new TreeSet<>();
         for (Function f : fm.getFunctions(true)) starts.add(f.getEntryPoint().getOffset());

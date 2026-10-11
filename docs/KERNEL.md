@@ -169,6 +169,19 @@ So **one host glue implementation serves all of them.**
 
 pop'n 4 (2000) matches only 13. It carries an older or differently compiled build of the same kernel: same glue, different code generation. Its labels need another reference, probably beatmania III 1st mix (GQ972, same year), whose CHD is in `~/bm3mame/roms/bm3`.
 
+## Implemented (M2, 2026-10-11)
+
+The design above is what `runtime/core/glue.cpp` does:
+- **Exceptions.** An exception (`sc`, or an interrupt at a poll point) is taken architecturally, and the guest's own vector code is *interpreted*. The interpreter calls the native C handlers.
+- **Resuming.** At the `rfi`, SPRG3 names the frame to resume:
+  - our own frame: return to native code;
+  - another thread's frame: swap to the fiber parked under it (ucontext, 1 MiB host stacks);
+  - an unknown frame: start a new fiber at its SRR0.
+- **Time.** Virtual time is 66 MHz ticks (`runtime/core/sched.*`), charged per interpreted instruction and per native poll. PIT, FIT, the serial port and the devices schedule on it.
+- **Time base.** The kernel's delay loops read the time base through the **user-mode aliases TBHU/TBLU (SPR 0x3CC/0x3CD)**, not TBHI/TBLO. Missing them hangs the startup screen.
+
+Measured on bm3final (30 virtual seconds): 3 guest threads, 2.3M thread switches, 2.4M exceptions.
+
 ## Open items
 
 - Pin down the exact extent of the kernel C (all functions reachable only from

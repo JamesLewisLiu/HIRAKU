@@ -10,7 +10,9 @@
 #include <unordered_map>
 
 #include "../../src/ppc/decode.h"
+#include "cpu403.h"
 #include "runtime.h"
+#include "sched.h"
 
 namespace hk {
 
@@ -135,7 +137,6 @@ bool shadow_call(hk_ctx *c, hk_func fn, uint32_t target, uint32_t ret) {
 }  // namespace
 
 void take_exception(hk_ctx *c, uint32_t vector, uint32_t return_pc) {
-    g_stats.exceptions++;
     if (vector == 0x100 || vector == 0x1020) {      // critical class: SRR2/3
         c->srr2 = return_pc;
         c->srr3 = c->msr;
@@ -148,12 +149,23 @@ void take_exception(hk_ctx *c, uint32_t vector, uint32_t return_pc) {
     c->pc = (g_cpu.sprs[spr::EVPR] & 0xffff0000u) | vector;
 }
 
-void interp_step(hk_ctx *c) {
+bool interp_step(hk_ctx *c) {
+    // time: one tick per instruction
+    if (--hk_budget <= 0) {
+        if (shadow_native_active()) hk_budget = 1 << 20;
+        else sched_sync();
+    }
+    // interrupts are taken between instructions (not while a shadow check interprets)
+    if ((c->msr & msr::EE) && g_shadow_depth == 0 && cpu403::irq_pending()) {
+        uint32_t v = cpu403::pending_vector();
+        if (g_interp.lle) take_exception(c, v, c->pc);
+        else glue_exception(c, v, c->pc);
+        return false;               // no instruction executed (and pc may be unchanged)
+    }
     const uint32_t pc = c->pc;
     const Insn i = decode(fetch(c, pc), pc);
     if (g_interp.trace) fprintf(stderr, "%08x: %08x %s\n", pc, i.word, disasm(i).c_str());
     g_stats.insns++;
-    g_cpu.tb++;
     uint32_t next = pc + 4;
 
     switch (i.op) {
@@ -164,14 +176,14 @@ void interp_step(hk_ctx *c) {
                 if (hk_func fn = lookup(i.target)) {
                     if (g_interp.shadow_checks && shadow_call(c, fn, i.target, next)) {
                         c->pc = next;       // checked; the interpreted result stands
-                        return;
+                        return true;
                     }
                     if (g_interp.call_native) {
                         g_stats.native_calls++;
                         fn(c);
                         if (c->pc != next) fatal(c, "native %08x returned to %08x, expected %08x", i.target, c->pc, next);
                         c->pc = next;
-                        return;
+                        return true;
                     }
                 }
             }
@@ -198,16 +210,19 @@ void interp_step(hk_ctx *c) {
         break;
     }
     case Op::sc:
-        take_exception(c, 0xc00, pc + 4);
-        return;
+        if (g_interp.lle || !(c->msr & msr::PR)) take_exception(c, 0xc00, pc + 4);
+        else glue_exception(c, 0xc00, pc + 4);   // user code on a fiber: the kernel may switch threads
+        if (g_interp.lle || !(c->msr & msr::PR)) g_stats.exceptions++;
+        return true;
     case Op::rfi:
         c->msr = c->srr1;
         c->pc = c->srr0 & ~3u;
-        return;
+        if (cpu403::irq_pending()) sched_kick();
+        return true;
     case Op::rfci:
         c->msr = c->srr3;
         c->pc = c->srr2 & ~3u;
-        return;
+        return true;
     case Op::nop:
         break;
     case Op::unimpl:
@@ -219,19 +234,20 @@ void interp_step(hk_ctx *c) {
         break;
     }
     c->pc = next;
+    return true;
 }
 
 Stop interp_run(hk_ctx *c, uint32_t stop_pc, uint32_t stop_sp, uint64_t max_steps) {
     for (uint64_t n = 0; n < max_steps; n++) {
         if (c->pc == stop_pc && c->r[1] == stop_sp) return Stop::returned;
         uint32_t pc = c->pc;
-        interp_step(c);
-        if (c->pc == pc) return Stop::halted;      // `b .`: a hang (fatal vectors end this way)
+        if (interp_step(c) && c->pc == pc) return Stop::halted;   // `b .`: a hang (fatal vectors end this way)
     }
     return Stop::max_steps;
 }
 
 bool shadow_native_active() { return g_shadow_native; }
+bool shadow_interp_active() { return g_shadow_depth > 0; }
 [[noreturn]] void shadow_abandon() { longjmp(g_shadow_escape, 1); }
 
 }  // namespace hk
