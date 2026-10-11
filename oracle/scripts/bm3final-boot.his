@@ -1,0 +1,13 @@
+# Boot beatmania III The Final to the attract loop. No input.
+# A smoke test for the oracle and the first reference trace for M2/M3.
+game bm3final
+
+watch measure u32 0x80103674        # bar counter (BGA engine)
+watch scene   u32 0x802566dc        # BGA scene id
+hash  kernel  0x81fe0000 0x82000000 # kernel + initial stacks
+hash  sda     0x80100000 0x80110000 # small-data area and engine globals
+
+at 600   snap
+at 1200  snap
+from 1800 every 600 snap
+at 3600  quit

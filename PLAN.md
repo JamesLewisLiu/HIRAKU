@@ -257,5 +257,11 @@ Rough total to playable BM3 Final is about 4 months. Each later family should co
 2. ~~Write the dump ingester~~ Done (`tools/ingest.py`; verified byte-identical from `.cue/.bin` and `.iso`). The ingester: CD image → ISO9660 → `HIKARU.EXE`/`FIREBEAT.EXE` → optional ParaPara wrapper → LZSS unpack → identify by SHA-1 against `games/*/game.toml`.
 3. ~~Turn the scratch Ghidra stats script into a manifest exporter~~ Done (`analyze/ghidra.sh` + `ExportManifest.java`: 2,205 functions, 376 code-pointer candidates, 36 orphan-code ranges). It exports: functions, blocks, jump tables, pointer-table candidates → `build/<game>/manifest.json` (generated, not committed).
 4. ~~Disassemble and annotate the kernel stub~~ Done: docs/KERNEL.md. Remaining: the kernel's exact extent and the thread/semaphore API.
-5. Add MMIO memory taps and a shared input-script format to the MAME oracle, and capture a reference trace: boot → attract → one song.
+5. ~~MAME oracle with MMIO taps, shared input scripts and reference traces~~ Done (`oracle/`, see `oracle/README.md`).
+   - **Taps** record every hardware access into a folded binary stream.
+   - **`.his` input scripts** are frame-keyed, so the runtime will run the same files.
+   - **Tools:** `trace.py` (summary/dump) and `compare.py` (first divergence).
+   - **Optional modes:** `EXACT_PC=1` for exact PCs and instruction traces; `WAV=1` for audio.
+   - **Reference runs:** `bm3final-boot.his` and `bm3final-practice.his` (boot → attract → coins → mode select → practice song, with a fixed key pattern).
+   - **Findings:** MAME runs are deterministic except RTC reads seeded from the host clock. The runtime will replay RTC values when compared against a trace.
 6. Once the redump bundle finishes, unpack the pop'n program images and run the same stats script on them. That gives an early signal on SDK sharing (§3.3).
