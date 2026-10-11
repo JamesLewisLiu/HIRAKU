@@ -52,11 +52,11 @@ IIDX-style controllers differ in which button and axis numbers they use. Run onc
 
 ## Latency
 
-**In the game:** HIRAKU measures it as the time from a key press to the RF5C400 starting the keysound. It is **1.9–4 ms (mean 3.5 ms)**, as on the original hardware: the game reacts within one 500 Hz sound-board tick. Everything above that is the PC.
+**In the game:** HIRAKU measures it as the time from a key press to the RF5C400 starting the keysound. beatmania III scans its keys once per video frame (60 Hz), so this is **2–20 ms, mean about 9.5 ms**, exactly as on a real cabinet. Everything above that is the PC.
 
 **In real-time mode, audio is the clock.** The machine runs until 8 ms of sound is queued (`--audio-ms N`), and controls are read every couple of milliseconds while it waits. Total latency is therefore roughly:
 
-> 2–4 ms (game) + `--audio-ms` (8) + the audio device buffer (128 frames requested = 2.9 ms) + your sound server
+> 2–20 ms (game, frame-based) + `--audio-ms` (8) + the audio device buffer (128 frames requested = 2.9 ms) + your sound server
 
 On exit, the console prints the buffer it actually got.
 

@@ -299,7 +299,7 @@ The full write-up is in docs/M3.md.
 The full write-up is in docs/M5.md; how to play is in docs/PLAY.md.
 - **Game loop:** the full loop (attract → coins → stages → results → game over → attract) runs natively.
 - **Real time:** `--window` paces on the audio clock and has keyboard and joystick controls.
-- **Latency:** the game's own key-to-keysound latency is 3.5 ms (measured). The rest is the host audio path.
+- **Latency:** the game's own key-to-keysound latency is 2–20 ms, mean 9.5 ms (measured hands-on). The game scans its keys at 60 Hz, as on the cabinet. The rest is the host audio path.
 - **Saves:** NVRAM persists.
 - **Pending:** a hands-on test with real audio hardware and controllers.
 
