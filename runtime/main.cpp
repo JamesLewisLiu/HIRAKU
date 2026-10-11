@@ -166,7 +166,11 @@ int main(int argc, char **argv) {
         sc.dvd = machine["spu_dvd"];
         sc.mix_effect = cfg.family == "bm3";
         sc.log = ata_log;
-        if (!spu::init(sc)) { fprintf(stderr, "cannot start the SPU (%s)\n", sc.rom.c_str()); return 1; }
+        if (!spu::init(sc)) {
+            fprintf(stderr, "cannot start the SPU (%s)\nthe SPU program comes from the MAME ROM set: tools/ingest.py DISC --romset %s.zip\n",
+                    sc.rom.c_str(), game.c_str());
+            return 1;
+        }
         if (!wav_path.empty()) {
             wav = fopen(wav_path.c_str(), "wb");
             uint8_t hdr[44] = {};

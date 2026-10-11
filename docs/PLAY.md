@@ -70,3 +70,26 @@ On exit, the console prints the buffer it actually got.
 build/cmake/hiraku-bm3final --script oracle/scripts/bm3final-practice.his --wav out/practice.wav   # scripted, headless
 build/cmake/hiraku-bm3final --frames 3600 --snap-every 300                                         # PPM snapshots
 ```
+
+## pop'n music 4–7 (in progress, M7)
+
+Each game needs its program CD (Disc 1), its data DVD (Disc 2) and its MAME ROM set (`popn4` … `popn7`). The ROM set holds three things:
+- the dongle image;
+- the SPU's 68000 program, `a02jaa04.3q`;
+- the default RTC.
+
+```bash
+tools/ingest.py "Pop'n Music 4 (Japan) (Software Disk 1).cue" --dvd "Pop'n Music 4 (Japan) (Software Disk 2).iso" --romset popn4.zip
+analyze/ghidra.sh popn4 && analyze/prep.py popn4 && ninja -C build/cmake hiraku-popn4
+build/cmake/hiraku-popn4 --window
+```
+
+**Status:** all four programs recompile and run fully native (no interpreted code). Without the ROM set, the boot program stops at `E901 SECURITY DEVICE ERROR`, as on a cabinet with no dongle. The DVD path on the SPU's ATA bus is untested until the ROM set is in.
+
+| Key | Action |
+|---|---|
+| Z S X D C F V G B | buttons 1–9 (odd = lower row) |
+| 5 | coin |
+| F2 / 9 | test / service |
+
+Joystick buttons 0–8 are the nine buttons; button 9 is the coin.

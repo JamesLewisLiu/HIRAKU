@@ -212,7 +212,7 @@ Durations are rough, assume one person, and are assisted. Each milestone has a c
 | **M4** | Audio | 68k + RF5C400 + SPU-ATA working. Keysounds and BGM match MAME captures, with no cutoffs or buzz. Spectrum analyser works. | 3–5 wk — **done 2026-10-11** (docs/M4.md) |
 | **M5** | BM3 Final playable | Coin → mode select → song → result → name entry with real controls. NVRAM persists. Measured input→sound latency is published. | 2–3 wk — **done 2026-10-11, pending hands-on test** (docs/M5.md) |
 | **M6** | Rest of beatmania III | `bm3`, `bm3core`, `bm36th`, `bm37th` run. Mostly manifests and SDK signatures plus SPU ROM revision differences. | 2–3 wk — **blocked on media**: no 1st mix, Core Remix, 6th or 7th disc on hand (the local `bm3` set is The Final's CHDs renamed) |
-| **M7** | pop'n music 4–8, Animelo 1/2, Mickey Tunes | Same SPU stack, plus DVD on the SPU's ATA and BGM streaming via RF5C400 reg 09 (the hardest audio-timing case). The redump bundle is needed. | 4–8 wk |
+| **M7** | pop'n music 4–8, Animelo 1/2, Mickey Tunes | Same SPU stack, plus DVD on the SPU's ATA and BGM streaming via RF5C400 reg 09 (the hardest audio-timing case). The redump bundle is needed. | 4–8 wk — started: programs recompile and run native to the dongle check; **needs the `popn4`–`popn7` MAME ROM sets** (dongle, SPU program) |
 | **M8** | ParaParaParadise family | `!:EXE:00` loader, YMZ280B, CDDA, sensor input mapping. | 3–4 wk |
 | **M9** | Native polish | Low-latency audio backends, display options, input remap UI, Windows build, per-game config UX. | ongoing |
 | **M10** | Keyboardmania (stretch) | Dual GCU / dual screen, MIDI-in, SoundFont stand-in for the XT446. | 4+ wk |

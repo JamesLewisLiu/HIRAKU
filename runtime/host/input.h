@@ -12,7 +12,8 @@
 //             joy<N>:axis<K>            analog axis (turntables)
 //             joy<N>:axis<K>-, +        an axis direction used as a button
 //             joy<N>:hat<K>:<up|down|left|right>
-// Defaults for beatmania III are built in; a file only needs the changes.
+// Defaults for the game's family (beatmania III, pop'n music) are built in; a
+// file only needs the changes.
 #pragma once
 
 #include <string>

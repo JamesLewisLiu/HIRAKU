@@ -32,6 +32,7 @@ struct Inputs {
 };
 
 void init(const Config &cfg);
+const std::string &family();       // "bm3", "popn", ... (selects port layouts and default controls)
 
 // Set an input by its MAME name ("P1 Button 3", "Coin 1", "TURNTABLE_P1/Turntable",
 // "Effect 2", ...): 1/0 for buttons, the position for analog inputs. Shared by the

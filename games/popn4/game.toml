@@ -10,3 +10,9 @@ sha1 = "f8abfcdc9ebcf7cbcab2a6c12077bd48c95ebc7f"   # unpacked image, not the pa
 size = 0x100000
 load = 0x80000000
 entry = 0x80003000
+
+[board]
+dongle = "gq986_gc986"     # DS1991 image inside the MAME ROM set
+
+[spu]
+rom = "a02jaa04.3q"     # 68000 program, from the MAME set (same for pop'n 4-8)

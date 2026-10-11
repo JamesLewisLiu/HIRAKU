@@ -447,6 +447,7 @@ bool read_file(const std::string &path, std::vector<uint8_t> &out) {
 
 void init(const Config &cfg) {
     g_cfg = cfg;
+    if (cfg.family == "popn") g_in.in[2] = 0x55;   // IN2: switch 9, coin, test, service released; the rest active high
     g_gcu = new K057714;
     g_ata = new AtaBus;
     g_rtc = new Rtc65271;
@@ -548,6 +549,7 @@ void note_input_change() { g_last_input = now(); }
 uint64_t last_input_change() { return g_last_input; }
 
 Inputs &inputs() { return g_in; }
+const std::string &family() { return g_cfg.family; }
 
 bool set_input(const std::string &name0, int value) {
     std::string name = name0, port;
@@ -555,6 +557,21 @@ bool set_input(const std::string &name0, int value) {
     auto low16 = [&](uint16_t &p, uint16_t bit) { p = value ? (p & ~bit) : (p | bit); };
     auto low8 = [&](uint8_t &p, uint8_t bit) { p = value ? (p & ~bit) : (p | bit); };
     auto high8 = [&](uint8_t &p, uint8_t bit) { p = value ? (p | bit) : (p & ~bit); };
+    if (g_cfg.family == "popn") {
+        // MAME's `popn` ports: IN0 = switches 1-8, IN2 = switch 9, coin, test, service (all active low)
+        if (name.rfind("P1 Button ", 0) == 0) {
+            int k = std::stoi(name.substr(10));
+            if (k < 1 || k > 9) return false;
+            if (k <= 8) low8(g_in.in[0], (uint8_t)(1u << (k - 1)));
+            else low8(g_in.in[2], 0x01);
+            if (value) note_input_change();
+        }
+        else if (name == "Coin 1") low8(g_in.in[2], 0x04);
+        else if (name == "Test" || name == "Service Mode") low8(g_in.in[2], 0x10);
+        else if (name == "Service") low8(g_in.in[2], 0x40);
+        else return false;
+        return true;
+    }
     if (name == "Coin 1") low16(g_in.io[1], 0x0001);
     else if (name == "1 Player Start") low16(g_in.io[0], 0x0020);
     else if (name == "2 Players Start") low16(g_in.io[2], 0x0020);

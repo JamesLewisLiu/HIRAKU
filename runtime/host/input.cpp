@@ -30,7 +30,7 @@ int16_t g_axis_last[16][16];
 bool g_axis_seen[16][16];
 double g_tt_scale = 1024.0 / 65536.0 * 4;             // turntable counts per axis unit (one wrap = 4 x 256)
 
-const char *DEFAULTS =
+const char *DEFAULTS_BM3 =
     "P1 Button 1 = key:Z, joy0:button0\n"
     "P1 Button 2 = key:S, joy0:button1\n"
     "P1 Button 3 = key:X, joy0:button2\n"
@@ -49,6 +49,21 @@ const char *DEFAULTS =
     "P2 Turntable - = key:Down\n"
     "P2 Turntable + = key:Up\n"
     "2 Players Start = key:2\n"
+    "Coin 1 = key:5, joy0:button9\n"
+    "Test = key:F2\n"
+    "Service = key:9\n";
+
+// pop'n music: the nine buttons zig-zag like the cabinet's two rows (odd = lower)
+const char *DEFAULTS_POPN =
+    "P1 Button 1 = key:Z, joy0:button0\n"
+    "P1 Button 2 = key:S, joy0:button1\n"
+    "P1 Button 3 = key:X, joy0:button2\n"
+    "P1 Button 4 = key:D, joy0:button3\n"
+    "P1 Button 5 = key:C, joy0:button4\n"
+    "P1 Button 6 = key:F, joy0:button5\n"
+    "P1 Button 7 = key:V, joy0:button6\n"
+    "P1 Button 8 = key:G, joy0:button7\n"
+    "P1 Button 9 = key:B, joy0:button8\n"
     "Coin 1 = key:5, joy0:button9\n"
     "Test = key:F2\n"
     "Service = key:9\n";
@@ -136,7 +151,7 @@ int joy_index(SDL_JoystickID id) {
 
 void input_init(const std::string &file) {
     SDL_InitSubSystem(SDL_INIT_JOYSTICK);
-    load_text(DEFAULTS, "defaults");
+    load_text(fb::family() == "popn" ? DEFAULTS_POPN : DEFAULTS_BM3, "defaults");
     if (!file.empty()) {
         std::ifstream in(file);
         if (in) load_text(std::string((std::istreambuf_iterator<char>(in)), {}), file.c_str());
