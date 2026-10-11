@@ -139,7 +139,8 @@ analyze/ghidra.sh kbm && analyze/prep.py kbm && ninja -C build/cmake hiraku-kbm
 **First boot:** the backup data is blank (E161) and, on some versions, the sound flash too. Press **F2** for test mode:
 - **1 / 2** move the cursor;
 - **1 + 2 together** enter an item;
-- **BACKUP CLEAR**, then **1** to confirm, sets the defaults.
+- **BACKUP CLEAR**, then **1** to confirm, sets the defaults;
+- **SOUND TEST → SOUND FLASH INIT**, then **1**, copies the sound effects and menu sounds from the CD into the sound flash. Without it the coin and menu sounds are silent.
 
 | Key | Action |
 |---|---|
