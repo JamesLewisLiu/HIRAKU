@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <vector>
 #include <cstdlib>
 #include <thread>
 
@@ -15,6 +16,7 @@
 namespace hk::host {
 
 namespace {
+uint64_t g_settle_until = 0;   // window/renderer setup right after opening: not a stall
 SDL_Window *g_win = nullptr;
 SDL_Renderer *g_ren = nullptr;
 SDL_Texture *g_tex = nullptr;
@@ -62,7 +64,12 @@ bool window_open(const char *title, int scale, const std::string &bindings, int 
         SDL_AudioSpec dev{};
         SDL_GetAudioDeviceFormat(SDL_GetAudioStreamDevice(g_audio), &dev, &g_device_frames);
         g_target_frames = 44100 * target_ms / 1000;
+        // start with the target lead of silence: the first frames' window setup
+        // would otherwise find an empty queue (and grow the target for nothing)
+        std::vector<float> silence((size_t)g_target_frames * 2, 0.0f);
+        SDL_PutAudioStreamData(g_audio, silence.data(), (int)(silence.size() * sizeof(float)));
         SDL_ResumeAudioStreamDevice(g_audio);
+        g_settle_until = prof::now_ns() + 250'000'000;
     }
     if (!SDL_CreateWindowAndRenderer(title, 640 * scale, 480 * scale, SDL_WINDOW_RESIZABLE, &g_win, &g_ren)) return false;
     SDL_SetRenderVSync(g_ren, 0);   // audio paces the machine; presenting must never block on the display
@@ -120,7 +127,7 @@ void audio_push(const float *lr, int frames) {
         return;
     }
     uint64_t t = prof::now_ns();
-    if (g_last_push_end) {
+    if (g_last_push_end && t >= g_settle_until) {
         double gap = (t - g_last_push_end) / 1e6;
         int b = gap < 1 ? 0 : gap < 2 ? 1 : gap < 4 ? 2 : gap < 8 ? 3 : gap < 16 ? 4 : gap < 32 ? 5 : gap < 64 ? 6 : 7;
         g_ast.gap_hist[b]++;
@@ -136,7 +143,7 @@ void audio_push(const float *lr, int frames) {
             g_ast.low++;
             for (int c = 0; c < prof::NCAT; c++) g_ast.low_ns[c] += prof::g_ns[c];
             if (g_log_stalls) {
-                fprintf(stderr, "stall: %.2f ms of work, queue %d frames:", gap, queued);
+                fprintf(stderr, "stall: frame %llu, %.2f ms of work, queue %d frames:", (unsigned long long)fb::frame_count(), gap, queued);
                 for (int c = 0; c < prof::NCAT; c++) fprintf(stderr, " %s %.2f", prof::NAMES[c], prof::g_ns[c] / 1e6);
                 fprintf(stderr, "\n");
             }
