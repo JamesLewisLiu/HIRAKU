@@ -142,9 +142,17 @@ analyze/ghidra.sh kbm && analyze/prep.py kbm && ninja -C build/cmake hiraku-kbm
 - **BACKUP CLEAR**, then **1** to confirm, sets the defaults;
 - **SOUND TEST → SOUND FLASH INIT**, then **1**, copies the sound effects and menu sounds from the CD into the sound flash. Without it the coin and menu sounds are silent.
 
+2nd and 3rd Mix have a different menu with the same two steps:
+- **2nd Mix:** SOUND CHECK → INITIALIZE SOUND FLASH, and ALL FACTORY SETTINGS.
+- **3rd Mix:** SOUND OPTIONS → INITIALIZE SOUND FLASH, and ALL FACTORY SETTINGS.
+
+Each asks three times. Answer "YES?" and "ARE YOU SURE?" with **1** (move to YES) then **1 + 2**, and "PRESS 1P&2P" with **1 + 2**.
+
 | Key | Action |
 |---|---|
 | Q W E R T Y U I O A S D F G H J K L Z X C V B N | player 1's 24 keys (C1–B2) |
+| Keypad 7 8 9 4 5 6 1 2 3 0 . Enter | player 2, C1–B1 |
+| Insert Home PageUp Delete End PageDown, Left Down Right Up, Keypad / * | player 2, C2–B2 |
 | 1 / 2 | 1P / 2P start |
 | 5 | coin |
 | F2 / 9 | test / service |
