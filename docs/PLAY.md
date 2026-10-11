@@ -148,4 +148,12 @@ analyze/ghidra.sh kbm && analyze/prep.py kbm && ninja -C build/cmake hiraku-kbm
 | 5 | coin |
 | F2 / 9 | test / service |
 
-**Status:** all four boot to attract mode, fully native, with CD and YMZ280B sound. The XT446 synth card (keyboard notes) is not emulated yet. `HK_MIDI_LOG=1` prints the MIDI the game sends it.
+**Status:** all four boot to attract mode, fully native, with CD and YMZ280B sound.
+
+**Keyboard notes:** they come from the XT446 synth card (an embedded Yamaha MU100B), which is not emulated. HIRAKU plays the game's MIDI through FluidSynth with a General MIDI SoundFont instead. The notes and timing are the game's own, but the instruments are the SoundFont's. Install one:
+
+```bash
+sudo pacman -S soundfont-fluid
+```
+
+Or point at any `.sf2` with `--soundfont FILE` or `HK_SOUNDFONT`. `HK_MIDI_LOG=1` prints the MIDI stream.
