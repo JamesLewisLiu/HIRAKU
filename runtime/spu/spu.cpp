@@ -61,6 +61,7 @@ void set_line(int level, bool on) {
 }
 
 // ---- time ------------------------------------------------------------------------
+bool g_lat_trace = getenv("HK_LAT_TRACE") != nullptr;   // HK_LAT_TRACE=1: key press -> key-on timeline
 uint64_t g_cycles = 0;                           // 68000 cycles executed so far
 bool g_running = false;                          // inside m68k_execute
 
@@ -181,6 +182,10 @@ void write16(uint32_t a, uint16_t v, uint16_t mask) {
         uint32_t o = (a - 0x400000) >> 1;
         if (o == 1 && (v & 0x60) == 0x60) {
             g_stats.key_ons++;
+            if (g_lat_trace) {
+                double t = (double)cycles_now() / SPU_HZ * 1000.0 - (double)fb::last_input_change() / CPU_HZ * 1000.0;
+                if (t < 100) fprintf(stderr, "lat %7.2f ms: RF5C400 key-on\n", t);
+            }
             // latency: from the last player key press to this key-on, at the 68000's current time
             static uint64_t measured_for = UINT64_MAX;
             uint64_t in = fb::last_input_change();
@@ -231,9 +236,12 @@ uint8_t ppc_read(uint32_t o) {
     return g_dpram[o];
 }
 
+static double lat_ms_since_input() { return ((double)now() - (double)fb::last_input_change()) / CPU_HZ * 1000.0; }
+
 void ppc_write(uint32_t o, uint8_t v) {
     catch_up();
     o &= 0x3ff;
+    if (g_lat_trace && lat_ms_since_input() < 60) fprintf(stderr, "lat %7.2f ms: ppc dpram[%03x] = %02x\n", lat_ms_since_input(), o, v);
     g_dpram[o] = v;
     if (o == 0x3fe) { set_line(4, true); g_stats.irq4++; }             // right write of 0x3fe: INTL -> 68000 IRQ4
 }

@@ -39,6 +39,7 @@ Rtc65271 *g_rtc = nullptr;
 Flash29F016A *g_flash = nullptr;   // [3]: main, snd1, snd2
 Fdc37c665 *g_fdc = nullptr;        // beatmania III extend board
 Ymz280b *g_ymz = nullptr;
+uint64_t g_last_input = 0;
 uint8_t g_dpram[0x400];
 uint8_t g_ext_irq_enable = 0x3f, g_ext_irq_active = 0;
 uint8_t g_control = 0;
@@ -293,7 +294,15 @@ uint32_t bus_read(uint32_t p, int size) {
     }
     if (p >= 0x7dc00000 && p <= 0x7dc0000f)
         return bytes_read(p, size, 0x7dc00000, [](uint32_t o) { return g_com[(o >> 3) & 1].read(o & 7); });
-    if (p >= 0x7d000800 && p <= 0x7d000803) return bytes_read(p, size, 0x7d000800, [](uint32_t o) { return g_in.in[o & 3]; });
+    if (p >= 0x7d000800 && p <= 0x7d000803) {
+        static bool trace = getenv("HK_LAT_TRACE") != nullptr;
+        static uint64_t seen = 0;
+        if (trace && g_last_input && g_last_input != seen) {
+            seen = g_last_input;
+            fprintf(stderr, "lat %7.2f ms: ppc reads inputs (%08x)\n", (double)(now() - g_last_input) / CPU_HZ * 1000.0, p);
+        }
+        return bytes_read(p, size, 0x7d000800, [](uint32_t o) { return g_in.in[o & 3]; });
+    }
     if (p >= 0x7d000200 && p <= 0x7d00021f) {
         uint32_t r = ((p - 0x7d000200) >> 2) == 0 ? g_cabinet_info << 28 : 0;
         return (r >> lane_shift(p, size)) & size_mask(size);
@@ -613,7 +622,6 @@ void shutdown() {
     }
 }
 
-static uint64_t g_last_input = 0;
 void note_input_change() { g_last_input = now(); }
 uint64_t last_input_change() { return g_last_input; }
 

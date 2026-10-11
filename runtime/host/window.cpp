@@ -119,8 +119,8 @@ struct AudioStats {
 uint64_t g_last_push_end = 0;
 bool g_log_stalls = getenv("HK_LOG_STALLS") != nullptr;
 
-void audio_push(const float *lr, int frames) {
-    if (!g_audio) return;
+// One chunk to the device, with pacing, underrun accounting and input polling.
+void push_chunk(const float *lr, int frames) {
     if (g_fast) {               // fast-forward: no pacing, and the time isn't a stall
         poll();
         g_last_push_end = 0;
@@ -158,6 +158,21 @@ void audio_push(const float *lr, int frames) {
     poll();
     prof::reset();
     g_last_push_end = prof::now_ns();
+}
+
+// The emulated sound hardware may deliver a few samples at a time (the SPU catching
+// up on every DMA word while a song loads); batch them so pacing and input polling
+// run once per >= 64 frames (1.5 ms), not per sample.
+std::vector<float> g_pending;
+
+void audio_push(const float *lr, int frames) {
+    if (!g_audio) return;
+    if (g_pending.empty() && frames >= 64) { push_chunk(lr, frames); return; }
+    g_pending.insert(g_pending.end(), lr, lr + 2 * frames);
+    if (g_pending.size() >= 2 * 64) {
+        push_chunk(g_pending.data(), (int)(g_pending.size() / 2));
+        g_pending.clear();
+    }
 }
 
 std::string audio_describe() {
