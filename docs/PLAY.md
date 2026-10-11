@@ -156,4 +156,4 @@ analyze/ghidra.sh kbm && analyze/prep.py kbm && ninja -C build/cmake hiraku-kbm
 sudo pacman -S soundfont-fluid
 ```
 
-Or point at any `.sf2` with `--soundfont FILE` or `HK_SOUNDFONT`. `HK_MIDI_LOG=1` prints the MIDI stream.
+Or point at any `.sf2` with `--soundfont FILE` or `HK_SOUNDFONT`. `HK_SYNTH_GAIN` sets the synth's level (default 0.25, under the CD and YMZ mix). `HK_MIDI_LOG=1` prints the MIDI stream.

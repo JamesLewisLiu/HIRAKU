@@ -81,7 +81,9 @@ bool init(const std::string &path) {
     g_settings = new_fluid_settings();
     fluid_settings_setnum(g_settings, "synth.sample-rate", 44100.0);
     fluid_settings_setint(g_settings, "synth.polyphony", 128);
-    fluid_settings_setnum(g_settings, "synth.gain", 0.6);
+    double gain = 0.25;                     // sits under the CD/YMZ mix (0.6 clipped it); HK_SYNTH_GAIN overrides
+    if (const char *e = getenv("HK_SYNTH_GAIN"); e && *e) gain = atof(e);
+    fluid_settings_setnum(g_settings, "synth.gain", gain);
     g_synth = new_fluid_synth(g_settings);
     if (fluid_synth_sfload(g_synth, g_font.c_str(), 1) == FLUID_FAILED) {
         fprintf(stderr, "synth: cannot load SoundFont %s\n", g_font.c_str());
