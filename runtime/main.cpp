@@ -39,6 +39,7 @@
 #include "core/runtime.h"
 #include "core/sched.h"
 #include "firebeat/board.h"
+#include "firebeat/synth.h"
 #include "spu/spu.h"
 #include "host/script.h"
 #ifdef HK_WITH_SDL
@@ -101,6 +102,7 @@ int main(int argc, char **argv) {
     bool nvram_given = false;
     int audio_ms = 8;
     double bios_seconds = 21.65;
+    std::string soundfont;   // Keyboardmania: the synth card's stand-in
     for (int k = 1; k < argc; k++) {
         std::string a = argv[k];
         auto val = [&]() -> std::string {
@@ -123,6 +125,7 @@ int main(int argc, char **argv) {
         else if (a == "--nvram") { nvram_dir = val(); nvram_given = true; }
         else if (a == "--audio-ms") audio_ms = std::stoi(val());
         else if (a == "--bios-seconds") bios_seconds = std::stod(val());
+        else if (a == "--soundfont") soundfont = val();
         else if (a == "--window") window_scale = (k + 1 < argc && argv[k + 1][0] != '-') ? std::stoi(val()) : 2;
         else { fprintf(stderr, "unknown option %s\n", a.c_str()); return 2; }
     }
@@ -159,6 +162,7 @@ int main(int argc, char **argv) {
     if (trace) cfg.trace_dir = out;
     cfg.ata_log = ata_log;
     fb::init(cfg);
+    if (cfg.family == "kbm") synth::init(soundfont);
 
     // sound: the SPU board when the machine has one, otherwise the board's YMZ280B
     FILE *wav = nullptr;
@@ -235,7 +239,8 @@ int main(int argc, char **argv) {
             printf("shadow: %llu identical, %llu MISMATCHED, %llu impure\n", (unsigned long long)g_stats.shadow_ok,
                    (unsigned long long)g_stats.shadow_bad, (unsigned long long)g_stats.shadow_impure);
         if (!spu::present()) printf("ymz280b: %llu key-ons\n", (unsigned long long)fb::ymz_key_ons());
-        if (fb::family() == "kbm") printf("midi to the synth: %llu bytes\n", (unsigned long long)fb::midi_out_bytes());
+        if (fb::family() == "kbm")
+            printf("midi to the synth: %llu bytes (%s)\n", (unsigned long long)fb::midi_out_bytes(), synth::describe().c_str());
         if (spu::present()) {
             auto &st = spu::stats();
             printf("spu: pc %06x sr %04x, %.2f M 68000 cycles, IRQ2 %llu IRQ4 %llu IRQ6 %llu, %llu ATA commands, %.1f MiB DMA, %llu key-ons\n",

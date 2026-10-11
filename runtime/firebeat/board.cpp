@@ -27,6 +27,7 @@
 #include "../dev/ymz280b.h"
 #include "../spu/spu.h"
 #include "spectrum.h"
+#include "synth.h"
 
 namespace hk::fb {
 
@@ -561,6 +562,7 @@ void ymz_render_until(uint64_t t) {
             g_ymz_odd = !g_ymz_odd;
         }
         if (m) g_ata->cdda_render(1, out, m, 0.5f);      // CD audio from the slave drive (MAME: 0.5 to the speaker)
+        if (m) synth::render(out, m, 1.0f);              // Keyboardmania's synth card (stand-in)
         if (g_audio_sink && m) g_audio_sink(out, m);
     }
 }
@@ -685,6 +687,10 @@ void init(const Config &cfg) {
         g_midi[1].on_tx = [](uint8_t b) {
             g_midi_out_bytes++;
             if (log_midi) fprintf(stderr, "midi> %02x\n", b);
+            if (synth::active()) {
+                ymz_render_until(now());                 // the board's audio up to this moment first
+                synth::midi(b);
+            }
         };
     }
     g_ata->irq = [](bool on) { cpu403::set_irq_line(cpu403::irq_ext(4), on); };

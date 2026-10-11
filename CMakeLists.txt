@@ -49,9 +49,21 @@ add_library(hiraku_rt STATIC
   runtime/spu/spu.cpp
   runtime/host/script.cpp
   runtime/firebeat/board.cpp
-  runtime/firebeat/spectrum.cpp)
+  runtime/firebeat/spectrum.cpp
+  runtime/firebeat/synth.cpp)
 target_include_directories(hiraku_rt PUBLIC runtime)
 target_link_libraries(hiraku_rt PUBLIC hiraku_ppc musashi)
+
+# Keyboardmania's synth stand-in (optional: FluidSynth, LGPL, linked dynamically)
+find_package(PkgConfig QUIET)
+if(PkgConfig_FOUND)
+  pkg_check_modules(FLUIDSYNTH QUIET IMPORTED_TARGET fluidsynth)
+endif()
+if(FLUIDSYNTH_FOUND)
+  target_link_libraries(hiraku_rt PUBLIC PkgConfig::FLUIDSYNTH)
+  target_compile_definitions(hiraku_rt PRIVATE HK_WITH_FLUIDSYNTH=1)
+  message(STATUS "hiraku: FluidSynth ${FLUIDSYNTH_VERSION}: Keyboardmania synth stand-in enabled")
+endif()
 
 # --- host front end (optional: SDL3) ---------------------------------------------
 find_package(SDL3 CONFIG QUIET)
