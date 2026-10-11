@@ -78,6 +78,10 @@ bool init(const std::string &path) {
         fprintf(stderr, "synth: no SoundFont (install one, e.g. soundfont-fluid, or pass --soundfont FILE): keyboard notes are silent\n");
         return false;
     }
+    // HIRAKU only renders samples: register no audio drivers, so FluidSynth doesn't
+    // probe ALSA/SDL/... at startup (that printed a screenful of ALSA errors)
+    static const char *no_drivers[] = {nullptr};
+    fluid_audio_driver_register(no_drivers);
     g_settings = new_fluid_settings();
     fluid_settings_setnum(g_settings, "synth.sample-rate", 44100.0);
     fluid_settings_setint(g_settings, "synth.polyphony", 128);

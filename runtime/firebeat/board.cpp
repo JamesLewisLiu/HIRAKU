@@ -390,6 +390,7 @@ uint32_t bus_read(uint32_t p, int size) {
     if (g_cfg.family == "kbm") {
         if (p >= 0x70000000 && p <= 0x70000fff)                      // MIDI UARTs (keyboards, synth), lane 0 only
             return (p & 3) == 0 ? (uint32_t)g_midi[((p - 0x70000000) >> 8) >> 3 & 1].read(((p - 0x70000000) >> 8) & 7) << (8 * (size - 1)) : 0;
+        if (p >= 0x70008010 && p <= 0x700080ff) return 0;          // read by the game, unmapped in MAME too
         if (p >= 0x70008000 && p <= 0x7000800f)                      // modulation wheels: P1 at +0, P2 at +8
             return bytes_read(p, size, 0x70008000, [](uint32_t o) -> uint8_t { return o == 0 ? g_wheel[0] : o == 8 ? g_wheel[1] : 0; });
     }
