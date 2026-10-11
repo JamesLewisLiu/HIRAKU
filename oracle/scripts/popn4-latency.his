@@ -1,0 +1,7 @@
+game popn4
+at 3600 press "Coin 1" 6
+at 3630 press "Coin 1" 6
+from 3700 every 90 press "P1 Button 5" 4
+from 3745 every 90 press "P1 Button 3" 4
+from 3600 every 600 snap
+at 9600 quit

@@ -515,7 +515,10 @@ bool read_file(const std::string &path, std::vector<uint8_t> &out) {
 
 void init(const Config &cfg) {
     g_cfg = cfg;
-    if (cfg.family == "popn") g_in.in[2] = 0x55;   // IN2: switch 9, coin, test, service released; the rest active high
+    if (cfg.family == "popn") {                     // MAME `popn` ports, nothing pressed:
+        g_in.in[0] = 0xff;                            // IN0: switches 1-8, active low
+        g_in.in[2] = 0x55;                            // IN2: switch 9, coin, test, service released; the rest active high
+    }
     if (cfg.family == "ppp") g_in.in[0] = 0x7f;    // IN0: buttons, test, service, coin, start released; bit 7 active high
     g_gcu = new K057714;
     g_ata = new AtaBus;
