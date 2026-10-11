@@ -427,10 +427,11 @@ void traced_write(uint32_t p, uint32_t v, int size) {
     bus_write(p, v, size);
 }
 
-// ---- YMZ280B ----------------------------------------------------------------------------
-// Rendered in step with virtual time: by a 2 ms timer and before every register
-// access. Samples come from the sound flash chips (MAME ymz280b_map); the 88.2 kHz
-// output is averaged to 44.1 kHz for the audio sink.
+// ---- board audio: YMZ280B + CD audio ------------------------------------------------------
+// Rendered in step with virtual time: by a 2 ms timer and before every register or
+// playback-state access. YMZ samples come from the sound flash chips (MAME
+// ymz280b_map); its 88.2 kHz output is averaged to 44.1 kHz, then the slave CD
+// drive's Red Book audio is mixed in.
 uint64_t g_ymz_samples = 0;     // 88.2 kHz samples rendered
 AudioSink g_audio_sink;
 float g_ymz_carry[2];
@@ -457,6 +458,7 @@ void ymz_render_until(uint64_t t) {
             }
             g_ymz_odd = !g_ymz_odd;
         }
+        if (m) g_ata->cdda_render(1, out, m, 0.5f);      // CD audio from the slave drive (MAME: 0.5 to the speaker)
         if (g_audio_sink && m) g_audio_sink(out, m);
     }
 }
@@ -589,6 +591,7 @@ void init(const Config &cfg) {
         return g_flash[1 + (a >> 21)].read(a & 0x1fffff);
     };
     g_ymz->sync = [] { ymz_render_until(now()); };
+    g_ata->sync = [] { ymz_render_until(now()); };
     g_ymz_tick.in(ticks_from_us(2000));
 }
 

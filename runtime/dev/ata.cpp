@@ -16,19 +16,43 @@ DiscImage::~DiscImage() {
     if (f_) fclose(f_);
 }
 
+// A cue sheet with one FILE: tracks, their modes and INDEX 01 positions. Sector
+// sizes follow the modes, so a file may mix them.
+bool DiscImage::parse_cue(const std::string &cue, std::string &bin) {
+    FILE *c = fopen(cue.c_str(), "r");
+    if (!c) return false;
+    char line[1024];
+    tracks_.clear();
+    while (fgets(line, sizeof line, c)) {
+        char *t = line;
+        while (*t == ' ' || *t == '\t') t++;
+        char *q1 = strchr(t, '"'), *q2 = q1 ? strrchr(t, '"') : nullptr;
+        if (strncmp(t, "FILE", 4) == 0 && q1 && q2 > q1) {
+            if (!bin.empty()) { fclose(c); return false; }   // one FILE only
+            bin.assign(q1 + 1, q2);
+        } else if (strncmp(t, "TRACK", 5) == 0) {
+            Track tr;
+            if (strstr(t, "AUDIO")) { tr.audio = true; tr.size = 2352; }
+            else if (strstr(t, "MODE1/2352")) { tr.size = 2352; tr.skip = 16; }
+            else if (strstr(t, "MODE2/2352")) { tr.size = 2352; tr.skip = 24; }
+            else if (strstr(t, "MODE1/2048")) { tr.size = 2048; }
+            else { fclose(c); return false; }
+            tracks_.push_back(tr);
+        } else if (strncmp(t, "INDEX 01", 8) == 0 && !tracks_.empty()) {
+            int m = 0, sec = 0, f = 0;
+            if (sscanf(t + 8, "%d:%d:%d", &m, &sec, &f) == 3) tracks_.back().start = (uint32_t)((m * 60 + sec) * 75 + f);
+        }
+    }
+    fclose(c);
+    return !bin.empty() && !tracks_.empty();
+}
+
 bool DiscImage::open(const std::string &path0) {
     std::string path = path0;
-    if (path.size() > 4 && (path.substr(path.size() - 4) == ".cue" || path.substr(path.size() - 4) == ".CUE")) {
-        FILE *c = fopen(path.c_str(), "r");
-        if (!c) return false;
-        char line[1024];
+    bool cue = path.size() > 4 && (path.substr(path.size() - 4) == ".cue" || path.substr(path.size() - 4) == ".CUE");
+    if (cue) {
         std::string bin;
-        while (fgets(line, sizeof line, c)) {
-            char *q1 = strchr(line, '"'), *q2 = q1 ? strrchr(line, '"') : nullptr;
-            if (strncmp(line, "FILE", 4) == 0 && q1 && q2 > q1) { bin.assign(q1 + 1, q2); break; }
-        }
-        fclose(c);
-        if (bin.empty()) return false;
+        if (!parse_cue(path, bin)) return false;
         auto slash = path.find_last_of('/');
         path = (slash == std::string::npos ? std::string() : path.substr(0, slash + 1)) + bin;
     }
@@ -36,22 +60,57 @@ bool DiscImage::open(const std::string &path0) {
     if (!f_) return false;
     fseeko(f_, 0, SEEK_END);
     uint64_t size = (uint64_t)ftello(f_);
+    if (cue && (tracks_.size() > 1 || tracks_[0].audio)) {
+        // file offsets: each track's sectors at its own size, in order
+        uint64_t off = 0;
+        for (size_t k = 0; k < tracks_.size(); k++) {
+            Track &t = tracks_[k];
+            if (k) off += (uint64_t)(t.start - tracks_[k - 1].start) * tracks_[k - 1].size;
+            t.offset = off;
+        }
+        Track &last = tracks_.back();
+        last.frames = size > last.offset ? (uint32_t)((size - last.offset) / last.size) : 0;
+        for (size_t k = 0; k + 1 < tracks_.size(); k++) tracks_[k].frames = tracks_[k + 1].start - tracks_[k].start;
+        nsectors_ = last.start + last.frames;
+        return true;
+    }
+    // a single data track: tell the sector format from the file itself
     uint8_t head[16];
     fseeko(f_, 0, SEEK_SET);
     if (fread(head, 1, 16, f_) != 16) return false;
     static const uint8_t sync[12] = {0, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0};
-    if (memcmp(head, sync, 12) == 0 && size % 2352 == 0) { stride_ = 2352; skip_ = 16; }
-    else if (size % 2048 == 0) { stride_ = 2048; skip_ = 0; }
+    Track t;
+    if (memcmp(head, sync, 12) == 0 && size % 2352 == 0) { t.size = 2352; t.skip = 16; }
+    else if (size % 2048 == 0) { t.size = 2048; t.skip = 0; }
     else return false;
-    nsectors_ = (uint32_t)(size / stride_);
+    nsectors_ = (uint32_t)(size / t.size);
+    t.frames = nsectors_;
+    tracks_.assign(1, t);
     return true;
+}
+
+int DiscImage::track_of(uint32_t lba) const {
+    int k = 0;
+    while (k + 1 < (int)tracks_.size() && lba >= tracks_[k + 1].start) k++;
+    return k;
 }
 
 bool DiscImage::read_sector(uint32_t lba, uint8_t *out) const {
     prof::Scope ps(prof::DISK);
     if (lba >= nsectors_) return false;
-    fseeko(f_, (off_t)lba * stride_ + skip_, SEEK_SET);
+    const Track &t = tracks_[track_of(lba)];
+    if (t.audio) return false;
+    fseeko(f_, (off_t)(t.offset + (uint64_t)(lba - t.start) * t.size + t.skip), SEEK_SET);
     return fread(out, 1, 2048, f_) == 2048;
+}
+
+bool DiscImage::read_audio(uint32_t lba, uint8_t *out) const {
+    prof::Scope ps(prof::DISK);
+    if (lba >= nsectors_) return false;
+    const Track &t = tracks_[track_of(lba)];
+    if (!t.audio) return false;
+    fseeko(f_, (off_t)(t.offset + (uint64_t)(lba - t.start) * t.size), SEEK_SET);
+    return fread(out, 1, 2352, f_) == 2352;
 }
 
 DiskImage::~DiskImage() {
@@ -72,6 +131,77 @@ bool DiskImage::read_sector(uint32_t lba, uint8_t *out) const {
     fseeko(f_, (off_t)lba * 512, SEEK_SET);
     return fread(out, 1, 512, f_) == 512;
 }
+
+namespace {
+// MSF addresses as MAME's t10mmc converts them (LBA 0 = 00:02:00)
+uint32_t to_msf_raw(uint32_t f) { return ((f / (75 * 60)) % 100) << 16 | ((f / 75) % 60) << 8 | (f % 75); }
+uint32_t to_msf(uint32_t lba) { int32_t f = (int32_t)lba + 150; if (f < 0) f += 450000; return to_msf_raw((uint32_t)f); }
+uint32_t msf_frames(uint32_t msf) { return ((msf >> 16) & 0xff) * 60 * 75 + ((msf >> 8) & 0xff) * 75 + (msf & 0xff); }
+uint32_t from_msf(uint32_t msf) {
+    uint32_t lba = msf_frames(msf) - 150;
+    if (((msf >> 16) & 0xff) >= 90) lba -= 450000;
+    return lba;
+}
+}  // namespace
+
+// MODE SELECT(10) parameter list (MAME t10mmc::WriteData): the audio control page
+// sets the CD audio volume per channel.
+void AtaBus::data_out_done() {
+    AtaDevice *d = cur();
+    const std::vector<uint8_t> &p = data_;
+    size_t len = std::min(p.size(), data_out_len_), ptr = 8;
+    if (len >= 8) ptr += (size_t)(p[6] << 8 | p[7]);    // block descriptors
+    while (ptr + 1 < len) {
+        if ((p[ptr] & 0x3f) == 0x0e && ptr + 11 < len) {
+            if (sync) sync();
+            d->cdda.gain[0] = p[ptr + 9] / 255.0f;
+            d->cdda.gain[1] = p[ptr + 11] / 255.0f;
+        }
+        ptr += (size_t)p[ptr + 1] + 2;
+    }
+    finish(false);
+}
+
+void AtaBus::stop_audio(AtaDevice *d) {
+    d->cdda.playing = false;
+    d->cdda.ended = true;
+}
+
+// MAME cdda_device::get_audio_data: fetch up to 4 sectors at a time, stop when
+// the requested length runs out.
+void AtaBus::cdda_render(int unit, float *lr, int n, float gain) {
+    AtaDevice *d = drives_[unit & 1].get();
+    if (!d || !d->disc) return;
+    auto &a = d->cdda;
+    for (int i = 0; i < n;) {
+        if (!a.playing || a.paused || (!a.length && !a.samples)) {
+            if (a.playing && !a.paused && !a.length) {
+                a.playing = false;
+                a.ended = true;
+            }
+            return;
+        }
+        uint32_t k = std::min<uint32_t>((uint32_t)(n - i), a.samples);
+        for (uint32_t j = 0; j < k; j++, i++) {
+            lr[2 * i] += a.cache[a.bptr++] * (gain * a.gain[0] / 32768.0f);
+            lr[2 * i + 1] += a.cache[a.bptr++] * (gain * a.gain[1] / 32768.0f);
+        }
+        a.samples -= k;
+        if (a.samples == 0) {
+            uint32_t sectors = std::min<uint32_t>(a.length, 4);
+            for (uint32_t s = 0; s < sectors; s++) {
+                uint8_t raw[2352];
+                if (!d->disc->read_audio(a.lba, raw)) memset(raw, 0, sizeof raw);   // data track or beyond: silence
+                for (int b = 0; b < 1176; b++) a.cache[s * 1176 + b] = (int16_t)(raw[2 * b] | raw[2 * b + 1] << 8);
+                a.lba++;
+            }
+            a.samples = sectors * 588;
+            a.length -= sectors;
+            a.bptr = 0;
+        }
+    }
+}
+
 
 // ---------------------------------------------------------------------------
 // ATA registers
@@ -187,6 +317,10 @@ void AtaBus::write(int cs, int reg, uint16_t v) {
             packet_[packet_pos_++] = v & 0xff;
             packet_[packet_pos_++] = v >> 8;
             if (packet_pos_ >= 12) packet_done();
+        } else if (phase_ == Phase::data_out) {
+            data_.push_back(v & 0xff);
+            data_.push_back(v >> 8);
+            if (data_.size() >= data_out_len_) data_out_done();
         }
         break;
     case 1: feature_ = v & 0xff; break;
@@ -422,8 +556,18 @@ void AtaBus::packet_done() {
     case 0x1e:                                           // PREVENT ALLOW MEDIUM REMOVAL
     case 0x2b:                                           // SEEK
     case 0xbb:                                           // SET CD SPEED
-    case 0x55:                                           // MODE SELECT(10)
         finish(false);
+        break;
+    case 0x55:                                           // MODE SELECT(10): take the parameter list
+        data_out_len_ = be16(7);
+        if (!data_out_len_) { finish(false); break; }
+        data_.clear();
+        phase_ = Phase::data_out;
+        cyl_lo_ = data_out_len_ & 0xff;
+        cyl_hi_ = (data_out_len_ >> 8) & 0xff;
+        status_ = ST_DRQ;
+        nsector_ = 0;                                    // data to the device
+        set_irq(true);
         break;
     case 0x25: {                                         // READ CAPACITY
         if (!medium) { finish(true, 0x02, 0x3a); break; }
@@ -435,6 +579,10 @@ void AtaBus::packet_done() {
     case 0x28:                                           // READ(10)
     case 0xa8: {                                         // READ(12)
         if (!medium) { finish(true, 0x02, 0x3a); break; }
+        if (d->cdda.playing) {                           // abort_audio
+            if (sync) sync();
+            stop_audio(d);
+        }
         uint32_t lba = be32(2);
         uint32_t n = p[0] == 0x28 ? be16(7) : be32(6);
         std::vector<uint8_t> buf((size_t)n * 2048);
@@ -446,16 +594,119 @@ void AtaBus::packet_done() {
         start_data_in(std::move(buf));
         break;
     }
-    case 0x43: {                                         // READ TOC (format 0, one data track)
+    case 0x43: {                                         // READ TOC (MAME t10mmc)
         if (!medium) { finish(true, 0x02, 0x3a); break; }
-        uint32_t lead_out = d->disc->sectors();
-        std::vector<uint8_t> s = {0, 18, 1, 1,
-                                  0, 0x14, 1, 0, 0, 0, 0, 0,
-                                  0, 0x14, 0xaa, 0, (uint8_t)(lead_out >> 24), (uint8_t)(lead_out >> 16), (uint8_t)(lead_out >> 8), (uint8_t)lead_out};
-        s.resize(std::min<size_t>(s.size(), be16(7) ? be16(7) : s.size()));
+        if (sync) sync();
+        if (d->cdda.playing) stop_audio(d);              // abort_audio
+        const auto &tr = d->disc->tracks();
+        int format = p[2] & 0x0f;
+        if (format == 0) format = p[9] >> 6;             // SFF8020 legacy field
+        bool msf = p[1] & 0x02;
+        uint32_t alloc = be16(7);
+        std::vector<uint8_t> s;
+        auto u32 = [&](uint32_t v) { for (int k = 3; k >= 0; k--) s.push_back((uint8_t)(v >> (8 * k))); };
+        auto adr = [&](int t) -> uint8_t { return t < (int)tr.size() && tr[t].audio ? 0x10 : 0x14; };
+        if (format == 0) {                               // tracks
+            int first = p[6] ? p[6] : 1, last = (int)tr.size();
+            int n = std::max(0, last - first + 1) + 1;    // ... + lead-out
+            s = {(uint8_t)((2 + 8 * n) >> 8), (uint8_t)(2 + 8 * n), 1, (uint8_t)last};
+            for (int i = 0; i < n; i++) {
+                bool lead = i == n - 1;
+                int t = lead ? 0xaa : first + i;
+                uint32_t start = lead ? d->disc->sectors() : tr[t - 1].start;
+                s.insert(s.end(), {0, adr(lead ? (int)tr.size() - 1 : t - 1), (uint8_t)t, 0});
+                u32(msf ? to_msf(start) : start);
+            }
+        } else if (format == 1) {                        // sessions: one
+            s = {0, 10, 1, 1, 0, adr(0), 1, 0};
+            u32(msf ? to_msf(tr[0].start) : tr[0].start);
+        } else {
+            fprintf(stderr, "ata: %s: READ TOC format %d not supported\n", d->name_.c_str(), format);
+            s = {0, 2, 1, 1};
+        }
+        if (alloc && s.size() > alloc) s.resize(alloc);
         start_data_in(std::move(s));
         break;
     }
+    case 0x42: {                                         // READ SUB-CHANNEL: current position
+        if (!medium) { finish(true, 0x02, 0x3a); break; }
+        if (sync) sync();
+        auto &a = d->cdda;
+        bool msf = p[1] & 0x02;
+        std::vector<uint8_t> s(16, 0);
+        uint32_t pos = 0;
+        if (a.playing) {
+            pos = a.position();
+            s[1] = a.paused ? 0x12 : 0x11;               // paused / in progress
+        } else {
+            s[1] = a.ended ? 0x13 : 0x15;                // ended successfully / no status
+        }
+        if (p[3] == 1 && (p[2] & 0x40)) {
+            int t = d->disc->track_of(pos);
+            const auto &tr = d->disc->tracks()[t];
+            s[3] = 12;
+            s[4] = 0x01;
+            s[5] = tr.audio ? 0x10 : 0x14;
+            s[6] = (uint8_t)(t + 1);
+            s[7] = 1;
+            uint32_t abs = msf ? to_msf(pos) : pos, rel = msf ? to_msf_raw(pos - tr.start) : pos - tr.start;
+            for (int k = 0; k < 4; k++) { s[8 + k] = (uint8_t)(abs >> (24 - 8 * k)); s[12 + k] = (uint8_t)(rel >> (24 - 8 * k)); }
+        } else {
+            s.resize(4);
+        }
+        uint32_t alloc = be16(7);
+        if (alloc && s.size() > alloc) s.resize(alloc);
+        start_data_in(std::move(s));
+        break;
+    }
+    case 0x45:                                           // PLAY AUDIO(10)
+    case 0xa5:                                           // PLAY AUDIO(12)
+    case 0x47:                                           // PLAY AUDIO MSF
+    case 0x48: {                                         // PLAY AUDIO TRACK/INDEX
+        if (!medium) { finish(true, 0x02, 0x3a); break; }
+        if (sync) sync();
+        const auto &tr = d->disc->tracks();
+        auto &a = d->cdda;
+        uint32_t lba, blocks;
+        if (p[0] == 0x45) { lba = be32(2); blocks = be16(7); }
+        else if (p[0] == 0xa5) { lba = be32(2); blocks = be32(6); }
+        else if (p[0] == 0x47) {
+            uint32_t ms = (uint32_t)p[3] << 16 | p[4] << 8 | p[5], me = (uint32_t)p[6] << 16 | p[7] << 8 | p[8];
+            if (ms == 0xffffff) ms = to_msf(a.position());
+            if (ms == me) { finish(false); break; }       // nothing to play, not an error
+            if (ms > me) { finish(true, 0x05, 0x24); break; }
+            lba = from_msf(ms);
+            blocks = msf_frames(me) - msf_frames(ms);
+        } else {
+            int ts = p[4], te = std::min<int>(p[7], (int)tr.size());
+            if (ts < 1 || ts > te) { finish(true, 0x05, 0x24); break; }
+            if (p[4] != p[7] && p[5] != p[8] && p[8] <= 1) te--;   // MAME's index heuristic
+            lba = tr[ts - 1].start;
+            blocks = (te < (int)tr.size() ? tr[te].start : d->disc->sectors()) - lba;
+        }
+        if (lba == 0xffffffff) lba = a.position();
+        if (lba == 0) lba = tr[0].audio ? tr[0].start : 150;
+        if (!tr[d->disc->track_of(lba)].audio) { finish(true, 0x05, 0x64); break; }   // illegal mode for this track
+        a.playing = true;
+        a.paused = false;
+        a.ended = false;
+        a.lba = lba;
+        a.length = blocks;
+        a.samples = 0;
+        if (log) fprintf(stderr, "ata: %s plays LBA %u for %u sectors\n", d->name_.c_str(), lba, blocks);
+        finish(false);
+        break;
+    }
+    case 0x4b:                                           // PAUSE/RESUME
+        if (sync) sync();
+        d->cdda.paused = !(p[8] & 0x01);
+        finish(false);
+        break;
+    case 0x4e:                                           // STOP PLAY/SCAN
+        if (sync) sync();
+        if (d->cdda.playing) stop_audio(d);
+        finish(false);
+        break;
     case 0x5a: {                                         // MODE SENSE(10): header only
         std::vector<uint8_t> s(8, 0);
         s[1] = 6;
