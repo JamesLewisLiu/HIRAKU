@@ -167,12 +167,12 @@ So **one host glue implementation serves all of them.**
 | scheduler `0x800C7E08` | `0x8002034C` |
 | `main` `0x800C923C` | `0x80021320` |
 
-pop'n 4 (2000) matches only 13. It carries an older or differently compiled build of the same kernel: same glue, different code generation. Its labels need another reference, probably beatmania III 1st mix (GQ972, same year), whose CHD is in `~/bm3mame/roms/bm3`.
+pop'n 4 (2000) matches only 13. It carries an older or differently compiled build of the same kernel: same glue, different code generation. Its labels need another reference, probably beatmania III 1st mix (GQ972, same year). No 1st mix disc is available yet: the local MAME `bm3` set's CHDs are The Final's discs under 1st mix file names (same program SHA-1).
 
 ## Implemented (M2, 2026-10-11)
 
 The design above is what `runtime/core/glue.cpp` does:
-- **Exceptions.** An exception (`sc`, or an interrupt at a poll point) is taken architecturally, and the guest's own vector code is *interpreted*. The interpreter calls the native C handlers.
+- **Exceptions.** An exception (`sc`, or an interrupt at a poll point) is taken architecturally, and the guest's own vector code is *interpreted*. The interpreter calls the native C handlers. (Since M5 the vectors are recompiled too; `rfi` compiles to a return through SRR0/SRR1.)
 - **Resuming.** At the `rfi`, SPRG3 names the frame to resume:
   - our own frame: return to native code;
   - another thread's frame: swap to the fiber parked under it (ucontext, 1 MiB host stacks);

@@ -94,22 +94,32 @@ def main() -> int:
         fh.write(prog.image)
     print(f"wrote    {os.path.relpath(os.path.join(outdir, 'program.bin'), ROOT)}")
 
-    # what the runtime needs to build the machine (it reads no TOML)
+    # what the runtime needs to build the machine (it reads no TOML). A re-run
+    # keeps the media paths it is not given (e.g. --hdd from an earlier run).
+    machine_path = os.path.join(outdir, "machine.txt")
+    machine: dict[str, str] = {}
+    if os.path.exists(machine_path):
+        with open(machine_path) as fh:
+            machine = dict(l.rstrip("\n").split("=", 1) for l in fh if "=" in l)
     board = (game or {}).get("board", {})
-    with open(os.path.join(outdir, "machine.txt"), "w") as fh:
-        fh.write(f"family={(game or {}).get('family', 'bm3')}\n")
-        if board.get("dongle"):
-            fh.write(f"dongle={board['dongle']}\n")
-        if args.disc:
-            fh.write(f"cd_master={os.path.abspath(args.disc)}\n")
-        spu = (game or {}).get("spu", {})
-        if spu.get("rom"):
-            fh.write(f"spu_rom={spu['rom']}\n")
-        if args.hdd:
-            fh.write(f"spu_hdd={os.path.abspath(args.hdd)}\n")
-        if args.dvd:
-            fh.write(f"spu_dvd={os.path.abspath(args.dvd)}\n")
-    print(f"wrote    {os.path.relpath(os.path.join(outdir, 'machine.txt'), ROOT)}")
+    spu = (game or {}).get("spu", {})
+    machine["family"] = (game or {}).get("family", machine.get("family", "bm3"))
+    if board.get("dongle"):
+        machine["dongle"] = board["dongle"]
+    if args.disc:
+        machine["cd_master"] = os.path.abspath(args.disc)
+    if spu.get("rom"):
+        machine["spu_rom"] = spu["rom"]
+    if args.hdd:
+        machine["spu_hdd"] = os.path.abspath(args.hdd)
+    if args.dvd:
+        machine["spu_dvd"] = os.path.abspath(args.dvd)
+    order = ["family", "dongle", "cd_master", "spu_rom", "spu_hdd", "spu_dvd"]
+    with open(machine_path, "w") as fh:
+        for k in order + sorted(set(machine) - set(order)):
+            if k in machine:
+                fh.write(f"{k}={machine[k]}\n")
+    print(f"wrote    {os.path.relpath(machine_path, ROOT)}")
 
     if args.romset:
         romdir = os.path.join(outdir, "rom")
