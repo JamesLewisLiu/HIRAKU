@@ -14,6 +14,7 @@
 #include <vector>
 
 #include "../core/cpu403.h"
+#include "../core/prof.h"
 #include "../core/runtime.h"
 #include "../core/sched.h"
 #include "../dev/ata.h"
@@ -427,7 +428,10 @@ void vblank_fire() {
     if (g_frame_hook) {
         int w = g_gcu->hvisible(), h = g_gcu->vvisible();
         g_fb.resize((size_t)w * h);
-        g_gcu->draw(g_fb.data(), w, h);
+        {
+            prof::Scope ps(prof::DRAW);
+            g_gcu->draw(g_fb.data(), w, h);
+        }
         g_frame_hook(g_frame, g_fb.data(), w, h);
     }
 }

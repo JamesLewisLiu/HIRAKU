@@ -98,7 +98,7 @@ function(hiraku_game id entry)
   target_include_directories(hiraku_${id}_code PRIVATE ${gen})
   # generated code: unused labels and parameters are normal
   target_compile_options(hiraku_${id}_code PRIVATE -w -O2 -fwrapv)
-  add_executable(hiraku-${id} runtime/main.cpp)
+  add_executable(hiraku-${id} runtime/main.cpp runtime/core/sampler.cpp)
   target_compile_definitions(hiraku-${id} PRIVATE
     HK_GAME_ID="${id}" HK_ENTRY=${entry}u HK_ROOT="${CMAKE_SOURCE_DIR}")
   target_link_libraries(hiraku-${id} PRIVATE hiraku_rt hiraku_${id}_code hiraku_rt)

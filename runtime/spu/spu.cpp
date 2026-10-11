@@ -13,6 +13,7 @@
 #include <vector>
 
 #include "../core/cpu403.h"
+#include "../core/prof.h"
 #include "../core/runtime.h"
 #include "../core/sched.h"
 #include "../dev/ata.h"
@@ -212,6 +213,7 @@ void set_audio_sink(std::function<void(const float *, int)> sink) { g_sink = std
 void catch_up() {
     if (!g_present || g_running) return;
     uint64_t target = (uint64_t)((double)now() * SPU_HZ / (double)CPU_HZ);
+    prof::Scope ps(prof::SPU68K);
     while (g_cycles < target) {
         g_running = true;
         int ran = m68k_execute((int)std::min<uint64_t>(target - g_cycles, 20000));

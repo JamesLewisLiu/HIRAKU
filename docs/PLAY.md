@@ -60,13 +60,9 @@ IIDX-style controllers differ in which button and axis numbers they use. Run onc
 
 On exit, the console prints the buffer it actually got.
 
-**On PipeWire**, the server quantum usually dominates (1024/48000 = 21 ms by default). Lower it for HIRAKU:
+**The queue tunes itself.** It starts at `--audio-ms` (8) and grows by 1 ms after each underrun, up to 30 ms, so it settles at the smallest crackle-free lead this PC needs. The exit report prints where it settled, how many underruns there were, and the worst stall.
 
-```bash
-PIPEWIRE_LATENCY=128/48000 build/cmake/hiraku-bm3final --window --audio-ms 4
-```
-
-If the sound crackles, raise `--audio-ms` (the machine must stay ahead of the device) or the quantum.
+**Sound server settings:** the first reports came before the performance fixes in this release. Re-test with the defaults first. On PipeWire the server quantum adds its own latency; a smaller one (`PIPEWIRE_LATENCY=256/48000`) is worth trying, but only if the default is already clean.
 
 ## Recording and testing
 

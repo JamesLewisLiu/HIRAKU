@@ -3,11 +3,14 @@
 
 #include <SDL3/SDL.h>
 
+#include <algorithm>
 #include <chrono>
+#include <cstdlib>
 #include <thread>
 
 #include "../firebeat/board.h"
 #include "input.h"
+#include "../core/prof.h"
 
 namespace hk::host {
 
@@ -76,10 +79,13 @@ bool window_frame(const uint32_t *rgb, int w, int h, double vsec) {
         g_tw = w;
         g_th = h;
     }
-    SDL_UpdateTexture(g_tex, nullptr, rgb, w * 4);
-    SDL_RenderClear(g_ren);
-    SDL_RenderTexture(g_ren, g_tex, nullptr, nullptr);
-    SDL_RenderPresent(g_ren);
+    {
+        prof::Scope ps(prof::PRESENT);
+        SDL_UpdateTexture(g_tex, nullptr, rgb, w * 4);
+        SDL_RenderClear(g_ren);
+        SDL_RenderTexture(g_ren, g_tex, nullptr, nullptr);
+        SDL_RenderPresent(g_ren);
+    }
 
     poll();
     if (g_quit) return false;
@@ -95,9 +101,43 @@ bool window_frame(const uint32_t *rgb, int w, int h, double vsec) {
     return true;
 }
 
+// Underrun accounting: the queue level when each chunk arrives, and what the
+// host did since the previous chunk when it ran low.
+struct AudioStats {
+    uint64_t chunks = 0, low = 0, empty = 0;
+    double worst_gap_ms = 0;
+    uint64_t gap_hist[8] = {};   // work time per chunk: <1,<2,<4,<8,<16,<32,<64,>=64 ms
+    uint64_t low_ns[prof::NCAT] = {};
+} g_ast;
+uint64_t g_last_push_end = 0;
+bool g_log_stalls = getenv("HK_LOG_STALLS") != nullptr;
+
 void audio_push(const float *lr, int frames) {
     if (!g_audio) return;
     if (g_fast) { poll(); return; }
+    uint64_t t = prof::now_ns();
+    if (g_last_push_end) {
+        double gap = (t - g_last_push_end) / 1e6;
+        int b = gap < 1 ? 0 : gap < 2 ? 1 : gap < 4 ? 2 : gap < 8 ? 3 : gap < 16 ? 4 : gap < 32 ? 5 : gap < 64 ? 6 : 7;
+        g_ast.gap_hist[b]++;
+        g_ast.worst_gap_ms = std::max(g_ast.worst_gap_ms, gap);
+        int queued = SDL_GetAudioStreamQueued(g_audio) / 8;
+        g_ast.chunks++;
+        if (queued == 0) {
+            g_ast.empty++;
+            // self-tuning: an underrun means the machine needs more lead on this host
+            if (g_target_frames < 44100 * 30 / 1000) g_target_frames += 44;   // +1 ms, up to 30 ms
+        }
+        if (queued < 44) {   // under 1 ms left: about to crackle
+            g_ast.low++;
+            for (int c = 0; c < prof::NCAT; c++) g_ast.low_ns[c] += prof::g_ns[c];
+            if (g_log_stalls) {
+                fprintf(stderr, "stall: %.2f ms of work, queue %d frames:", gap, queued);
+                for (int c = 0; c < prof::NCAT; c++) fprintf(stderr, " %s %.2f", prof::NAMES[c], prof::g_ns[c] / 1e6);
+                fprintf(stderr, "\n");
+            }
+        }
+    }
     SDL_PutAudioStreamData(g_audio, lr, frames * 8);
     // audio is the clock: wait while more than the target is queued, polling controls
     while (SDL_GetAudioStreamQueued(g_audio) > g_target_frames * 8 && !g_quit) {
@@ -105,13 +145,26 @@ void audio_push(const float *lr, int frames) {
         SDL_DelayPrecise(250'000);   // 0.25 ms
     }
     poll();
+    prof::reset();
+    g_last_push_end = prof::now_ns();
 }
 
 std::string audio_describe() {
     if (!g_audio) return "no audio device";
-    char b[160];
-    snprintf(b, sizeof b, "audio: device buffer %d frames (%.1f ms), queue target %d frames (%.1f ms)", g_device_frames,
-             g_device_frames * 1000.0 / 44100, g_target_frames, g_target_frames * 1000.0 / 44100);
+    char b[1024];
+    int n = snprintf(b, sizeof b,
+                     "audio: device buffer %d frames (%.1f ms), queue target %d frames (%.1f ms, after self-tuning)\n"
+                     "audio: %llu chunks, %llu ran low (<1 ms queued), %llu found the queue empty; worst gap %.1f ms\n"
+                     "audio: host work per chunk  <1:%llu <2:%llu <4:%llu <8:%llu <16:%llu <32:%llu <64:%llu >=64:%llu ms\n"
+                     "audio: during low chunks:",
+                     g_device_frames, g_device_frames * 1000.0 / 44100, g_target_frames, g_target_frames * 1000.0 / 44100,
+                     (unsigned long long)g_ast.chunks, (unsigned long long)g_ast.low, (unsigned long long)g_ast.empty,
+                     g_ast.worst_gap_ms, (unsigned long long)g_ast.gap_hist[0], (unsigned long long)g_ast.gap_hist[1],
+                     (unsigned long long)g_ast.gap_hist[2], (unsigned long long)g_ast.gap_hist[3],
+                     (unsigned long long)g_ast.gap_hist[4], (unsigned long long)g_ast.gap_hist[5],
+                     (unsigned long long)g_ast.gap_hist[6], (unsigned long long)g_ast.gap_hist[7]);
+    for (int c = 0; c < prof::NCAT; c++)
+        n += snprintf(b + n, sizeof b - n, " %s %.0f ms", prof::NAMES[c], g_ast.low_ns[c] / 1e6);
     return b;
 }
 

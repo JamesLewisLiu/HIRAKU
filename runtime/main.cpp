@@ -16,7 +16,8 @@
 //                       MAME for beatmania III); boards like the SPU boot during it
 //     --window [SCALE]  show the game in a window, in real time, with sound (SDL3 builds);
 //                       F2 test, 9 service, 5 coin, 1 start, Z S X D C keys, Left/Right turntable, Esc quits
-//     --bindings FILE   controls (see runtime/host/input.h); --audio-ms N: audio queue target (default 8)
+//     --bindings FILE   controls (see runtime/host/input.h)
+//     --audio-ms N      initial audio queue target (default 8); grows by 1 ms per underrun, up to 30
 //     --nvram DIR       keep the machine's NVRAM (RTC RAM, flash) in DIR: loaded at start, saved on exit.
 //                       Default with --window: ~/.local/share/hiraku/<game>; otherwise none (every
 //                       run starts from the ROM set's defaults, so scripted runs are reproducible)
@@ -214,11 +215,11 @@ int main(int argc, char **argv) {
            g_interp.lle ? "interpreter only" : "native");
 
     auto report = [&]() {
-        printf("frames %llu, virtual time %.3f s, %llu interpreted insns, %llu native calls, %llu exceptions, "
-               "%llu threads, %llu thread switches\n",
+        printf("frames %llu, virtual time %.3f s, %llu interpreted insns, %llu native calls, %llu exceptions "
+               "(%llu vectors native), %llu threads, %llu thread switches\n",
                (unsigned long long)fb::frame_count(), (double)now() / CPU_HZ, (unsigned long long)g_stats.insns,
                (unsigned long long)g_stats.native_calls, (unsigned long long)g_stats.exceptions,
-               (unsigned long long)g_stats.threads_started + 1, (unsigned long long)g_stats.thread_switches);
+               (unsigned long long)g_stats.native_vectors, (unsigned long long)g_stats.threads_started + 1, (unsigned long long)g_stats.thread_switches);
         if (g_interp.shadow_checks)
             printf("shadow: %llu identical, %llu MISMATCHED, %llu impure\n", (unsigned long long)g_stats.shadow_ok,
                    (unsigned long long)g_stats.shadow_bad, (unsigned long long)g_stats.shadow_impure);
@@ -304,7 +305,9 @@ int main(int argc, char **argv) {
     });
 
     // Boot as the BIOS leaves the CPU: supervisor state at the image's entry.
-    // The boot assembly is interpreted; from `main` on, code runs natively.
-    interp_run(&ctx, 0xffffffff, 0, UINT64_MAX);
+    // The boot code is a recompiled function like any other (it never returns);
+    // --interp-only runs it, and everything else, in the interpreter.
+    if (hk_func boot = g_interp.lle ? nullptr : lookup(HK_ENTRY)) boot(&ctx);
+    else interp_run(&ctx, 0xffffffff, 0, UINT64_MAX);
     fatal(&ctx, "the guest stopped running");
 }

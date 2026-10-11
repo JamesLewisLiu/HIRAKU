@@ -77,6 +77,21 @@ public class ExportManifest extends GhidraScript {
         }
         println("manifest: promoted " + promoted + " pointer targets and " + orphans + " orphan entries to functions");
 
+        // The 4xx exception vectors (EVPR = the load base on Firebeat): nothing in the
+        // image references them, so analysis never decodes them. HIRAKU runs them
+        // natively (docs/KERNEL.md), so they become functions too.
+        int vectors = 0;
+        long[] vecs = {0x100, 0x200, 0x300, 0x400, 0x500, 0x600, 0x700, 0x800, 0x900, 0xa00, 0xb00, 0xc00,
+                       0xd00, 0xe00, 0xf00, 0x1000, 0x1010, 0x1020, 0x1100, 0x1200, 0x2000};
+        for (long v : vecs) {
+            Address va = sp.getAddress(base + v);
+            if (mem.getInt(va) == 0) continue;
+            if (listing.getInstructionAt(va) == null) new DisassembleCommand(va, null, true).applyTo(currentProgram, monitor);
+            if (listing.getInstructionAt(va) != null && fm.getFunctionAt(va) == null && fm.getFunctionContaining(va) == null)
+                if (new CreateFunctionCmd(va).applyTo(currentProgram, monitor)) vectors++;
+        }
+        println("manifest: " + vectors + " exception vectors made functions");
+
         Set<Long> starts = new TreeSet<>();
         for (Function f : fm.getFunctions(true)) starts.add(f.getEntryPoint().getOffset());
 

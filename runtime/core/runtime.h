@@ -72,7 +72,7 @@ enum class Stop { returned, max_steps, halted };
 struct InterpStats {
     uint64_t insns = 0, native_calls = 0, exceptions = 0;
     uint64_t shadow_ok = 0, shadow_bad = 0, shadow_impure = 0;
-    uint64_t threads_started = 0, thread_switches = 0;
+    uint64_t threads_started = 0, thread_switches = 0, native_vectors = 0;
 };
 extern InterpStats g_stats;
 

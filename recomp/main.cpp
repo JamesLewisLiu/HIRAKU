@@ -183,6 +183,12 @@ struct Emitter {
     std::set<uint32_t> body;      // every instruction address in the function
     std::set<uint32_t> labels;    // addresses that need a label
     int problems = 0;
+    int pending = 0;              // instructions not yet charged (HK_TICK)
+
+    void flush() {
+        if (pending) o << "    HK_TICK(" << pending << ");\n";
+        pending = 0;
+    }
 
     explicit Emitter(const Func &fn_) : f(fn_) {
         for (auto [lo, hi] : f.ranges)
@@ -233,7 +239,11 @@ struct Emitter {
 
     void insn(uint32_t a) {
         Insn i = decode(word_at(a), a);
-        if (labels.count(a)) o << lbl(a) << ":\n";
+        if (labels.count(a)) { flush(); o << lbl(a) << ":\n"; }
+        pending++;
+        // charge before anything that may leave straight-line code (branches,
+        // calls, returns, syscalls) or touch the outside world in time (MMIO)
+        if (i.is_branch() || i.op == Op::sc || i.op == Op::rfi || i.op == Op::rfci) flush();
         o << "    ";
         const uint32_t next = a + 4;
         switch (i.op) {
@@ -286,8 +296,12 @@ struct Emitter {
         case Op::sc:
             o << "c->pc = " << hex(next) << "; hk_syscall(c);";
             break;
-        case Op::rfi:
+        case Op::rfi:      // the end of an exception vector: back to the glue, which resumes at SRR0
+            o << "c->msr = c->srr1; c->pc = c->srr0 & ~3u; return;";
+            break;
         case Op::rfci:
+            o << "c->msr = c->srr3; c->pc = c->srr2 & ~3u; return;";
+            break;
         case Op::unimpl:
         case Op::invalid:
             o << "hk_unimplemented(c, " << hex(a) << ", " << hex(i.word) << "); return;";
@@ -323,6 +337,7 @@ struct Emitter {
         find_labels();
         for (uint32_t e : f.entries) labels.insert(e);
         o << "void " << fn(entry) << "(hk_ctx *c) {\n";
+        pending = 0;
         // the entry need not be the first range (Ghidra lists ranges by address)
         bool entry_first = !f.ranges.empty() && f.ranges.front().first == entry;
         poll(entry, 8);
@@ -333,6 +348,7 @@ struct Emitter {
         for (auto [lo, hi] : f.ranges) {
             for (uint32_t a = lo; a < hi; a += 4) insn(a);
             Insn last = decode(word_at(hi - 4), hi - 4);
+            flush();
             if (falls_through(last)) {
                 o << "    ";
                 go(hi - 4, hi);  // into the next range, or a tail call into the next function

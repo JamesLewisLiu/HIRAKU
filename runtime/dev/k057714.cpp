@@ -15,15 +15,13 @@ namespace hk {
 K057714::K057714() : m_vram(new uint32_t[VRAM_SIZE / 4]) { reset(); }
 
 // VRAM is an array of 32-bit words; 16-bit pixel n is the high half of word
-// n/2 when n is even (the chip is big-endian, as MAME's swizzle encodes).
-inline uint16_t K057714::pix(uint32_t n) const {
-    uint32_t w = m_vram[(n >> 1) & (VRAM_SIZE / 4 - 1)];
-    return (n & 1) ? (uint16_t)w : (uint16_t)(w >> 16);
-}
-inline void K057714::set_pix(uint32_t n, uint16_t v) {
-    uint32_t &w = m_vram[(n >> 1) & (VRAM_SIZE / 4 - 1)];
-    w = (n & 1) ? ((w & 0xffff0000u) | v) : ((w & 0x0000ffffu) | ((uint32_t)v << 16));
-}
+// n/2 when n is even (the chip is big-endian). Viewed as 16-bit values on a
+// little-endian host that is index n ^ 1 - MAME's NATIVE_ENDIAN_VALUE_LE_BE(1,0).
+static_assert(__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__, "the VRAM pixel view assumes a little-endian host");
+#define V16 (reinterpret_cast<uint16_t *>(m_vram.get()))
+#define VIDX(n) (((n) ^ 1u) & 0xffffffu)
+inline uint16_t K057714::pix(uint32_t n) const { return V16[VIDX(n)]; }
+inline void K057714::set_pix(uint32_t n, uint16_t v) { V16[VIDX(n)] = v; }
 
 void K057714::reset() {
     // beatmania III relies on the 640x480 default (it never programs the CRTC)
@@ -149,18 +147,26 @@ void K057714::draw_frame(int frame, uint16_t *bitmap, int bw, int bh, bool inver
     const int max_y = bh - 1, max_x = bw - 1;
     if (f.y + height > max_y) height = max_y - f.y;
     if (f.x + width > max_x) width = max_x - f.x;
+    // channel scale table: same (c * alpha1) >> 4 clamped to 0x1f as MAME, per 5-bit value
+    uint16_t lut_r[32], lut_g[32], lut_b[32];
+    for (int v = 0; v < 32; v++) {
+        int sc = std::min((v * alpha1) >> 4, 0x1f);
+        lut_r[v] = (uint16_t)(sc << 10);
+        lut_g[v] = (uint16_t)(sc << 5);
+        lut_b[v] = (uint16_t)sc;
+    }
+    const uint16_t *v = V16;
+    const bool identity = alpha1 == 16;   // full brightness: colours pass unchanged
     for (int j = 0; j <= height; j++) {
-        if (j + f.y < 0 || j + f.y >= bh) continue;
-        uint16_t *d = bitmap + (j + f.y) * bw + f.x;
-        int li = j * 1024;
-        for (int i = 0; i <= width && f.x + i < bw; i++) {
-            uint16_t p = pix(f.base + li + i);
-            if ((p & 0x8000) != trans_value) {
-                uint32_t r = std::min(((p >> 10) & 0x1fu) * alpha1 >> 4, 0x1fu);
-                uint32_t g = std::min(((p >> 5) & 0x1fu) * alpha1 >> 4, 0x1fu);
-                uint32_t b = std::min(((p >> 0) & 0x1fu) * alpha1 >> 4, 0x1fu);
-                d[i] = (uint16_t)((r << 10) | (g << 5) | b);
-            }
+        int y = j + f.y;
+        if (y < 0 || y >= bh) continue;
+        uint16_t *d = bitmap + y * bw + f.x;
+        uint32_t base = f.base + (uint32_t)j * 1024;
+        int iend = std::min(width, bw - 1 - f.x);
+        for (int i = 0; i <= iend; i++) {
+            uint16_t p = v[VIDX(base + (uint32_t)i)];
+            if ((p & 0x8000) == trans_value) continue;
+            d[i] = identity ? (uint16_t)(p & 0x7fff) : (uint16_t)(lut_r[(p >> 10) & 0x1f] | lut_g[(p >> 5) & 0x1f] | lut_b[p & 0x1f]);
         }
     }
 }
@@ -177,11 +183,16 @@ void K057714::draw(uint32_t *out, int w, int h) {
     draw_frame((m_layer_select >> 10) & 3, bmp.get(), w, h, inverse_trans);
     draw_frame((m_layer_select >> 12) & 3, bmp.get(), w, h, inverse_trans);
     draw_frame((m_layer_select >> 14) & 3, bmp.get(), w, h, inverse_trans);
-    for (int k = 0; k < w * h; k++) {
-        uint16_t p = bmp[k];
-        uint32_t r = (p >> 10) & 0x1f, g = (p >> 5) & 0x1f, b = p & 0x1f;
-        out[k] = 0xff000000u | ((r << 3 | r >> 2) << 16) | ((g << 3 | g >> 2) << 8) | (b << 3 | b >> 2);
-    }
+    // RGB555 -> xRGB8888 through a 32K-entry table (same pal5bit expansion as MAME)
+    static const uint32_t *rgb = [] {
+        auto *t = new uint32_t[32768];
+        for (uint32_t p = 0; p < 32768; p++) {
+            uint32_t r = (p >> 10) & 0x1f, g = (p >> 5) & 0x1f, b = p & 0x1f;
+            t[p] = 0xff000000u | ((r << 3 | r >> 2) << 16) | ((g << 3 | g >> 2) << 8) | (b << 3 | b >> 2);
+        }
+        return t;
+    }();
+    for (int k = 0; k < w * h; k++) out[k] = rgb[bmp[k] & 0x7fff];
 }
 
 void K057714::draw_object(const uint32_t *cmd) {
@@ -209,6 +220,19 @@ void K057714::draw_object(const uint32_t *cmd) {
     width = (((width * 65536) / xscale) * 64) / 65536;
     height = (((height * 65536) / yscale) * 64) / 65536;
     if (height <= 0 || width <= 0) return;
+    if (xscale == 64 && yscale == 64 && !xflip && !yflip && !blend_mode) {
+        // the common case, same result as the general loop below
+        uint16_t *v = V16;
+        for (int j = 0; j < height; j++) {
+            uint32_t src = address + (uint32_t)j * 1024, dst = (uint32_t)((j + y) * 1024 + x);
+            for (int i = 0; i < width; i++, src++, dst++) {
+                uint16_t p = v[VIDX(src)];
+                if (trans_enable && (p & 0x8000) != trans_value) continue;
+                if (dst < VRAM_SIZE_HALF) v[dst ^ 1u] = p;
+            }
+        }
+        return;
+    }
     int v = 0, xinc = xflip ? -1 : 1;
     for (int j = 0; j < height; j++) {
         uint32_t fbaddr = ((j + y) * 1024) + x;

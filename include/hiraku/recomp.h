@@ -29,7 +29,10 @@ void hk_call_dyn(hk_ctx *c, uint32_t target);         /* call any guest address;
 void hk_jump(hk_ctx *c, uint32_t target);             /* tail-transfer to any guest address */
 void hk_bad_return(hk_ctx *c, uint32_t expected);     /* callee returned somewhere else */
 
-#define HK_POLL(c, at, cost) do { if (__builtin_expect((hk_budget -= (cost)) <= 0, 0)) hk_poll((c), (at)); } while (0)
+/* Virtual time is charged per executed instruction: the recompiler emits
+ * HK_TICK(n) for every straight-line run of n instructions; polls only test. */
+#define HK_TICK(n) (hk_budget -= (n))
+#define HK_POLL(c, at, cost) do { if (__builtin_expect(hk_budget <= 0, 0)) hk_poll((c), (at)); } while (0)
 #define HK_RET(c) do { (c)->pc = (c)->lr & ~3u; return; } while (0)
 #define HK_CHECK(c, ret) do { if (__builtin_expect((c)->pc != (ret), 0)) hk_bad_return((c), (ret)); } while (0)
 #define HK_CALL(c, f, ret) do { (c)->lr = (ret); f(c); HK_CHECK((c), (ret)); } while (0)

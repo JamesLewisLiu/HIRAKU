@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "ata.h"
 
+#include "../core/prof.h"
+
 #include <algorithm>
 #include <cstring>
 
@@ -46,6 +48,7 @@ bool DiscImage::open(const std::string &path0) {
 }
 
 bool DiscImage::read_sector(uint32_t lba, uint8_t *out) const {
+    prof::Scope ps(prof::DISK);
     if (lba >= nsectors_) return false;
     fseeko(f_, (off_t)lba * stride_ + skip_, SEEK_SET);
     return fread(out, 1, 2048, f_) == 2048;
@@ -64,6 +67,7 @@ bool DiskImage::open(const std::string &path) {
 }
 
 bool DiskImage::read_sector(uint32_t lba, uint8_t *out) const {
+    prof::Scope ps(prof::DISK);
     if (lba >= nsectors_) return false;
     fseeko(f_, (off_t)lba * 512, SEEK_SET);
     return fread(out, 1, 512, f_) == 512;

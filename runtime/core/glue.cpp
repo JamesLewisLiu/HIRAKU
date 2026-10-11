@@ -28,6 +28,7 @@
 #include <vector>
 
 #include "cpu403.h"
+#include "prof.h"
 #include "runtime.h"
 #include "sched.h"
 
@@ -116,6 +117,18 @@ void switch_threads(hk_ctx *c, uint32_t my_frame, uint32_t my_resume, uint32_t t
     g_graveyard.clear();
 }
 
+// Run the guest's vector code natively when it was recompiled: it saves the
+// frame, calls the kernel's handlers and ends in rfi (emitted as a return with
+// pc = SRR0, msr = SRR1). Anything left (no recompiled vector) is interpreted
+// by the caller's loop.
+void run_vector(hk_ctx *c) {
+    if (g_interp.lle) return;
+    if (hk_func fn = lookup(c->pc)) {
+        g_stats.native_vectors++;
+        fn(c);
+    }
+}
+
 }  // namespace
 
 void glue_init(hk_ctx *c) {
@@ -134,17 +147,23 @@ void glue_exception(hk_ctx *c, uint32_t vector, uint32_t ret) {
         // through `sc`): the vector code pushes the frame on the current stack and
         // its exit path returns to the same context - no thread switch is possible.
         const uint32_t msr0 = c->msr;
+        prof::Scope ps(prof::GLUE);
         take_exception(c, vector, ret);
+        run_vector(c);
         for (uint64_t n = 0; !(c->pc == ret && c->msr == msr0); n++) {
             interp_step(c);
             if (n > 50'000'000) fatal(c, "supervisor exception %04x from %08x never returned", vector, ret);
         }
         return;
     }
-    take_exception(c, vector, ret);
-    for (uint64_t n = 0; !(c->msr & msr::PR); n++) {
-        interp_step(c);
-        if (n > 50'000'000) fatal(c, "exception %04x from %08x never returned to user state", vector, ret);
+    {
+        prof::Scope ps(prof::GLUE);   // the vector code only: not the time other threads run after a switch
+        take_exception(c, vector, ret);
+        run_vector(c);
+        for (uint64_t n = 0; !(c->msr & msr::PR); n++) {
+            interp_step(c);
+            if (n > 50'000'000) fatal(c, "exception %04x from %08x never returned to user state", vector, ret);
+        }
     }
     const uint32_t target = c->sprg[3];
     if (target == my_frame && c->pc == ret) return;
