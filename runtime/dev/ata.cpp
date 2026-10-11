@@ -227,6 +227,13 @@ void AtaBus::start_data_in(std::vector<uint8_t> d) {
     byte_limit_ &= ~1;
     data_ = std::move(d);
     data_pos_ = 0;
+    if (feature_ & 0x01) {                               // PACKET with the DMA flag: the host DMAs it all
+        phase_ = Phase::dma_in;
+        status_ = ST_DRQ;
+        nsector_ = IR_IO;
+        if (dmarq) dmarq(true);
+        return;
+    }
     size_t n = std::min<size_t>(byte_limit_, data_.size());
     chunk_end_ = n;
     cyl_lo_ = n & 0xff;
@@ -360,6 +367,10 @@ void AtaBus::command(uint8_t cmd) {
     case 0xe1:                                           // IDLE IMMEDIATE
     case 0xe0:                                           // STANDBY IMMEDIATE
         finish(false);
+        break;
+    case 0xe5:                                           // CHECK POWER MODE
+        finish(false);
+        nsector_ = 0xff;                                 // active or idle (MAME atapi_hle)
         break;
     default:
         fprintf(stderr, "ata: %s: unsupported ATA command %02x\n", d->name_.c_str(), cmd);

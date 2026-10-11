@@ -9,7 +9,7 @@ loose HIKARU.EXE / FIREBEAT.EXE instead. The unpacked image is identified
 against games/*/game.toml by SHA-1 and written to dumps/<game id>/program.bin
 (dumps/ is gitignored - nothing derived from a game goes in the repo).
 
---romset copies the files of a MAME ROM set (dongle image, default RTC NVRAM,
+--romset copies the files of a MAME ROM set (.zip, or .7z with the 7z tool) (dongle image, default RTC NVRAM,
 SPU program, BIOS) into dumps/<game id>/rom/, where the runtime looks for them.
 """
 from __future__ import annotations
@@ -18,6 +18,7 @@ import argparse
 import glob
 import hashlib
 import os
+import subprocess
 import sys
 import tomllib
 import zipfile
@@ -44,7 +45,7 @@ def main() -> int:
     src.add_argument("--exe", help="a loose HIKARU.EXE / FIREBEAT.EXE")
     ap.add_argument("--out", default=os.path.join(ROOT, "dumps"), help="output root (default: dumps/)")
     ap.add_argument("--check", metavar="RAW", help="compare the unpacked image to a known-good raw dump")
-    ap.add_argument("--romset", metavar="ZIP", help="MAME ROM set zip to copy into dumps/<game>/rom/")
+    ap.add_argument("--romset", metavar="ZIP", help="MAME ROM set (.zip/.7z) to copy into dumps/<game>/rom/")
     ap.add_argument("--hdd", metavar="IMG", help="raw HDD image on the SPU's ATA bus (beatmania III)")
     ap.add_argument("--dvd", metavar="ISO", help="DVD image on the SPU's ATA bus (pop'n music)")
     ap.add_argument("--cd2", metavar="CUE", help="second disc on the main ATA bus (ParaParaParadise audio CD)")
@@ -127,13 +128,23 @@ def main() -> int:
     if args.romset:
         romdir = os.path.join(outdir, "rom")
         os.makedirs(romdir, exist_ok=True)
-        with zipfile.ZipFile(args.romset) as z:
-            for name in z.namelist():
-                if name.endswith("/"):
-                    continue
-                with open(os.path.join(romdir, os.path.basename(name)), "wb") as fh:
-                    fh.write(z.read(name))
+        if args.romset.lower().endswith(".7z"):
+            # 7-Zip sets (e.g. standalone/non-merged): needs the 7z tool
+            listing = subprocess.run(["7z", "l", "-slt", args.romset], check=True,
+                                     capture_output=True, text=True).stdout
+            names = [l[7:] for l in listing.splitlines()[1:]
+                     if l.startswith("Path = ") and l[7:] != args.romset and not l[7:].endswith(".7z")]
+            subprocess.run(["7z", "e", "-y", f"-o{romdir}", args.romset], check=True, capture_output=True)
+            for name in names:
                 print(f"rom      {os.path.basename(name)}")
+        else:
+            with zipfile.ZipFile(args.romset) as z:
+                for name in z.namelist():
+                    if name.endswith("/"):
+                        continue
+                    with open(os.path.join(romdir, os.path.basename(name)), "wb") as fh:
+                        fh.write(z.read(name))
+                    print(f"rom      {os.path.basename(name)}")
     return 0
 
 
