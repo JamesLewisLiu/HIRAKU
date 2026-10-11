@@ -101,7 +101,7 @@ private:
     void disk_command(uint8_t cmd);
     uint32_t lba() const;
     void packet_done();
-    void start_data_in(std::vector<uint8_t> data);
+    void start_data_in(std::vector<uint8_t> data, bool lazy = false);
     void finish(bool error, uint8_t sense_key = 0, uint8_t asc = 0);
     AtaDevice *cur();
     void stop_audio(AtaDevice *d);
@@ -117,6 +117,13 @@ private:
     int packet_pos_ = 0;
     std::vector<uint8_t> data_;
     size_t data_pos_ = 0, chunk_end_ = 0, data_out_len_ = 0;
+    // A READ's sectors are fetched from the image as the host consumes them (as a
+    // drive streams them), not all at command time: spreads host I/O over the transfer.
+    const DiscImage *lazy_disc_ = nullptr;
+    const DiskImage *lazy_disk_ = nullptr;
+    uint32_t lazy_lba_ = 0;
+    size_t filled_ = 0;
+    void fill(size_t upto);
     void data_out_done();
     uint16_t byte_limit_ = 0;
     uint8_t multiple_ = 1;            // sectors per DRQ block (READ MULTIPLE)

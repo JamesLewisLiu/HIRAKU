@@ -4,7 +4,12 @@
 #include "../core/prof.h"
 
 #include <algorithm>
+#include <cstdlib>
 #include <cstring>
+#include <thread>
+
+#include <fcntl.h>
+#include <unistd.h>
 
 namespace hk {
 
@@ -47,6 +52,22 @@ bool DiscImage::parse_cue(const std::string &cue, std::string &bin) {
     return !bin.empty() && !tracks_.empty();
 }
 
+// Warm the page cache with a CD image in the background. Games read in bursts (a
+// 3.8 MB READ moved by memory-to-memory DMA at once), so a cold cache costs
+// several ms of host I/O in one emulated instant; the whole image takes about a
+// second to read sequentially, during boot. Large images (DVDs, disks) are left
+// to the kernel.
+void warm_cache(const std::string &path, uint64_t size) {
+    if (size > (1536ull << 20) || getenv("HK_NO_PREFETCH")) return;
+    std::thread([path] {
+        int fd = ::open(path.c_str(), O_RDONLY);
+        if (fd < 0) return;
+        std::vector<char> buf(1 << 20);
+        for (off_t off = 0; ::pread(fd, buf.data(), buf.size(), off) > 0; off += (off_t)buf.size()) {}
+        ::close(fd);
+    }).detach();
+}
+
 bool DiscImage::open(const std::string &path0) {
     std::string path = path0;
     bool cue = path.size() > 4 && (path.substr(path.size() - 4) == ".cue" || path.substr(path.size() - 4) == ".CUE");
@@ -60,6 +81,7 @@ bool DiscImage::open(const std::string &path0) {
     if (!f_) return false;
     fseeko(f_, 0, SEEK_END);
     uint64_t size = (uint64_t)ftello(f_);
+    warm_cache(path, size);
     if (cue && (tracks_.size() > 1 || tracks_[0].audio)) {
         // file offsets: each track's sectors at its own size, in order
         uint64_t off = 0;
@@ -231,6 +253,7 @@ uint32_t AtaBus::lba() const {
 
 uint16_t AtaBus::read_dma() {
     if (phase_ != Phase::dma_in || data_pos_ >= data_.size()) return 0;
+    fill(data_pos_ + 2);
     uint16_t v = data_[data_pos_] | (data_pos_ + 1 < data_.size() ? data_[data_pos_ + 1] << 8 : 0);
     data_pos_ += 2;
     if (data_pos_ >= data_.size()) {
@@ -256,6 +279,7 @@ uint16_t AtaBus::read(int cs, int reg) {
     switch (reg) {
     case 0: {                                            // data
         if (phase_ != Phase::data_in || data_pos_ + 1 >= data_.size() + 1) return 0;
+        fill(data_pos_ + 2);
         uint16_t v = data_[data_pos_] | (data_pos_ + 1 < data_.size() ? data_[data_pos_ + 1] << 8 : 0);
         data_pos_ += 2;
         if (data_pos_ >= chunk_end_) {
@@ -339,6 +363,8 @@ void AtaBus::finish(bool error, uint8_t key, uint8_t asc) {
     int u = (device_ >> 4) & 1;
     phase_ = Phase::idle;
     data_.clear();
+    lazy_disc_ = nullptr;
+    lazy_disk_ = nullptr;
     if (cur() && !cur()->atapi_) {                       // hard disk: DRDY/DSC, error register = ABRT etc.
         status_ = ST_DRDY | ST_DSC | (error ? ST_ERR : 0);
         error_ = error ? key : 0;
@@ -353,7 +379,21 @@ void AtaBus::finish(bool error, uint8_t key, uint8_t asc) {
     set_irq(true);
 }
 
-void AtaBus::start_data_in(std::vector<uint8_t> d) {
+// Fetch the lazily-read sectors covering data_[0, upto), 16 at a time.
+void AtaBus::fill(size_t upto) {
+    if (!lazy_disc_ && !lazy_disk_) return;
+    const size_t sec = lazy_disc_ ? 2048 : 512;
+    upto = std::min(data_.size(), std::max(upto, filled_ + 16 * sec));
+    while (filled_ < upto) {
+        uint32_t lba = lazy_lba_ + (uint32_t)(filled_ / sec);
+        bool ok = lazy_disc_ ? lazy_disc_->read_sector(lba, data_.data() + filled_) : lazy_disk_->read_sector(lba, data_.data() + filled_);
+        if (!ok) memset(data_.data() + filled_, 0, sec);   // checked at command time; can't happen
+        filled_ += sec;
+    }
+}
+
+void AtaBus::start_data_in(std::vector<uint8_t> d, bool lazy) {
+    if (!lazy) lazy_disc_ = nullptr, lazy_disk_ = nullptr;
     if (d.empty()) { finish(false); return; }
     // the host may limit the size of each DRQ block (byte count registers on entry)
     byte_limit_ = (uint16_t)(cyl_lo_ | cyl_hi_ << 8);
@@ -419,14 +459,16 @@ void AtaBus::disk_command(uint8_t cmd) {
     case 0xc4:                                           // READ MULTIPLE
     case 0xc8: case 0xc9: {                              // READ DMA
         uint32_t count = nsector_ ? nsector_ : 256, first = lba();
-        std::vector<uint8_t> buf((size_t)count * 512);
-        for (uint32_t k = 0; k < count; k++)
-            if (!d->disk->read_sector(first + k, buf.data() + (size_t)k * 512)) {
-                finish(true, 0x10);                      // IDNF: sector not found
-                return;
-            }
-        data_ = std::move(buf);
+        if ((uint64_t)first + count > d->disk->sectors()) {
+            finish(true, 0x10);                          // IDNF: sector not found
+            return;
+        }
+        data_.assign((size_t)count * 512, 0);
         data_pos_ = 0;
+        lazy_disk_ = d->disk.get();
+        lazy_disc_ = nullptr;
+        lazy_lba_ = first;
+        filled_ = 0;
         if (cmd == 0xc8 || cmd == 0xc9) {
             phase_ = Phase::dma_in;
             status_ = ST_DRDY | ST_DSC | ST_DRQ;
@@ -585,13 +627,14 @@ void AtaBus::packet_done() {
         }
         uint32_t lba = be32(2);
         uint32_t n = p[0] == 0x28 ? be16(7) : be32(6);
-        std::vector<uint8_t> buf((size_t)n * 2048);
-        for (uint32_t k = 0; k < n; k++)
-            if (!d->disc->read_sector(lba + k, buf.data() + (size_t)k * 2048)) {
-                finish(true, 0x05, 0x21);                // LBA out of range
-                return;
-            }
-        start_data_in(std::move(buf));
+        if ((uint64_t)lba + n > d->disc->sectors()) { finish(true, 0x05, 0x21); return; }   // LBA out of range
+        for (int t = d->disc->track_of(lba); n && t <= d->disc->track_of(lba + n - 1); t++)
+            if (d->disc->tracks()[t].audio) { finish(true, 0x05, 0x64); return; }          // illegal mode for this track
+        lazy_disc_ = d->disc.get();
+        lazy_disk_ = nullptr;
+        lazy_lba_ = lba;
+        filled_ = 0;
+        start_data_in(std::vector<uint8_t>((size_t)n * 2048), true);
         break;
     }
     case 0x43: {                                         // READ TOC (MAME t10mmc)
