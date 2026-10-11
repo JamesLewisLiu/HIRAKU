@@ -9,12 +9,19 @@ HIRAKU ships no game data. You provide your own dumps. The tools extract the pro
 
 ## Status
 
-M0 (infrastructure) is in progress.
+M0 (infrastructure) and M1 (translator and interpreter) are done. M2 (kernel glue, interrupts, devices) is next. See [PLAN.md](PLAN.md).
 
 ```bash
 tools/ingest.py path/to/program-disc.cue    # → dumps/<game>/program.bin
 analyze/ghidra.sh bm3final                  # → build/bm3final/manifest.json
+analyze/prep.py bm3final                    # → build/bm3final/recomp.txt
+cmake -S . -B build/cmake -G Ninja && ninja -C build/cmake
+ctest --test-dir build/cmake                # instruction semantics vs QEMU
+build/cmake/hiraku-bm3final --interp-only --shadow 3 --max 4000000000
 ```
+
+- How translation works: [docs/RECOMP.md](docs/RECOMP.md)
+- The MAME oracle: [oracle/README.md](oracle/README.md)
 
 ## Licence
 

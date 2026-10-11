@@ -13,3 +13,8 @@ entry = 0x80003000
 
 [spu]
 rom = "a21jca03.3q"     # 68000 program, from the MAME set
+
+[recomp]
+# Functions Ghidra cannot find: their addresses are built in code (lis/addi),
+# not stored in data. Found by the runtime's interpreter-fallback log.
+extra_entries = [0x800bddc8]

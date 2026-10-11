@@ -11,3 +11,5 @@
 *.rep/
 __pycache__/
 *.pyc
+/compile_commands.json
+*.core

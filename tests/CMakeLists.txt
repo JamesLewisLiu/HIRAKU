@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+# Instruction semantics vs QEMU. The reference cases are generated, not
+# committed: tests/ppc/gen.py needs clang, ld.lld and qemu-ppc.
+add_executable(test_ppc ppc/test_ppc.cpp)
+target_link_libraries(test_ppc PRIVATE hiraku_rt)
+
+set(HK_PPC_CASES ${CMAKE_BINARY_DIR}/tests/ppc-cases)
+add_custom_command(
+  OUTPUT ${HK_PPC_CASES}/cases.bin ${HK_PPC_CASES}/names.txt
+  COMMAND python3 ${CMAKE_CURRENT_SOURCE_DIR}/ppc/gen.py ${HK_PPC_CASES}
+  DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/ppc/gen.py
+  COMMENT "Generating PowerPC reference cases with qemu-ppc")
+add_custom_target(ppc_cases DEPENDS ${HK_PPC_CASES}/cases.bin)
+add_dependencies(test_ppc ppc_cases)
+add_test(NAME ppc_semantics COMMAND test_ppc ${HK_PPC_CASES})

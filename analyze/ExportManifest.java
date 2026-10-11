@@ -45,6 +45,26 @@ public class ExportManifest extends GhidraScript {
             new CreateFunctionCmd(ea).applyTo(currentProgram, monitor);
         }
 
+        // Code reached only through pointers can be decoded without being made
+        // a function (e.g. a callback). Any aligned data word that points at a
+        // decoded instruction outside every function becomes a function entry.
+        int promoted = 0;
+        for (long a = base; a + 4 <= end; a += 4) {
+            Address ad = sp.getAddress(a);
+            if (listing.getInstructionContaining(ad) != null) continue;   // data words only
+            long v = mem.getInt(ad) & 0xFFFFFFFFL;
+            if (v < base || v >= end || (v & 3) != 0) continue;
+            Address va = sp.getAddress(v);
+            if (listing.getInstructionAt(va) == null || fm.getFunctionContaining(va) != null) continue;
+            if (new CreateFunctionCmd(va).applyTo(currentProgram, monitor)) promoted++;
+        }
+        for (int k = 2; k < args.length; k++) {                          // extra entries from game.toml
+            Address xa = sp.getAddress(Long.decode(args[k]));
+            if (listing.getInstructionAt(xa) == null) new DisassembleCommand(xa, null, true).applyTo(currentProgram, monitor);
+            if (fm.getFunctionAt(xa) == null) new CreateFunctionCmd(xa).applyTo(currentProgram, monitor);
+        }
+        println("manifest: promoted " + promoted + " pointer targets to functions");
+
         Set<Long> starts = new TreeSet<>();
         for (Function f : fm.getFunctions(true)) starts.add(f.getEntryPoint().getOffset());
 

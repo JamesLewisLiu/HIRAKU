@@ -43,7 +43,7 @@ For the recomp this means:
 7. Clear the GPRs. Set up the first stack and the SPRGs.
 8. Enable the decrementing timer (TCR = `0x80000000`). Set `MSR.PR` (`ori 0x4000`):
    **from here on the program runs in user mode.**
-9. Set r13 = `0x80100678` (`_SDA_BASE_`) and r2 = `0x800E9EE4` (`_SDA2_BASE_`),
+9. Set r13 = `0x80120678` (`_SDA_BASE_`) and r2 = `0x800E9EE4` (`_SDA2_BASE_`),
    which is the EABI small-data layout. Call `0x800C923C`, the C `main`.
 
 ## Exception vectors (EVPR = `0x80000000`)
