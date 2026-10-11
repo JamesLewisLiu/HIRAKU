@@ -114,7 +114,11 @@ bool g_log_stalls = getenv("HK_LOG_STALLS") != nullptr;
 
 void audio_push(const float *lr, int frames) {
     if (!g_audio) return;
-    if (g_fast) { poll(); return; }
+    if (g_fast) {               // fast-forward: no pacing, and the time isn't a stall
+        poll();
+        g_last_push_end = 0;
+        return;
+    }
     uint64_t t = prof::now_ns();
     if (g_last_push_end) {
         double gap = (t - g_last_push_end) / 1e6;

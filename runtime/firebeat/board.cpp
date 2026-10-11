@@ -389,6 +389,7 @@ void bus_write(uint32_t p, uint32_t v, int size) {
         if (bool(g_ext_irq_enable & 0x04) != fdd_was) ext1_line(false);   // MAME: helps the FDD not get stuck
         return;
     }
+    if (g_cfg.family == "ppp" && p >= 0x7d000300 && p <= 0x7d00033f) return;   // written at boot; unmapped in MAME too
     if (g_cfg.family == "bm3") {
         if (p >= 0x7d000330 && p <= 0x7d00033f) return;
         if (p >= 0x70000000 && p <= 0x70000fff) {
