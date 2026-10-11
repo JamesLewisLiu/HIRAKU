@@ -10,7 +10,7 @@ set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 root="$(dirname "$here")"
 game="${1:?usage: analyze/ghidra.sh <game id>}"
-headless="${GHIDRA_HEADLESS:-/run/media/roganis/DATA/EZ2REWRITE_LOCAL/ghidra_12.1.2_PUBLIC/support/analyzeHeadless}"
+headless="${GHIDRA_HEADLESS:-analyzeHeadless}"   # Ghidra's support/analyzeHeadless
 
 prog="$root/dumps/$game/program.bin"
 toml="$root/games/$game/game.toml"
