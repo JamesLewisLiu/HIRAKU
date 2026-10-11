@@ -1,0 +1,27 @@
+# BGA-state comparison: the practice script without key presses during the song (every
+# note a deterministic miss), with per-frame hashes of the
+# BGA object pool and VM state. beatmania III The Final: boot -> attract -> 2 coins -> mode select -> the
+# practice stage ("Instant Love", DJ KONAMI tutorial), keys pressed in a fixed
+# pattern so the judge, keysounds and BGA hit/miss hooks all fire.
+# Reference trace for M2-M5. Deterministic: same inputs, same frames.
+game bm3final
+watch measure u32 0x80103674
+watch scene u32 0x802566dc
+hash objpool 0x80146750 0x8014a750
+hash vmvars 0x80255de0 0x80256700
+
+
+at 3600 mark coin
+at 3600 press "Coin 1" 8
+at 3630 press "Coin 1" 8
+at 3700 press "1 Player Start" 12
+at 4000 mark mode-select
+at 4000 press "P1 Button 1" 8       # mode select: confirm (kobako)
+at 4400 press "P1 Button 1" 8       # sound select: confirm (practice stage)
+at 4700 press "P1 Button 1" 8
+at 4800 mark song
+
+at 5400 dump sda 0x80100000 0x80110000
+at 9000 dump sda 0x80100000 0x80110000
+from 3600 every 300 snap
+at 12000 quit

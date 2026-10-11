@@ -14,3 +14,7 @@ add_custom_command(
 add_custom_target(ppc_cases DEPENDS ${HK_PPC_CASES}/cases.bin)
 add_dependencies(test_ppc ppc_cases)
 add_test(NAME ppc_semantics COMMAND test_ppc ${HK_PPC_CASES})
+
+# GCU renderer vs MAME: replay a MAME trace's GCU writes (oracle, not a ctest).
+add_executable(gcu_replay gcu/gcu_replay.cpp)
+target_link_libraries(gcu_replay PRIVATE hiraku_rt)

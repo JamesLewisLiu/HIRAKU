@@ -11,6 +11,7 @@
 #
 #   HIRAKU_ROMS   rompath holding <set>.zip and <set>/*.chd   (default ~/bm3mame/roms)
 #   HIRAKU_TAPS   MMIO groups to log, comma list               (default all)
+#   HIRAKU_NOFOLD groups to record access by access, unfolded (e.g. gcu for GCU replay)
 #   RUN_SECONDS   emulated-time cap, -seconds_to_run           (default 900)
 #   WINDOW=1      show a window and play sound (otherwise headless, unthrottled)
 #   WAV=1         also record the mixed audio to <run>/audio.wav
@@ -49,7 +50,7 @@ debug=()
 # The flatpak sees only what it is given: every path and every variable.
 flatpak run \
     --filesystem="$roms":ro --filesystem="$root" --filesystem="$(dirname "$script")":ro \
-    --env=HIRAKU_OUT="$out" --env=HIRAKU_SCRIPT="$script" --env=HIRAKU_TAPS="${HIRAKU_TAPS:-all}" \
+    --env=HIRAKU_OUT="$out" --env=HIRAKU_SCRIPT="$script" --env=HIRAKU_TAPS="${HIRAKU_TAPS:-all}" --env=HIRAKU_NOFOLD="${HIRAKU_NOFOLD:-}" \
     org.mamedev.MAME \
     -rompath "$roms" -homepath "$out" \
     -cfg_directory "$out/cfg" -nvram_directory "$out/nvram" \

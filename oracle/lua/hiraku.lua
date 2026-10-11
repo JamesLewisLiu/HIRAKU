@@ -62,6 +62,10 @@ local taps = {}               -- passthrough handlers must stay referenced
 -- runtime can fold its own stream identically whether or not PCs are exact.
 -- HIRAKU_FOLD=0 writes every access as-is.
 local FOLD = (os.getenv("HIRAKU_FOLD") or "1") ~= "0"
+-- HIRAKU_NOFOLD=gcu,dpram: groups recorded access by access (e.g. for GCU replay)
+local NOFOLD = {}
+for g in string.gmatch(os.getenv("HIRAKU_NOFOLD") or "", "[^,]+") do NOFOLD[g] = true end
+local NOFOLD_ID = {}
 local p_kind, p_group, p_addr, p_mask, p_data, p_hash, p_n, p_frame, p_time, p_pc, p_varied
 
 local function emit()
@@ -85,7 +89,7 @@ end
 
 local function record(kind, group, offset, data, mask)
     offset, data, mask = offset & 0xffffffff, data & 0xffffffff, mask & 0xffffffff
-    if FOLD and p_n and p_n < 0xffff and kind == p_kind and offset == p_addr
+    if FOLD and not NOFOLD_ID[group] and p_n and p_n < 0xffff and kind == p_kind and offset == p_addr
        and mask == p_mask and group == p_group then
         p_n = p_n + 1
         p_hash = fnv32(p_hash, data)
@@ -110,6 +114,7 @@ end
 
 local want = {}
 for g in string.gmatch(os.getenv("HIRAKU_TAPS") or "all", "[^,]+") do want[g] = true end
+for _, g in ipairs(GROUPS) do if NOFOLD[g.name] then NOFOLD_ID[g.id] = true end end
 
 -- Taps must be (re)installed once the machine has reset: a map rebuild drops them.
 local function install_taps()
