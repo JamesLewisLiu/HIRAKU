@@ -1,0 +1,12 @@
+# pop'n music 7 (GCB00 JAB), Konami 2001
+id = "popn7"
+title = "pop'n music 7"
+family = "popn"
+mame = "popn7"
+
+[program]
+exe = "FIREBEAT.EXE"
+sha1 = "1e63f2d5b2939ccf4efcf1ed701ff3a9170a1259"   # unpacked image, not the packed exe
+size = 0x100000
+load = 0x80000000
+entry = 0x80002018

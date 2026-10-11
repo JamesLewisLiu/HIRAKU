@@ -147,6 +147,28 @@ the caller after the switch.
 5. **The watchdog** (TSR resets everywhere) becomes a no-op unless we want hang
    detection.
 
+## Across games (measured 2026-10-11 with `analyze/sigmatch.py`)
+
+**The assembly glue is the same design in every program checked**: bm3final and pop'n 4, 5, 6 and 7.
+- The vector layout matches.
+- `0xC00` starts with the same instruction.
+- Each image has eight 384-byte frame pushes, 5 `mtspr SPRG3`, 4 `rfi` and 2 `sc`.
+- Only branch targets move. pop'n 6/7 are linked 0x1000 lower: entry `0x80002018`, external vector → `0x80001F94+0x500`.
+
+So **one host glue implementation serves all of them.**
+
+**The C kernel is shared too.** Of the 118 BM3 kernel functions with a unique signature (`0x800C5000`–`0x800CA000`), 115 are found in each of pop'n 5, 6 and 7 (83% of kernel instructions). Every primitive in the table above maps one-to-one; in pop'n 7:
+
+| BM3 Final | pop'n 7 |
+|---|---|
+| `current_frame` `0x800C5354` | `0x8001E470` |
+| `switch_to` `0x800C53D4` | `0x8001E4F0` |
+| IRQ dispatch `0x800C5B54` | `0x8001EC70` |
+| scheduler `0x800C7E08` | `0x8002034C` |
+| `main` `0x800C923C` | `0x80021320` |
+
+pop'n 4 (2000) matches only 13. It carries an older or differently compiled build of the same kernel: same glue, different code generation. Its labels need another reference, probably beatmania III 1st mix (GQ972, same year), whose CHD is in `~/bm3mame/roms/bm3`.
+
 ## Open items
 
 - Pin down the exact extent of the kernel C (all functions reachable only from

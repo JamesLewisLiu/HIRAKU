@@ -1,0 +1,12 @@
+# pop'n music 5 (GCA04 JAA), Konami 2000
+id = "popn5"
+title = "pop'n music 5"
+family = "popn"
+mame = "popn5"
+
+[program]
+exe = "FIREBEAT.EXE"
+sha1 = "84ffb6eb4def4a68e59980125f0e13f4aff6cecd"   # unpacked image, not the packed exe
+size = 0x100000
+load = 0x80000000
+entry = 0x80003000

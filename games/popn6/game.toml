@@ -1,0 +1,12 @@
+# pop'n music 6 (GQA16 JAC), Konami 2001
+id = "popn6"
+title = "pop'n music 6"
+family = "popn"
+mame = "popn6"
+
+[program]
+exe = "FIREBEAT.EXE"
+sha1 = "831d1fcd55b5e1acd1e9400162befb120fc3fceb"   # unpacked image, not the packed exe
+size = 0x100000
+load = 0x80000000
+entry = 0x80002018

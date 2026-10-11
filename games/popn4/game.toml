@@ -1,0 +1,12 @@
+# pop'n music 4 (GQ986 JAA), Konami 2000
+id = "popn4"
+title = "pop'n music 4"
+family = "popn"
+mame = "popn4"
+
+[program]
+exe = "FIREBEAT.EXE"
+sha1 = "f8abfcdc9ebcf7cbcab2a6c12077bd48c95ebc7f"   # unpacked image, not the packed exe
+size = 0x100000
+load = 0x80000000
+entry = 0x80003000
