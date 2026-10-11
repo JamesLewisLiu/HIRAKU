@@ -16,6 +16,7 @@ struct Config {
     std::string game = "bm3final";
     std::string family = "bm3";        // bm3 | popn | ppp | kbm
     std::string rom_dir;               // dumps/<game>/rom: dongle image, rtc default NVRAM
+    int cabinet = -1;                  // cabinet info register (-1 = the family's default)
     std::string dongle_file;           // file name inside rom_dir (e.g. gcc01-jc)
     std::string cd_master, cd_slave;   // main ATA bus disc images ("" = drive with no disc)
     std::string nvram_dir;             // persistent RTC/flash images ("" = none)

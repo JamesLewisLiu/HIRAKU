@@ -572,7 +572,7 @@ void init(const Config &cfg) {
     }
 
     // JP, non-rental (all known beatmania III and pop'n data); ParaPara adds bit 3
-    g_cabinet_info = cfg.family == "ppp" ? 0x8 : 0;
+    g_cabinet_info = cfg.cabinet >= 0 ? (uint32_t)cfg.cabinet : cfg.family == "ppp" ? 0x8 : 0;
     g_ext_irq_enable = 0x3f;
     g_ext_irq_active = 0;
     memset(g_dpram, 0, sizeof g_dpram);

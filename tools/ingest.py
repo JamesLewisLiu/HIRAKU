@@ -108,6 +108,8 @@ def main() -> int:
     machine["family"] = (game or {}).get("family", machine.get("family", "bm3"))
     if board.get("dongle"):
         machine["dongle"] = board["dongle"]
+    if "cabinet" in board:
+        machine["cabinet"] = str(board["cabinet"])
     if args.disc:
         machine["cd_master"] = os.path.abspath(args.disc)
     if spu.get("rom"):
@@ -118,7 +120,7 @@ def main() -> int:
         machine["spu_hdd"] = os.path.abspath(args.hdd)
     if args.dvd:
         machine["spu_dvd"] = os.path.abspath(args.dvd)
-    order = ["family", "dongle", "cd_master", "cd_slave", "spu_rom", "spu_hdd", "spu_dvd"]
+    order = ["family", "dongle", "cabinet", "cd_master", "cd_slave", "spu_rom", "spu_hdd", "spu_dvd"]
     with open(machine_path, "w") as fh:
         for k in order + sorted(set(machine) - set(order)):
             if k in machine:

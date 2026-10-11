@@ -71,7 +71,7 @@ build/cmake/hiraku-bm3final --script oracle/scripts/bm3final-practice.his --wav 
 build/cmake/hiraku-bm3final --frames 3600 --snap-every 300                                         # PPM snapshots
 ```
 
-## pop'n music 4–7 (in progress, M7)
+## pop'n music 4–7 and Animelo 1/2 (in progress, M7)
 
 Each game needs its program CD (Disc 1), its data DVD (Disc 2) and its MAME ROM set (`popn4` … `popn7`). The ROM set holds three things:
 - the dongle image;
@@ -84,7 +84,11 @@ analyze/ghidra.sh popn4 && analyze/prep.py popn4 && ninja -C build/cmake hiraku-
 build/cmake/hiraku-popn4 --window
 ```
 
-**Status:** all four programs recompile and run fully native (no interpreted code). Without the ROM set, the boot program stops at `E901 SECURITY DEVICE ERROR`, as on a cabinet with no dongle. The DVD path on the SPU's ATA bus is untested until the ROM set is in.
+**Status:** pop'n 4, 5 and 7 boot to attract mode with sound: boot checks, loading from the DVD, title, demo play. Standalone `.7z` ROM sets are accepted.
+
+**pop'n 6, first boot:** it installs SPU data to flash, which takes about 14 minutes of game time (hold **Tab** to fast-forward). Then it boots normally.
+
+Animelo 1 and 2 ingest the same way: `--dvd` takes the `extractdvd` ISO of the `02` CHD.
 
 | Key | Action |
 |---|---|
@@ -94,7 +98,7 @@ build/cmake/hiraku-popn4 --window
 
 Joystick buttons 0–8 are the nine buttons; button 9 is the coin.
 
-## ParaParaParadise 1st Mix Plus (in progress, M8)
+## ParaParaParadise (in progress, M8)
 
 You need the program CD (`a11jaa01`), the audio CD (`a11jaa02`) and the MAME `ppp1mp` ROM set, which holds the dongle image `gqa11-ja`. To unpack MAME's CHDs:
 
@@ -111,7 +115,7 @@ analyze/ghidra.sh ppp1mp && analyze/prep.py ppp1mp && ninja -C build/cmake hirak
 
 With `--window` both are saved to `~/.local/share/hiraku/ppp1mp`.
 
-**Status:** without the dongle image, every check passes except IBTN (E901).
+**Status:** with the ROM set, 1st Mix Plus plays: coin, song select, a full song with its CD music. ParaParaParadise (`ppp`), v1.1 (`ppp11`) and ParaParaDancing (`ppd`) ingest the same way with their own discs and sets.
 
 | Key | Action |
 |---|---|

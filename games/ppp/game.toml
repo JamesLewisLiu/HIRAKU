@@ -1,0 +1,19 @@
+# ParaParaParadise (GQ977 JAA), Konami 2000
+id = "ppp"
+title = "ParaParaParadise"
+family = "ppp"
+mame = "ppp"
+
+[program]
+exe = "HIKARU.EXE"      # wrapped by the ParaPara "!:EXE:00" loader
+sha1 = "2671ec687fbe8c95f7f9df3c440fb0daad58e0cb"   # unpacked image, not the packed exe
+size = 0x100000
+load = 0x80000000
+entry = 0x80002018
+
+[board]
+dongle = "gq977"        # DS1991 image inside the MAME ROM set
+
+[recomp]
+# Functions Ghidra cannot find (from the runtime's interpreter-fallback log)
+extra_entries = [0x8003c238, 0x8003bb0c]

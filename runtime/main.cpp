@@ -140,6 +140,7 @@ int main(int argc, char **argv) {
     cfg.family = machine["family"];
     cfg.rom_dir = root + "/dumps/" + game + "/rom";
     cfg.dongle_file = machine["dongle"];
+    if (!machine["cabinet"].empty()) cfg.cabinet = std::stoi(machine["cabinet"]);
     cfg.cd_master = machine["cd_master"];
     cfg.cd_slave = machine["cd_slave"];
     if (!nvram_given && window_scale) {

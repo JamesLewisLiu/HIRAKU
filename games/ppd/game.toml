@@ -1,0 +1,20 @@
+# ParaParaDancing (GQ977 KAA, Korea), Konami 2000
+id = "ppd"
+title = "ParaParaDancing"
+family = "ppp"
+mame = "ppd"
+
+[program]
+exe = "HIKARU.EXE"      # wrapped by the ParaPara "!:EXE:00" loader
+sha1 = "9808a6e2fee7a4cf9c6fedbb25746f64bb038c67"   # unpacked image, not the packed exe
+size = 0x100000
+load = 0x80000000
+entry = 0x80002018
+
+[board]
+dongle = "gq977-ko"     # DS1991 image inside the MAME ROM set (MAME: BAD_DUMP)
+cabinet = 0x9           # ParaPara cabinet, overseas region (MAME init_ppp_overseas)
+
+[recomp]
+# Functions Ghidra cannot find (from the runtime's interpreter-fallback log)
+extra_entries = [0x800450f4, 0x800449c8]
