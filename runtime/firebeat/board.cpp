@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <cstdio>
 #include <cstring>
+#include <deque>
 #include <fstream>
 #include <memory>
 #include <set>
@@ -34,6 +35,7 @@ namespace {
 Config g_cfg;
 Inputs g_in;
 K057714 *g_gcu = nullptr;
+K057714 *g_gcu2 = nullptr;          // Keyboardmania: the right screen's GCU
 AtaBus *g_ata = nullptr;
 Rtc65271 *g_rtc = nullptr;
 Flash29F016A *g_flash = nullptr;   // [3]: main, snd1, snd2
@@ -90,22 +92,42 @@ struct Uart {
     bool thre_int = false;      // transmitter-empty interrupt pending
     bool thr_empty = true;      // holding register
     bool tsr_busy = false;      // shift register sending a byte
+    bool overrun = false;
+    std::deque<uint8_t> rx;     // receive FIFO (16 bytes with FIFOs enabled, else 1)
     std::function<void(bool)> irq;
+    std::function<void(uint8_t)> on_tx;   // each transmitted byte (Keyboardmania: MIDI to the synth)
     Timer *tx = nullptr;
 
-    void update() { if (irq) irq((ier & 0x02) && thre_int); }
+    bool rx_int() const { return (ier & 0x01) && !rx.empty(); }
+    void update() { if (irq) irq(rx_int() || ((ier & 0x02) && thre_int)); }
+    void rx_push(uint8_t b) {                            // a byte arrives on RX
+        if (rx.size() >= ((fcr & 0x01) ? 16u : 1u)) { overrun = true; return; }
+        rx.push_back(b);
+        update();
+    }
     uint8_t read(int reg) {
         switch (reg) {
-        case 0: return (lcr & 0x80) ? dll : 0;
+        case 0: {
+            if (lcr & 0x80) return dll;
+            if (rx.empty()) return 0;
+            uint8_t b = rx.front();
+            rx.pop_front();
+            update();
+            return b;
+        }
         case 1: return (lcr & 0x80) ? dlm : ier;
-        case 2: {                                        // IIR: reading it clears a THRE interrupt
-            uint8_t iir = ((ier & 0x02) && thre_int) ? 0x02 : 0x01;
+        case 2: {                                        // IIR: received data first; reading it clears a THRE interrupt
+            uint8_t iir = rx_int() ? 0x04 : ((ier & 0x02) && thre_int) ? 0x02 : 0x01;
             if (iir == 0x02) { thre_int = false; update(); }
             return iir | ((fcr & 0x01) ? 0xc0 : 0x00);  // FIFOs enabled
         }
         case 3: return lcr;
         case 4: return mcr;
-        case 5: return (thr_empty ? 0x20 : 0) | (thr_empty && !tsr_busy ? 0x40 : 0);   // THRE, TEMT
+        case 5: {
+            uint8_t lsr = (rx.empty() ? 0 : 0x01) | (overrun ? 0x02 : 0) | (thr_empty ? 0x20 : 0) | (thr_empty && !tsr_busy ? 0x40 : 0);
+            overrun = false;
+            return lsr;
+        }
         case 6: return 0x00;
         default: return scr;
         }
@@ -114,6 +136,7 @@ struct Uart {
         switch (reg) {
         case 0:
             if (lcr & 0x80) { dll = v; break; }
+            if (on_tx) on_tx(v);
             if (!tsr_busy) {                             // straight into the shift register: THR empty again
                 tsr_busy = true;
                 thr_empty = true;
@@ -131,7 +154,13 @@ struct Uart {
             ier = v;
             update();
             break;
-        case 2: fcr = v & 0xc9; break;                   // FIFO control (reset bits self-clear)
+        case 2:                                          // FIFO control (reset bits self-clear)
+            fcr = v & 0xc9;
+            if ((v & 0x02) && !rx.empty()) {             // receive FIFO reset
+                rx.clear();
+                update();
+            }
+            break;
         case 3: lcr = v; break;
         case 4: mcr = v; break;
         case 7: scr = v; break;
@@ -153,6 +182,47 @@ Timer g_midi_tx0("midi-tx0", [] { g_midi[0].tx_done(); });
 Timer g_midi_tx1("midi-tx1", [] { g_midi[1].tx_done(); });
 Timer g_com_tx0("com-tx0", [] { g_com[0].tx_done(); });
 Timer g_com_tx1("com-tx1", [] { g_com[1].tx_done(); });
+
+// ---- Keyboardmania MIDI keyboards (MAME konami/midikbd.cpp) ------------------------
+// Every 10 ms each keyboard sends note on/off (90/80 nn 7f) for its changed keys,
+// or Active Sense (fe) when nothing changed, at 31250 baud into the extend board's
+// MIDI UARTs: left keyboard -> channel 1, right -> channel 0.
+struct MidiKbd {
+    uint32_t keys = 0, sent = 0;     // 24 keys, bit 0 = C1 (MIDI note 0x3c)
+    std::deque<uint8_t> q;
+    Uart *uart = nullptr;
+    Timer *byte = nullptr;
+} g_kbd[2];
+void kbd_byte(int k) {
+    MidiKbd &kb = g_kbd[k];
+    if (kb.q.empty()) return;
+    kb.uart->rx_push(kb.q.front());
+    kb.q.pop_front();
+    if (!kb.q.empty()) kb.byte->in(ticks_from_us(320));
+}
+Timer g_kbd_byte0("kbd0-byte", [] { kbd_byte(0); });
+Timer g_kbd_byte1("kbd1-byte", [] { kbd_byte(1); });
+void kbd_scan_fire();
+Timer g_kbd_scan("kbd-scan", kbd_scan_fire);
+void kbd_scan_fire() {
+    for (auto &kb : g_kbd) {
+        bool idle = kb.q.empty();
+        if (kb.keys == kb.sent) {
+            kb.q.push_back(0xfe);
+        } else {
+            for (int i = 0; i < 24; i++) {
+                uint32_t m = 1u << i;
+                if ((kb.sent & m) && !(kb.keys & m)) kb.q.insert(kb.q.end(), {0x80, (uint8_t)(0x3c + i), 0x7f});
+                else if (!(kb.sent & m) && (kb.keys & m)) kb.q.insert(kb.q.end(), {0x90, (uint8_t)(0x3c + i), 0x7f});
+            }
+        }
+        kb.sent = kb.keys;
+        if (idle && !kb.byte->armed()) kb.byte->in(ticks_from_us(320));
+    }
+    g_kbd_scan.in(ticks_from_us(10000));
+}
+uint8_t g_wheel[2] = {0x80, 0x80};
+uint64_t g_midi_out_bytes = 0;
 
 // ---- extend board interrupt latch -------------------------------------------
 // As in MAME: device callbacks drive the CPU's EXT1 line; the active bits are
@@ -282,7 +352,10 @@ uint32_t bus_read(uint32_t p, int size) {
         uint32_t r = g_gcu->read(p & 0xfc);
         return (r >> lane_shift(p, size)) & size_mask(size);
     }
-    if (p >= 0x7e800100 && p <= 0x7e8001ff) return 0;              // second GCU (Keyboardmania only)
+    if (p >= 0x7e800100 && p <= 0x7e8001ff) {                       // second GCU (Keyboardmania; else open)
+        if (!g_gcu2) return 0;
+        return (g_gcu2->read(p & 0xfc) >> lane_shift(p, size)) & size_mask(size);
+    }
     if (p >= 0x7fe00000 && p <= 0x7fe0000f) return ata_read(0, p, size);
     if (p >= 0x7fe80000 && p <= 0x7fe8000f) return ata_read(1, p, size);
     if (p >= 0x7e000000 && p <= 0x7e00003f) return bytes_read(p, size, 0x7e000000, [](uint32_t o) { return g_rtc->read(false, o); });
@@ -313,6 +386,12 @@ uint32_t bus_read(uint32_t p, int size) {
         return bytes_read(p, size, 0x74000000, [](uint32_t o) -> uint8_t { return g_dpram[o]; });
     }
     if (p >= 0x7000a000 && p <= 0x7000a003) return bytes_read(p, size, 0x7000a000, [](uint32_t) { return (uint8_t)~g_ext_irq_active; });
+    if (g_cfg.family == "kbm") {
+        if (p >= 0x70000000 && p <= 0x70000fff)                      // MIDI UARTs (keyboards, synth), lane 0 only
+            return (p & 3) == 0 ? (uint32_t)g_midi[((p - 0x70000000) >> 8) >> 3 & 1].read(((p - 0x70000000) >> 8) & 7) << (8 * (size - 1)) : 0;
+        if (p >= 0x70008000 && p <= 0x7000800f)                      // modulation wheels: P1 at +0, P2 at +8
+            return bytes_read(p, size, 0x70008000, [](uint32_t o) -> uint8_t { return o == 0 ? g_wheel[0] : o == 8 ? g_wheel[1] : 0; });
+    }
     if (g_cfg.family == "ppp" && p >= 0x7d000340 && p <= 0x7d00035f) {   // sensor bars: 16-bit
         uint32_t v = 0;
         for (uint32_t a = p & ~1u; a < p + size; a += 2) {
@@ -358,7 +437,13 @@ void bus_write(uint32_t p, uint32_t v, int size) {
         g_gcu->write(p & 0xfc, v << sh, size_mask(size) << sh);
         return;
     }
-    if (p >= 0x7e800100 && p <= 0x7e8001ff) return;
+    if (p >= 0x7e800100 && p <= 0x7e8001ff) {                       // other games' boot code writes here too
+        if (g_gcu2) {
+            uint32_t sh = lane_shift(p, size);
+            g_gcu2->write(p & 0xfc, v << sh, size_mask(size) << sh);
+        }
+        return;
+    }
     if (p >= 0x7fe00000 && p <= 0x7fe0000f) { ata_write(0, p, size, v); return; }
     if (p >= 0x7fe80000 && p <= 0x7fe8000f) { ata_write(1, p, size, v); return; }
     if (p >= 0x7e000000 && p <= 0x7e00003f) { bytes_write(p, size, v, 0x7e000000, [](uint32_t o, uint8_t b) { g_rtc->write(false, o, b); }); return; }
@@ -377,7 +462,10 @@ void bus_write(uint32_t p, uint32_t v, int size) {
     }
     if (p >= 0x7d000500 && p <= 0x7d000501) {                       // control
         uint8_t d = (uint8_t)v;
-        if ((d & 1) != (g_control & 1)) g_gcu->set_pixclock((d & 1) ? 16'666'600.0 : 25'175'000.0);
+        if ((d & 1) != (g_control & 1)) {
+            g_gcu->set_pixclock((d & 1) ? 16'666'600.0 : 25'175'000.0);
+            if (g_gcu2) g_gcu2->set_pixclock((d & 1) ? 16'666'600.0 : 25'175'000.0);
+        }
         g_control = d;
         return;
     }
@@ -399,6 +487,10 @@ void bus_write(uint32_t p, uint32_t v, int size) {
         return;
     }
     if (g_cfg.family == "ppp" && p >= 0x7d000300 && p <= 0x7d00033f) return;   // written at boot; unmapped in MAME too
+    if (g_cfg.family == "kbm" && p >= 0x70000000 && p <= 0x70000fff) {
+        if ((p & 3) == 0) g_midi[((p - 0x70000000) >> 8) >> 3 & 1].write(((p - 0x70000000) >> 8) & 7, (uint8_t)(v >> (8 * (size - 1))));
+        return;
+    }
     if (g_cfg.family == "bm3") {
         if (p >= 0x7d000330 && p <= 0x7d00033f) return;
         if (p >= 0x70000000 && p <= 0x70000fff) {
@@ -495,12 +587,30 @@ void vblank_fire() {
     g_gcu->vblank(true);
     if (g_frame_hook) {
         int w = g_gcu->hvisible(), h = g_gcu->vvisible();
-        g_fb.resize((size_t)w * h);
+        if (!g_gcu2) {
+            g_fb.resize((size_t)w * h);
+            {
+                prof::Scope ps(prof::DRAW);
+                g_gcu->draw(g_fb.data(), w, h);
+            }
+            g_frame_hook(g_frame, g_fb.data(), w, h);
+            return;
+        }
+        // Keyboardmania: two portrait monitors (MAME ROT270), left and right side by side;
+        // each w x h screen becomes h x w, (x, y) -> (y, w - 1 - x)
+        static std::vector<uint32_t> half;
+        const int ow = 2 * h;
+        g_fb.resize((size_t)ow * w);
+        half.resize((size_t)w * h);
         {
             prof::Scope ps(prof::DRAW);
-            g_gcu->draw(g_fb.data(), w, h);
+            for (int k = 0; k < 2; k++) {
+                (k ? g_gcu2 : g_gcu)->draw(half.data(), w, h);
+                for (int y = 0; y < h; y++)
+                    for (int x = 0; x < w; x++) g_fb[(size_t)(w - 1 - x) * ow + (size_t)k * h + y] = half[(size_t)y * w + x];
+            }
         }
-        g_frame_hook(g_frame, g_fb.data(), w, h);
+        g_frame_hook(g_frame, g_fb.data(), ow, w);
     }
 }
 
@@ -520,6 +630,10 @@ void init(const Config &cfg) {
         g_in.in[2] = 0x55;                            // IN2: switch 9, coin, test, service released; the rest active high
     }
     if (cfg.family == "ppp") g_in.in[0] = 0x7f;    // IN0: buttons, test, service, coin, start released; bit 7 active high
+    if (cfg.family == "kbm") {                      // MAME `kbm` ports, nothing pressed
+        g_in.in[0] = 0xff;                            // IN0: starts, test, service, coin (active low)
+        g_in.in[2] = 0xfe;                            // IN2: e-Amusement bit 0 active high, the rest active low
+    }
     g_gcu = new K057714;
     g_ata = new AtaBus;
     g_rtc = new Rtc65271;
@@ -548,6 +662,31 @@ void init(const Config &cfg) {
     g_ata->log = cfg.ata_log;
 
     g_gcu->irq = [](bool on) { cpu403::set_irq_line(cpu403::irq_ext(0), on); };
+    if (cfg.family == "kbm") {
+        // MAME firebeat_kbm: a second GCU (no vblank of its own), MIDI keyboards on
+        // the extend board's UART receivers (left -> ch1 -> bit 0x01, right -> ch0 ->
+        // bit 0x02), and channel 1's transmitter to the XT446 synth card
+        g_gcu2 = new K057714;
+        g_gcu2->irq = [](bool on) { cpu403::set_irq_line(cpu403::irq_ext(0), on); };
+        g_midi[0].irq = [](bool on) {
+            if (!(g_ext_irq_enable & 0x02) && on) {
+                g_ext_irq_active |= 0x02;
+                ext1_line(true);
+            } else {
+                ext1_line(false);
+            }
+        };
+        g_kbd[0].uart = &g_midi[1];
+        g_kbd[0].byte = &g_kbd_byte0;
+        g_kbd[1].uart = &g_midi[0];
+        g_kbd[1].byte = &g_kbd_byte1;
+        g_kbd_scan.in(ticks_from_us(10000));
+        static bool log_midi = getenv("HK_MIDI_LOG") != nullptr;
+        g_midi[1].on_tx = [](uint8_t b) {
+            g_midi_out_bytes++;
+            if (log_midi) fprintf(stderr, "midi> %02x\n", b);
+        };
+    }
     g_ata->irq = [](bool on) { cpu403::set_irq_line(cpu403::irq_ext(4), on); };
 
     auto master = std::make_unique<AtapiDrive>("cd0");
@@ -584,8 +723,8 @@ void init(const Config &cfg) {
             g_flash[k].data() = f;
     }
 
-    // JP, non-rental (all known beatmania III and pop'n data); ParaPara adds bit 3
-    g_cabinet_info = cfg.cabinet >= 0 ? (uint32_t)cfg.cabinet : cfg.family == "ppp" ? 0x8 : 0;
+    // JP, non-rental; ParaPara adds bit 3, Keyboardmania bit 1 (MAME init_*_jp)
+    g_cabinet_info = cfg.cabinet >= 0 ? (uint32_t)cfg.cabinet : cfg.family == "ppp" ? 0x8 : cfg.family == "kbm" ? 0x2 : 0;
     g_ext_irq_enable = 0x3f;
     g_ext_irq_active = 0;
     memset(g_dpram, 0, sizeof g_dpram);
@@ -637,6 +776,35 @@ bool set_input(const std::string &name0, int value) {
     auto low16 = [&](uint16_t &p, uint16_t bit) { p = value ? (p & ~bit) : (p | bit); };
     auto low8 = [&](uint8_t &p, uint8_t bit) { p = value ? (p & ~bit) : (p | bit); };
     auto high8 = [&](uint8_t &p, uint8_t bit) { p = value ? (p | bit) : (p & ~bit); };
+    if (g_cfg.family == "kbm") {
+        // MAME's `kbm` ports; keys "P1 Key 1".."P1 Key 24" (or MAME's "P1 C1".."P1 B2"),
+        // likewise P2; wheels "P1 Wheel"/"P2 Wheel" take 0-255
+        static const char *notes[12] = {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"};
+        if ((name.rfind("P1 ", 0) == 0 || name.rfind("P2 ", 0) == 0)) {
+            int pl = name[1] - '1';
+            std::string rest = name.substr(3);
+            int key = -1;
+            if (rest.rfind("Key ", 0) == 0) key = std::stoi(rest.substr(4)) - 1;
+            else if (rest == "Wheel") { g_wheel[pl] = (uint8_t)std::clamp(value, 0, 255); return true; }
+            else
+                for (int k = 0; k < 24; k++) {           // MAME's names: letter, octave, then '#' ("C1#")
+                    std::string n = std::string(1, notes[k % 12][0]) + std::to_string(k / 12 + 1) + (notes[k % 12][1] ? "#" : "");
+                    if (rest == n) key = k;
+                }
+            if (key < 0 || key > 23) return false;
+            if (value) g_kbd[pl].keys |= 1u << key;
+            else g_kbd[pl].keys &= ~(1u << key);
+            if (value) note_input_change();
+            return true;
+        }
+        if (name == "1 Player Start") low8(g_in.in[0], 0x01);
+        else if (name == "2 Players Start") low8(g_in.in[0], 0x02);
+        else if (name == "Test" || name == "Service Mode") low8(g_in.in[0], 0x04);
+        else if (name == "Service") low8(g_in.in[0], 0x08);
+        else if (name == "Coin 1") low8(g_in.in[0], 0x10);
+        else return false;
+        return true;
+    }
     if (g_cfg.family == "ppp") {
         // MAME's `ppp` ports: IN0 = left, right, test, service, coin, start (active low);
         // "P1 Button 3".."10" = sensor bars 1-8, each raising its three sensors together
@@ -707,6 +875,7 @@ void turntable_add(int player, int delta) {
 void set_frame_hook(FrameHook h) { g_frame_hook = std::move(h); }
 void set_audio_sink(AudioSink sink) { g_audio_sink = std::move(sink); }
 uint64_t ymz_key_ons() { return g_ymz ? g_ymz->key_ons : 0; }
+uint64_t midi_out_bytes() { return g_midi_out_bytes; }
 uint64_t frame_count() { return g_frame; }
 void set_trace_ctx(hk_ctx *c) { g_ctx_for_trace = c; }
 

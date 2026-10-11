@@ -20,7 +20,8 @@ namespace hk {
 class DiscImage {
 public:
     struct Track {
-        uint32_t start = 0, frames = 0;   // logical sectors
+        uint32_t start = 0, frames = 0;   // logical sectors (start: INDEX 01, after any PREGAP)
+        uint32_t file_start = 0;          // position of INDEX 01 in the file, in sectors
         bool audio = false;
         uint32_t size = 2048, skip = 0;   // bytes per sector in the file, header bytes before the user data
         uint64_t offset = 0;              // file offset of the track's first sector

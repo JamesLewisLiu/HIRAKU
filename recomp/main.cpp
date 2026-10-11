@@ -203,7 +203,8 @@ struct Emitter {
             if ((i.op == Op::b || i.op == Op::bc) && !i.lk && inside(i.target)) labels.insert(i.target);
         }
         for (auto &[at, ts] : f.jumptables)
-            for (uint32_t t : ts) labels.insert(t);
+            for (uint32_t t : ts)
+                if (inside(t)) labels.insert(t);
         // a range that ends by falling through continues at the next range
         for (auto [lo, hi] : f.ranges)
             if (inside(hi)) labels.insert(hi);
@@ -285,8 +286,10 @@ struct Emitter {
                   << "HK_CALL_IND(c, t, " << hex(next) << "); }";
             } else if (f.jumptables.count(a)) {
                 o << guard << "switch (c->ctr & ~3u) {";
-                for (uint32_t t : std::set<uint32_t>(f.jumptables.at(a).begin(), f.jumptables.at(a).end()))
-                    o << " case " << hex(t) << ": goto " << lbl(t) << ";";
+                for (uint32_t t : std::set<uint32_t>(f.jumptables.at(a).begin(), f.jumptables.at(a).end())) {
+                    if (inside(t)) o << " case " << hex(t) << ": goto " << lbl(t) << ";";
+                    else o << " case " << hex(t) << ": hk_jump(c, " << hex(t) << "); return;";   // a case Ghidra split off
+                }
                 o << " default: hk_jump(c, c->ctr & ~3u); return; }";
             } else {
                 o << guard << "{ hk_jump(c, c->ctr & ~3u); return; }";

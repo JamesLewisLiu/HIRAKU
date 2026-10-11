@@ -82,6 +82,38 @@ const char *DEFAULTS_PPP =
     "Test = key:F2\n"
     "Service = key:9\n";
 
+// Keyboardmania: player 1's 24 keys (C1..B2) on two letter rows, as MAME maps them
+const char *DEFAULTS_KBM =
+    "P1 Key 1 = key:Q\n"
+    "P1 Key 2 = key:W\n"
+    "P1 Key 3 = key:E\n"
+    "P1 Key 4 = key:R\n"
+    "P1 Key 5 = key:T\n"
+    "P1 Key 6 = key:Y\n"
+    "P1 Key 7 = key:U\n"
+    "P1 Key 8 = key:I\n"
+    "P1 Key 9 = key:O\n"
+    "P1 Key 10 = key:A\n"
+    "P1 Key 11 = key:S\n"
+    "P1 Key 12 = key:D\n"
+    "P1 Key 13 = key:F\n"
+    "P1 Key 14 = key:G\n"
+    "P1 Key 15 = key:H\n"
+    "P1 Key 16 = key:J\n"
+    "P1 Key 17 = key:K\n"
+    "P1 Key 18 = key:L\n"
+    "P1 Key 19 = key:Z\n"
+    "P1 Key 20 = key:X\n"
+    "P1 Key 21 = key:C\n"
+    "P1 Key 22 = key:V\n"
+    "P1 Key 23 = key:B\n"
+    "P1 Key 24 = key:N\n"
+    "1 Player Start = key:1\n"
+    "2 Players Start = key:2\n"
+    "Coin 1 = key:5\n"
+    "Test = key:F2\n"
+    "Service = key:9\n";
+
 std::string trim(std::string s) {
     while (!s.empty() && isspace((unsigned char)s.back())) s.pop_back();
     size_t i = 0;
@@ -166,7 +198,7 @@ int joy_index(SDL_JoystickID id) {
 void input_init(const std::string &file) {
     SDL_InitSubSystem(SDL_INIT_JOYSTICK);
     const std::string &fam = fb::family();
-    load_text(fam == "popn" ? DEFAULTS_POPN : fam == "ppp" ? DEFAULTS_PPP : DEFAULTS_BM3, "defaults");
+    load_text(fam == "popn" ? DEFAULTS_POPN : fam == "ppp" ? DEFAULTS_PPP : fam == "kbm" ? DEFAULTS_KBM : DEFAULTS_BM3, "defaults");
     if (!file.empty()) {
         std::ifstream in(file);
         if (in) load_text(std::string((std::istreambuf_iterator<char>(in)), {}), file.c_str());

@@ -56,6 +56,7 @@ def main() -> int:
     nopoll = [(lo, hi) for lo, hi in rc.get("nopoll", [])]
 
     funcs = {h(f["entry"]): f for f in man["functions"]}
+    base, end = h(man["base"]), h(man["end"])
     entries = set(funcs)
     owner: dict[int, int] = {}          # word address -> function entry
     for e, f in funcs.items():
@@ -78,6 +79,14 @@ def main() -> int:
                     problems += 1
                     print(f"{kind:5s} {e:08x} -> {t:08x} is outside every function")
         for jt in f.get("jumptables", []):
+            # Ghidra occasionally misreads a table (kbm: the bctr word itself as the
+            # one "target"); keep only aligned addresses inside the image. A dropped
+            # case still runs: the switch's default dispatches dynamically.
+            good = [t for t in jt["targets"] if base <= h(t) < end and h(t) % 4 == 0]
+            if len(good) != len(jt["targets"]):
+                print(f"jt    {e:08x}: bctr at {jt['at']}: dropped bogus targets "
+                      + " ".join(t for t in jt["targets"] if t not in good))
+                jt["targets"] = good
             if not jt["targets"]:
                 problems += 1
                 print(f"jt    {e:08x}: bctr at {jt['at']} unresolved")

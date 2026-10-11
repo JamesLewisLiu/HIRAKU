@@ -124,3 +124,28 @@ With `--window` both are saved to `~/.local/share/hiraku/ppp1mp`.
 | 1 | start / OK |
 | 5 | coin |
 | F2 / 9 | test / service |
+
+## Keyboardmania 1st/2nd/3rd, Keyboardheaven (in progress, M10)
+
+Each game needs its two discs (the program CD and a second disc with CD audio) and its MAME ROM set (`kbm`, `kbh`, `kbm2nd`, `kbm3rd`):
+
+```bash
+tools/ingest.py gq974-ja-c01.cue --cd2 gq974-ja-a02.cue --romset kbm.7z
+analyze/ghidra.sh kbm && analyze/prep.py kbm && ninja -C build/cmake hiraku-kbm
+```
+
+**Screens:** both portrait monitors are shown side by side (MAME's ROT270).
+
+**First boot:** the backup data is blank (E161) and, on some versions, the sound flash too. Press **F2** for test mode:
+- **1 / 2** move the cursor;
+- **1 + 2 together** enter an item;
+- **BACKUP CLEAR**, then **1** to confirm, sets the defaults.
+
+| Key | Action |
+|---|---|
+| Q W E R T Y U I O A S D F G H J K L Z X C V B N | player 1's 24 keys (C1–B2) |
+| 1 / 2 | 1P / 2P start |
+| 5 | coin |
+| F2 / 9 | test / service |
+
+**Status:** all four boot to attract mode, fully native, with CD and YMZ280B sound. The XT446 synth card (keyboard notes) is not emulated yet. `HK_MIDI_LOG=1` prints the MIDI the game sends it.

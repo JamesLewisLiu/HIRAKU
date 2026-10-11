@@ -56,6 +56,7 @@ void set_frame_hook(FrameHook h);
 using AudioSink = std::function<void(const float *lr, int frames)>;
 void set_audio_sink(AudioSink sink);
 uint64_t ymz_key_ons();
+uint64_t midi_out_bytes();         // Keyboardmania: bytes sent to the synth card
 uint64_t frame_count();
 void set_trace_ctx(hk_ctx *c);   // PCs in the MMIO trace come from here
 

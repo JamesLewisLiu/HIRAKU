@@ -1,0 +1,19 @@
+# Keyboardmania 3rd Mix (GCA12 JA), Konami 2001
+id = "kbm3rd"
+title = "Keyboardmania 3rd Mix"
+family = "kbm"
+mame = "kbm3rd"
+
+[program]
+exe = "FIREBEAT.EXE"
+sha1 = "ca83a0d6f912bdeaf8988d073883d6848b4c2741"   # unpacked image, not the packed exe
+size = 0x100000
+load = 0x80000000
+entry = 0x80002018
+
+[board]
+dongle = "gca12-ja_gca12-aa.bin"   # DS1991 image inside the MAME ROM set
+
+[recomp]
+# Functions Ghidra cannot find (from the runtime's interpreter-fallback log)
+extra_entries = [0x800540a0, 0x80053c98, 0x8002d470]

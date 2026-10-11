@@ -1,0 +1,16 @@
+# Keyboardheaven (GU974 KA, Korea), Konami 2000
+id = "kbh"
+title = "Keyboardheaven"
+family = "kbm"
+mame = "kbh"
+
+[program]
+exe = "HIKARU.EXE"
+sha1 = "d47ab5fa356c85af66f103348aaab0a3252a25b2"   # unpacked image, not the packed exe
+size = 0x80000
+load = 0x80080000      # older format: the BIOS loads it above the first 512 KB
+entry = 0x80083000
+
+[board]
+dongle = "gu974"        # DS1991 image inside the MAME ROM set
+cabinet = 0x3           # Keyboardmania cabinet, overseas region (MAME init_kbm_overseas)

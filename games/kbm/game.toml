@@ -1,0 +1,19 @@
+# Keyboardmania (GQ974 JA), Konami 2000
+id = "kbm"
+title = "Keyboardmania"
+family = "kbm"
+mame = "kbm"
+
+[program]
+exe = "HIKARU.EXE"
+sha1 = "57fd9a7155c0ee6756abad31e3ce71d169732b7c"   # unpacked image, not the packed exe
+size = 0x80000
+load = 0x80080000      # older format: the BIOS loads it above the first 512 KB
+entry = 0x80083000
+
+[board]
+dongle = "gq974"        # DS1991 image inside the MAME ROM set
+
+[recomp]
+# Functions Ghidra cannot find (from the runtime's interpreter-fallback log)
+extra_entries = [0x800bea18, 0x800bffe8]

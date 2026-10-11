@@ -27,6 +27,7 @@ bool DiscImage::parse_cue(const std::string &cue, std::string &bin) {
     FILE *c = fopen(cue.c_str(), "r");
     if (!c) return false;
     char line[1024];
+    uint32_t pregap = 0;
     tracks_.clear();
     while (fgets(line, sizeof line, c)) {
         char *t = line;
@@ -45,7 +46,13 @@ bool DiscImage::parse_cue(const std::string &cue, std::string &bin) {
             tracks_.push_back(tr);
         } else if (strncmp(t, "INDEX 01", 8) == 0 && !tracks_.empty()) {
             int m = 0, sec = 0, f = 0;
-            if (sscanf(t + 8, "%d:%d:%d", &m, &sec, &f) == 3) tracks_.back().start = (uint32_t)((m * 60 + sec) * 75 + f);
+            if (sscanf(t + 8, "%d:%d:%d", &m, &sec, &f) == 3) {
+                tracks_.back().file_start = (uint32_t)((m * 60 + sec) * 75 + f);
+                tracks_.back().start = tracks_.back().file_start + pregap;
+            }
+        } else if (strncmp(t, "PREGAP", 6) == 0 && !tracks_.empty()) {
+            int m = 0, sec = 0, f = 0;   // silence before the track that isn't in the file: shifts later LBAs
+            if (sscanf(t + 6, "%d:%d:%d", &m, &sec, &f) == 3) pregap += (uint32_t)((m * 60 + sec) * 75 + f);
         }
     }
     fclose(c);
@@ -87,12 +94,12 @@ bool DiscImage::open(const std::string &path0) {
         uint64_t off = 0;
         for (size_t k = 0; k < tracks_.size(); k++) {
             Track &t = tracks_[k];
-            if (k) off += (uint64_t)(t.start - tracks_[k - 1].start) * tracks_[k - 1].size;
+            if (k) off += (uint64_t)(t.file_start - tracks_[k - 1].file_start) * tracks_[k - 1].size;
             t.offset = off;
         }
         Track &last = tracks_.back();
         last.frames = size > last.offset ? (uint32_t)((size - last.offset) / last.size) : 0;
-        for (size_t k = 0; k + 1 < tracks_.size(); k++) tracks_[k].frames = tracks_[k + 1].start - tracks_[k].start;
+        for (size_t k = 0; k + 1 < tracks_.size(); k++) tracks_[k].frames = tracks_[k + 1].file_start - tracks_[k].file_start;
         nsectors_ = last.start + last.frames;
         return true;
     }
@@ -121,7 +128,7 @@ bool DiscImage::read_sector(uint32_t lba, uint8_t *out) const {
     prof::Scope ps(prof::DISK);
     if (lba >= nsectors_) return false;
     const Track &t = tracks_[track_of(lba)];
-    if (t.audio) return false;
+    if (t.audio || lba - t.start >= t.frames) return false;
     fseeko(f_, (off_t)(t.offset + (uint64_t)(lba - t.start) * t.size + t.skip), SEEK_SET);
     return fread(out, 1, 2048, f_) == 2048;
 }
@@ -143,7 +150,7 @@ bool DiscImage::read_audio(uint32_t lba, uint8_t *out) const {
     prof::Scope ps(prof::DISK);
     if (lba >= nsectors_) return false;
     const Track &t = tracks_[track_of(lba)];
-    if (!t.audio) return false;
+    if (!t.audio || lba - t.start >= t.frames) return false;   // data, or a pregap: silence
     fseeko(f_, (off_t)(t.offset + (uint64_t)(lba - t.start) * t.size), SEEK_SET);
     return fread(out, 1, 2352, f_) == 2352;
 }

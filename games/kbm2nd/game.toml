@@ -1,0 +1,19 @@
+# Keyboardmania 2nd Mix (GCA01 JA), Konami 2000
+id = "kbm2nd"
+title = "Keyboardmania 2nd Mix"
+family = "kbm"
+mame = "kbm2nd"
+
+[program]
+exe = "FIREBEAT.EXE"
+sha1 = "7fd178e473c1e94546a104101ab55f25b2540cbc"   # unpacked image, not the packed exe
+size = 0x100000
+load = 0x80000000
+entry = 0x80002018
+
+[board]
+dongle = "gca01ja_gca01aa"   # DS1991 image inside the MAME ROM set
+
+[recomp]
+# Functions Ghidra cannot find (from the runtime's interpreter-fallback log)
+extra_entries = [0x8005433c, 0x80053f34]

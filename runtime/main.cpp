@@ -51,6 +51,9 @@
 #ifndef HK_ROOT
 #define HK_ROOT "."
 #endif
+#ifndef HK_LOAD
+#define HK_LOAD 0x80000000u   // where the BIOS puts the program (Keyboardmania 1st: 0x80080000)
+#endif
 #ifndef HK_ENTRY
 #define HK_ENTRY 0x80003000u
 #endif
@@ -133,7 +136,7 @@ int main(int argc, char **argv) {
     }
 
     ram_init();
-    if (!ram_load(image, 0)) { fprintf(stderr, "cannot load %s\n", image.c_str()); return 1; }
+    if (!ram_load(image, HK_PHYS(HK_LOAD))) { fprintf(stderr, "cannot load %s\n", image.c_str()); return 1; }
 
     fb::Config cfg;
     cfg.game = game;
@@ -232,6 +235,7 @@ int main(int argc, char **argv) {
             printf("shadow: %llu identical, %llu MISMATCHED, %llu impure\n", (unsigned long long)g_stats.shadow_ok,
                    (unsigned long long)g_stats.shadow_bad, (unsigned long long)g_stats.shadow_impure);
         if (!spu::present()) printf("ymz280b: %llu key-ons\n", (unsigned long long)fb::ymz_key_ons());
+        if (fb::family() == "kbm") printf("midi to the synth: %llu bytes\n", (unsigned long long)fb::midi_out_bytes());
         if (spu::present()) {
             auto &st = spu::stats();
             printf("spu: pc %06x sr %04x, %.2f M 68000 cycles, IRQ2 %llu IRQ4 %llu IRQ6 %llu, %llu ATA commands, %.1f MiB DMA, %llu key-ons\n",

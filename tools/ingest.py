@@ -87,6 +87,11 @@ def main() -> int:
     else:
         gid = game["id"]
         print(f"game     {gid}: {game['title']}")
+        load = game["program"].get("load", fbexe.LOAD_ADDR)
+        if load != prog.load_addr:   # an older program the BIOS puts elsewhere (Keyboardmania 1st)
+            prog = fbexe.Program(prog.image, load, fbexe.branch_target(
+                int.from_bytes(prog.image[-4:], "big"), load + len(prog.image) - 4), prog.ppp_wrapped)
+            print(f"load     {load:#010x} (from games/{gid}/game.toml), entry {prog.entry:#010x}")
         if game["program"]["entry"] != prog.entry:
             print(f"WARNING  game.toml entry {game['program']['entry']:#x} != decoded {prog.entry:#x}")
 
