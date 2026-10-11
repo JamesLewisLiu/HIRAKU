@@ -68,6 +68,20 @@ const char *DEFAULTS_POPN =
     "Test = key:F2\n"
     "Service = key:9\n";
 
+// ParaParaParadise: the five sensor bars left to right, plus the two buttons
+const char *DEFAULTS_PPP =
+    "P1 Button 3 = key:Z, joy0:button0\n"
+    "P1 Button 4 = key:X, joy0:button1\n"
+    "P1 Button 5 = key:C, joy0:button2\n"
+    "P1 Button 6 = key:V, joy0:button3\n"
+    "P1 Button 7 = key:B, joy0:button4\n"
+    "P1 Button 1 = key:Left, joy0:button5\n"
+    "P1 Button 2 = key:Right, joy0:button6\n"
+    "1 Player Start = key:1, joy0:button8\n"
+    "Coin 1 = key:5, joy0:button9\n"
+    "Test = key:F2\n"
+    "Service = key:9\n";
+
 std::string trim(std::string s) {
     while (!s.empty() && isspace((unsigned char)s.back())) s.pop_back();
     size_t i = 0;
@@ -151,7 +165,8 @@ int joy_index(SDL_JoystickID id) {
 
 void input_init(const std::string &file) {
     SDL_InitSubSystem(SDL_INIT_JOYSTICK);
-    load_text(fb::family() == "popn" ? DEFAULTS_POPN : DEFAULTS_BM3, "defaults");
+    const std::string &fam = fb::family();
+    load_text(fam == "popn" ? DEFAULTS_POPN : fam == "ppp" ? DEFAULTS_PPP : DEFAULTS_BM3, "defaults");
     if (!file.empty()) {
         std::ifstream in(file);
         if (in) load_text(std::string((std::istreambuf_iterator<char>(in)), {}), file.c_str());

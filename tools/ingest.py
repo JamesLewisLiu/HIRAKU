@@ -47,6 +47,7 @@ def main() -> int:
     ap.add_argument("--romset", metavar="ZIP", help="MAME ROM set zip to copy into dumps/<game>/rom/")
     ap.add_argument("--hdd", metavar="IMG", help="raw HDD image on the SPU's ATA bus (beatmania III)")
     ap.add_argument("--dvd", metavar="ISO", help="DVD image on the SPU's ATA bus (pop'n music)")
+    ap.add_argument("--cd2", metavar="CUE", help="second disc on the main ATA bus (ParaParaParadise audio CD)")
     args = ap.parse_args()
 
     if args.exe:
@@ -110,11 +111,13 @@ def main() -> int:
         machine["cd_master"] = os.path.abspath(args.disc)
     if spu.get("rom"):
         machine["spu_rom"] = spu["rom"]
+    if args.cd2:
+        machine["cd_slave"] = os.path.abspath(args.cd2)
     if args.hdd:
         machine["spu_hdd"] = os.path.abspath(args.hdd)
     if args.dvd:
         machine["spu_dvd"] = os.path.abspath(args.dvd)
-    order = ["family", "dongle", "cd_master", "spu_rom", "spu_hdd", "spu_dvd"]
+    order = ["family", "dongle", "cd_master", "cd_slave", "spu_rom", "spu_hdd", "spu_dvd"]
     with open(machine_path, "w") as fh:
         for k in order + sorted(set(machine) - set(order)):
             if k in machine:

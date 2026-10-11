@@ -301,6 +301,15 @@ uint32_t bus_read(uint32_t p, int size) {
         return bytes_read(p, size, 0x74000000, [](uint32_t o) -> uint8_t { return g_dpram[o]; });
     }
     if (p >= 0x7000a000 && p <= 0x7000a003) return bytes_read(p, size, 0x7000a000, [](uint32_t) { return (uint8_t)~g_ext_irq_active; });
+    if (g_cfg.family == "ppp" && p >= 0x7d000340 && p <= 0x7d00035f) {   // sensor bars: 16-bit
+        uint32_t v = 0;
+        for (uint32_t a = p & ~1u; a < p + size; a += 2) {
+            uint32_t o = (a - 0x7d000340) >> 1;
+            v = (v << 16) | (o < 4 ? (uint16_t)(g_in.sensor[o] | 0x100) : 0);
+        }
+        if (size == 1) v = (p & 1) ? (v & 0xff) : (v >> 8);
+        return v;
+    }
     if (g_cfg.family == "bm3") {
         if (p >= 0x7d000340 && p <= 0x7d00035f) {                  // sensors: 16-bit
             uint32_t v = 0;
@@ -448,6 +457,7 @@ bool read_file(const std::string &path, std::vector<uint8_t> &out) {
 void init(const Config &cfg) {
     g_cfg = cfg;
     if (cfg.family == "popn") g_in.in[2] = 0x55;   // IN2: switch 9, coin, test, service released; the rest active high
+    if (cfg.family == "ppp") g_in.in[0] = 0x7f;    // IN0: buttons, test, service, coin, start released; bit 7 active high
     g_gcu = new K057714;
     g_ata = new AtaBus;
     g_rtc = new Rtc65271;
@@ -512,7 +522,8 @@ void init(const Config &cfg) {
             g_flash[k].data() = f;
     }
 
-    g_cabinet_info = 0;   // JP, non-rental (all known beatmania III data)
+    // JP, non-rental (all known beatmania III and pop'n data); ParaPara adds bit 3
+    g_cabinet_info = cfg.family == "ppp" ? 0x8 : 0;
     g_ext_irq_enable = 0x3f;
     g_ext_irq_active = 0;
     memset(g_dpram, 0, sizeof g_dpram);
@@ -557,6 +568,28 @@ bool set_input(const std::string &name0, int value) {
     auto low16 = [&](uint16_t &p, uint16_t bit) { p = value ? (p & ~bit) : (p | bit); };
     auto low8 = [&](uint8_t &p, uint8_t bit) { p = value ? (p & ~bit) : (p | bit); };
     auto high8 = [&](uint8_t &p, uint8_t bit) { p = value ? (p | bit) : (p & ~bit); };
+    if (g_cfg.family == "ppp") {
+        // MAME's `ppp` ports: IN0 = left, right, test, service, coin, start (active low);
+        // "P1 Button 3".."10" = sensor bars 1-8, each raising its three sensors together
+        static const struct { uint8_t word; uint16_t bits; } bars[8][2] = {
+            {{0, 0x0007}, {0, 0}}, {{0, 0x0038}, {0, 0}}, {{0, 0x00c0}, {1, 0x0001}}, {{1, 0x000e}, {0, 0}},
+            {{2, 0x0007}, {0, 0}}, {{2, 0x0038}, {0, 0}}, {{2, 0x00c0}, {3, 0x0001}}, {{3, 0x000e}, {0, 0}}};
+        if (name == "P1 Button 1") low8(g_in.in[0], 0x01);
+        else if (name == "P1 Button 2") low8(g_in.in[0], 0x02);
+        else if (name.rfind("P1 Button ", 0) == 0) {
+            int k = std::stoi(name.substr(10));
+            if (k < 3 || k > 10) return false;
+            for (auto &b : bars[k - 3])
+                if (b.bits) g_in.sensor[b.word] = value ? (g_in.sensor[b.word] | b.bits) : (g_in.sensor[b.word] & ~b.bits);
+            if (value) note_input_change();
+        }
+        else if (name == "Test" || name == "Service Mode") low8(g_in.in[0], 0x04);
+        else if (name == "Service") low8(g_in.in[0], 0x08);
+        else if (name == "Coin 1") low8(g_in.in[0], 0x10);
+        else if (name == "1 Player Start") low8(g_in.in[0], 0x20);
+        else return false;
+        return true;
+    }
     if (g_cfg.family == "popn") {
         // MAME's `popn` ports: IN0 = switches 1-8, IN2 = switch 9, coin, test, service (all active low)
         if (name.rfind("P1 Button ", 0) == 0) {

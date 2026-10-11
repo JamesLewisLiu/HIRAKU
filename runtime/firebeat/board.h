@@ -29,6 +29,7 @@ struct Inputs {
     uint16_t io[4] = {0x003f, 0x0001, 0x003f, 0xffff};
     uint16_t turntable[2] = {0, 0};
     uint8_t effect[7] = {};
+    uint16_t sensor[4] = {};                        // ParaParaParadise sensor bars (active high)
 };
 
 void init(const Config &cfg);

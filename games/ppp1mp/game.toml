@@ -1,0 +1,19 @@
+# ParaParaParadise 1st Mix Plus (GQA11 JAA), Konami 2000
+id = "ppp1mp"
+title = "ParaParaParadise 1st Mix Plus"
+family = "ppp"
+mame = "ppp1mp"
+
+[program]
+exe = "HIKARU.EXE"      # wrapped by the ParaPara "!:EXE:00" loader
+sha1 = "636a46f6d7105a40a87abd1c5617e745f0b46c5c"   # unpacked image, not the packed exe
+size = 0x100000
+load = 0x80000000
+entry = 0x80002018
+
+[board]
+dongle = "gqa11-ja"     # DS1991 image inside the MAME ROM set (MAME: BAD_DUMP)
+
+[recomp]
+# Functions Ghidra cannot find (from the runtime's interpreter-fallback log)
+extra_entries = [0x800453c0, 0x80044c94]
