@@ -1,0 +1,13 @@
+# Nothing derived from a game is ever committed: dumps, unpacked programs,
+# generated C, traces, snapshots.
+/dumps/
+/build/
+/out/
+*.bin
+*.iso
+*.chd
+*.img
+*.gpr
+*.rep/
+__pycache__/
+*.pyc

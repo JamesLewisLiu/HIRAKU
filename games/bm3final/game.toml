@@ -1,0 +1,15 @@
+# beatmania III The Final (GCC01-JC), Konami 2002
+id = "bm3final"
+title = "beatmania III The Final"
+family = "bm3"          # bm3 | popn | ppp | kbm  - selects the board variant
+mame = "bm3final"       # MAME set name, used by the oracle
+
+[program]
+exe = "HIKARU.EXE"
+sha1 = "1b5bd916011107a82f5324558f60c1cbb144c0e3"   # unpacked image, not the packed exe
+size = 0x100000
+load = 0x80000000
+entry = 0x80003000
+
+[spu]
+rom = "a21jca03.3q"     # 68000 program, from the MAME set
