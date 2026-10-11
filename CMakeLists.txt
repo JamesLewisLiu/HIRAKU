@@ -55,7 +55,7 @@ target_link_libraries(hiraku_rt PUBLIC hiraku_ppc musashi)
 # --- host front end (optional: SDL3) ---------------------------------------------
 find_package(SDL3 CONFIG QUIET)
 if(SDL3_FOUND)
-  add_library(hiraku_host STATIC runtime/host/window.cpp)
+  add_library(hiraku_host STATIC runtime/host/window.cpp runtime/host/input.cpp)
   target_include_directories(hiraku_host PUBLIC runtime)
   target_link_libraries(hiraku_host PUBLIC SDL3::SDL3 hiraku_rt)
   target_compile_definitions(hiraku_host PUBLIC HK_WITH_SDL=1)

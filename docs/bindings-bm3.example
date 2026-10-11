@@ -1,0 +1,15 @@
+# HIRAKU controls for beatmania III (pass with --bindings FILE).
+# Only lines you list replace the defaults. Format: runtime/host/input.h
+#
+# Example: an IIDX-style USB controller as joystick 0, keys on buttons 0-4,
+# turntable on axis 0, pedal on button 6, start/coin on 8/9.
+P1 Button 1 = key:Z, joy0:button0
+P1 Button 2 = key:S, joy0:button1
+P1 Button 3 = key:X, joy0:button2
+P1 Button 4 = key:D, joy0:button3
+P1 Button 5 = key:C, joy0:button4
+P1 Turntable = joy0:axis0
+P1 Foot = key:Space, joy0:button6
+1 Player Start = key:1, joy0:button8
+Coin 1 = key:5, joy0:button9
+Test = key:F2, joy0:button10

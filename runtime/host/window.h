@@ -4,16 +4,20 @@
 #pragma once
 
 #include <cstdint>
+#include <string>
 
 namespace hk::host {
 
-bool window_open(const char *title, int scale);
+bool window_open(const char *title, int scale, const std::string &bindings, int audio_target_ms);
 // Present one frame; then sleep so that `virtual_seconds` does not run ahead
 // of real time. Returns false when the user closed the window.
 bool window_frame(const uint32_t *rgb, int w, int h, double virtual_seconds);
 void window_close();
-// Queue stereo float audio for playback (44.1 kHz). Drops audio if more than
-// ~150 ms is already queued, so latency stays bounded while video paces time.
+// Queue stereo float audio for playback (44.1 kHz) and pace the machine on it:
+// the emulation waits while more than the target is queued, and controls are
+// polled meanwhile. Audio is then the master clock (low, steady latency);
+// without an audio device, video frames pace time instead.
 void audio_push(const float *lr, int frames);
+std::string audio_describe();   // device buffer / target, for the latency report
 
 }  // namespace hk::host

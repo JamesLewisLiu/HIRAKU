@@ -496,9 +496,10 @@ void init(const Config &cfg) {
 
     // RTC/NVRAM: saved state, else the ROM set's default, else blank
     std::vector<uint8_t> nv;
-    if (!(!cfg.nvram_dir.empty() && read_file(cfg.nvram_dir + "/rtc.nv", nv) && g_rtc->load_nvram(nv.data(), nv.size())))
-        if (!(read_file(cfg.rom_dir + "/rtc", nv) && g_rtc->load_nvram(nv.data(), nv.size())))
-            fprintf(stderr, "board: no RTC NVRAM image: starting blank\n");
+    if (!cfg.nvram_dir.empty() && read_file(cfg.nvram_dir + "/rtc.nv", nv) && g_rtc->load_nvram(nv.data(), nv.size()))
+        fprintf(stderr, "board: NVRAM loaded from %s\n", cfg.nvram_dir.c_str());
+    else if (!(read_file(cfg.rom_dir + "/rtc", nv) && g_rtc->load_nvram(nv.data(), nv.size())))
+        fprintf(stderr, "board: no RTC NVRAM image: starting blank\n");
     g_rtc->set_time(2002, 7, 26, 6, 12, 0, 0);   // fixed, so runs are reproducible
     for (int k = 0; k < 3; k++) {
         std::vector<uint8_t> f;
@@ -522,6 +523,9 @@ void init(const Config &cfg) {
 }
 
 void shutdown() {
+    static bool done = false;
+    if (done) return;
+    done = true;
     g_trace.emit();
     if (g_trace.f) fclose(g_trace.f);
     g_trace.f = nullptr;
@@ -535,7 +539,48 @@ void shutdown() {
     }
 }
 
+static uint64_t g_last_input = 0;
+void note_input_change() { g_last_input = now(); }
+uint64_t last_input_change() { return g_last_input; }
+
 Inputs &inputs() { return g_in; }
+
+bool set_input(const std::string &name0, int value) {
+    std::string name = name0, port;
+    if (auto slash = name.find('/'); slash != std::string::npos) { port = name.substr(0, slash); name = name.substr(slash + 1); }
+    auto low16 = [&](uint16_t &p, uint16_t bit) { p = value ? (p & ~bit) : (p | bit); };
+    auto low8 = [&](uint8_t &p, uint8_t bit) { p = value ? (p & ~bit) : (p | bit); };
+    auto high8 = [&](uint8_t &p, uint8_t bit) { p = value ? (p | bit) : (p & ~bit); };
+    if (name == "Coin 1") low16(g_in.io[1], 0x0001);
+    else if (name == "1 Player Start") low16(g_in.io[0], 0x0020);
+    else if (name == "2 Players Start") low16(g_in.io[2], 0x0020);
+    else if (name.rfind("P1 Button ", 0) == 0 || name.rfind("P2 Button ", 0) == 0) {
+        int k = std::stoi(name.substr(10));
+        if (k < 1 || k > 5) return false;
+        low16(g_in.io[name[1] == '1' ? 0 : 2], (uint16_t)(1u << (k - 1)));
+        if (value) note_input_change();
+    }
+    else if (name == "Test") low8(g_in.in[0], 0x01);
+    else if (name == "Service") low8(g_in.in[0], 0x02);
+    else if (name == "A") low8(g_in.in[0], 0x04);
+    else if (name == "B") low8(g_in.in[0], 0x08);
+    else if (name == "P1 Foot") high8(g_in.in[0], 0x10);
+    else if (name == "P2 Foot") high8(g_in.in[0], 0x20);
+    else if (name == "Turntable") g_in.turntable[port == "TURNTABLE_P2" ? 1 : 0] = (uint16_t)(value & 0x3ff);
+    else if (name.rfind("Effect ", 0) == 0) {
+        int k = std::stoi(name.substr(7));
+        if (k < 1 || k > 7) return false;
+        g_in.effect[k - 1] = (uint8_t)(value & 0x1f);
+    }
+    else return false;
+    return true;
+}
+
+void turntable_add(int player, int delta) {
+    uint16_t &t = g_in.turntable[player & 1];
+    t = (uint16_t)((t + delta) & 0x3ff);
+}
+
 void set_frame_hook(FrameHook h) { g_frame_hook = std::move(h); }
 uint64_t frame_count() { return g_frame; }
 void set_trace_ctx(hk_ctx *c) { g_ctx_for_trace = c; }

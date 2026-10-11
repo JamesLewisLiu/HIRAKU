@@ -33,30 +33,8 @@ std::map<std::string, uint64_t> g_release;                       // field -> fra
 FILE *g_frames = nullptr, *g_log = nullptr;
 std::string g_out;
 
-// MAME input names (bm3 ports) -> the board's input bits. Value 1 = pressed.
-void set_field(const std::string &name0, int64_t value) {
-    std::string name = name0;
-    auto slash = name.find('/');
-    std::string port = slash == std::string::npos ? "" : name.substr(0, slash);
-    if (slash != std::string::npos) name = name.substr(slash + 1);
-    auto &in = fb::inputs();
-    auto low16 = [&](uint16_t &p, uint16_t bit) { p = value ? (p & ~bit) : (p | bit); };
-    auto low8 = [&](uint8_t &p, uint8_t bit) { p = value ? (p & ~bit) : (p | bit); };
-    auto high8 = [&](uint8_t &p, uint8_t bit) { p = value ? (p | bit) : (p & ~bit); };
-    if (name == "Coin 1") low16(in.io[1], 0x0001);
-    else if (name == "1 Player Start") low16(in.io[0], 0x0020);
-    else if (name == "2 Players Start") low16(in.io[2], 0x0020);
-    else if (name.rfind("P1 Button ", 0) == 0) low16(in.io[0], (uint16_t)(1u << (std::stoi(name.substr(10)) - 1)));
-    else if (name.rfind("P2 Button ", 0) == 0) low16(in.io[2], (uint16_t)(1u << (std::stoi(name.substr(10)) - 1)));
-    else if (name == "Test") low8(in.in[0], 0x01);
-    else if (name == "Service") low8(in.in[0], 0x02);
-    else if (name == "A") low8(in.in[0], 0x04);
-    else if (name == "B") low8(in.in[0], 0x08);
-    else if (name == "P1 Foot") high8(in.in[0], 0x10);
-    else if (name == "P2 Foot") high8(in.in[0], 0x20);
-    else if (name == "Turntable") in.turntable[port == "TURNTABLE_P2" ? 1 : 0] = (uint16_t)(value & 0x3ff);
-    else if (name.rfind("Effect ", 0) == 0) in.effect[(std::stoi(name.substr(7)) - 1) % 7] = (uint8_t)(value & 0x1f);
-    else fprintf(stderr, "script: unknown input field '%s'\n", name0.c_str());
+void set_field(const std::string &name, int64_t value) {
+    if (!fb::set_input(name, (int)value)) fprintf(stderr, "script: unknown input field '%s'\n", name.c_str());
 }
 
 std::vector<std::string> tokens(const std::string &line) {

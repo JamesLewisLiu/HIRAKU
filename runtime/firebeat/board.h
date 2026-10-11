@@ -32,6 +32,16 @@ struct Inputs {
 };
 
 void init(const Config &cfg);
+
+// Set an input by its MAME name ("P1 Button 3", "Coin 1", "TURNTABLE_P1/Turntable",
+// "Effect 2", ...): 1/0 for buttons, the position for analog inputs. Shared by the
+// input scripts and the host controls. Returns false for an unknown name.
+bool set_input(const std::string &name, int value);
+// Move a turntable by `delta` counts (it is a 10-bit wrapping counter).
+void turntable_add(int player, int delta);
+// Latency instrumentation: the virtual time of the last change to a player key.
+void note_input_change();
+uint64_t last_input_change();
 void shutdown();                       // flush NVRAM and traces
 Inputs &inputs();
 

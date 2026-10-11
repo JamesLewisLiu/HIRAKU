@@ -13,9 +13,11 @@ Done so far:
 - **M0:** infrastructure.
 - **M1:** translator and interpreter.
 - **M2:** kernel glue, interrupts, devices.
-- **M4:** sound board. beatmania III The Final runs natively with sound: self-test, attract mode, and songs.
+- **M3:** rendering checked against MAME.
+- **M4:** sound board.
+- **M5:** playable in real time.
 
-Next are M3 (exact rendering against MAME) and M5 (a full play session). See [PLAN.md](PLAN.md).
+beatmania III The Final runs natively with sound, keyboard and joystick controls. **How to play: [docs/PLAY.md](docs/PLAY.md).** See [PLAN.md](PLAN.md) for what's next.
 
 ```bash
 tools/ingest.py path/to/program-disc.cue --romset path/to/bm3final.zip --hdd path/to/hdd.img   # → dumps/<game>/

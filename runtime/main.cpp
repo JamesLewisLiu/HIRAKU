@@ -14,12 +14,19 @@
 //     --wav FILE        record the sound output (16-bit stereo, 44.1 kHz)
 //     --bios-seconds S  time the skipped BIOS would have taken (default 21.65, as measured in
 //                       MAME for beatmania III); boards like the SPU boot during it
-//     --window [SCALE]  show the game in a window, in real time (SDL3 builds);
-//                       F2 test, 9 service, 5 coin, 1 start, Z S X D C keys, Esc quits
+//     --window [SCALE]  show the game in a window, in real time, with sound (SDL3 builds);
+//                       F2 test, 9 service, 5 coin, 1 start, Z S X D C keys, Left/Right turntable, Esc quits
+//     --bindings FILE   controls (see runtime/host/input.h); --audio-ms N: audio queue target (default 8)
+//     --nvram DIR       keep the machine's NVRAM (RTC RAM, flash) in DIR: loaded at start, saved on exit.
+//                       Default with --window: ~/.local/share/hiraku/<game>; otherwise none (every
+//                       run starts from the ROM set's defaults, so scripted runs are reproducible)
 //
 // The machine is described by dumps/<game>/machine.txt and dumps/<game>/rom/,
 // both written by tools/ingest.py from the user's own dumps.
 #include <sys/stat.h>
+
+#include <atomic>
+#include <csignal>
 
 #include <cstdio>
 #include <cstdlib>
@@ -86,7 +93,9 @@ int main(int argc, char **argv) {
     uint64_t frames = 0, snap_every = 0, debug_every = 0;
     bool trace = false, ata_log = false;
     int window_scale = 0;
-    std::string wav_path, script_path;
+    std::string wav_path, script_path, bindings, nvram_dir;
+    bool nvram_given = false;
+    int audio_ms = 8;
     double bios_seconds = 21.65;
     for (int k = 1; k < argc; k++) {
         std::string a = argv[k];
@@ -106,6 +115,9 @@ int main(int argc, char **argv) {
         else if (a == "--debug-every") debug_every = std::stoull(val());
         else if (a == "--wav") wav_path = val();
         else if (a == "--script") script_path = val();
+        else if (a == "--bindings") bindings = val();
+        else if (a == "--nvram") { nvram_dir = val(); nvram_given = true; }
+        else if (a == "--audio-ms") audio_ms = std::stoi(val());
         else if (a == "--bios-seconds") bios_seconds = std::stod(val());
         else if (a == "--window") window_scale = (k + 1 < argc && argv[k + 1][0] != '-') ? std::stoi(val()) : 2;
         else { fprintf(stderr, "unknown option %s\n", a.c_str()); return 2; }
@@ -129,8 +141,16 @@ int main(int argc, char **argv) {
     cfg.dongle_file = machine["dongle"];
     cfg.cd_master = machine["cd_master"];
     cfg.cd_slave = machine["cd_slave"];
-    cfg.nvram_dir = out + "/nvram";
-    mkdirs(cfg.nvram_dir);
+    if (!nvram_given && window_scale) {
+        const char *xdg = getenv("XDG_DATA_HOME"), *home = getenv("HOME");
+        std::string base = xdg && *xdg ? std::string(xdg) : std::string(home ? home : ".") + "/.local/share";
+        nvram_dir = base + "/hiraku/" + game;
+    }
+    cfg.nvram_dir = nvram_dir;
+    if (!nvram_dir.empty()) {
+        mkdirs(nvram_dir);
+        printf("nvram: %s\n", nvram_dir.c_str());
+    }
     if (trace) cfg.trace_dir = out;
     cfg.ata_log = ata_log;
     fb::init(cfg);
@@ -207,13 +227,22 @@ int main(int argc, char **argv) {
             printf("spu: pc %06x sr %04x, %.2f M 68000 cycles, IRQ2 %llu IRQ4 %llu IRQ6 %llu, %llu ATA commands, %.1f MiB DMA, %llu key-ons\n",
                    st.pc, st.sr, st.cycles / 1e6, (unsigned long long)st.irq2, (unsigned long long)st.irq4, (unsigned long long)st.irq6,
                    (unsigned long long)st.ata_commands, st.dma_words * 2 / 1048576.0, (unsigned long long)st.key_ons);
+            if (st.lat_n) {
+                printf("latency (player key -> RF5C400 key-on, virtual time): n=%llu mean %.2f ms, min %.2f, max %.2f; 2 ms buckets:",
+                       (unsigned long long)st.lat_n, st.lat_sum_ms / st.lat_n, st.lat_min_ms, st.lat_max_ms);
+                for (int k = 0; k < 16; k++) printf(" %u", st.lat_hist[k]);
+                printf("\n");
+            }
         }
         close_wav();
+#ifdef HK_WITH_SDL
+        if (window_scale) printf("%s\n", host::audio_describe().c_str());
+#endif
     };
     g_on_fatal = [&]() { script::close(); fb::shutdown(); report(); };
 
 #ifdef HK_WITH_SDL
-    if (window_scale && !host::window_open(("HIRAKU - " + game).c_str(), window_scale)) {
+    if (window_scale && !host::window_open(("HIRAKU - " + game).c_str(), window_scale, bindings, audio_ms)) {
         fprintf(stderr, "cannot open a window\n");
         return 1;
     }
@@ -222,7 +251,20 @@ int main(int argc, char **argv) {
 #endif
     if (!script_path.empty() && !script::load(script_path, out)) return 2;
     int script_snaps = 0;
+    // Ctrl-C / SIGTERM: leave at the next frame, saving NVRAM like a normal exit
+    static std::atomic<bool> stop_requested{false};
+    std::signal(SIGINT, [](int) { stop_requested = true; });
+    std::signal(SIGTERM, [](int) { stop_requested = true; });
     fb::set_frame_hook([&](uint64_t f, const uint32_t *rgb, int w, int h) {
+        if (stop_requested) {
+            script::close();
+            fb::shutdown();
+            report();
+#ifdef HK_WITH_SDL
+            if (window_scale) host::window_close();
+#endif
+            exit(130);
+        }
         if (!script_path.empty()) {
             bool keep = script::frame(f, [&]() {
                 char name[64];

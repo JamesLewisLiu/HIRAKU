@@ -210,7 +210,7 @@ Durations are rough, assume one person, and are assisted. Each milestone has a c
 | **M2** | Kernel + platform bring-up | Threads, IRQs, PIT, DMA, RTC, dongle, ATA all present. BM3 reaches the `GCC01-JC-A STARTUP` self-test text with GCU output on screen. Shadow mode is clean over boot. | 3–4 wk — **done 2026-10-11** |
 | **M3** | Attract and BGA | Attract loop runs. Frame-diff vs MAME is ≤ tolerance on 10 forced scenes (`forcescene.lua`). Zero fallback-interpreter hits. | 2–3 wk — **done 2026-10-11** (docs/M3.md) |
 | **M4** | Audio | 68k + RF5C400 + SPU-ATA working. Keysounds and BGM match MAME captures, with no cutoffs or buzz. Spectrum analyser works. | 3–5 wk — **done 2026-10-11** (docs/M4.md) |
-| **M5** | BM3 Final playable | Coin → mode select → song → result → name entry with real controls. NVRAM persists. Measured input→sound latency is published. | 2–3 wk |
+| **M5** | BM3 Final playable | Coin → mode select → song → result → name entry with real controls. NVRAM persists. Measured input→sound latency is published. | 2–3 wk — **done 2026-10-11, pending hands-on test** (docs/M5.md) |
 | **M6** | Rest of beatmania III | `bm3`, `bm3core`, `bm36th`, `bm37th` run. Mostly manifests and SDK signatures plus SPU ROM revision differences. | 2–3 wk |
 | **M7** | pop'n music 4–8, Animelo 1/2, Mickey Tunes | Same SPU stack, plus DVD on the SPU's ATA and BGM streaming via RF5C400 reg 09 (the hardest audio-timing case). The redump bundle is needed. | 4–8 wk |
 | **M8** | ParaParaParadise family | `!:EXE:00` loader, YMZ280B, CDDA, sensor input mapping. | 3–4 wk |
@@ -293,6 +293,15 @@ The full write-up is in docs/M3.md.
 - **Renderer:** bit-exact against MAME on 28/28 frames when replaying MAME's GCU writes.
 - **BGA engine:** in lockstep with MAME, 98.8% of song frames byte-identical, at a constant 13-frame song-start offset.
 - **Coverage:** no interpreter fallbacks over a full session.
+
+## 13. M5 outcome (2026-10-11)
+
+The full write-up is in docs/M5.md; how to play is in docs/PLAY.md.
+- **Game loop:** the full loop (attract → coins → stages → results → game over → attract) runs natively.
+- **Real time:** `--window` paces on the audio clock and has keyboard and joystick controls.
+- **Latency:** the game's own key-to-keysound latency is 3.5 ms (measured). The rest is the host audio path.
+- **Saves:** NVRAM persists.
+- **Pending:** a hands-on test with real audio hardware and controllers.
 
 ## M0 steps (all done)
 

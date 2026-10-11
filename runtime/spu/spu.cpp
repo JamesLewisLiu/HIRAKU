@@ -4,6 +4,7 @@
 // copyright-holders: Ville Linde); the CPU core is Musashi (MIT licence).
 #include "spu.h"
 
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -16,6 +17,7 @@
 #include "../core/sched.h"
 #include "../dev/ata.h"
 #include "../dev/rf5c400.h"
+#include "../firebeat/board.h"
 #include "../firebeat/spectrum.h"
 
 extern "C" {
@@ -176,7 +178,22 @@ void write16(uint32_t a, uint16_t v, uint16_t mask) {
     if (a >= 0x340000 && a < 0x340010) { trace_io("W", a, v); g_ata->write(1, (a & 0xf) >> 1, v); return; }
     if (a >= 0x400000 && a < 0x401000) {
         uint32_t o = (a - 0x400000) >> 1;
-        if (o == 1 && (v & 0x60) == 0x60) g_stats.key_ons++;
+        if (o == 1 && (v & 0x60) == 0x60) {
+            g_stats.key_ons++;
+            // latency: from the last player key press to this key-on, at the 68000's current time
+            static uint64_t measured_for = UINT64_MAX;
+            uint64_t in = fb::last_input_change();
+            double t68 = (double)cycles_now() / SPU_HZ * 1000.0, tin = (double)in / CPU_HZ * 1000.0;
+            if (in && in != measured_for && t68 >= tin && t68 - tin < 100.0) {
+                measured_for = in;
+                double ms = t68 - tin;
+                g_stats.lat_n++;
+                g_stats.lat_sum_ms += ms;
+                g_stats.lat_min_ms = std::min(g_stats.lat_min_ms, ms);
+                g_stats.lat_max_ms = std::max(g_stats.lat_max_ms, ms);
+                g_stats.lat_hist[std::min(15, (int)(ms / 2))]++;
+            }
+        }
         g_rf->write(o, v);
         return;
     }

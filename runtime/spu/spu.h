@@ -35,6 +35,10 @@ void set_audio_sink(std::function<void(const float *lr, int frames)> sink);
 struct Stats {
     uint64_t cycles = 0, irq2 = 0, irq4 = 0, irq6 = 0, dma_words = 0, ata_commands = 0, key_ons = 0;
     uint32_t pc = 0, sr = 0;
+    // input -> key-on latency (virtual time), for key-ons within 100 ms of a player key press
+    uint64_t lat_n = 0;
+    double lat_sum_ms = 0, lat_min_ms = 1e9, lat_max_ms = 0;
+    uint32_t lat_hist[16] = {};   // 2 ms buckets
 };
 const Stats &stats();
 
