@@ -126,6 +126,19 @@ bool DiscImage::read_sector(uint32_t lba, uint8_t *out) const {
     return fread(out, 1, 2048, f_) == 2048;
 }
 
+// A READ's range, requested from the kernel ahead of the sector-by-sector fetches:
+// on a slow disk the fetches then mostly hit the page cache.
+void DiscImage::prefetch(uint32_t lba, uint32_t count) const {
+    if (!count || lba >= nsectors_) return;
+    const Track &t = tracks_[track_of(lba)];
+    uint64_t off = t.offset + (uint64_t)(lba - t.start) * t.size;
+    posix_fadvise(fileno(f_), (off_t)off, (off_t)((uint64_t)count * t.size), POSIX_FADV_WILLNEED);
+}
+
+void DiskImage::prefetch(uint32_t lba, uint32_t count) const {
+    if (count) posix_fadvise(fileno(f_), (off_t)lba * 512, (off_t)count * 512, POSIX_FADV_WILLNEED);
+}
+
 bool DiscImage::read_audio(uint32_t lba, uint8_t *out) const {
     prof::Scope ps(prof::DISK);
     if (lba >= nsectors_) return false;
@@ -469,6 +482,7 @@ void AtaBus::disk_command(uint8_t cmd) {
         lazy_disc_ = nullptr;
         lazy_lba_ = first;
         filled_ = 0;
+        d->disk->prefetch(first, count);
         if (cmd == 0xc8 || cmd == 0xc9) {
             phase_ = Phase::dma_in;
             status_ = ST_DRDY | ST_DSC | ST_DRQ;
@@ -634,6 +648,7 @@ void AtaBus::packet_done() {
         lazy_disk_ = nullptr;
         lazy_lba_ = lba;
         filled_ = 0;
+        d->disc->prefetch(lba, n);
         start_data_in(std::vector<uint8_t>((size_t)n * 2048), true);
         break;
     }
