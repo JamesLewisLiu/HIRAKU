@@ -156,9 +156,26 @@ int main(int argc, char **argv) {
     cfg.ata_log = ata_log;
     fb::init(cfg);
 
-    // the sound board, when the machine has one
+    // sound: the SPU board when the machine has one, otherwise the board's YMZ280B
     FILE *wav = nullptr;
     uint64_t wav_frames = 0;
+    if (!wav_path.empty()) {
+        wav = fopen(wav_path.c_str(), "wb");
+        uint8_t hdr[44] = {};
+        if (wav) fwrite(hdr, 1, 44, wav);   // header written at shutdown
+    }
+    auto sink = [&](const float *lr, int n) {
+#ifdef HK_WITH_SDL
+        if (window_scale) host::audio_push(lr, n);
+#endif
+        if (!wav) return;
+        for (int k = 0; k < 2 * n; k++) {
+            float f = lr[k] * 32767.0f;
+            int16_t v = (int16_t)(f > 32767 ? 32767 : f < -32768 ? -32768 : f);
+            fwrite(&v, 2, 1, wav);
+        }
+        wav_frames += (uint64_t)n;
+    };
     if (!machine["spu_rom"].empty()) {
         spu::Config sc;
         sc.rom = cfg.rom_dir + "/" + machine["spu_rom"];
@@ -171,23 +188,9 @@ int main(int argc, char **argv) {
                     sc.rom.c_str(), game.c_str());
             return 1;
         }
-        if (!wav_path.empty()) {
-            wav = fopen(wav_path.c_str(), "wb");
-            uint8_t hdr[44] = {};
-            if (wav) fwrite(hdr, 1, 44, wav);   // header written at shutdown
-        }
-        spu::set_audio_sink([&](const float *lr, int n) {
-#ifdef HK_WITH_SDL
-            if (window_scale) host::audio_push(lr, n);
-#endif
-            if (!wav) return;
-            for (int k = 0; k < 2 * n; k++) {
-                float f = lr[k] * 32767.0f;
-                int16_t v = (int16_t)(f > 32767 ? 32767 : f < -32768 ? -32768 : f);
-                fwrite(&v, 2, 1, wav);
-            }
-            wav_frames += (uint64_t)n;
-        });
+        spu::set_audio_sink(sink);
+    } else {
+        fb::set_audio_sink(sink);
     }
     auto close_wav = [&]() {
         if (!wav) return;
@@ -227,6 +230,7 @@ int main(int argc, char **argv) {
         if (g_interp.shadow_checks)
             printf("shadow: %llu identical, %llu MISMATCHED, %llu impure\n", (unsigned long long)g_stats.shadow_ok,
                    (unsigned long long)g_stats.shadow_bad, (unsigned long long)g_stats.shadow_impure);
+        if (!spu::present()) printf("ymz280b: %llu key-ons\n", (unsigned long long)fb::ymz_key_ons());
         if (spu::present()) {
             auto &st = spu::stats();
             printf("spu: pc %06x sr %04x, %.2f M 68000 cycles, IRQ2 %llu IRQ4 %llu IRQ6 %llu, %llu ATA commands, %.1f MiB DMA, %llu key-ons\n",

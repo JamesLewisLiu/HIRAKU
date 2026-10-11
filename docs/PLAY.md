@@ -93,3 +93,30 @@ build/cmake/hiraku-popn4 --window
 | F2 / 9 | test / service |
 
 Joystick buttons 0–8 are the nine buttons; button 9 is the coin.
+
+## ParaParaParadise 1st Mix Plus (in progress, M8)
+
+You need the program CD (`a11jaa01`), the audio CD (`a11jaa02`) and the MAME `ppp1mp` ROM set, which holds the dongle image `gqa11-ja`. To unpack MAME's CHDs:
+
+```bash
+chdman extractcd -i a11jaa01.chd -o a11jaa01.cue -ob a11jaa01.bin
+chdman extractcd -i a11jaa02.chd -o a11jaa02.cue -ob a11jaa02.bin
+tools/ingest.py a11jaa01.cue --cd2 a11jaa02.cue --romset ppp1mp.zip
+analyze/ghidra.sh ppp1mp && analyze/prep.py ppp1mp && ninja -C build/cmake hiraku-ppp1mp
+```
+
+**First boot, as on a new cabinet:** the STARTUP PROGRAM reports a blank backup RAM (E160) and blank sound flash (E124). Press **F2** for test mode, then:
+1. run **SOUND FLASH INIT**, which copies the YMZ280B samples from the CD;
+2. run **ALL FACTORY SETTINGS**.
+
+With `--window` both are saved to `~/.local/share/hiraku/ppp1mp`.
+
+**Status:** without the dongle image, every check passes except IBTN (E901).
+
+| Key | Action |
+|---|---|
+| Z X C V B | sensor bars 1–5 (left to right) |
+| Left / Right | the two buttons (test menu: up / down) |
+| 1 | start / OK |
+| 5 | coin |
+| F2 / 9 | test / service |

@@ -5,6 +5,7 @@
 // re-implementation for HIRAKU's runtime, not a copy of MAME's device model.
 #include "board.h"
 
+#include <algorithm>
 #include <cstdio>
 #include <cstring>
 #include <fstream>
@@ -22,6 +23,7 @@
 #include "../dev/flash29f016a.h"
 #include "../dev/k057714.h"
 #include "../dev/rtc65271.h"
+#include "../dev/ymz280b.h"
 #include "../spu/spu.h"
 #include "spectrum.h"
 
@@ -36,6 +38,7 @@ AtaBus *g_ata = nullptr;
 Rtc65271 *g_rtc = nullptr;
 Flash29F016A *g_flash = nullptr;   // [3]: main, snd1, snd2
 Fdc37c665 *g_fdc = nullptr;        // beatmania III extend board
+Ymz280b *g_ymz = nullptr;
 uint8_t g_dpram[0x400];
 uint8_t g_ext_irq_enable = 0x3f, g_ext_irq_active = 0;
 uint8_t g_control = 0;
@@ -295,7 +298,7 @@ uint32_t bus_read(uint32_t p, int size) {
         uint32_t r = ((p - 0x7d000200) >> 2) == 0 ? g_cabinet_info << 28 : 0;
         return (r >> lane_shift(p, size)) & size_mask(size);
     }
-    if (p >= 0x7d000400 && p <= 0x7d000401) return 0;              // YMZ280B: not in M2
+    if (p >= 0x7d000400 && p <= 0x7d000401) return bytes_read(p, size, 0x7d000400, [](uint32_t o) { return g_ymz->read((int)o); });
     if (p >= 0x74000000 && p <= 0x740003ff) {                       // SPU dual-port RAM (right side)
         if (spu::present()) return bytes_read(p, size, 0x74000000, [](uint32_t o) { return spu::ppc_read(o); });
         return bytes_read(p, size, 0x74000000, [](uint32_t o) -> uint8_t { return g_dpram[o]; });
@@ -370,7 +373,10 @@ void bus_write(uint32_t p, uint32_t v, int size) {
         return;
     }
     if ((p >= 0x7d000320 && p <= 0x7d000327) || (p >= 0x7d000804 && p <= 0x7d000807)) return;   // lamps, status LEDs
-    if (p >= 0x7d000400 && p <= 0x7d000401) return;                 // YMZ280B: not in M2
+    if (p >= 0x7d000400 && p <= 0x7d000401) {
+        bytes_write(p, size, v, 0x7d000400, [](uint32_t o, uint8_t b) { g_ymz->write((int)o, b); });
+        return;
+    }
     if (p >= 0x74000000 && p <= 0x740003ff) {
         if (spu::present()) bytes_write(p, size, v, 0x74000000, [](uint32_t o, uint8_t b) { spu::ppc_write(o, b); });
         else bytes_write(p, size, v, 0x74000000, [](uint32_t o, uint8_t b) { g_dpram[o] = b; });
@@ -419,6 +425,47 @@ void traced_write(uint32_t p, uint32_t v, int size) {
         }
     }
     bus_write(p, v, size);
+}
+
+// ---- YMZ280B ----------------------------------------------------------------------------
+// Rendered in step with virtual time: by a 2 ms timer and before every register
+// access. Samples come from the sound flash chips (MAME ymz280b_map); the 88.2 kHz
+// output is averaged to 44.1 kHz for the audio sink.
+uint64_t g_ymz_samples = 0;     // 88.2 kHz samples rendered
+AudioSink g_audio_sink;
+float g_ymz_carry[2];
+bool g_ymz_odd = false;
+
+void ymz_render_until(uint64_t t) {
+    uint64_t target = (uint64_t)((double)t * Ymz280b::RATE / CPU_HZ);
+    static float l[1024], r[1024], out[1024];
+    while (g_ymz_samples < target) {
+        int n = (int)std::min<uint64_t>(target - g_ymz_samples, 1024);
+        memset(l, 0, sizeof(float) * n);
+        memset(r, 0, sizeof(float) * n);
+        g_ymz->render(l, r, n);
+        g_ymz_samples += (uint64_t)n;
+        int m = 0;
+        for (int k = 0; k < n; k++) {
+            if (!g_ymz_odd) {
+                g_ymz_carry[0] = l[k];
+                g_ymz_carry[1] = r[k];
+            } else {
+                out[2 * m] = (g_ymz_carry[0] + l[k]) * 0.5f;
+                out[2 * m + 1] = (g_ymz_carry[1] + r[k]) * 0.5f;
+                m++;
+            }
+            g_ymz_odd = !g_ymz_odd;
+        }
+        if (g_audio_sink && m) g_audio_sink(out, m);
+    }
+}
+
+void ymz_tick_fire();
+Timer g_ymz_tick("ymz", ymz_tick_fire);
+void ymz_tick_fire() {
+    ymz_render_until(now());
+    g_ymz_tick.in(ticks_from_us(2000));
 }
 
 // ---- video timing ---------------------------------------------------------------------
@@ -536,6 +583,13 @@ void init(const Config &cfg) {
 
     // first vertical blank at the end of the first visible field
     g_vblank.in((uint64_t)((double)frame_ticks() * g_gcu->vvisible() / g_gcu->vtotal()));
+    g_ymz = new Ymz280b;
+    g_ymz->read_mem = [](uint32_t a) {   // MAME ymz280b_map: global mask 0x3fffff, two sound flash chips
+        a &= 0x3fffff;
+        return g_flash[1 + (a >> 21)].read(a & 0x1fffff);
+    };
+    g_ymz->sync = [] { ymz_render_until(now()); };
+    g_ymz_tick.in(ticks_from_us(2000));
 }
 
 void shutdown() {
@@ -636,6 +690,8 @@ void turntable_add(int player, int delta) {
 }
 
 void set_frame_hook(FrameHook h) { g_frame_hook = std::move(h); }
+void set_audio_sink(AudioSink sink) { g_audio_sink = std::move(sink); }
+uint64_t ymz_key_ons() { return g_ymz ? g_ymz->key_ons : 0; }
 uint64_t frame_count() { return g_frame; }
 void set_trace_ctx(hk_ctx *c) { g_ctx_for_trace = c; }
 

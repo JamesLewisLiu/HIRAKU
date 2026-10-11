@@ -50,6 +50,11 @@ Inputs &inputs();
 // Called at the start of each vertical blank, with the composed frame.
 using FrameHook = std::function<void(uint64_t frame, const uint32_t *rgb, int w, int h)>;
 void set_frame_hook(FrameHook h);
+// The board's own sound (YMZ280B), 44.1 kHz interleaved stereo. Games with an SPU
+// play through it instead (spu::set_audio_sink); there this stays unset.
+using AudioSink = std::function<void(const float *lr, int frames)>;
+void set_audio_sink(AudioSink sink);
+uint64_t ymz_key_ons();
 uint64_t frame_count();
 void set_trace_ctx(hk_ctx *c);   // PCs in the MMIO trace come from here
 

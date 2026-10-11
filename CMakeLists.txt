@@ -45,6 +45,7 @@ add_library(hiraku_rt STATIC
   runtime/dev/flash29f016a.cpp
   runtime/dev/fdc.cpp
   runtime/dev/rf5c400.cpp
+  runtime/dev/ymz280b.cpp
   runtime/spu/spu.cpp
   runtime/host/script.cpp
   runtime/firebeat/board.cpp
