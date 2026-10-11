@@ -18,3 +18,8 @@ add_test(NAME ppc_semantics COMMAND test_ppc ${HK_PPC_CASES})
 # GCU renderer vs MAME: replay a MAME trace's GCU writes (oracle, not a ctest).
 add_executable(gcu_replay gcu/gcu_replay.cpp)
 target_link_libraries(gcu_replay PRIVATE hiraku_rt)
+
+# HID output descriptors and reports (controller lights)
+add_executable(test_hiddesc hid/test_hiddesc.cpp)
+target_link_libraries(test_hiddesc PRIVATE hiraku_cabinet)
+add_test(NAME hid_outputs COMMAND test_hiddesc)

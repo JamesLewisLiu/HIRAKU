@@ -12,7 +12,7 @@
 //             joy<N>:axis<K>            analog axis (turntables)
 //             joy<N>:axis<K>-, +        an axis direction used as a button
 //             joy<N>:hat<K>:<up|down|left|right>
-// Defaults for the game's family (beatmania III, pop'n music, ParaParaParadise) are built in; a
+// Defaults for the game's family are built in (runtime/firebeat/cabinet.cpp); a
 // file only needs the changes.
 #pragma once
 

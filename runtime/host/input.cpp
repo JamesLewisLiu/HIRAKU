@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "../firebeat/board.h"
+#include "../firebeat/cabinet.h"
 
 namespace hk::host {
 
@@ -29,123 +30,6 @@ std::vector<SDL_Joystick *> g_joys;
 int16_t g_axis_last[16][16];
 bool g_axis_seen[16][16];
 double g_tt_scale = 1024.0 / 65536.0 * 4;             // turntable counts per axis unit (one wrap = 4 x 256)
-
-const char *DEFAULTS_BM3 =
-    "P1 Button 1 = key:Z, joy0:button0\n"
-    "P1 Button 2 = key:S, joy0:button1\n"
-    "P1 Button 3 = key:X, joy0:button2\n"
-    "P1 Button 4 = key:D, joy0:button3\n"
-    "P1 Button 5 = key:C, joy0:button4\n"
-    "P1 Turntable = joy0:axis0\n"
-    "P1 Turntable - = key:Left, key:Left Shift\n"
-    "P1 Turntable + = key:Right, key:A\n"
-    "P1 Foot = key:Space, joy0:button7\n"
-    "1 Player Start = key:1, joy0:button8\n"
-    "P2 Button 1 = key:M\n"
-    "P2 Button 2 = key:K\n"
-    "P2 Button 3 = key:Comma\n"
-    "P2 Button 4 = key:L\n"
-    "P2 Button 5 = key:Period\n"
-    "P2 Turntable - = key:Down\n"
-    "P2 Turntable + = key:Up\n"
-    "2 Players Start = key:2\n"
-    "Coin 1 = key:5, joy0:button9\n"
-    "Test = key:F2\n"
-    "Service = key:9\n";
-
-// pop'n music: the nine buttons zig-zag like the cabinet's two rows (odd = lower)
-const char *DEFAULTS_POPN =
-    "P1 Button 1 = key:Z, joy0:button0\n"
-    "P1 Button 2 = key:S, joy0:button1\n"
-    "P1 Button 3 = key:X, joy0:button2\n"
-    "P1 Button 4 = key:D, joy0:button3\n"
-    "P1 Button 5 = key:C, joy0:button4\n"
-    "P1 Button 6 = key:F, joy0:button5\n"
-    "P1 Button 7 = key:V, joy0:button6\n"
-    "P1 Button 8 = key:G, joy0:button7\n"
-    "P1 Button 9 = key:B, joy0:button8\n"
-    "Coin 1 = key:5, joy0:button9\n"
-    "Test = key:F2\n"
-    "Service = key:9\n";
-
-// ParaParaParadise: the five sensor bars left to right, plus the two buttons
-const char *DEFAULTS_PPP =
-    "P1 Button 3 = key:Z, joy0:button0\n"
-    "P1 Button 4 = key:X, joy0:button1\n"
-    "P1 Button 5 = key:C, joy0:button2\n"
-    "P1 Button 6 = key:V, joy0:button3\n"
-    "P1 Button 7 = key:B, joy0:button4\n"
-    "P1 Button 1 = key:Left, joy0:button5\n"
-    "P1 Button 2 = key:Right, joy0:button6\n"
-    "1 Player Start = key:1, joy0:button8\n"
-    "Coin 1 = key:5, joy0:button9\n"
-    "Test = key:F2\n"
-    "Service = key:9\n";
-
-// Keyboardmania: player 1's 24 keys (C1..B2) on two letter rows, as MAME maps them
-const char *DEFAULTS_KBM =
-    "P1 Key 1 = key:Q\n"
-    "P1 Key 2 = key:W\n"
-    "P1 Key 3 = key:E\n"
-    "P1 Key 4 = key:R\n"
-    "P1 Key 5 = key:T\n"
-    "P1 Key 6 = key:Y\n"
-    "P1 Key 7 = key:U\n"
-    "P1 Key 8 = key:I\n"
-    "P1 Key 9 = key:O\n"
-    "P1 Key 10 = key:A\n"
-    "P1 Key 11 = key:S\n"
-    "P1 Key 12 = key:D\n"
-    "P1 Key 13 = key:F\n"
-    "P1 Key 14 = key:G\n"
-    "P1 Key 15 = key:H\n"
-    "P1 Key 16 = key:J\n"
-    "P1 Key 17 = key:K\n"
-    "P1 Key 18 = key:L\n"
-    "P1 Key 19 = key:Z\n"
-    "P1 Key 20 = key:X\n"
-    "P1 Key 21 = key:C\n"
-    "P1 Key 22 = key:V\n"
-    "P1 Key 23 = key:B\n"
-    "P1 Key 24 = key:N\n"
-    // player 2: octave 1 on the keypad (7 8 9 4 5 6 1 2 3 0 . Enter), octave 2 on
-    // Insert Home PageUp Delete End PageDown, the arrows (Left Down Right Up), / and *
-    "P2 Key 1 = key:Keypad 7\n"
-    "P2 Key 2 = key:Keypad 8\n"
-    "P2 Key 3 = key:Keypad 9\n"
-    "P2 Key 4 = key:Keypad 4\n"
-    "P2 Key 5 = key:Keypad 5\n"
-    "P2 Key 6 = key:Keypad 6\n"
-    "P2 Key 7 = key:Keypad 1\n"
-    "P2 Key 8 = key:Keypad 2\n"
-    "P2 Key 9 = key:Keypad 3\n"
-    "P2 Key 10 = key:Keypad 0\n"
-    "P2 Key 11 = key:Keypad .\n"
-    "P2 Key 12 = key:Keypad Enter\n"
-    "P2 Key 13 = key:Insert\n"
-    "P2 Key 14 = key:Home\n"
-    "P2 Key 15 = key:PageUp\n"
-    "P2 Key 16 = key:Delete\n"
-    "P2 Key 17 = key:End\n"
-    "P2 Key 18 = key:PageDown\n"
-    "P2 Key 19 = key:Left\n"
-    "P2 Key 20 = key:Down\n"
-    "P2 Key 21 = key:Right\n"
-    "P2 Key 22 = key:Up\n"
-    "P2 Key 23 = key:Keypad /\n"
-    "P2 Key 24 = key:Keypad *\n"
-    "1 Player Start = key:1\n"
-    "2 Players Start = key:2\n"
-    "Coin 1 = key:5\n"
-    "Test = key:F2\n"
-    "Service = key:9\n";
-
-std::string trim(std::string s) {
-    while (!s.empty() && isspace((unsigned char)s.back())) s.pop_back();
-    size_t i = 0;
-    while (i < s.size() && isspace((unsigned char)s[i])) i++;
-    return s.substr(i);
-}
 
 bool parse_binding(const std::string &b, Binding &out) {
     if (b.rfind("key:", 0) == 0) {
@@ -176,31 +60,14 @@ bool parse_binding(const std::string &b, Binding &out) {
 }
 
 void load_text(const std::string &text, const char *origin) {
-    size_t pos = 0;
-    int line_no = 0;
-    while (pos < text.size()) {
-        size_t e = text.find('\n', pos);
-        std::string line = text.substr(pos, e == std::string::npos ? std::string::npos : e - pos);
-        pos = e == std::string::npos ? text.size() : e + 1;
-        line_no++;
-        if (auto h = line.find('#'); h != std::string::npos) line = line.substr(0, h);
-        auto eq = line.find('=');
-        if (eq == std::string::npos) continue;
-        std::string name = trim(line.substr(0, eq)), rhs = line.substr(eq + 1);
+    for (auto &en : cab::parse_list_file(text)) {
         std::vector<Binding> list;
-        size_t p = 0;
-        while (p <= rhs.size()) {
-            size_t c = rhs.find(',', p);
-            std::string b = trim(rhs.substr(p, c == std::string::npos ? std::string::npos : c - p));
-            if (!b.empty()) {
-                Binding bd{};
-                if (parse_binding(b, bd)) list.push_back(bd);
-                else fprintf(stderr, "%s:%d: cannot parse binding '%s'\n", origin, line_no, b.c_str());
-            }
-            if (c == std::string::npos) break;
-            p = c + 1;
+        for (auto &b : en.items) {
+            Binding bd{};
+            if (parse_binding(b, bd)) list.push_back(bd);
+            else fprintf(stderr, "%s:%d: cannot parse binding '%s'\n", origin, en.line, b.c_str());
         }
-        g_bind[name] = list;   // a later definition replaces the default
+        g_bind[en.name] = list;   // a later definition replaces the default
     }
 }
 
@@ -223,8 +90,7 @@ int joy_index(SDL_JoystickID id) {
 
 void input_init(const std::string &file) {
     SDL_InitSubSystem(SDL_INIT_JOYSTICK);
-    const std::string &fam = fb::family();
-    load_text(fam == "popn" ? DEFAULTS_POPN : fam == "ppp" ? DEFAULTS_PPP : fam == "kbm" ? DEFAULTS_KBM : DEFAULTS_BM3, "defaults");
+    load_text(cab::default_bindings(fb::family()), "defaults");
     if (!file.empty()) {
         std::ifstream in(file);
         if (in) load_text(std::string((std::istreambuf_iterator<char>(in)), {}), file.c_str());
@@ -319,7 +185,10 @@ std::string input_describe() {
             case Src::axis: snprintf(buf, sizeof buf, " joy%d:axis%d", b.joy, b.index); break;
             case Src::axis_neg: snprintf(buf, sizeof buf, " joy%d:axis%d-", b.joy, b.index); break;
             case Src::axis_pos: snprintf(buf, sizeof buf, " joy%d:axis%d+", b.joy, b.index); break;
-            case Src::hat: snprintf(buf, sizeof buf, " joy%d:hat%d", b.joy, b.index); break;
+            case Src::hat:
+                snprintf(buf, sizeof buf, " joy%d:hat%d:%s", b.joy, b.index,
+                         b.hat_dir == SDL_HAT_UP ? "up" : b.hat_dir == SDL_HAT_DOWN ? "down" : b.hat_dir == SDL_HAT_LEFT ? "left" : "right");
+                break;
             }
             s += buf;
         }

@@ -19,12 +19,23 @@ Done so far:
 
 beatmania III The Final runs natively with sound, keyboard and joystick controls. **How to play: [docs/PLAY.md](docs/PLAY.md).** See [PLAN.md](PLAN.md) for what's next.
 
+## The launcher
+
+`build/cmake/hiraku` (built when Qt 6 is installed) lists the supported games and shows which ones are ready to play. From there you can:
+- play a game (double-click), stop it, and read its log;
+- map keys and controller inputs to each cabinet's controls: click, then press;
+- map cabinet lamps to controller LEDs, and watch a running game's lamps live ([docs/LIGHTS.md](docs/LIGHTS.md));
+- set window size, fullscreen, audio and folders.
+
+`hiraku popn7` starts a game straight away. Settings and mappings are kept in `~/.config/hiraku/`.
+
 ```bash
 tools/ingest.py path/to/program-disc.cue --romset path/to/bm3final.zip --hdd path/to/hdd.img   # → dumps/<game>/
 analyze/ghidra.sh bm3final                  # → build/bm3final/manifest.json
 analyze/prep.py bm3final                    # → build/bm3final/recomp.txt
 cmake -S . -B build/cmake -G Ninja && ninja -C build/cmake
 ctest --test-dir build/cmake                # instruction semantics vs QEMU
+build/cmake/hiraku                          # the launcher (Qt 6)
 build/cmake/hiraku-bm3final --window        # real time with sound; F2 test, 5 coin, 1 start, Z S X D C keys
 build/cmake/hiraku-bm3final --script oracle/scripts/bm3final-practice.his --wav out/practice.wav
 build/cmake/hiraku-bm3final --frames 1800 --snap-every 300 --trace   # headless, PPM frames + MMIO trace

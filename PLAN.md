@@ -86,6 +86,7 @@ HIRAKU/
   PLAN.md
   docs/                 hardware notes, per-game deltas, DONE-CRITERIA, PORT-DELTAS (EZ2DECOMP conventions)
   tools/                dump ingestion (disc → program image), misc Python
+  launcher/             `hiraku`, the Qt 6 front end: game list, controls/lights mapping, settings
   analyze/              Ghidra headless scripts + Python → per-game manifest (functions, jump tables, fn-ptr tables)
   recomp/               C++ PPC403 → C translator (decoder, emitter, CFG checks)
   runtime/
@@ -214,7 +215,7 @@ Durations are rough, assume one person, and are assisted. Each milestone has a c
 | **M6** | Rest of beatmania III | `bm3`, `bm3core`, `bm36th`, `bm37th` run. Mostly manifests and SDK signatures plus SPU ROM revision differences. | 2–3 wk — **blocked on media**: no 1st mix, Core Remix, 6th or 7th disc on hand (the local `bm3` set is The Final's CHDs renamed) |
 | **M7** | pop'n music 4–8, Animelo 1/2, Mickey Tunes | Same SPU stack, plus DVD on the SPU's ATA and BGM streaming via RF5C400 reg 09 (the hardest audio-timing case). The redump bundle is needed. | 4–8 wk — started: programs recompile and run native to the dongle check; **needs the `popn4`–`popn7` MAME ROM sets** (dongle, SPU program) |
 | **M8** | ParaParaParadise family | `!:EXE:00` loader, YMZ280B, CDDA, sensor input mapping. | 3–4 wk — started: `ppp1mp` runs native through its startup checks and test mode; YMZ280B ported (YMZ check passes, sound flash installs from the CD); **needs the `ppp1mp` ROM set** (dongle) |
-| **M9** | Native polish | Low-latency audio backends, display options, input remap UI, Windows build, per-game config UX. | ongoing |
+| **M9** | Native polish | Low-latency audio backends, display options, input remap UI, Windows build, per-game config UX. | ongoing — the `hiraku` launcher (game list, controls and lights mapping, settings) and cabinet lamps (HID LEDs, socket: docs/LIGHTS.md) are in |
 | **M10** | Keyboardmania (stretch) | Dual GCU / dual screen, MIDI-in, SoundFont stand-in for the XT446. | 4+ wk — started: kbm, kbh, kbm2nd, kbm3rd boot to attract (dual GCU, ROT270, MIDI keyboards, CD audio); synth next (SoundFont first) |
 
 Rough total to playable BM3 Final is about 4 months. Each later family should cost weeks, not months, if the SDK-signature bet in §3.3 holds.

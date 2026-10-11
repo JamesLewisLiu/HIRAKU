@@ -54,7 +54,7 @@ void poll() {
 }
 }  // namespace
 
-bool window_open(const char *title, int scale, const std::string &bindings, int target_ms) {
+bool window_open(const char *title, int scale, const std::string &bindings, int target_ms, bool fullscreen) {
     SDL_SetHint(SDL_HINT_AUDIO_DEVICE_SAMPLE_FRAMES, "128");   // ask for a small device buffer
     if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO)) return false;
     input_init(bindings);
@@ -74,6 +74,7 @@ bool window_open(const char *title, int scale, const std::string &bindings, int 
     if (!SDL_CreateWindowAndRenderer(title, 640 * scale, 480 * scale, SDL_WINDOW_RESIZABLE, &g_win, &g_ren)) return false;
     SDL_SetRenderVSync(g_ren, 0);   // audio paces the machine; presenting must never block on the display
     SDL_SetRenderLogicalPresentation(g_ren, 640, 480, SDL_LOGICAL_PRESENTATION_LETTERBOX);
+    if (fullscreen) SDL_SetWindowFullscreen(g_win, true);
     return true;
 }
 

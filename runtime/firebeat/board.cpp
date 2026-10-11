@@ -26,6 +26,7 @@
 #include "../dev/rtc65271.h"
 #include "../dev/ymz280b.h"
 #include "../spu/spu.h"
+#include "cabinet.h"
 #include "spectrum.h"
 #include "synth.h"
 
@@ -303,6 +304,23 @@ void unmapped(const char *rw, uint32_t p, int size, uint32_t v) {
 inline uint32_t lane_shift(uint32_t p, int size) { return (uint32_t)(4 - (int)(p & 3) - size) * 8; }
 inline uint32_t size_mask(int size) { return size == 4 ? 0xffffffffu : ((1u << (8 * size)) - 1); }
 
+// ---- lamps: as MAME, an access updates the lamps on the byte lanes it touches ----
+std::vector<uint8_t> g_lamps;
+uint64_t g_lamp_changes = 0;
+
+void lamp_write(int reg, uint32_t data, uint32_t mask) {
+    auto &defs = cab::lamps(g_cfg.family);
+    for (size_t k = 0; k < defs.size(); k++) {
+        auto &l = defs[k];
+        if (l.reg != reg || !((mask >> l.bit) & 1)) continue;
+        uint8_t on = (uint8_t)(((data >> l.bit) & 1) ^ (l.active_low ? 1 : 0));
+        if (g_lamps[k] != on) {
+            g_lamps[k] = on;
+            g_lamp_changes++;
+        }
+    }
+}
+
 // Byte-wide devices: call `f(offset)` for each byte of the access, assembling the value.
 template <typename F>
 uint32_t bytes_read(uint32_t p, int size, uint32_t base, F f) {
@@ -471,7 +489,8 @@ void bus_write(uint32_t p, uint32_t v, int size) {
         g_control = d;
         return;
     }
-    if ((p >= 0x7d000320 && p <= 0x7d000327) || (p >= 0x7d000804 && p <= 0x7d000807)) return;   // lamps, status LEDs
+    if (p >= 0x7d000320 && p <= 0x7d000327) { lamp_write(1 + ((p >> 2) & 1), v << lane_shift(p, size), size_mask(size) << lane_shift(p, size)); return; }
+    if (p >= 0x7d000804 && p <= 0x7d000807) { lamp_write(0, v << lane_shift(p, size), size_mask(size) << lane_shift(p, size)); return; }   // lamps, status LEDs
     if (p >= 0x7d000400 && p <= 0x7d000401) {
         bytes_write(p, size, v, 0x7d000400, [](uint32_t o, uint8_t b) { g_ymz->write((int)o, b); });
         return;
@@ -628,6 +647,7 @@ bool read_file(const std::string &path, std::vector<uint8_t> &out) {
 
 void init(const Config &cfg) {
     g_cfg = cfg;
+    g_lamps.assign(cab::lamps(cfg.family).size(), 0);
     if (cfg.family == "popn") {                     // MAME `popn` ports, nothing pressed:
         g_in.in[0] = 0xff;                            // IN0: switches 1-8, active low
         g_in.in[2] = 0x55;                            // IN2: switch 9, coin, test, service released; the rest active high
@@ -884,6 +904,8 @@ void set_audio_sink(AudioSink sink) { g_audio_sink = std::move(sink); }
 uint64_t ymz_key_ons() { return g_ymz ? g_ymz->key_ons : 0; }
 uint64_t midi_out_bytes() { return g_midi_out_bytes; }
 uint64_t frame_count() { return g_frame; }
+const std::vector<uint8_t> &lamp_state() { return g_lamps; }
+uint64_t lamp_changes() { return g_lamp_changes; }
 void set_trace_ctx(hk_ctx *c) { g_ctx_for_trace = c; }
 
 }  // namespace hk::fb

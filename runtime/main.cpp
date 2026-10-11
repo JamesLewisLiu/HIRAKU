@@ -16,7 +16,10 @@
 //                       MAME for beatmania III); boards like the SPU boot during it
 //     --window [SCALE]  show the game in a window, in real time, with sound (SDL3 builds);
 //                       F2 test, 9 service, 5 coin, 1 start, Z S X D C keys, Left/Right turntable, Esc quits
+//     --fullscreen      start the window fullscreen (F11 toggles)
 //     --bindings FILE   controls (see runtime/host/input.h)
+//     --lights FILE     drive HID controller LEDs from the cabinet lamps (see runtime/host/lights.h)
+//     --lights-socket P publish the lamps on a UNIX socket at path P (docs/LIGHTS.md)
 //     --audio-ms N      initial audio queue target (default 8); grows by 1 ms per underrun, up to 30
 //     --nvram DIR       keep the machine's NVRAM (RTC RAM, flash) in DIR: loaded at start, saved on exit.
 //                       Default with --window: ~/.local/share/hiraku/<game>; otherwise none (every
@@ -43,6 +46,7 @@
 #include "spu/spu.h"
 #include "host/script.h"
 #ifdef HK_WITH_SDL
+#include "host/lights.h"
 #include "host/window.h"
 #endif
 
@@ -98,7 +102,8 @@ int main(int argc, char **argv) {
     uint64_t frames = 0, snap_every = 0, debug_every = 0;
     bool trace = false, ata_log = false;
     int window_scale = 0;
-    std::string wav_path, script_path, bindings, nvram_dir;
+    std::string wav_path, script_path, bindings, nvram_dir, lights_file, lights_socket;
+    bool fullscreen = false;
     bool nvram_given = false;
     int audio_ms = 8;
     double bios_seconds = 21.65;
@@ -122,6 +127,9 @@ int main(int argc, char **argv) {
         else if (a == "--wav") wav_path = val();
         else if (a == "--script") script_path = val();
         else if (a == "--bindings") bindings = val();
+        else if (a == "--lights") lights_file = val();
+        else if (a == "--lights-socket") lights_socket = val();
+        else if (a == "--fullscreen") fullscreen = true;
         else if (a == "--nvram") { nvram_dir = val(); nvram_given = true; }
         else if (a == "--audio-ms") audio_ms = std::stoi(val());
         else if (a == "--bios-seconds") bios_seconds = std::stod(val());
@@ -163,6 +171,11 @@ int main(int argc, char **argv) {
     cfg.ata_log = ata_log;
     fb::init(cfg);
     if (cfg.family == "kbm") synth::init(soundfont);
+#ifdef HK_WITH_SDL
+    if (!lights_file.empty() || !lights_socket.empty()) host::lights_init(game, cfg.family, lights_file, lights_socket);
+#else
+    if (!lights_file.empty() || !lights_socket.empty()) fprintf(stderr, "this build has no lights (needs SDL3)\n");
+#endif
 
     // sound: the SPU board when the machine has one, otherwise the board's YMZ280B
     FILE *wav = nullptr;
@@ -258,10 +271,15 @@ int main(int argc, char **argv) {
         if (window_scale) printf("%s\n", host::audio_describe().c_str());
 #endif
     };
-    g_on_fatal = [&]() { script::close(); fb::shutdown(); report(); };
+    auto lights_off = []() {
+#ifdef HK_WITH_SDL
+        host::lights_close();
+#endif
+    };
+    g_on_fatal = [&]() { script::close(); fb::shutdown(); lights_off(); report(); };
 
 #ifdef HK_WITH_SDL
-    if (window_scale && !host::window_open(("HIRAKU - " + game).c_str(), window_scale, bindings, audio_ms)) {
+    if (window_scale && !host::window_open(("HIRAKU - " + game).c_str(), window_scale, bindings, audio_ms, fullscreen)) {
         fprintf(stderr, "cannot open a window\n");
         return 1;
     }
@@ -278,6 +296,7 @@ int main(int argc, char **argv) {
         if (stop_requested) {
             script::close();
             fb::shutdown();
+            lights_off();
             report();
 #ifdef HK_WITH_SDL
             if (window_scale) host::window_close();
@@ -293,6 +312,7 @@ int main(int argc, char **argv) {
             if (!keep) {
                 script::close();
                 fb::shutdown();
+                lights_off();
                 report();
                 exit(g_stats.shadow_bad ? 1 : 0);
             }
@@ -300,6 +320,7 @@ int main(int argc, char **argv) {
 #ifdef HK_WITH_SDL
         if (window_scale && !host::window_frame(rgb, w, h, (double)now() / CPU_HZ)) {
             fb::shutdown();
+            lights_off();
             report();
             host::window_close();
             exit(0);
@@ -310,6 +331,9 @@ int main(int argc, char **argv) {
                    (unsigned long long)f, ctx.pc, ctx.lr, ctx.msr, ctx.r[1], g_cpu.dcrs[0x40], g_cpu.dcrs[0x42],
                    g_cpu.sprs[0x3da], g_cpu.sprs[0x3d8], (unsigned long long)g_stats.insns,
                    (unsigned long long)g_stats.exceptions, (unsigned long long)g_stats.thread_switches);
+#ifdef HK_WITH_SDL
+        host::lights_frame();
+#endif
         if (snap_every && f % snap_every == 0) {
             char name[64];
             snprintf(name, sizeof name, "/frame%06llu.ppm", (unsigned long long)f);
@@ -317,6 +341,7 @@ int main(int argc, char **argv) {
         }
         if (frames && f >= frames) {
             fb::shutdown();
+            lights_off();
             report();
             exit(g_stats.shadow_bad ? 1 : 0);
         }

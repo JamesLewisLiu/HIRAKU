@@ -16,6 +16,16 @@ The ingester writes `dumps/bm3final/`: the unpacked program, `machine.txt` (disc
 
 ## Play
 
+The launcher is the easy way:
+
+```bash
+build/cmake/hiraku
+```
+
+Pick the game and press **Play**. **Controls** and **Lights** map your keyboard, controllers and controller LEDs, and **Settings** holds the window, audio and folder options. A game that isn't ready shows what it still needs. On a first boot, the game's test-mode steps are shown under the list.
+
+Or start a game directly:
+
 ```bash
 build/cmake/hiraku-bm3final --window
 ```
@@ -46,9 +56,13 @@ P2 uses M K Comma L Period, Up/Down and 2.
 
 Joysticks are opened at start and when plugged in. The console lists them as `joy0`, `joy1` and so on.
 
-The defaults map `joy0` buttons 0–4 to the keys, axis 0 to the turntable, button 7 to the pedal, 8 to start and 9 to coin. To change anything, write a bindings file and pass `--bindings FILE`. See `docs/bindings-bm3.example`; the format is in `runtime/host/input.h`.
+The defaults map `joy0` buttons 0–4 to the keys, axis 0 to the turntable, button 7 to the pedal, 8 to start and 9 to coin.
 
-IIDX-style controllers differ in which button and axis numbers they use. Run once, press each button and watch… or just try `joyN:buttonK` values until each key lights its lane in test mode's I/O check.
+IIDX-style controllers differ in which button and axis numbers they use. The easiest way to map one is the launcher's **Controls** dialog: click a binding, then press the button or spin the turntable. Pressing anything already bound lights up its row. The dialog saves `~/.config/hiraku/controls/<cabinet>.txt`, which the launcher passes as `--bindings`.
+
+By hand: write a bindings file and pass `--bindings FILE`. See `docs/bindings-bm3.example`; the format is in `runtime/host/input.h`.
+
+**Lights:** `--lights FILE` drives HID controller LEDs from the cabinet lamps, and `--lights-socket PATH` publishes them for other tools. See [LIGHTS.md](LIGHTS.md).
 
 ## Latency
 

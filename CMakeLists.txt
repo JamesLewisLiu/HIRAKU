@@ -31,6 +31,10 @@ target_include_directories(musashi PUBLIC third_party/musashi runtime/spu)
 target_compile_definitions(musashi PUBLIC MUSASHI_CNF="hk_m68kconf.h")
 target_compile_options(musashi PRIVATE -w)
 
+# --- cabinet tables, lights file formats (shared with the launcher) -------------
+add_library(hiraku_cabinet STATIC runtime/firebeat/cabinet.cpp runtime/host/hiddesc.cpp)
+target_include_directories(hiraku_cabinet PUBLIC runtime)
+
 # --- runtime core ------------------------------------------------------------
 add_library(hiraku_rt STATIC
   runtime/core/state.cpp
@@ -52,7 +56,7 @@ add_library(hiraku_rt STATIC
   runtime/firebeat/spectrum.cpp
   runtime/firebeat/synth.cpp)
 target_include_directories(hiraku_rt PUBLIC runtime)
-target_link_libraries(hiraku_rt PUBLIC hiraku_ppc musashi)
+target_link_libraries(hiraku_rt PUBLIC hiraku_ppc musashi hiraku_cabinet)
 
 # Keyboardmania's synth stand-in (optional: FluidSynth, LGPL, linked dynamically)
 find_package(PkgConfig QUIET)
@@ -68,11 +72,33 @@ endif()
 # --- host front end (optional: SDL3) ---------------------------------------------
 find_package(SDL3 CONFIG QUIET)
 if(SDL3_FOUND)
-  add_library(hiraku_host STATIC runtime/host/window.cpp runtime/host/input.cpp)
+  # HID outputs (controller LEDs), shared with the launcher
+  add_library(hiraku_hidout STATIC runtime/host/hidout.cpp)
+  target_link_libraries(hiraku_hidout PUBLIC SDL3::SDL3 hiraku_cabinet)
+  add_library(hiraku_host STATIC runtime/host/window.cpp runtime/host/input.cpp runtime/host/lights.cpp)
   target_include_directories(hiraku_host PUBLIC runtime)
-  target_link_libraries(hiraku_host PUBLIC SDL3::SDL3 hiraku_rt)
+  target_link_libraries(hiraku_host PUBLIC SDL3::SDL3 hiraku_rt hiraku_hidout)
   target_compile_definitions(hiraku_host PUBLIC HK_WITH_SDL=1)
   message(STATUS "hiraku: SDL3 front end enabled")
+endif()
+
+# --- the launcher (optional: Qt 6 Widgets + SDL3) ------------------------------------
+find_package(Qt6 QUIET COMPONENTS Widgets Network)
+if(Qt6_FOUND AND TARGET hiraku_hidout)
+  set(CMAKE_AUTOMOC ON)
+  add_executable(hiraku
+    launcher/main.cpp
+    launcher/config.cpp
+    launcher/games.cpp
+    launcher/inputs.cpp
+    launcher/mainwindow.cpp
+    launcher/controlsdialog.cpp
+    launcher/lightsdialog.cpp
+    launcher/settingsdialog.cpp)
+  target_compile_definitions(hiraku PRIVATE HK_ROOT="${CMAKE_SOURCE_DIR}")
+  target_link_libraries(hiraku PRIVATE Qt6::Widgets Qt6::Network hiraku_cabinet hiraku_hidout)
+  set(CMAKE_AUTOMOC OFF)
+  message(STATUS "hiraku: Qt ${Qt6_VERSION} launcher enabled")
 endif()
 
 # --- tests -------------------------------------------------------------------

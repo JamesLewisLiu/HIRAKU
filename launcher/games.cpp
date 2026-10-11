@@ -1,0 +1,130 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+#include "games.h"
+
+#include <QDir>
+#include <QFile>
+#include <QFileInfo>
+#include <QPainter>
+#include <QRegularExpression>
+#include <QTextStream>
+
+#include "config.h"
+
+namespace {
+
+// The top-level keys of a game.toml (title, family, ...): all the launcher needs.
+void readManifest(const QString &path, Game &g) {
+    QFile f(path);
+    if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) return;
+    QTextStream in(&f);
+    bool first = true;
+    static const QRegularExpression kv(R"(^\s*([A-Za-z_]+)\s*=\s*"([^"]*)\")");
+    static const QRegularExpression head(R"(^#\s*.*\),\s*(.+?)\s+(\d{4})\s*$)");   // "# Title (CODE), Konami 2002"
+    while (!in.atEnd()) {
+        QString line = in.readLine();
+        if (first) {
+            first = false;
+            auto m = head.match(line);
+            if (m.hasMatch()) {
+                g.maker = m.captured(1);
+                g.year = m.captured(2);
+            }
+        }
+        if (line.trimmed().startsWith('[')) break;
+        auto m = kv.match(line);
+        if (!m.hasMatch()) continue;
+        QString k = m.captured(1), v = m.captured(2);
+        if (k == "id") g.id = v;
+        else if (k == "title") g.title = v;
+        else if (k == "family") g.family = v;
+        else if (k == "mame") g.mame = v;
+        else if (k == "first_boot") g.firstBoot = v;
+    }
+}
+
+}  // namespace
+
+QString Game::statusText() const {
+    switch (status) {
+    case Ready: return "Ready";
+    case NotBuilt: return "Not built";
+    case NotInstalled: return "Not installed";
+    }
+    return {};
+}
+
+QString Game::howTo() const {
+    QString root = cfg::rootDir();
+    QString extra = family == "bm3" ? " --hdd HDD.img" : family == "popn" ? " --dvd DISC2.iso" : " --cd2 DISC2.cue";
+    QString build = QString("analyze/ghidra.sh %1 && analyze/prep.py %1\n"
+                            "cmake -S . -B build/cmake -G Ninja && ninja -C build/cmake hiraku-%1")
+                        .arg(id);
+    if (status == NotInstalled)
+        return QString("HIRAKU has no data for %1 yet. You need your own dumps: the program disc, "
+                       "its second disc or HDD, and the MAME ROM set \"%2\". docs/PLAY.md lists them per game.\n\n"
+                       "In %3:\n\n"
+                       "tools/ingest.py DISC1.cue%4 --romset %2.zip\n%5")
+            .arg(title, mame, root, extra, build);
+    if (status == NotBuilt) {
+        bool prepped = QFileInfo::exists(root + "/build/" + id + "/recomp.txt");
+        return QString("The data for %1 is installed, but %2 has not been built yet.\n\nIn %3:\n\n%4")
+            .arg(title, exe, root,
+                 prepped ? QString("cmake -S . -B build/cmake -G Ninja && ninja -C build/cmake hiraku-%1").arg(id) : build);
+    }
+    return {};
+}
+
+QList<Game> scanGames() {
+    QList<Game> out;
+    QString root = cfg::rootDir(), bin = cfg::binDir();
+    QDir dir(root + "/games");
+    for (const QString &sub : dir.entryList(QDir::Dirs | QDir::NoDotAndDotDot, QDir::Name)) {
+        QString manifest = dir.filePath(sub + "/game.toml");
+        if (!QFileInfo::exists(manifest)) continue;
+        Game g;
+        g.id = sub;
+        readManifest(manifest, g);
+        if (g.title.isEmpty()) g.title = g.id;
+        // next to the launcher, else where the README's build puts it
+        bool built = false;
+        for (const QString &d : {bin, root + "/build/cmake"}) {
+            QFileInfo exe(d + "/hiraku-" + g.id);
+            if (exe.isFile() && exe.isExecutable()) {
+                g.exe = exe.absoluteFilePath();
+                built = true;
+                break;
+            }
+        }
+        if (!built) g.exe = bin + "/hiraku-" + g.id;
+        bool installed = QFileInfo::exists(root + "/dumps/" + g.id + "/machine.txt");
+        g.status = !installed ? Game::NotInstalled : built ? Game::Ready : Game::NotBuilt;
+        out.push_back(g);
+    }
+    return out;
+}
+
+QIcon familyIcon(const QString &family) {
+    struct Look { QColor bg; const char *text; };
+    Look l = family == "popn" ? Look{QColor(0xe8, 0x4a, 0x8a), "pop'n"}
+           : family == "ppp"  ? Look{QColor(0xf0, 0x8a, 0x24), "PPP"}
+           : family == "kbm"  ? Look{QColor(0x2e, 0x9e, 0x6a), "KBM"}
+                              : Look{QColor(0x3a, 0x4c, 0xb8), "bm III"};
+    QIcon icon;
+    for (int size : {32, 64}) {
+        QPixmap pm(size, size);
+        pm.fill(Qt::transparent);
+        QPainter p(&pm);
+        p.setRenderHint(QPainter::Antialiasing);
+        p.setPen(Qt::NoPen);
+        p.setBrush(l.bg);
+        p.drawRoundedRect(QRectF(1, 1, size - 2, size - 2), size / 6.0, size / 6.0);
+        QFont f = p.font();
+        f.setBold(true);
+        f.setPixelSize(size * (strlen(l.text) > 4 ? 0.26 : 0.32));
+        p.setFont(f);
+        p.setPen(Qt::white);
+        p.drawText(QRectF(0, 0, size, size), Qt::AlignCenter, l.text);
+        icon.addPixmap(pm);
+    }
+    return icon;
+}

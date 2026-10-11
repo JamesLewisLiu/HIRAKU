@@ -3,6 +3,7 @@ id = "ppd"
 title = "ParaParaDancing"
 family = "ppp"
 mame = "ppd"
+first_boot = "the backup RAM (E160) and sound flash (E124) are blank. Press F2 for test mode, run SOUND FLASH INIT, then ALL FACTORY SETTINGS."   # shown by the launcher
 
 [program]
 exe = "HIKARU.EXE"      # wrapped by the ParaPara "!:EXE:00" loader

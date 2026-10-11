@@ -8,7 +8,7 @@
 
 namespace hk::host {
 
-bool window_open(const char *title, int scale, const std::string &bindings, int audio_target_ms);
+bool window_open(const char *title, int scale, const std::string &bindings, int audio_target_ms, bool fullscreen = false);
 // Present one frame; then sleep so that `virtual_seconds` does not run ahead
 // of real time. Returns false when the user closed the window.
 bool window_frame(const uint32_t *rgb, int w, int h, double virtual_seconds);

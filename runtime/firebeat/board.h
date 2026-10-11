@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <functional>
 #include <string>
+#include <vector>
 
 #include "hiraku/ppc.h"
 
@@ -58,6 +59,10 @@ void set_audio_sink(AudioSink sink);
 uint64_t ymz_key_ons();
 uint64_t midi_out_bytes();         // Keyboardmania: bytes sent to the synth card
 uint64_t frame_count();
+// Lamps as the game last drove them, in cab::lamps(family()) order (1 = lit), and
+// a counter that moves on every change.
+const std::vector<uint8_t> &lamp_state();
+uint64_t lamp_changes();
 void set_trace_ctx(hk_ctx *c);   // PCs in the MMIO trace come from here
 
 }  // namespace hk::fb
