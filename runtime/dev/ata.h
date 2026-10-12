@@ -39,6 +39,7 @@ public:
 private:
     bool parse_cue(const std::string &cue, std::string &bin);
     FILE *f_ = nullptr;
+    std::string name_;   // the file's name, for the slow-read report
     uint32_t nsectors_ = 0;
     std::vector<Track> tracks_;
 };
@@ -65,6 +66,7 @@ public:
 
 private:
     FILE *f_ = nullptr;
+    std::string name_;
     uint32_t nsectors_ = 0;
 };
 

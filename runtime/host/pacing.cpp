@@ -8,6 +8,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <ctime>
+#include <unordered_set>
 #include <vector>
 
 #include "../core/prof.h"
@@ -143,6 +144,9 @@ wp_fifo_manager_v1 *g_fifo_mgr = nullptr;
 wp_fifo_v1 *g_fifo = nullptr;   // holds each frame for its refreshes (fifo-v1), when the compositor has it
 wl_surface *g_surface = nullptr;
 clockid_t g_clock = CLOCK_MONOTONIC;
+// Feedbacks not yet answered: destroyed before the queue, or the compositor's answer arriving
+// after shutdown lands on a destroyed queue and libwayland aborts ("Tried to add event to destroyed queue").
+std::unordered_set<struct wp_presentation_feedback *> g_live;
 
 struct Pending {
     int64_t target;
@@ -165,12 +169,14 @@ const wp_presentation_feedback_listener feedback_listener = {
         int64_t t = (int64_t)(((uint64_t)sec_hi << 32) | sec_lo) * 1'000'000'000 + nsec;
         presented(clock_to_steady(t), p->committed, p->target, p->overrun, refresh, p->k);
         delete p;
+        g_live.erase(fb);
         wp_presentation_feedback_destroy(fb);
     },
     [](void *data, struct wp_presentation_feedback *fb) {   // replaced before it was shown, or the window is hidden
         n_discarded++;
         g_prev_t = 0;
         delete (Pending *)data;
+        g_live.erase(fb);
         wp_presentation_feedback_destroy(fb);
     },
 };
@@ -212,6 +218,11 @@ void wayland_init() {
 
 void wayland_shutdown() {
     if (!g_wd) return;
+    for (struct wp_presentation_feedback *fb : g_live) {
+        delete (Pending *)wl_proxy_get_user_data((wl_proxy *)fb);
+        wp_presentation_feedback_destroy(fb);
+    }
+    g_live.clear();
     if (g_fifo) wp_fifo_v1_destroy(g_fifo);
     if (g_fifo_mgr) wp_fifo_manager_v1_destroy(g_fifo_mgr);
     if (g_pres) wp_presentation_destroy(g_pres);
@@ -297,10 +308,11 @@ bool frame(double period) {
     g_active = true;
     g_k = k;
     g_speed = 1e9 / (g_game_hz * (double)k * (double)g_T);   // smoothed: the sound's rate shouldn't flutter
-    f = g_speed;
-    snprintf(b, sizeof b, "on: %.2f Hz display, %d refresh%s per frame, the game at %+.1f %% speed", hz, k,
-             k == 1 ? "" : "es", (f - 1.0) * 100.0);
-    announce("on " + std::to_string(std::lround(hz * 100)) + " " + std::to_string(k), b);
+    // said again when the game changes its video mode (pop'n boots at 59.94 Hz, then runs at 58.49)
+    snprintf(b, sizeof b, "on: %.2f Hz display, %d refresh%s per frame, the game's %.2f Hz at %+.1f %% speed", hz, k,
+             k == 1 ? "" : "es", 1.0 / period, (1e9 / ((double)k * (double)g_T) * period - 1.0) * 100.0);
+    announce("on " + std::to_string(std::lround(hz * 100)) + " " + std::to_string(k) + " " +
+                 std::to_string(std::lround(10.0 / period)), b);
 
     const int64_t now = (int64_t)prof::now_ns();
     if (!g_lead_set) g_lead = g_T / 2, g_lead_set = true;   // then later and later (presented())
@@ -347,6 +359,7 @@ void commit() {
     if (g_pres) {
         struct wp_presentation_feedback *fb = wp_presentation_feedback(g_pres, g_surface);
         wp_presentation_feedback_add_listener(fb, &feedback_listener, new Pending{g_target, g_overrun, g_k, (int64_t)prof::now_ns()});
+        g_live.insert(fb);
     }
     if (g_fifo) {   // shown no sooner than the previous frame's last refresh, and for one at least
         wp_fifo_v1_set_barrier(g_fifo);

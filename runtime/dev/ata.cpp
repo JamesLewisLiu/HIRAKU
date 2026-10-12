@@ -13,6 +13,29 @@
 
 namespace hk {
 
+namespace {
+// pread, timed: a read the game waits on stops the machine, so a slow one is reported (a cold
+// cache on a slow drive, a USB stick, a disk waking up). HK_DISK_LOG=1 reports every read.
+ssize_t timed_pread(int fd, void *buf, size_t n, off_t off, const std::string &name) {
+    static const bool all = getenv("HK_DISK_LOG") != nullptr;
+    static int reported = 0;
+    const uint64_t t0 = prof::now_ns();
+    const ssize_t r = ::pread(fd, buf, n, off);
+    const double ms = (double)(prof::now_ns() - t0) / 1e6;
+    if (all || (ms >= 50.0 && reported < 20)) {
+        if (!all) reported++;
+        fprintf(stderr, "disk: %sread %.1f ms: %.2f MiB at %.1f MiB of %s\n", all ? "" : "slow ", ms,
+                (double)n / 1048576.0, (double)off / 1048576.0, name.c_str());
+    }
+    return r;
+}
+
+std::string base_name(const std::string &path) {
+    auto slash = path.find_last_of('/');
+    return slash == std::string::npos ? path : path.substr(slash + 1);
+}
+}  // namespace
+
 // ---------------------------------------------------------------------------
 // Disc images
 // ---------------------------------------------------------------------------
@@ -86,6 +109,7 @@ bool DiscImage::open(const std::string &path0) {
     }
     f_ = fopen(path.c_str(), "rb");
     if (!f_) return false;
+    name_ = base_name(path);
     fseeko(f_, 0, SEEK_END);
     uint64_t size = (uint64_t)ftello(f_);
     warm_cache(path, size);
@@ -145,10 +169,10 @@ bool DiscImage::read_sectors(uint32_t lba, uint32_t n, uint8_t *out) const {
         const uint32_t run = std::min(n, t.frames - (lba - t.start));
         const off_t off = (off_t)(t.offset + (uint64_t)(lba - t.start) * t.size);
         if (t.size == 2048 && t.skip == 0) {
-            if (::pread(fileno(f_), out, (size_t)run * 2048, off) != (ssize_t)run * 2048) return false;
+            if (timed_pread(fileno(f_), out, (size_t)run * 2048, off, name_) != (ssize_t)run * 2048) return false;
         } else {
             raw.resize((size_t)run * t.size);
-            if (::pread(fileno(f_), raw.data(), raw.size(), off) != (ssize_t)raw.size()) return false;
+            if (timed_pread(fileno(f_), raw.data(), raw.size(), off, name_) != (ssize_t)raw.size()) return false;
             for (uint32_t k = 0; k < run; k++) memcpy(out + (size_t)k * 2048, raw.data() + (size_t)k * t.size + t.skip, 2048);
         }
         lba += run;
@@ -178,7 +202,7 @@ void DiskImage::prefetch(uint32_t lba, uint32_t count) const {
 bool DiskImage::read_sectors(uint32_t lba, uint32_t n, uint8_t *out) const {
     prof::Scope ps(prof::DISK);
     if (lba >= nsectors_ || n > nsectors_ - lba) return false;
-    return ::pread(fileno(f_), out, (size_t)n * 512, (off_t)lba * 512) == (ssize_t)n * 512;
+    return timed_pread(fileno(f_), out, (size_t)n * 512, (off_t)lba * 512, name_) == (ssize_t)n * 512;
 }
 
 bool DiscImage::read_audio(uint32_t lba, uint8_t *out) const {
@@ -197,6 +221,7 @@ DiskImage::~DiskImage() {
 bool DiskImage::open(const std::string &path) {
     f_ = fopen(path.c_str(), "rb");
     if (!f_) return false;
+    name_ = base_name(path);
     fseeko(f_, 0, SEEK_END);
     nsectors_ = (uint32_t)((uint64_t)ftello(f_) / 512);
     return nsectors_ > 0;
@@ -668,6 +693,9 @@ void AtaBus::command(uint8_t cmd) {
     case 0xe5:                                           // CHECK POWER MODE
         finish(false);
         nsector_ = 0xff;                                 // active or idle (MAME atapi_hle)
+        break;
+    case 0xe3:                                           // IDLE: pop'n sends it to the DVD drive, and
+        finish(true, 0x05, 0x20);                        // MAME's ATAPI drive rejects it too (ABRT)
         break;
     default:
         fprintf(stderr, "ata: %s: unsupported ATA command %02x\n", d->name_.c_str(), cmd);
