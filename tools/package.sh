@@ -28,7 +28,7 @@ for f in "$build"/hiraku "$build"/hiraku-*; do
 done
 sdl=$(ldd "$build"/hiraku-bm1stmix | awk '/libSDL3/ {print $3}')
 [ -n "$sdl" ] && cp -L "$sdl" "$d/bin/lib/"
-cp -r "$root/games" "$root/docs" "$d/"
+cp -r "$root/games" "$root/docs" "$root/shaders" "$d/"
 cp -r "$root/oracle/scripts" "$d/scripts"
 mkdir -p "$d/tools"
 cp "$root"/tools/{ingest.py,chd.py,fbexe.py,pack-data.py,regress.py} "$d/tools/"
@@ -50,6 +50,7 @@ Game data, either way:
 
 Run a game:
     bin/hiraku-popn8 --window          (--window 3 for 3x, --fullscreen)
+    bin/hiraku-popn8 --window --crt    (the CRT picture: F10 switches it off and on)
     bin/hiraku-popn8 --help            (all options)
 Each run prints its frame times when it ends ("frametime:": host work per frame,
 mean, percentiles and the worst frame). A repeatable test, no window:

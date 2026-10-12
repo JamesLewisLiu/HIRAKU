@@ -2,6 +2,7 @@
 #include "settingsdialog.h"
 
 #include <QCheckBox>
+#include <QComboBox>
 #include <QDialogButtonBox>
 #include <QFileDialog>
 #include <QFormLayout>
@@ -18,7 +19,8 @@
 namespace {
 
 // A line edit with a "Browse…" button
-QWidget *withBrowse(QLineEdit *e, bool directory, QWidget *parent) {
+QWidget *withBrowse(QLineEdit *e, bool directory, QWidget *parent,
+                    const QString &title = "Choose a SoundFont", const QString &filter = "SoundFonts (*.sf2 *.sf3);;All files (*)") {
     auto *w = new QWidget(parent);
     auto *h = new QHBoxLayout(w);
     h->setContentsMargins(0, 0, 0, 0);
@@ -26,9 +28,9 @@ QWidget *withBrowse(QLineEdit *e, bool directory, QWidget *parent) {
     auto *b = new QPushButton("Browse…");
     b->setAutoDefault(false);
     h->addWidget(b);
-    QObject::connect(b, &QPushButton::clicked, w, [e, directory, parent] {
+    QObject::connect(b, &QPushButton::clicked, w, [e, directory, parent, title, filter] {
         QString p = directory ? QFileDialog::getExistingDirectory(parent, "Choose a folder", e->text())
-                              : QFileDialog::getOpenFileName(parent, "Choose a SoundFont", e->text(), "SoundFonts (*.sf2 *.sf3);;All files (*)");
+                              : QFileDialog::getOpenFileName(parent, title, e->text(), filter);
         if (!p.isEmpty()) e->setText(p);
     });
     return w;
@@ -52,6 +54,18 @@ SettingsDialog::SettingsDialog(QWidget *parent) : QDialog(parent) {
     m_fullscreen = new QCheckBox("Start in fullscreen (F11 or Alt+Enter toggles)");
     m_fullscreen->setChecked(s.value("video/fullscreen", false).toBool());
     fv->addRow("", m_fullscreen);
+    m_picture = new QComboBox;
+    m_picture->addItem("Sharp pixels", "sharp");
+    m_picture->addItem("CRT (crt-guest-advanced-fast)", "crt");
+    m_picture->setCurrentIndex(s.value("video/crt", false).toBool() ? 1 : 0);
+    m_picture->setToolTip("CRT: scanlines, mask and glow, through OpenGL 3.3. In the game, F10 switches between the two.");
+    fv->addRow("Picture:", m_picture);
+    m_crtParams = new QLineEdit(s.value("video/crtParams").toString());
+    m_crtParams->setPlaceholderText("default: the shader's own settings");
+    m_crtParams->setToolTip("name = value lines; a RetroArch preset works as is. Shift+F10 in the game reads it again.\n"
+                            "shaders/crt-guest-advanced-fast/example.params lists the useful ones.");
+    fv->addRow("CRT settings file:", withBrowse(m_crtParams, false, this, "Choose CRT settings",
+                                                 "Shader parameters (*.params *.slangp *.txt);;All files (*)"));
     v->addWidget(video);
 
     auto *audio = new QGroupBox("Audio");
@@ -110,6 +124,8 @@ void SettingsDialog::accept() {
     auto &s = cfg::settings();
     s.setValue("video/scale", m_scale->value());
     s.setValue("video/fullscreen", m_fullscreen->isChecked());
+    s.setValue("video/crt", m_picture->currentData().toString() == "crt");
+    s.setValue("video/crtParams", m_crtParams->text().trimmed());
     s.setValue("audio/ms", m_audioMs->value());
     s.setValue("audio/soundfont", m_soundfont->text().trimmed());
     s.setValue("lights/socket", m_socket->isChecked());

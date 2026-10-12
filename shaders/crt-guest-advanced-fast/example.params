@@ -1,0 +1,48 @@
+# CRT settings for crt-guest-advanced-fast: copy this file, change what you like, and give it
+# to the game (launcher: Settings > CRT settings file; or --crt FILE). Lines are
+# `name = value`; anything not set keeps the shader's default (shown here). Shift+F10 in
+# the game reads the file again, so you can tune it while playing.
+# A RetroArch preset (.slangp) with parameter lines works as is.
+# Every parameter is listed, with its range, in the #pragma parameter lines of the .glsl files.
+
+# --- 480-line games (Firebeat: beatmania III, pop'n music, ParaParaParadise, Keyboardmania) ---
+# The shader takes pictures of 375 lines or more as interlaced (a 15 kHz TV showing 480i):
+# no scanlines, and thin lines alternate between frames.
+# interm = 1          # interlace mode: 0 off (480 scanlines, a 31 kHz VGA monitor), 1-3/6 normal, 4-5 blend
+# vga_mode = 0        # 1: VGA double scan (one beam per two lines)
+
+# --- scanlines ---
+# scanline1 = 6.0     # beam shape at the centre (higher: thinner)
+# scanline2 = 8.0     # beam shape at the edges
+# beam_min = 1.30     # dark pixels' beam (higher: thinner)
+# beam_max = 1.00     # bright pixels' beam
+# beam_size = 0.60    # bright beams widen
+# gsl = 0             # scanline type: -1, 0, 1, 2
+
+# --- mask ---
+# shadowMask = 0      # 0 CGWG (magenta/green), 1-4 Lottes, 5-14 aperture grille variants, -1 none
+# maskstr = 0.3       # mask strength
+# masksize = 1        # 2 for a 4K screen
+# mask_layout = 0     # 1 for a BGR panel
+# slotmask = 0.0      # slot mask on bright pixels
+# slotmask1 = 0.0     # slot mask on dark pixels
+
+# --- brightness, glow ---
+# brightboost = 1.40  # dark pixels
+# brightboost1 = 1.10 # bright pixels
+# glow = 0.08
+# bloom = 0.0
+# halation = 0.0
+# gamma_out = 2.4
+
+# --- screen ---
+# warpX = 0.0         # curvature (0.03 is a gentle tube)
+# warpY = 0.0         # (0.04)
+# csize = 0.0         # rounded corners
+# vigstr = 0.0        # vignette
+
+# --- colour ---
+# TNTC = 0            # colour LUT: 1 Trinitron, 2 inverse Trinitron, 3 NEC MultiSync, 4 NTSC 1953
+# CP = 0              # CRT phosphors: -1 off, 0 EBU, 1 P22, 2 SMPTE-C, 3 Philips, 4-5 Trinitron
+# WP = 0              # colour temperature, -100 (cooler) to 100 (warmer)
+# wp_saturation = 1.0

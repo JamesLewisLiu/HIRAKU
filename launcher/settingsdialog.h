@@ -4,6 +4,7 @@
 #include <QDialog>
 
 class QCheckBox;
+class QComboBox;
 class QLineEdit;
 class QSpinBox;
 
@@ -15,5 +16,6 @@ public:
 private:
     QSpinBox *m_scale, *m_audioMs;
     QCheckBox *m_fullscreen, *m_socket, *m_hideLauncher;
-    QLineEdit *m_soundfont, *m_root, *m_bin, *m_nvram, *m_extra;
+    QComboBox *m_picture;
+    QLineEdit *m_crtParams, *m_soundfont, *m_root, *m_bin, *m_nvram, *m_extra;
 };

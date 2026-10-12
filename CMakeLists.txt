@@ -145,7 +145,7 @@ if(SDL3_FOUND)
   # HID outputs (controller LEDs), shared with the launcher
   add_library(hiraku_hidout STATIC runtime/host/hidout.cpp)
   target_link_libraries(hiraku_hidout PUBLIC SDL3::SDL3 hiraku_cabinet)
-  add_library(hiraku_host STATIC runtime/host/window.cpp runtime/host/input.cpp runtime/host/lights.cpp)
+  add_library(hiraku_host STATIC runtime/host/window.cpp runtime/host/crt.cpp runtime/host/input.cpp runtime/host/lights.cpp)
   target_include_directories(hiraku_host PUBLIC runtime)
   target_link_libraries(hiraku_host PUBLIC SDL3::SDL3 hiraku_shell hiraku_hidout)
   target_compile_definitions(hiraku_host PUBLIC HK_WITH_SDL=1)

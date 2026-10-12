@@ -67,6 +67,7 @@ The machine boots like a cabinet. The skipped BIOS time passes instantly. Then t
 | F2 | test mode, 9 service |
 | Tab (hold) | fast-forward |
 | F11, Alt+Enter | fullscreen |
+| F10 | CRT picture / sharp pixels (with `--crt`); Shift+F10 reads the CRT settings file again |
 | Esc | quit |
 
 P2 uses M K Comma L Period, Up/Down and 2.
@@ -76,6 +77,25 @@ P2 uses M K Comma L Period, Up/Down and 2.
 **Saves:** NVRAM (operator settings, rankings) lives in `~/.local/share/hiraku/bm3final/`. It is saved on Esc, on window close and on Ctrl-C. Use `--nvram DIR` to keep it elsewhere.
 
 **Persistence is unconfirmed.** In MAME and in HIRAKU alike, the scripted sessions so far never made the game write its NVRAM. It probably writes only when a setting or a ranking changes, and none of those sessions changed either. Check whether a test-mode change or a new high score survives a restart.
+
+## The CRT picture
+
+**Settings > Picture > CRT** (or `--crt [FILE]`) shows the game through guest(r)'s
+crt-guest-advanced-fast. That is the libretro shader, ported to OpenGL 3.3, in
+`shaders/crt-guest-advanced-fast/`, and it gives scanlines, a phosphor mask, glow and
+optional curvature. F10 switches between it and sharp pixels while playing.
+
+Its settings are the shader's own, unless you give it a settings file (**CRT settings file**,
+or `--crt FILE`). A settings file is `name = value` lines; a RetroArch preset works as is.
+`shaders/crt-guest-advanced-fast/example.params` lists the useful ones. Shift+F10 reads the
+file again, so you can tune it while a game runs.
+
+What you will see depends on the game's resolution:
+- **Low-resolution games** (DJ Main, most System 573 screens) get scanlines.
+- **480-line games** (Firebeat) are taken as interlaced by the shader: no scanlines, as on a
+  15 kHz TV. For a 31 kHz VGA monitor's look (480 scanlines), set `interm = 0`.
+
+If OpenGL 3.3 isn't available, the game says so and shows sharp pixels instead.
 
 ## Controllers
 

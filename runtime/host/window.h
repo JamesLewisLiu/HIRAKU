@@ -8,6 +8,10 @@
 
 namespace hk::host {
 
+// Before window_open: show the game through the CRT shader (runtime/host/crt.h), whose
+// .glsl files are in shader_dir; params is "" or a parameters file. F10 switches between
+// it and sharp pixels, Shift+F10 reads the parameters file again.
+void window_set_crt(const std::string &shader_dir, const std::string &params);
 bool window_open(const char *title, int scale, const std::string &bindings, int audio_target_ms, bool fullscreen = false,
                  int audio_rate = 44100);
 // Present one frame; then sleep so that `virtual_seconds` does not run ahead

@@ -402,6 +402,11 @@ QStringList MainWindow::arguments(const Game &g) const {
     auto &s = cfg::settings();
     QStringList a = {"--window", QString::number(s.value("video/scale", 2).toInt())};
     if (s.value("video/fullscreen", false).toBool()) a << "--fullscreen";
+    if (s.value("video/crt", false).toBool()) {
+        a << "--crt";
+        QString p = s.value("video/crtParams").toString();
+        if (!p.isEmpty()) a << p;
+    }
     a << "--audio-ms" << QString::number(s.value("audio/ms", 8).toInt());
     QString controls = cfg::controlsFile(g.family), lights = cfg::lightsFile(g.family);
     if (QFileInfo::exists(controls)) a << "--bindings" << controls;
