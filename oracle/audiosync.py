@@ -11,7 +11,8 @@ has to stay in step instead: CD audio, DVD-streamed BGM.
    music repeating every few beats can fool the envelope match.
 2. In 2 s windows of MAME's time: the lag in samples, the waveform
    correlation and the level ratio. A constant lag means no drift.
-MAME's recording is resampled to 44.1 kHz; both are mixed to mono.
+For the timing, MAME's recording is resampled to 44.1 kHz; levels are measured at
+each file's own rate. Both are mixed to mono.
 """
 import argparse
 import wave
@@ -22,12 +23,20 @@ RATE = 44100
 
 
 def load(path):
+    """Mono at 44.1 kHz (for the timing), and mono at the file's own rate (for levels:
+    linear resampling dulls the top octaves, which shows as a level difference)."""
     w = wave.open(path)
     r, c = w.getframerate(), w.getnchannels()
-    x = np.frombuffer(w.readframes(w.getnframes()), dtype=np.int16).reshape(-1, c)[:, :2].astype(np.float64).mean(1) / 32768
+    native = np.frombuffer(w.readframes(w.getnframes()), dtype=np.int16).reshape(-1, c)[:, :2].astype(np.float64).mean(1) / 32768
+    x = native
     if r != RATE:
         x = np.interp(np.arange(int(len(x) * RATE / r)) / RATE, np.arange(len(x)) / r, x)
-    return x
+    return x, native, r
+
+
+def rms(x, rate, t, seconds):
+    seg = x[int(t * rate):int((t + seconds) * rate)]
+    return float(np.sqrt((seg ** 2).mean())) if len(seg) else 0.0
 
 
 def envelope(x, ms=10):
@@ -71,7 +80,7 @@ def main():
     ap.add_argument("--to", dest="t1", type=float, default=None)
     ap.add_argument("--offset", type=float, default=None, help="HIRAKU minus MAME time, seconds (skip the search)")
     a = ap.parse_args()
-    h, m = load(a.hiraku), load(a.mame)
+    (h, hn, hr), (m, mn, mr) = load(a.hiraku), load(a.mame)
 
     if a.offset is None:
         off = coarse_offset(h, m)
@@ -100,7 +109,7 @@ def main():
             continue
         k, c = xcorr_peak(h[b0 - R:b0 + W + R], seg)
         lag = k - R
-        lvl = np.sqrt((h[b0 + lag:b0 + lag + W] ** 2).mean() / (seg ** 2).mean())
+        lvl = rms(hn, hr, t + off + lag / RATE, 2.0) / max(1e-12, rms(mn, mr, t, 2.0))   # at native rates
         lags.append(lag)
         print(f"{t:7.1f} s: lag {lag:+5d} samples ({lag / RATE * 1000:+.2f} ms)  corr {c:.3f}  level {lvl:.2f}")
     if lags:

@@ -214,7 +214,7 @@ Durations are rough, assume one person, and are assisted. Each milestone has a c
 | **M5** | BM3 Final playable | Coin → mode select → song → result → name entry with real controls. NVRAM persists. Measured input→sound latency is published. | 2–3 wk — **done 2026-10-11**, except the hands-on test with real audio hardware and controllers. That test now also covers the 2026-10-12 fiber change (never run in `--window`). Waiting on the owner (can't test right now). |
 | **M6** | Rest of beatmania III | `bm3`, `bm3core`, `bm36th`, `bm37th` run. Mostly manifests and SDK signatures plus SPU ROM revision differences. | 2–3 wk — **blocked on media**: no 1st mix, Core Remix, 6th or 7th disc on hand (the local `bm3` set is The Final's CHDs renamed) |
 | **M7** | pop'n music 4–8, Animelo 1/2, Mickey Tunes | Same SPU stack, plus DVD on the SPU's ATA and BGM streaming via RF5C400 reg 09 (the hardest audio-timing case). | **in progress** (docs/PLAY.md):<br>• pop'n 4, 5, 7 and 8 boot to attract with sound; pop'n 8 also plays music select and full songs.<br>• pop'n 6 boots after a ~14 min first-boot flash install.<br>• Animelo 1/2 boot.<br>• pop'n 8's DVD-streamed BGM keeps time with MAME to within a sample over attract (§18).<br>• **Left:** the same check for pop'n 4–7 and Animelo, and play every title hands-on.<br>• Mickey Tunes: no media. |
-| **M8** | ParaParaParadise family | `!:EXE:00` loader, YMZ280B, CDDA, sensor input mapping. | **in progress**:<br>• 1st Mix Plus plays (coin, song select, a full song with CD music).<br>• `ppp`, `ppp11` and `ppd` boot to attract.<br>• ppp's CD music keeps time with MAME (lag 0, no drift, the same CD seeks); part of attract is 0.7 dB louder, probably the YMZ280B's level (§18).<br>• **Left:** the level, sensors against MAME, and play the others through.<br>• `ppp2nd` is different hardware, out of scope. |
+| **M8** | ParaParaParadise family | `!:EXE:00` loader, YMZ280B, CDDA, sensor input mapping. | **in progress**:<br>• 1st Mix Plus plays (coin, song select, a full song with CD music).<br>• `ppp`, `ppp11` and `ppd` boot to attract.<br>• ppp's attract music (YMZ280B) keeps time with MAME (lag 0, no drift); levels match below 4 kHz, HIRAKU has a little more above 8 kHz (§18).<br>• **Left:** sensors against MAME, and play the others through.<br>• `ppp2nd` is different hardware, out of scope. |
 | **M9** | Native polish | Low-latency audio backends, display options, input remap UI, Windows build, per-game config UX. | ongoing — the `hiraku` launcher (game list, controls and lights mapping, settings) and cabinet lamps (HID LEDs, socket: docs/LIGHTS.md) are in |
 | **M10** | Keyboardmania (stretch) | Dual GCU / dual screen, MIDI-in, the XT446 synth card. | **in progress**:<br>• kbm, kbh, kbm2nd and kbm3rd boot to attract (dual GCU, ROT270, MIDI keyboards, CD audio).<br>• The real XT446 card runs (MAME H8S/2655 + SWP30, pinned to MAME master): in lockstep with MAME 0.289 for the first 84.5 s of attract MIDI; SoundFont stand-in when its ROMs are missing.<br>• **Left:** play a song through; cost, 38 % of a desktop core (SWP30 MEG ~40 % of that), the N100 risk. |
 | **M11** | Efficiency for N100-class PCs | Every Firebeat game within its budget on an N100-class mini PC (§14): average under 25 % of one core, no frame over ~8 ms of host work. Bit-identical to the current runs (`tools/regress.py`). | **in progress** (§14):<br>• bm3final about 3.4× more efficient than MAME, 9.6 % of a desktop core in gameplay.<br>• Keyboardmania: the XT446 synth card runs on its own thread, mean frame 7.2 → 6.5 ms, worst 12.8 → 10.6 ms (bit-identical).<br>• Disk images read ahead in big stretches: a cold-cache bm3 practice run went from a 251 ms worst frame to 9.8 ms.<br>• **Left:** the SWP30 MEG is still ~5 ms a frame on its core (kbm).<br>• **Blocked** on measuring real N100 hardware (not available right now). |
@@ -553,7 +553,7 @@ Points 9, 10 and 13 are opt-in Musashi hooks (`third_party/musashi/HIRAKU.md`), 
 
 Firebeat runs recompiled code, so it can't be in lockstep with MAME. What can be checked is whether the music keeps time. The tool is `oracle/audiosync.py HIRAKU.wav MAME.wav`:
 - it finds the offset between the runs from the loudness envelopes, then refines it on the waveform (music repeating every couple of beats fooled the envelope alone);
-- it reports the lag, waveform correlation and level in 2 s windows.
+- it reports the lag, waveform correlation and level in 2 s windows, with levels measured at each file's own rate.
 
 **Setup.**
 - MAME sets for `ppp` and `popn8` are in `~/bm3mame/roms-fb`: HIRAKU's ROM files plus the CHDs from ~/Downloads, hard-linked.
@@ -562,13 +562,12 @@ Firebeat runs recompiled code, so it can't be in lockstep with MAME. What can be
 
 **Results, 2 minutes of attract:**
 - **pop'n 8, DVD-streamed BGM** (RF5C400 streaming): in step to within 1 sample over 28 s (no drift), waveform correlation 0.998–1.000, the same level.
-- **ParaParaParadise, CD audio:**
-  - from 78 s on: lag 0 samples, correlation 0.94–1.0, no drift;
-  - both play the same sequence of CD seeks: checked against the disc image itself, they jump at the same musical moments by the same amounts;
-  - the first sound comes 4.4 ms later in HIRAKU relative to the rest, probably a slightly different CD seek time;
-  - **that later stretch is 8 % (0.7 dB) louder in HIRAKU**, while the earlier one matches (1.00).
-    - HIRAKU applies the CD drive's MODE SELECT volume as MAME does (byte / 255).
-    - The attract also plays YMZ280B effects (15 key-ons in this run), so the YMZ280B's mixing level is the first suspect.
+- **ParaParaParadise:** its attract music turned out to be YMZ280B sample playback, not CD audio: with the YMZ280B muted, HIRAKU is silent. The samples are the CD's music track, ADPCM-coded into flash.
+  - Timing: from 78 s on, lag 0 samples, correlation 0.94–1.0, no drift. Checked against the disc's own track, both emulators jump between samples at the same moments by the same amounts.
+  - The first sound comes 4.4 ms later in HIRAKU relative to the rest.
+  - Level: the same below 4 kHz, within 0.3 %. Above 8 kHz HIRAKU has more: +5 % at 8–12 kHz, up to +35–46 % at 16–20 kHz. HIRAKU brings the chip's 88.2 kHz down to 44.1 kHz by averaging pairs, which filters less than MAME's resampler. Overall 1.00–1.03.
+  - A sharper downsampling filter would match MAME better and alias less, but it changes Firebeat's sound digests, so it's left as a choice.
+  - (The first version of this check reported "0.7 dB louder": `audiosync.py` resampled MAME linearly, which dulls its top octaves. Levels are now measured at each file's own rate.)
 - HIRAKU starts 3.45 s (ppp) and 11.4 s (pop'n 8) ahead of MAME because it skips most of the BIOS boot.
 
 **Not checked:** pop'n 4–7 and Animelo (no MAME sets assembled yet), ppp's sensors, and gameplay rather than attract.
