@@ -58,6 +58,12 @@ mean, percentiles and the worst frame). A repeatable test, no window:
     bin/hiraku-popn8 --frames 7200
 A run without a window starts from blank NVRAM unless given --nvram DIR (kbm, ppp
 and pop'n 6 need theirs: --nvram ~/.local/share/hiraku/kbm).
+
+Smooth frames (display sync, on by default): on a 60, 120 or 240 Hz display every frame
+stays up the same number of refreshes, and pop'n runs 2.6 % faster to match (docs/PLAY.md,
+"Frame pacing"). The console says what it chose ("display sync: on: 60.00 Hz display, ...");
+the exit report's "video: display sync" line says how it went ("held their N refreshes",
+"irregular"). --display-sync off: the exact speed, for a variable-refresh display.
 EOF
 # xz with a window wider than one binary: the binaries share most of their code,
 # so the archive is a quarter of a .tar.gz (about 14 MB)
