@@ -181,3 +181,44 @@ Each asks three times. Answer "YES?" and "ARE YOU SURE?" with **1** (move to YES
 - `HK_MIDI_LOG=1` prints the MIDI stream.
 - `build/cmake/hiraku-xt446 ROMDIR OUT.wav --midi LOG` runs the card on its own. LOG has one `<seconds> <hex byte>` per line.
 - The card is MAME's emulation from a later master commit than the 0.289 oracle, for the SWP30's accuracy fixes (third_party/mame/README.md).
+
+## DJ Main: beatmania, pop'n music 1 (in progress, M13)
+
+DJ Main games aren't recompiled: the board's 68EC020 runs at 16 MHz and is interpreted (Musashi), which costs about 1 ms of host time per frame. Each game needs its MAME ROM set (program, sprite and tile ROMs) and its hard disk as a raw image:
+
+```bash
+chdman extracthd -i 753jaa11.chd -o 753jaa11.img     # once; chdman comes with MAME
+tools/ingest.py --romset bm1stmix.7z --hdd 753jaa11.img
+ninja -C build/cmake hiraku-bm1stmix
+build/cmake/hiraku-bm1stmix --window
+```
+
+pop'n music 1 (`popn1j`) is the same with `803jaa11` and `popn1j.7z`. The game is found by the set's name (`games/<id>/game.toml`, `core = "djmain"`).
+
+**Status:**
+- **beatmania** boots through its self-test and disk load to the title screen and attract mode, with sound.
+  - Against MAME (`oracle/scripts/bm1stmix-boot.his`, 155 s): it runs 2 frames behind MAME after the disk load; at that offset, 129 of 150 snapshots are pixel-identical.
+  - The rest are attract-demo frames where note positions differ slightly.
+  - The sound's loudness follows MAME within 1 % in every 10 s window.
+- **pop'n music 1** boots to its title screen and attract mode. Differences against MAME are timing (the blink phase of INSERT COIN), not drawing.
+- **Not yet:** a hands-on play test, turntable feel, the ATA password of complete MIX and later, and the other DJ Main sets.
+
+| Key | beatmania | pop'n music |
+|---|---|---|
+| Z S X D C | player 1 keys 1–5 | buttons 1–5 (Z S X D C F V G B: 1–9) |
+| Left / Right, Left Shift / A | turntable −/+ | — |
+| M K , L . | player 2 keys | — |
+| 1 / 2 | 1P / 2P start | — |
+| E | effect | — |
+| 5 | coin | coin |
+| F2 / 9 | test / service | test / service |
+
+A controller's analog axis drives the turntable (`P1 Turntable = joy0:axis0`). MAME models the turntable as an 8-bit dial whose steps the board counts 70 at a time; HIRAKU does the same for now, so scripted runs match MAME.
+
+**Checking against MAME:**
+
+```bash
+HIRAKU_ROMS=~/bm3mame/roms-cores HIRAKU_TAPS=none oracle/mame.sh bm1stmix oracle/scripts/bm1stmix-boot.his boot
+build/cmake/hiraku-bm1stmix --script oracle/scripts/bm1stmix-boot.his --out out/run/bm1stmix-boot
+oracle/snapcmp.py out/run/bm1stmix-boot out/oracle/bm1stmix/boot   # --offset 2 with snaps shifted by 2
+```

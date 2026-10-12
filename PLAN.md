@@ -218,8 +218,8 @@ Durations are rough, assume one person, and are assisted. Each milestone has a c
 | **M9** | Native polish | Low-latency audio backends, display options, input remap UI, Windows build, per-game config UX. | ongoing — the `hiraku` launcher (game list, controls and lights mapping, settings) and cabinet lamps (HID LEDs, socket: docs/LIGHTS.md) are in |
 | **M10** | Keyboardmania (stretch) | Dual GCU / dual screen, MIDI-in, the XT446 synth card. | **in progress**:<br>• kbm, kbh, kbm2nd and kbm3rd boot to attract (dual GCU, ROT270, MIDI keyboards, CD audio).<br>• The real XT446 card runs (MAME H8S/2655 + SWP30, pinned to MAME master): in lockstep with MAME 0.289 for the first 84.5 s of attract MIDI; SoundFont stand-in when its ROMs are missing.<br>• **Left:** play a song through; cost, 38 % of a desktop core (SWP30 MEG ~40 % of that), the N100 risk. |
 | **M11** | Efficiency for N100-class PCs | Every Firebeat game within its budget on an N100-class mini PC (§14): average under 25 % of one core, no frame over ~8 ms of host work. Bit-identical to the current runs (`tools/regress.py`). | **in progress** (§14):<br>• bm3final about 3.4× more efficient than MAME, 9.6 % of a desktop core in gameplay.<br>• **Left:** SWP30 MEG speed-up (kbm); read-ahead for the hard disk and DVD images.<br>• **Blocked** on measuring real N100 hardware (not available right now). |
-| **M12** | Cores: the shell split | The host layer (launcher, window, input, lights, scripts, oracle) talks to the machine through one core interface. Firebeat moves behind it unchanged (bit-identical digests). | 1–2 wk, not started (§15) |
-| **M13** | DJ Main core | beatmania 1st mix → THE FINAL, pop'n 1–3, pop'n stage: interpreted 68EC020 plus MAME's devices, checked against MAME. Analog turntable and lamps. | 3–5 wk, **unblocked 2026-10-12** (§16):<br>• `bm1stmix` and `popn1j` are on hand and boot to their titles in MAME.<br>• MAME runs them at ~1,960 % real time, so the case here is latency and I/O, not efficiency. |
+| **M12** | Cores: the shell split | The host layer (launcher, window, input, lights, scripts, oracle) talks to the machine through one core interface. Firebeat moves behind it unchanged (bit-identical digests). | **done 2026-10-12** (§17): `runtime/shell/core.h`; Firebeat and DJ Main are cores, each binary links one. Firebeat bit-identical. |
+| **M13** | DJ Main core | beatmania 1st mix → THE FINAL, pop'n 1–3, pop'n stage: interpreted 68EC020 plus MAME's devices, checked against MAME. Analog turntable and lamps. | **in progress** (§17, docs/PLAY.md):<br>• `bm1stmix` and `popn1j` boot to their titles and attract mode with sound.<br>• beatmania: 129/150 snapshots pixel-identical to MAME at a constant 2-frame lag; sound loudness within 1 %.<br>• **Left:** hands-on test, demo-play note sync, ATA password (complete MIX on), the other sets. |
 | **M14** | System 573 core | PS1 core (interpreted, then statically recompiled MIPS), analog-I/O games first (CD audio), then digital I/O (MP3 + FPGA). | months, **unblocked 2026-10-12** (§16):<br>• `ddr3mj` (DDR 3rd Mix, analog I/O): MAME stops at error 147 until the first install from CD (install cassette).<br>• `drmn10m` (DrumMania 10th, digital I/O): installs from CD to flash in MAME, then wants a reboot.<br>• Both are NOT_WORKING in MAME; MAME runs them at ~650–670 % real time. |
 | **M15** | Twinkle core (beatmania IIDX 1st–8th) | The M14 PS1 core plus Twinkle's SPU (68000 + RF5C400, already in HIRAKU), SCSI CD, ATA hard disk. Then the background video MAME lacks: Video CD (MPEG-1) for early styles, DVD for 6th–8th. | **unblocked 2026-10-12** (§16):<br>• `bmiidx3` (3rd style) is on hand; MAME passes its device check and stops at the normal first-boot backup-RAM error (E150).<br>• MAME ~570 % real time; its driver lists "emulate dvd player and video mixing" as a TODO. |
 
@@ -417,6 +417,42 @@ The coupling to remove is `runtime/host/{window,input,lights,script}.cpp` includ
 - **DJ Main is already cheap in MAME**, about 5 % of a desktop core. A DJ Main core is worth building for latency and I/O (analog turntable, lamps, controller mapping), not for efficiency.
 - **573 and Twinkle cost about 15–18 % of a desktop core in MAME**: roughly 30 % of an N100 core, before MAME's video and sound output. Efficiency matters there.
 - **First boot:** every new platform needs its first-boot steps, as Firebeat did (ppp, pop'n 6). For the MAME oracle, keep a seeded NVRAM per game, as with kbm.
+
+## 17. The core split and the first DJ Main core (2026-10-12)
+
+**M12, the core split:**
+- `runtime/shell/core.h` is the machine interface: init, run, frame and audio hooks, inputs by MAME name, lamps, guest memory for scripts, statistics.
+- `runtime/main.cpp` is the shell; `runtime/firebeat/core.cpp` and `runtime/djmain/core.cpp` are the cores. The cabinet tables moved to `runtime/shell/cabinet.cpp`.
+- Firebeat stays bit-identical (`tools/regress.py`).
+
+**M13, the DJ Main board** (`runtime/djmain/`):
+- Musashi as a 68EC020, MAME's memory map and handlers.
+- K056832 ported from MAME, with its DJ Main drawing path.
+- K055555 priorities, sprites with MAME's zoom.
+- Two K054539s ported from MAME.
+- The shared ATA code, with MAME's drive timing on top.
+- Interpreting the 16 MHz CPU costs about 1 ms of host work per frame (MAME runs these games at ~1,960 % of real time).
+
+**What it took to match MAME, found with frame/time-stamped oracles** (`oracle/snapcmp.py`, MAME Lua taps, MAME debugger traces):
+
+1. **A Musashi bug.** With `M68K_EMULATE_010` off, the EC020 is decoded as a 68000 in places: no scaled index, no memory-indirect addressing. beatmania's `jmp ([8,pc,d3.l*4])` switch went astray and its loader never ran again. Fix: the option is on (third_party/musashi/HIRAKU.md).
+2. **MAME's 68020 cycle costs.**
+   - Shifts and rotates have no per-bit cost before the 68030.
+   - MOVEM stores cost 3 cycles a register, not 4.
+   - Musashi's costs made the CPU ~1 % slow, enough to miss a polling window after the sound-data load.
+   - Now each disk command lands a constant 1.40 ms from MAME's.
+3. **MAME's drive model** (atastorage.cpp):
+   - seek time from the head position, which follows every sector read but the last;
+   - 10 µs for simple commands, BSY while busy;
+   - the interrupt delivered when the busy time ends;
+   - no interrupt at the end of a PIO read (`AtaBus::pio_end_irq`, off for DJ Main; Firebeat's SPU depends on it);
+   - the interrupt line passed on only when it changes.
+
+**Still open:**
+- **A 2-frame lag** after the disk load (from a constant 1.4 ms offset left over from the self-test).
+- **Demo-play notes slightly off** (attract frames 6,120–8,280): probably the chart following the K054539 playback position.
+- **The 48 → 44.1 kHz resampling** (linear for now).
+- **The ATA security unlock**, for complete MIX and later.
 
 ## M0 steps (all done)
 

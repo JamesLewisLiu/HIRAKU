@@ -1,0 +1,16 @@
+# beatmania (GQ753 JA-B), Konami 1997
+id = "bm1stmix"
+title = "beatmania"
+family = "djbm"         # DJ Main beatmania cabinet: 5 keys + turntable per player, effect
+mame = "bm1stmix"       # MAME set name, used by the oracle
+core = "djmain"         # interpreted 68EC020 on the DJ Main board (runtime/djmain/)
+
+# The ROM layout of MAME's set. Each pair is loaded 16-bit interleaved (even
+# byte, odd byte), as MAME's ROM_LOAD16_BYTE does.
+[roms]
+program = ["753jab01.6a", "753jab02.8a"]                                 # 1 MiB, 68EC020 code at 0
+sprites = ["753jaa03.19a", "753jaa04.20a", "753jaa05.22a", "753jaa06.24a"]
+tiles   = ["753jaa07.22d", "753jaa08.23d", "753jaa09.25d", "753jaa10.27d"] # K056832
+
+[hdd]
+chd = "753jaa11"        # IDE hard disk; no ATA password before complete MIX

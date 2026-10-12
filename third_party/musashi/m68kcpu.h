@@ -147,6 +147,15 @@ typedef uint32 uint64;
 
 
 
+/* HIRAKU: cycle costs a configuration may override (see runtime/djmain/hk_m68kconf_dj.h,
+   which uses MAME's 68020 timing). The defaults are Musashi's own. */
+#ifndef HK_SHIFT_CYCLES
+#define HK_SHIFT_CYCLES(shift) ((shift)<<CYC_SHIFT)
+#endif
+#ifndef HK_MOVEM_STORE_CYCLES
+#define HK_MOVEM_STORE_CYCLES(count, cyc) ((count)<<(cyc))
+#endif
+
 /* ======================================================================== */
 /* ============================ GENERAL DEFINES =========================== */
 /* ======================================================================== */

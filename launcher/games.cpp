@@ -55,6 +55,20 @@ QString Game::statusText() const {
 
 QString Game::howTo() const {
     QString root = cfg::rootDir();
+    if (family.startsWith("dj")) {   // DJ Main: no program disc, no recompilation
+        if (status == NotInstalled)
+            return QString("HIRAKU has no data for %1 yet. You need your own dumps: the MAME ROM set \"%2\" and its "
+                           "hard disk (CHD). Unpack the disk once, then ingest:\n\n"
+                           "In %3:\n\n"
+                           "chdman extracthd -i DISK.chd -o DISK.img\n"
+                           "tools/ingest.py --romset %2.7z --hdd DISK.img")
+                .arg(title, mame, root);
+        if (status == NotBuilt)
+            return QString("The data for %1 is installed, but %2 has not been built yet.\n\nIn %3:\n\n"
+                           "cmake -S . -B build/cmake -G Ninja && ninja -C build/cmake hiraku-%4")
+                .arg(title, exe, root, id);
+        return {};
+    }
     QString extra = family == "bm3" ? " --hdd HDD.img" : family == "popn" ? " --dvd DISC2.iso" : " --cd2 DISC2.cue";
     QString build = QString("analyze/ghidra.sh %1 && analyze/prep.py %1\n"
                             "cmake -S . -B build/cmake -G Ninja && ninja -C build/cmake hiraku-%1")
@@ -106,6 +120,8 @@ QList<Game> scanGames() {
 QIcon familyIcon(const QString &family) {
     struct Look { QColor bg; const char *text; };
     Look l = family == "popn" ? Look{QColor(0xe8, 0x4a, 0x8a), "pop'n"}
+           : family == "djbm" ? Look{QColor(0x22, 0x2a, 0x5a), "bm"}
+           : family == "djpopn" ? Look{QColor(0xf0, 0xb4, 0x1e), "pop'n"}
            : family == "ppp"  ? Look{QColor(0xf0, 0x8a, 0x24), "PPP"}
            : family == "kbm"  ? Look{QColor(0x2e, 0x9e, 0x6a), "KBM"}
                               : Look{QColor(0x3a, 0x4c, 0xb8), "bm III"};

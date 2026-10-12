@@ -3,11 +3,16 @@
 """Extract and identify a Firebeat program from a user-supplied disc image.
 
     tools/ingest.py DISC [--out dumps/] [--exe FILE] [--check RAW] [--romset SET.zip]
+    tools/ingest.py --romset SET.7z --hdd DISK.img        (DJ Main: no program disc)
 
 DISC is the program CD (.iso, .cue/.bin, or a raw MODE1 track); --exe takes a
 loose HIKARU.EXE / FIREBEAT.EXE instead. The unpacked image is identified
 against games/*/game.toml by SHA-1 and written to dumps/<game id>/program.bin
 (dumps/ is gitignored - nothing derived from a game goes in the repo).
+
+DJ Main games (games/*/game.toml with core = "djmain") run their ROMs as they
+are: give the MAME set and the raw hard disk image (chdman extracthd -i X.chd
+-o X.img). The game is found by the set's name.
 
 --romset copies the files of a MAME ROM set (.zip, or .7z with the 7z tool) (dongle image, default RTC NVRAM,
 SPU program, BIOS) into dumps/<game id>/rom/, where the runtime looks for them.
@@ -29,27 +34,92 @@ import fbexe  # noqa: E402
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
-def known_games() -> dict[str, dict]:
-    out = {}
+def all_games() -> list[dict]:
+    out = []
     for path in sorted(glob.glob(os.path.join(ROOT, "games", "*", "game.toml"))):
         with open(path, "rb") as fh:
-            g = tomllib.load(fh)
-        out[g["program"]["sha1"]] = g
+            out.append(tomllib.load(fh))
     return out
+
+
+def known_games() -> dict[str, dict]:
+    """Firebeat games by the SHA-1 of their unpacked program."""
+    return {g["program"]["sha1"]: g for g in all_games() if "program" in g}
+
+
+def copy_romset(romset: str, romdir: str) -> list[str]:
+    os.makedirs(romdir, exist_ok=True)
+    names = []
+    if romset.lower().endswith(".7z"):
+        # 7-Zip sets (e.g. standalone/non-merged): needs the 7z tool
+        listing = subprocess.run(["7z", "l", "-slt", romset], check=True, capture_output=True, text=True).stdout
+        names = [os.path.basename(l[7:]) for l in listing.splitlines()[1:]
+                 if l.startswith("Path = ") and l[7:] != romset and not l[7:].endswith(".7z")]
+        subprocess.run(["7z", "e", "-y", f"-o{romdir}", romset], check=True, capture_output=True)
+    else:
+        with zipfile.ZipFile(romset) as z:
+            for name in z.namelist():
+                if name.endswith("/"):
+                    continue
+                with open(os.path.join(romdir, os.path.basename(name)), "wb") as fh:
+                    fh.write(z.read(name))
+                names.append(os.path.basename(name))
+    for name in names:
+        print(f"rom      {name}")
+    return names
+
+
+def ingest_djmain(args) -> int:
+    """A DJ Main game: the MAME ROM set (program, sprites, tiles) and the hard disk."""
+    set_name = os.path.basename(args.romset).rsplit(".", 1)[0]
+    game = next((g for g in all_games() if g.get("core") == "djmain" and g.get("mame") == set_name), None)
+    if game is None:
+        print(f"game     unknown - no DJ Main games/*/game.toml has mame = \"{set_name}\"")
+        return 1
+    gid = game["id"]
+    print(f"game     {gid}: {game['title']} (DJ Main)")
+    outdir = os.path.join(args.out, gid)
+    names = set(copy_romset(args.romset, os.path.join(outdir, "rom")))
+    roms = game["roms"]
+    missing = [f for k in ("program", "sprites", "tiles") for f in roms[k] if f not in names]
+    if missing:
+        print(f"ERROR    the set lacks {', '.join(missing)}")
+        return 1
+    machine_path = os.path.join(outdir, "machine.txt")
+    machine: dict[str, str] = {}
+    if os.path.exists(machine_path):
+        with open(machine_path) as fh:
+            machine = dict(l.rstrip("\n").split("=", 1) for l in fh if "=" in l)
+    machine.update(core="djmain", family=game["family"],
+                   program=",".join(roms["program"]), sprites=",".join(roms["sprites"]), tiles=",".join(roms["tiles"]))
+    if args.hdd:
+        machine["hdd"] = os.path.abspath(args.hdd)
+    if not machine.get("hdd"):
+        print(f"ERROR    no hard disk: --hdd {game['hdd']['chd']}.img (chdman extracthd -i {game['hdd']['chd']}.chd -o ...)")
+        return 1
+    with open(machine_path, "w") as fh:
+        for k in ["core", "family", "program", "sprites", "tiles", "hdd"]:
+            fh.write(f"{k}={machine[k]}\n")
+    print(f"wrote    {os.path.relpath(machine_path, ROOT)}")
+    return 0
 
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    src = ap.add_mutually_exclusive_group(required=True)
+    src = ap.add_mutually_exclusive_group()
     src.add_argument("disc", nargs="?", help="program disc image (.iso/.cue/.bin)")
     src.add_argument("--exe", help="a loose HIKARU.EXE / FIREBEAT.EXE")
     ap.add_argument("--out", default=os.path.join(ROOT, "dumps"), help="output root (default: dumps/)")
     ap.add_argument("--check", metavar="RAW", help="compare the unpacked image to a known-good raw dump")
     ap.add_argument("--romset", metavar="ZIP", help="MAME ROM set (.zip/.7z) to copy into dumps/<game>/rom/")
-    ap.add_argument("--hdd", metavar="IMG", help="raw HDD image on the SPU's ATA bus (beatmania III)")
+    ap.add_argument("--hdd", metavar="IMG", help="raw HDD image: on the SPU's ATA bus (beatmania III), or DJ Main's IDE disk")
     ap.add_argument("--dvd", metavar="ISO", help="DVD image on the SPU's ATA bus (pop'n music)")
     ap.add_argument("--cd2", metavar="CUE", help="second disc on the main ATA bus (ParaParaParadise audio CD)")
     args = ap.parse_args()
+    if not args.disc and not args.exe:
+        if args.romset:
+            return ingest_djmain(args)
+        ap.error("give a program disc, --exe, or (DJ Main) --romset with --hdd")
 
     if args.exe:
         exe_name = os.path.basename(args.exe)
@@ -133,25 +203,7 @@ def main() -> int:
     print(f"wrote    {os.path.relpath(machine_path, ROOT)}")
 
     if args.romset:
-        romdir = os.path.join(outdir, "rom")
-        os.makedirs(romdir, exist_ok=True)
-        if args.romset.lower().endswith(".7z"):
-            # 7-Zip sets (e.g. standalone/non-merged): needs the 7z tool
-            listing = subprocess.run(["7z", "l", "-slt", args.romset], check=True,
-                                     capture_output=True, text=True).stdout
-            names = [l[7:] for l in listing.splitlines()[1:]
-                     if l.startswith("Path = ") and l[7:] != args.romset and not l[7:].endswith(".7z")]
-            subprocess.run(["7z", "e", "-y", f"-o{romdir}", args.romset], check=True, capture_output=True)
-            for name in names:
-                print(f"rom      {os.path.basename(name)}")
-        else:
-            with zipfile.ZipFile(args.romset) as z:
-                for name in z.namelist():
-                    if name.endswith("/"):
-                        continue
-                    with open(os.path.join(romdir, os.path.basename(name)), "wb") as fh:
-                        fh.write(z.read(name))
-                    print(f"rom      {os.path.basename(name)}")
+        copy_romset(args.romset, os.path.join(outdir, "rom"))
     return 0
 
 

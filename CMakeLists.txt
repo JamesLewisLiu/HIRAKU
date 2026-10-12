@@ -31,6 +31,16 @@ target_include_directories(musashi PUBLIC third_party/musashi runtime/spu)
 target_compile_definitions(musashi PUBLIC MUSASHI_CNF="hk_m68kconf.h")
 target_compile_options(musashi PRIVATE -w)
 
+# ... and again as a 68EC020 with interrupt acknowledge (the DJ Main main CPU)
+add_library(musashi_020 STATIC
+  third_party/musashi/m68kcpu.c
+  third_party/musashi/m68kops.c
+  third_party/musashi/m68kdasm.c
+  third_party/musashi/softfloat/softfloat.c)
+target_include_directories(musashi_020 PUBLIC third_party/musashi runtime/djmain)
+target_compile_definitions(musashi_020 PUBLIC MUSASHI_CNF="hk_m68kconf_dj.h")
+target_compile_options(musashi_020 PRIVATE -w)
+
 # --- Yamaha XT446 synth card (Keyboardmania): MAME's H8S/2655 and SWP30 (BSD-3) ----
 # on a small framework shim (third_party/mame/README.md). h8make.py generates the
 # H8 opcode dispatch (and disassembler tables) from h8.lst at build time.
@@ -83,6 +93,10 @@ add_library(hiraku_shell STATIC runtime/host/script.cpp)
 target_include_directories(hiraku_shell PUBLIC runtime)
 target_link_libraries(hiraku_shell PUBLIC hiraku_cabinet)
 
+# ATA/ATAPI bus and disc/disk images (both cores)
+add_library(hiraku_ata STATIC runtime/dev/ata.cpp)
+target_include_directories(hiraku_ata PUBLIC runtime)
+
 # --- the Firebeat core: PPC403 runtime and the Firebeat board ------------------------
 add_library(hiraku_rt STATIC
   runtime/core/state.cpp
@@ -92,7 +106,6 @@ add_library(hiraku_rt STATIC
   runtime/core/cpu403.cpp
   runtime/core/glue.cpp
   runtime/dev/k057714.cpp
-  runtime/dev/ata.cpp
   runtime/dev/rtc65271.cpp
   runtime/dev/flash29f016a.cpp
   runtime/dev/fdc.cpp
@@ -103,7 +116,17 @@ add_library(hiraku_rt STATIC
   runtime/firebeat/spectrum.cpp
   runtime/firebeat/synth.cpp)
 target_include_directories(hiraku_rt PUBLIC runtime)
-target_link_libraries(hiraku_rt PUBLIC hiraku_ppc musashi hiraku_cabinet hiraku_xt446)
+target_link_libraries(hiraku_rt PUBLIC hiraku_ppc musashi hiraku_ata hiraku_cabinet hiraku_xt446)
+
+# --- the DJ Main core: an interpreted 68EC020 and the DJ Main board -----------------
+add_library(hiraku_djmain STATIC
+  runtime/djmain/board.cpp
+  runtime/djmain/k056832.cpp
+  runtime/djmain/k054539.cpp
+  runtime/djmain/core.cpp)
+target_include_directories(hiraku_djmain PUBLIC runtime)
+target_link_libraries(hiraku_djmain PUBLIC musashi_020 hiraku_ata hiraku_cabinet)
+target_compile_options(hiraku_djmain PRIVATE -O2)
 
 # Keyboardmania's synth stand-in (optional: FluidSynth, LGPL, linked dynamically)
 find_package(PkgConfig QUIET)
@@ -197,6 +220,21 @@ function(hiraku_game id entry)
   endif()
   target_link_libraries(hiraku-${id} PRIVATE hiraku_shell hiraku_rt hiraku_${id}_code hiraku_rt)
 endfunction()
+
+# hiraku_djmain_game(<id>): a DJ Main game. No generated code: the program is
+# interpreted, so the binary is the same for every game (the data comes from
+# dumps/<id>/ at run time, written by tools/ingest.py).
+function(hiraku_djmain_game id)
+  add_executable(hiraku-${id} runtime/main.cpp runtime/core/sampler.cpp)
+  target_compile_definitions(hiraku-${id} PRIVATE HK_GAME_ID="${id}" HK_ROOT="${CMAKE_SOURCE_DIR}")
+  if(TARGET hiraku_host)
+    target_link_libraries(hiraku-${id} PRIVATE hiraku_host)
+  endif()
+  target_link_libraries(hiraku-${id} PRIVATE hiraku_shell hiraku_djmain)
+endfunction()
+
+hiraku_djmain_game(bm1stmix)
+hiraku_djmain_game(popn1j)
 
 hiraku_game(bm3final 0x80003000)
 hiraku_game(popn4 0x80003000)

@@ -2,6 +2,8 @@
 
 Static recompilation of Konami Firebeat arcade games (beatmania III, pop'n music 4–8 / Animelo / Mickey Tunes, ParaParaParadise, and Keyboardmania as a stretch goal) into native Linux executables.
 
+Since 2026-10-12 the same front end also runs **DJ Main** games (beatmania 1st mix, pop'n music 1), whose 16 MHz 68EC020 is interpreted rather than recompiled: each platform is a "core" behind one shell (`runtime/shell/core.h`).
+
 HIRAKU ships no game data. You provide your own dumps. The tools extract the program from your disc image, translate its PowerPC code to C, and link it against a runtime that stands in for the arcade board.
 
 - Plan and status: [PLAN.md](PLAN.md)

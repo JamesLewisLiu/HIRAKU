@@ -304,7 +304,18 @@ uint16_t AtaBus::read(int cs, int reg) {
         data_pos_ += 2;
         if (data_pos_ >= chunk_end_) {
             if (data_pos_ >= data_.size()) {
-                finish(false);
+                if (!cur()->atapi_ && !pio_end_irq) {
+                    // hard disk PIO read: done when the host has the last word. No
+                    // interrupt (each block's came when its data was ready), as in
+                    // the ATA spec and MAME's atastorage.cpp
+                    phase_ = Phase::idle;
+                    data_.clear();
+                    lazy_disk_ = nullptr;
+                    status_ = ST_DRDY | ST_DSC;
+                    error_ = 0;
+                } else {
+                    finish(false);
+                }
             } else if (!cur()->atapi_) {                 // hard disk: next block of sectors
                 chunk_end_ = std::min(data_.size(), data_pos_ + (size_t)512 * multiple_);
                 status_ = ST_DRDY | ST_DSC | ST_DRQ;

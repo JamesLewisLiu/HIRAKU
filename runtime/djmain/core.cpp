@@ -1,0 +1,96 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// The DJ Main core: the board (board.h) behind the shell's interface (shell/core.h).
+// The machine comes from dumps/<game>/machine.txt (tools/ingest.py): the family,
+// the ROM file lists and the raw hard disk image.
+#include <cstdio>
+#include <fstream>
+#include <map>
+#include <sstream>
+
+#include "../shell/core.h"
+#include "board.h"
+#include "m68k.h"
+
+namespace hk {
+
+namespace {
+
+std::map<std::string, std::string> read_kv(const std::string &path) {
+    std::map<std::string, std::string> kv;
+    std::ifstream in(path);
+    for (std::string line; std::getline(in, line);) {
+        auto eq = line.find('=');
+        if (eq != std::string::npos) kv[line.substr(0, eq)] = line.substr(eq + 1);
+    }
+    return kv;
+}
+
+std::vector<std::string> split(const std::string &s) {
+    std::vector<std::string> out;
+    std::stringstream ss(s);
+    for (std::string item; std::getline(ss, item, ',');)
+        if (!item.empty()) out.push_back(item);
+    return out;
+}
+
+class DjMainCore final : public Core {
+public:
+    bool init(const Options &o) override {
+        auto machine = read_kv(o.root + "/dumps/" + o.game + "/machine.txt");
+        if (machine.empty() || machine["core"] != "djmain") {
+            fprintf(stderr, "no DJ Main dumps/%s/machine.txt - run tools/ingest.py --romset %s.7z --chd <hdd>.chd first\n",
+                    o.game.c_str(), o.game.c_str());
+            return false;
+        }
+        dj::Config cfg;
+        cfg.family = machine["family"];
+        cfg.rom_dir = o.root + "/dumps/" + o.game + "/rom";
+        cfg.program = split(machine["program"]);
+        cfg.sprites = split(machine["sprites"]);
+        cfg.tiles = split(machine["tiles"]);
+        cfg.hdd = machine["hdd"];
+        cfg.ata_log = o.ata_log;
+        if (!dj::init(cfg)) return false;
+        printf("hiraku %s: DJ Main, 68EC020 interpreted\n", o.game.c_str());
+        return true;
+    }
+
+    const std::string &family() const override { return dj::family(); }
+    void set_frame_hook(FrameHook h) override { dj::set_frame_hook(std::move(h)); }
+    void set_audio_sink(AudioSink s) override { dj::set_audio_sink(std::move(s)); }
+    void set_on_fatal(std::function<void()> f) override { on_fatal_ = std::move(f); }
+    [[noreturn]] void run() override { dj::run(); }
+    void shutdown() override {}
+
+    void report() override {
+        const auto &st = dj::stats();
+        printf("frames %llu, virtual time %.3f s, pc %06x, %llu vblank IRQs, %llu IDE IRQs, %llu unmapped accesses, %.1f s of sound\n",
+               (unsigned long long)dj::frame_count(), seconds(), dj::pc(), (unsigned long long)st.irq4,
+               (unsigned long long)st.irq1, (unsigned long long)st.unmapped, (double)st.sound_samples / 48000.0);
+    }
+    void debug_line(uint64_t f) override {
+        printf("f%llu pc %06x sr %04x a7 %08x d0 %08x\n", (unsigned long long)f, dj::pc(),
+               m68k_get_reg(nullptr, M68K_REG_SR), m68k_get_reg(nullptr, M68K_REG_A7), m68k_get_reg(nullptr, M68K_REG_D0));
+    }
+
+    double seconds() const override { return (double)dj::cycles() / dj::CPU_HZ; }
+    const uint8_t *mem(uint32_t addr, uint32_t len) const override { return dj::mem(addr, len); }
+    uint64_t frame_count() const override { return dj::frame_count(); }
+
+    bool set_input(const std::string &name, int value) override { return dj::set_input(name, value); }
+    void turntable_add(int player, int delta) override { dj::turntable_add(player, delta); }
+    const std::vector<uint8_t> &lamp_state() const override { return dj::lamp_state(); }
+    uint64_t lamp_changes() const override { return dj::lamp_changes(); }
+
+private:
+    std::function<void()> on_fatal_;
+};
+
+}  // namespace
+
+Core &core() {
+    static DjMainCore c;
+    return c;
+}
+
+}  // namespace hk

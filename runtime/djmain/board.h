@@ -1,0 +1,56 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// The Konami DJ Main board (GQ753): a 68EC020 at 16 MHz with 64 KiB of RAM,
+// K056832 tilemaps, sprites, a K055555 priority encoder, two K054539 PCM chips
+// on 16 MiB of sample RAM, and an IDE hard disk. Memory map, interrupts, inputs
+// and video composition follow MAME's djmain.cpp (BSD-3-Clause, smf et al.).
+//
+// The CPU is interpreted (Musashi): at 16 MHz it costs almost nothing.
+#pragma once
+
+#include <cstdint>
+#include <functional>
+#include <string>
+#include <vector>
+
+namespace hk::dj {
+
+struct Config {
+    std::string family;                    // djbm | djpopn
+    std::string rom_dir;                   // dumps/<game>/rom
+    std::vector<std::string> program;      // 2 files, 16-bit interleaved (even, odd)
+    std::vector<std::string> sprites;      // 4 files: two interleaved pairs
+    std::vector<std::string> tiles;        // 4 files: two interleaved pairs
+    std::string hdd;                       // raw IDE disk image
+    bool ata_log = false;
+};
+
+constexpr uint32_t CPU_HZ = 16'000'000;        // 32 MHz / 2
+constexpr int SCREEN_W = 512, SCREEN_H = 384;
+constexpr uint64_t FRAME_CYCLES = 660 * 418;  // pixel clock = CPU clock: 57.9962 Hz
+constexpr uint64_t VBLANK_CYCLE = 660 * 384;  // vblank starts after the 384 visible lines
+
+bool init(const Config &cfg);                  // false: a message was printed
+
+using FrameHook = std::function<void(uint64_t frame, const uint32_t *rgb, int w, int h)>;
+using AudioSink = std::function<void(const float *lr, int frames)>;   // 44.1 kHz stereo
+void set_frame_hook(FrameHook h);
+void set_audio_sink(AudioSink s);
+[[noreturn]] void run();
+
+uint64_t cycles();                     // CPU clocks since power-on
+uint64_t frame_count();
+const std::string &family();
+bool set_input(const std::string &name, int value);
+void turntable_add(int player, int delta);
+const std::vector<uint8_t> &lamp_state();
+uint64_t lamp_changes();
+const uint8_t *mem(uint32_t addr, uint32_t len);   // RAM / ROM / sprite list, big-endian bytes
+uint32_t pc();
+
+struct Stats {
+    uint64_t ata_commands = 0, irq4 = 0, irq1 = 0, unmapped = 0;
+    uint64_t sound_samples = 0;
+};
+const Stats &stats();
+
+}  // namespace hk::dj

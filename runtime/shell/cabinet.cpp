@@ -92,6 +92,66 @@ void add_run(std::vector<Lamp> &l, const std::string &base, const std::string &g
     for (size_t k = 0; k < bits.size(); k++) l.push_back({base + " " + std::to_string(first + (int)k), group, reg, bits[k], false});
 }
 
+// DJ Main beatmania (MAME djmain.cpp beatmania_btn): five keys and a turntable
+// per player, the effect button. The turntable is an 8-bit dial ("TT1/TT2").
+std::vector<Control> make_djbm() {
+    std::vector<Control> c;
+    const char *p1keys[5] = {"key:Z, joy0:button0", "key:S, joy0:button1", "key:X, joy0:button2", "key:D, joy0:button3",
+                             "key:C, joy0:button4"};
+    const char *p2keys[5] = {"key:M", "key:K", "key:Comma", "key:L", "key:Period"};
+    for (int p = 1; p <= 2; p++) {
+        std::string P = "P" + std::to_string(p), g = "Player " + std::to_string(p);
+        for (int k = 1; k <= 5; k++)
+            c.push_back({P + " Button " + std::to_string(k), "Key " + std::to_string(k), g, false, p == 1 ? p1keys[k - 1] : p2keys[k - 1]});
+        c.push_back({P + " Turntable", "Turntable (analog axis)", g, true, p == 1 ? "joy0:axis0" : ""});
+        c.push_back({P + " Turntable -", "Turntable − (as a button)", g, false, p == 1 ? "key:Left, key:Left Shift" : "key:Down"});
+        c.push_back({P + " Turntable +", "Turntable + (as a button)", g, false, p == 1 ? "key:Right, key:A" : "key:Up"});
+        c.push_back({p == 1 ? "1 Player Start" : "2 Players Start", "Start", g, false, p == 1 ? "key:1, joy0:button8" : "key:2"});
+    }
+    c.push_back({"Effect", "Effect", "Cabinet", false, "key:E, joy0:button7"});
+    c.push_back({"Coin 1", "Coin", "Cabinet", false, "key:5, joy0:button9"});
+    c.push_back({"Test", "Test", "Cabinet", false, "key:F2"});
+    c.push_back({"Service", "Service", "Cabinet", false, "key:9"});
+    c.push_back({"Reset", "Reset switch", "Cabinet", false, ""});
+    return c;
+}
+
+// DJ Main pop'n music (MAME djmain.cpp popnmusic_btn): nine buttons, no start button
+std::vector<Control> make_djpopn() {
+    std::vector<Control> c = make_popn();
+    c.push_back({"Reset", "Reset switch", "Cabinet", false, ""});
+    return c;
+}
+
+// DJ Main: reg 0 = 0x5d0000 (light_ctrl_1), reg 1 = 0x5d2000 (light_ctrl_2), as
+// MAME decodes them for beatmania; reg 2 = the board's row of 8 LEDs (active low).
+std::vector<Lamp> make_djbm_lamps() {
+    std::vector<Lamp> l;
+    add_run(l, "P1 Button Lamp", "Player 1", 0, {0, 1, 2, 3, 4});
+    add_run(l, "P2 Button Lamp", "Player 2", 0, {6, 7, 8});
+    add_run(l, "P2 Button Lamp", "Player 2", 1, {12, 13}, 4);
+    l.push_back({"P1 Start Lamp", "Player 1", 1, 0});
+    l.push_back({"P2 Start Lamp", "Player 2", 1, 1});
+    l.push_back({"Effect Lamp", "Cabinet", 1, 2});
+    l.push_back({"Left Red Highlight", "Highlights", 0, 10, true});
+    l.push_back({"Left Blue Highlight", "Highlights", 0, 9, true});
+    l.push_back({"Right Red Highlight", "Highlights", 0, 11, true});
+    l.push_back({"Right Blue Highlight", "Highlights", 0, 5, true});
+    l.push_back({"Neon (SSR)", "Cabinet", 1, 11});
+    for (int k = 0; k < 8; k++) l.push_back({"Status LED " + std::to_string(k + 1), "Board (diagnostic)", 2, k, true});
+    return l;
+}
+
+// pop'n music on DJ Main drives the same two registers; MAME doesn't say which
+// lamp each bit is, so they are listed by register and bit.
+std::vector<Lamp> make_djpopn_lamps() {
+    std::vector<Lamp> l;
+    for (int r = 0; r < 2; r++)
+        for (int b = 0; b < 16; b++) l.push_back({"Light " + std::string(1, (char)('A' + r)) + std::to_string(b), "Lights (undecoded)", r, b});
+    for (int k = 0; k < 8; k++) l.push_back({"Status LED " + std::to_string(k + 1), "Board (diagnostic)", 2, k, true});
+    return l;
+}
+
 // MAME firebeat_popn_state::lamp_output_popn_w
 std::vector<Lamp> make_popn_lamps() {
     std::vector<Lamp> l;
@@ -140,14 +200,16 @@ std::string trim(std::string s) {
 
 const std::vector<Control> &controls(const std::string &family) {
     static const std::map<std::string, std::vector<Control>> all = {
-        {"bm3", make_bm3()}, {"popn", make_popn()}, {"ppp", make_ppp()}, {"kbm", make_kbm()}};
+        {"bm3", make_bm3()}, {"popn", make_popn()}, {"ppp", make_ppp()}, {"kbm", make_kbm()},
+        {"djbm", make_djbm()}, {"djpopn", make_djpopn()}};
     auto f = all.find(family);
     return f != all.end() ? f->second : all.at("bm3");
 }
 
 const std::vector<Lamp> &lamps(const std::string &family) {
     static const std::map<std::string, std::vector<Lamp>> all = {
-        {"bm3", make_bm3_lamps()}, {"popn", make_popn_lamps()}, {"ppp", make_ppp_lamps()}, {"kbm", make_kbm_lamps()}};
+        {"bm3", make_bm3_lamps()}, {"popn", make_popn_lamps()}, {"ppp", make_ppp_lamps()}, {"kbm", make_kbm_lamps()},
+        {"djbm", make_djbm_lamps()}, {"djpopn", make_djpopn_lamps()}};
     auto f = all.find(family);
     return f != all.end() ? f->second : all.at("bm3");
 }

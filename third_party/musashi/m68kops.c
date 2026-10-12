@@ -3436,7 +3436,7 @@ static void m68k_op_asr_8_s(void)
 	uint res = src >> shift;
 
 	if(shift != 0 && CPU_TYPE_IS_010_LESS(CPU_TYPE))
-		USE_CYCLES(shift<<CYC_SHIFT);
+		USE_CYCLES(HK_SHIFT_CYCLES(shift));
 
 	if(GET_MSB_8(src))
 		res |= m68ki_shift_8_table[shift];
@@ -3458,7 +3458,7 @@ static void m68k_op_asr_16_s(void)
 	uint res = src >> shift;
 
 	if(shift != 0 && CPU_TYPE_IS_010_LESS(CPU_TYPE))
-		USE_CYCLES(shift<<CYC_SHIFT);
+		USE_CYCLES(HK_SHIFT_CYCLES(shift));
 
 	if(GET_MSB_16(src))
 		res |= m68ki_shift_16_table[shift];
@@ -3480,7 +3480,7 @@ static void m68k_op_asr_32_s(void)
 	uint res = src >> shift;
 
 	if(shift != 0 && CPU_TYPE_IS_010_LESS(CPU_TYPE))
-		USE_CYCLES(shift<<CYC_SHIFT);
+		USE_CYCLES(HK_SHIFT_CYCLES(shift));
 
 	if(GET_MSB_32(src))
 		res |= m68ki_shift_32_table[shift];
@@ -3504,7 +3504,7 @@ static void m68k_op_asr_8_r(void)
 	if(shift != 0 )
 	{
 		if (CPU_TYPE_IS_010_LESS(CPU_TYPE))
-			USE_CYCLES(shift<<CYC_SHIFT);
+			USE_CYCLES(HK_SHIFT_CYCLES(shift));
 
 		if(shift < 8)
 		{
@@ -3557,7 +3557,7 @@ static void m68k_op_asr_16_r(void)
 	if(shift != 0)
 	{
 		if (CPU_TYPE_IS_010_LESS(CPU_TYPE))
-			USE_CYCLES(shift<<CYC_SHIFT);
+			USE_CYCLES(HK_SHIFT_CYCLES(shift));
 
 		if(shift < 16)
 		{
@@ -3610,7 +3610,7 @@ static void m68k_op_asr_32_r(void)
 	if(shift != 0)
 	{
 		if (CPU_TYPE_IS_010_LESS(CPU_TYPE))
-			USE_CYCLES(shift<<CYC_SHIFT);
+			USE_CYCLES(HK_SHIFT_CYCLES(shift));
 
 		if(shift < 32)
 		{
@@ -3787,7 +3787,7 @@ static void m68k_op_asl_8_s(void)
 	uint res = MASK_OUT_ABOVE_8(src << shift);
 
 	if(shift != 0 && CPU_TYPE_IS_010_LESS(CPU_TYPE))
-		USE_CYCLES(shift<<CYC_SHIFT);
+		USE_CYCLES(HK_SHIFT_CYCLES(shift));
 
 	*r_dst = MASK_OUT_BELOW_8(*r_dst) | res;
 
@@ -3807,7 +3807,7 @@ static void m68k_op_asl_16_s(void)
 	uint res = MASK_OUT_ABOVE_16(src << shift);
 
 	if(shift != 0 && CPU_TYPE_IS_010_LESS(CPU_TYPE))
-		USE_CYCLES(shift<<CYC_SHIFT);
+		USE_CYCLES(HK_SHIFT_CYCLES(shift));
 
 	*r_dst = MASK_OUT_BELOW_16(*r_dst) | res;
 
@@ -3827,7 +3827,7 @@ static void m68k_op_asl_32_s(void)
 	uint res = MASK_OUT_ABOVE_32(src << shift);
 
 	if(shift != 0 && CPU_TYPE_IS_010_LESS(CPU_TYPE))
-		USE_CYCLES(shift<<CYC_SHIFT);
+		USE_CYCLES(HK_SHIFT_CYCLES(shift));
 
 	*r_dst = res;
 
@@ -3849,7 +3849,7 @@ static void m68k_op_asl_8_r(void)
 	if(shift != 0)
 	{
 		if (CPU_TYPE_IS_010_LESS(CPU_TYPE))
-			USE_CYCLES(shift<<CYC_SHIFT);
+			USE_CYCLES(HK_SHIFT_CYCLES(shift));
 
 		if(shift < 8)
 		{
@@ -3887,7 +3887,7 @@ static void m68k_op_asl_16_r(void)
 	if(shift != 0)
 	{
 		if (CPU_TYPE_IS_010_LESS(CPU_TYPE))
-			USE_CYCLES(shift<<CYC_SHIFT);
+			USE_CYCLES(HK_SHIFT_CYCLES(shift));
 
 		if(shift < 16)
 		{
@@ -3925,7 +3925,7 @@ static void m68k_op_asl_32_r(void)
 	if(shift != 0)
 	{
 		if (CPU_TYPE_IS_010_LESS(CPU_TYPE))
-			USE_CYCLES(shift<<CYC_SHIFT);
+			USE_CYCLES(HK_SHIFT_CYCLES(shift));
 
 		if(shift < 32)
 		{
@@ -16185,7 +16185,7 @@ static void m68k_op_lsr_8_s(void)
 	uint res = src >> shift;
 
 	if(shift != 0 && CPU_TYPE_IS_010_LESS(CPU_TYPE))
-		USE_CYCLES(shift<<CYC_SHIFT);
+		USE_CYCLES(HK_SHIFT_CYCLES(shift));
 
 	*r_dst = MASK_OUT_BELOW_8(*r_dst) | res;
 
@@ -16204,7 +16204,7 @@ static void m68k_op_lsr_16_s(void)
 	uint res = src >> shift;
 
 	if(shift != 0 && CPU_TYPE_IS_010_LESS(CPU_TYPE))
-		USE_CYCLES(shift<<CYC_SHIFT);
+		USE_CYCLES(HK_SHIFT_CYCLES(shift));
 
 	*r_dst = MASK_OUT_BELOW_16(*r_dst) | res;
 
@@ -16223,7 +16223,7 @@ static void m68k_op_lsr_32_s(void)
 	uint res = src >> shift;
 
 	if(shift != 0 && CPU_TYPE_IS_010_LESS(CPU_TYPE))
-		USE_CYCLES(shift<<CYC_SHIFT);
+		USE_CYCLES(HK_SHIFT_CYCLES(shift));
 
 	*r_dst = res;
 
@@ -16244,7 +16244,7 @@ static void m68k_op_lsr_8_r(void)
 	if(shift != 0)
 	{
 		if (CPU_TYPE_IS_010_LESS(CPU_TYPE))
-			USE_CYCLES(shift<<CYC_SHIFT);
+			USE_CYCLES(HK_SHIFT_CYCLES(shift));
 
 		if(shift <= 8)
 		{
@@ -16282,7 +16282,7 @@ static void m68k_op_lsr_16_r(void)
 	if(shift != 0)
 	{
 		if (CPU_TYPE_IS_010_LESS(CPU_TYPE))
-			USE_CYCLES(shift<<CYC_SHIFT);
+			USE_CYCLES(HK_SHIFT_CYCLES(shift));
 
 		if(shift <= 16)
 		{
@@ -16320,7 +16320,7 @@ static void m68k_op_lsr_32_r(void)
 	if(shift != 0)
 	{
 		if (CPU_TYPE_IS_010_LESS(CPU_TYPE))
-			USE_CYCLES(shift<<CYC_SHIFT);
+			USE_CYCLES(HK_SHIFT_CYCLES(shift));
 
 		if(shift < 32)
 		{
@@ -16460,7 +16460,7 @@ static void m68k_op_lsl_8_s(void)
 	uint res = MASK_OUT_ABOVE_8(src << shift);
 
 	if(shift != 0 && CPU_TYPE_IS_010_LESS(CPU_TYPE))
-		USE_CYCLES(shift<<CYC_SHIFT);
+		USE_CYCLES(HK_SHIFT_CYCLES(shift));
 
 	*r_dst = MASK_OUT_BELOW_8(*r_dst) | res;
 
@@ -16479,7 +16479,7 @@ static void m68k_op_lsl_16_s(void)
 	uint res = MASK_OUT_ABOVE_16(src << shift);
 
 	if(shift != 0 && CPU_TYPE_IS_010_LESS(CPU_TYPE))
-		USE_CYCLES(shift<<CYC_SHIFT);
+		USE_CYCLES(HK_SHIFT_CYCLES(shift));
 
 	*r_dst = MASK_OUT_BELOW_16(*r_dst) | res;
 
@@ -16498,7 +16498,7 @@ static void m68k_op_lsl_32_s(void)
 	uint res = MASK_OUT_ABOVE_32(src << shift);
 
 	if(shift != 0 && CPU_TYPE_IS_010_LESS(CPU_TYPE))
-		USE_CYCLES(shift<<CYC_SHIFT);
+		USE_CYCLES(HK_SHIFT_CYCLES(shift));
 
 	*r_dst = res;
 
@@ -16519,7 +16519,7 @@ static void m68k_op_lsl_8_r(void)
 	if(shift != 0)
 	{
 		if (CPU_TYPE_IS_010_LESS(CPU_TYPE))
-			USE_CYCLES(shift<<CYC_SHIFT);
+			USE_CYCLES(HK_SHIFT_CYCLES(shift));
 
 		if(shift <= 8)
 		{
@@ -16557,7 +16557,7 @@ static void m68k_op_lsl_16_r(void)
 	if(shift != 0)
 	{
 		if (CPU_TYPE_IS_010_LESS(CPU_TYPE))
-			USE_CYCLES(shift<<CYC_SHIFT);
+			USE_CYCLES(HK_SHIFT_CYCLES(shift));
 
 		if(shift <= 16)
 		{
@@ -16595,7 +16595,7 @@ static void m68k_op_lsl_32_r(void)
 	if(shift != 0)
 	{
 		if (CPU_TYPE_IS_010_LESS(CPU_TYPE))
-				USE_CYCLES(shift<<CYC_SHIFT);
+				USE_CYCLES(HK_SHIFT_CYCLES(shift));
 
 		if(shift < 32)
 		{
@@ -22105,7 +22105,7 @@ static void m68k_op_movem_16_re_pd(void)
 		}
 	AY = ea;
 
-	USE_CYCLES(count<<CYC_MOVEM_W);
+	USE_CYCLES(HK_MOVEM_STORE_CYCLES(count, CYC_MOVEM_W));
 }
 
 
@@ -22124,7 +22124,7 @@ static void m68k_op_movem_16_re_ai(void)
 			count++;
 		}
 
-	USE_CYCLES(count<<CYC_MOVEM_W);
+	USE_CYCLES(HK_MOVEM_STORE_CYCLES(count, CYC_MOVEM_W));
 }
 
 
@@ -22143,7 +22143,7 @@ static void m68k_op_movem_16_re_di(void)
 			count++;
 		}
 
-	USE_CYCLES(count<<CYC_MOVEM_W);
+	USE_CYCLES(HK_MOVEM_STORE_CYCLES(count, CYC_MOVEM_W));
 }
 
 
@@ -22162,7 +22162,7 @@ static void m68k_op_movem_16_re_ix(void)
 			count++;
 		}
 
-	USE_CYCLES(count<<CYC_MOVEM_W);
+	USE_CYCLES(HK_MOVEM_STORE_CYCLES(count, CYC_MOVEM_W));
 }
 
 
@@ -22181,7 +22181,7 @@ static void m68k_op_movem_16_re_aw(void)
 			count++;
 		}
 
-	USE_CYCLES(count<<CYC_MOVEM_W);
+	USE_CYCLES(HK_MOVEM_STORE_CYCLES(count, CYC_MOVEM_W));
 }
 
 
@@ -22200,7 +22200,7 @@ static void m68k_op_movem_16_re_al(void)
 			count++;
 		}
 
-	USE_CYCLES(count<<CYC_MOVEM_W);
+	USE_CYCLES(HK_MOVEM_STORE_CYCLES(count, CYC_MOVEM_W));
 }
 
 
@@ -22221,7 +22221,7 @@ static void m68k_op_movem_32_re_pd(void)
 		}
 	AY = ea;
 
-	USE_CYCLES(count<<CYC_MOVEM_L);
+	USE_CYCLES(HK_MOVEM_STORE_CYCLES(count, CYC_MOVEM_L));
 }
 
 
@@ -22240,7 +22240,7 @@ static void m68k_op_movem_32_re_ai(void)
 			count++;
 		}
 
-	USE_CYCLES(count<<CYC_MOVEM_L);
+	USE_CYCLES(HK_MOVEM_STORE_CYCLES(count, CYC_MOVEM_L));
 }
 
 
@@ -22259,7 +22259,7 @@ static void m68k_op_movem_32_re_di(void)
 			count++;
 		}
 
-	USE_CYCLES(count<<CYC_MOVEM_L);
+	USE_CYCLES(HK_MOVEM_STORE_CYCLES(count, CYC_MOVEM_L));
 }
 
 
@@ -22278,7 +22278,7 @@ static void m68k_op_movem_32_re_ix(void)
 			count++;
 		}
 
-	USE_CYCLES(count<<CYC_MOVEM_L);
+	USE_CYCLES(HK_MOVEM_STORE_CYCLES(count, CYC_MOVEM_L));
 }
 
 
@@ -22297,7 +22297,7 @@ static void m68k_op_movem_32_re_aw(void)
 			count++;
 		}
 
-	USE_CYCLES(count<<CYC_MOVEM_L);
+	USE_CYCLES(HK_MOVEM_STORE_CYCLES(count, CYC_MOVEM_L));
 }
 
 
@@ -22316,7 +22316,7 @@ static void m68k_op_movem_32_re_al(void)
 			count++;
 		}
 
-	USE_CYCLES(count<<CYC_MOVEM_L);
+	USE_CYCLES(HK_MOVEM_STORE_CYCLES(count, CYC_MOVEM_L));
 }
 
 
@@ -28207,7 +28207,7 @@ static void m68k_op_ror_16_s(void)
 	uint res = ROR_16(src, shift);
 
 	if(shift != 0)
-		USE_CYCLES(shift<<CYC_SHIFT);
+		USE_CYCLES(HK_SHIFT_CYCLES(shift));
 
 	*r_dst = MASK_OUT_BELOW_16(*r_dst) | res;
 
@@ -28226,7 +28226,7 @@ static void m68k_op_ror_32_s(void)
 	uint res = ROR_32(src, shift);
 
 	if(shift != 0)
-		USE_CYCLES(shift<<CYC_SHIFT);
+		USE_CYCLES(HK_SHIFT_CYCLES(shift));
 
 	*r_dst = res;
 
@@ -28451,7 +28451,7 @@ static void m68k_op_rol_16_s(void)
 	uint res = ROL_16(src, shift);
 
 	if(shift != 0)
-		USE_CYCLES(shift<<CYC_SHIFT);
+		USE_CYCLES(HK_SHIFT_CYCLES(shift));
 
 	*r_dst = MASK_OUT_BELOW_16(*r_dst) | res;
 
@@ -28470,7 +28470,7 @@ static void m68k_op_rol_32_s(void)
 	uint res = ROL_32(src, shift);
 
 	if(shift != 0)
-		USE_CYCLES(shift<<CYC_SHIFT);
+		USE_CYCLES(HK_SHIFT_CYCLES(shift));
 
 	*r_dst = res;
 
@@ -28692,7 +28692,7 @@ static void m68k_op_roxr_8_s(void)
 	uint res = ROR_9(src | (XFLAG_AS_1() << 8), shift);
 
 	if(shift != 0)
-		USE_CYCLES(shift<<CYC_SHIFT);
+		USE_CYCLES(HK_SHIFT_CYCLES(shift));
 
 	FLAG_C = FLAG_X = res;
 	res = MASK_OUT_ABOVE_8(res);
@@ -28713,7 +28713,7 @@ static void m68k_op_roxr_16_s(void)
 	uint res = ROR_17(src | (XFLAG_AS_1() << 16), shift);
 
 	if(shift != 0)
-		USE_CYCLES(shift<<CYC_SHIFT);
+		USE_CYCLES(HK_SHIFT_CYCLES(shift));
 
 	FLAG_C = FLAG_X = res >> 8;
 	res = MASK_OUT_ABOVE_16(res);
@@ -28736,7 +28736,7 @@ static void m68k_op_roxr_32_s(void)
 	uint64 res   = src | (((uint64)XFLAG_AS_1()) << 32);
 
 	if(shift != 0)
-		USE_CYCLES(shift<<CYC_SHIFT);
+		USE_CYCLES(HK_SHIFT_CYCLES(shift));
 
 	res = ROR_33_64(res, shift);
 
@@ -28758,7 +28758,7 @@ static void m68k_op_roxr_32_s(void)
 	uint new_x_flag = src & (1 << (shift - 1));
 
 	if(shift != 0)
-		USE_CYCLES(shift<<CYC_SHIFT);
+		USE_CYCLES(HK_SHIFT_CYCLES(shift));
 
 	*r_dst = res;
 
@@ -29018,7 +29018,7 @@ static void m68k_op_roxl_8_s(void)
 	uint res = ROL_9(src | (XFLAG_AS_1() << 8), shift);
 
 	if(shift != 0)
-		USE_CYCLES(shift<<CYC_SHIFT);
+		USE_CYCLES(HK_SHIFT_CYCLES(shift));
 
 	FLAG_C = FLAG_X = res;
 	res = MASK_OUT_ABOVE_8(res);
@@ -29039,7 +29039,7 @@ static void m68k_op_roxl_16_s(void)
 	uint res = ROL_17(src | (XFLAG_AS_1() << 16), shift);
 
 	if(shift != 0)
-		USE_CYCLES(shift<<CYC_SHIFT);
+		USE_CYCLES(HK_SHIFT_CYCLES(shift));
 
 	FLAG_C = FLAG_X = res >> 8;
 	res = MASK_OUT_ABOVE_16(res);
@@ -29062,7 +29062,7 @@ static void m68k_op_roxl_32_s(void)
 	uint64 res   = src | (((uint64)XFLAG_AS_1()) << 32);
 
 	if(shift != 0)
-		USE_CYCLES(shift<<CYC_SHIFT);
+		USE_CYCLES(HK_SHIFT_CYCLES(shift));
 
 	res = ROL_33_64(res, shift);
 
@@ -29084,7 +29084,7 @@ static void m68k_op_roxl_32_s(void)
 	uint new_x_flag = src & (1 << (32 - shift));
 
 	if(shift != 0)
-		USE_CYCLES(shift<<CYC_SHIFT);
+		USE_CYCLES(HK_SHIFT_CYCLES(shift));
 
 	*r_dst = res;
 
