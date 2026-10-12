@@ -1,0 +1,30 @@
+# beatmania III THE FINAL: what the operator can unlock (tools/unlock.py; launcher: right-click > Unlocks).
+#
+# The code (remywiki.com/AC_bm_III_THE_FINAL): test mode > COLOR CHECK, hold 2P START, press
+# 2-2-1-10-9-3-1-4-1-6 (keys 1-5 on the 1P side, 6-10 on the 2P side), then leave test mode
+# (SERVICE, then A: GOOD-BYE, TEST MODE). An asterisk in test mode and an alien icon on the title
+# screen confirm it. The game keeps it as one byte of its battery RAM, three times (0x4d0 apart),
+# written when test mode is left. Found by doing it in HIRAKU (oracle/scripts/bm3final-unlock.his)
+# and comparing the saves.
+
+[[unlock]]
+id = "unlock"
+title = "Secret songs"
+nvram = "rtc.nv"
+offsets = [0x52f, 0x9ff, 0xecf]
+how = "In the game: test mode > COLOR CHECK, hold 2P START, press 2-2-1-10-9-3-1-4-1-6, then leave test mode."
+
+[[unlock.level]]
+value = 0
+name = "--"
+text = "The songs of a new cabinet."
+
+[[unlock.level]]
+value = 1
+name = "Unlocked"
+code = "2-2-1-10-9-3-1-4-1-6"
+text = "Miracle Moon, CLOUDY MUSIC, RETROFUTURE, The Least 100 sec, COREDESAT, and IMPLANTATION's ANOTHER chart (RemyWiki). The title screen shows the alien icon."
+
+[[note]]
+title = "Unlocks saved on a player's floppy disk"
+text = """RemyWiki: RETROFUTURE (five songs with the initials S, I, M, O, N, in that order), CLOUDY MUSIC (all sixteen SLAKE songs, cleared or played three times) and sozai mode (all BEMANI crossovers, cleared or played three times) are earned per player, in kobako or shikomi mode, and saved on the player's FD."""

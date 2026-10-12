@@ -1,0 +1,35 @@
+# beatmania III THE FINAL: the COLOR CHECK unlock (games/bm3final/unlocks.toml), from a save at '--':
+#   hiraku-bm3final --nvram DIR --script oracle/scripts/bm3final-unlock.his
+# Test held through the boot check enters test mode; B moves down, TEST selects, SERVICE returns.
+game bm3final
+at 1400 hold "Test"
+at 2500 release "Test"
+at 2700 press "B" 4
+at 2720 press "B" 4
+at 2740 press "B" 4
+at 2760 press "B" 4
+at 2780 press "B" 4
+at 2800 press "B" 4
+at 2820 press "B" 4
+at 2840 press "B" 4
+at 2860 snap
+at 2870 press "Test" 4
+at 2990 snap
+at 3000 hold "2 Players Start"
+at 3020 press "P1 Button 2" 4
+at 3036 press "P1 Button 2" 4
+at 3052 press "P1 Button 1" 4
+at 3068 press "P2 Button 5" 4
+at 3084 press "P2 Button 4" 4
+at 3100 press "P1 Button 3" 4
+at 3116 press "P1 Button 1" 4
+at 3132 press "P1 Button 4" 4
+at 3148 press "P1 Button 1" 4
+at 3164 press "P2 Button 1" 4
+at 3190 release "2 Players Start"
+at 3220 snap
+at 3230 press "Service" 4
+at 3350 snap
+at 3370 press "Service" 4
+at 3450 press "A" 4
+at 4000 quit
