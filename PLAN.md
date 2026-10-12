@@ -357,7 +357,7 @@ The target machine is an **N100-class x86 mini PC**: 4 cores, roughly 60 % of a 
 **Next:**
 1. Measure on real N100 hardware, in `--window`, with `HK_LOG_STALLS=1`.
 2. Speed up the SWP30 MEG (kbm).
-3. Prefetch disc and disk image reads off the main thread. One run had a single 125 ms frame at a song load that never reproduced, most likely a cold host file cache; slower storage makes that likelier.
+3. Read-ahead for the large images. CD images up to 1.5 GB are already warmed in the background, and every READ gets a `WILLNEED` hint (`ata.cpp`). The hard disk (bm3, 20 GB) and the DVDs (pop'n) only get the hint, issued just before the synchronous read, so it gives little lead time. One run had a single 125 ms frame at a song load that never reproduced, most likely a cold host file cache. Slower storage on an N100 makes that likelier.
 
 ## 15. Other BEMANI platforms as cores (discussed 2026-10-12)
 
