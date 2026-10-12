@@ -142,12 +142,19 @@ std::vector<Lamp> make_djbm_lamps() {
     return l;
 }
 
-// pop'n music on DJ Main drives the same two registers; MAME doesn't say which
-// lamp each bit is, so they are listed by register and bit.
+// pop'n music on DJ Main drives the same two registers. MAME doesn't name the
+// bits for pop'n; this is what pop'n music 1 does with them (oracle/scripts/
+// popn1j-play.his, in lockstep with MAME): each button's bit lights while it is
+// pressed (reg 0: buttons 1-5 on bits 0-4, 6-9 on bits 6-9, as beatmania's two
+// rows), bits 6-10 of reg 1 run a 5-step chase (the top lamps, as on Firebeat
+// pop'n; which is topmost is not known) and bits 0-3 light patterns (4 side
+// lamps, likewise). Reg 1 bit 15 pulses once per coin (the counter) and bit 14
+// is the coin blocker; the other bits never change.
 std::vector<Lamp> make_djpopn_lamps() {
     std::vector<Lamp> l;
-    for (int r = 0; r < 2; r++)
-        for (int b = 0; b < 16; b++) l.push_back({"Light " + std::string(1, (char)('A' + r)) + std::to_string(b), "Lights (undecoded)", r, b});
+    add_run(l, "Button Lamp", "Buttons", 0, {0, 1, 2, 3, 4, 6, 7, 8, 9});
+    add_run(l, "Top Lamp", "Top", 1, {6, 7, 8, 9, 10});
+    add_run(l, "Side Lamp", "Side", 1, {0, 1, 2, 3});
     for (int k = 0; k < 8; k++) l.push_back({"Status LED " + std::to_string(k + 1), "Board (diagnostic)", 2, k, true});
     return l;
 }

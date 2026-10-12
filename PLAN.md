@@ -519,6 +519,15 @@ Points 9, 10 and 13 are opt-in Musashi hooks (`third_party/musashi/HIRAKU.md`), 
 - the sound chips sample-identical (11.2 M samples);
 - it's the case `popn1j-play` in `tools/regress.py`.
 
+**Lamps.**
+- beatmania's lamp table follows MAME's decoding bit for bit: buttons, start, effect, the four highlights, the neon and the board LEDs. The writes themselves are cycle-exact with MAME.
+- MAME doesn't name pop'n's bits, so I worked them out from `popn1j-play`, registers logged against the scripted presses:
+  - buttons 1–9 on reg 0 bits 0–4 and 6–9;
+  - a 5-step top-lamp chase on reg 1 bits 6–10;
+  - 4 side lamps on reg 1 bits 0–3;
+  - reg 1 bit 15 is the coin counter and bit 14 the coin blocker.
+- They take Firebeat pop'n's names (`runtime/shell/cabinet.cpp`, docs/LIGHTS.md), so one lights file serves both.
+
 **Still open:**
 - **The 48 → 44.1 kHz resampling** (linear for now; the chips' own output is exact).
 - **The ATA security unlock**, for complete MIX and later.
