@@ -5,49 +5,41 @@
 # (0x802649c8 + 4 x its index) is set, and the song shows in the music select. In the game window: Ctrl+1..8 (runtime/host/macro.h).
 
 macro "LESSON (hidden song)"
-  tap 4 gap 12
   text "Title screen, credits in: the hidden song LESSON."
   keys 94781362
 end
 
 macro "ENKA REMIX"
-  tap 4 gap 12
   text "Title screen, credits in: ENKA REMIX."
   keys 98968989687
 end
 
 macro "NEO ACO REMIX"
-  tap 4 gap 12
   text "Title screen, credits in: NEO ACO REMIX."
   keys 222122222222213
 end
 
 macro "GIRLY REMIX"
-  tap 4 gap 12
   text "Title screen, credits in: GIRLY REMIX."
   keys 133131313122132
 end
 
 macro "POSITIVE REMIX"
-  tap 4 gap 12
   text "Title screen, credits in: POSITIVE REMIX."
   keys 4466373721
 end
 
 macro "SANAE-chan [5]"
-  tap 4 gap 12
   text "Title screen, credits in: the hidden character SANAE-chan [5]."
   keys 37373737
 end
 
 macro "Ash [5]"
-  tap 4 gap 12
   text "Title screen, credits in: the hidden character Ash [5]."
   keys 11994466
 end
 
 macro "SPECIAL ENDING (service track)"
-  tap 4 gap 12
   text "Title screen, credits in: the service track スペシャルエンディング (Rave girl); a code found in the program's list."
   keys 2179223718
 end

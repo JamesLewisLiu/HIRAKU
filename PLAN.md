@@ -930,6 +930,8 @@ input script), with inputs through `core().set_input` like the scripts'.
   another types starts after it). The launcher's Unlocks dialog lists them, and a macro with an
   `at` frame gets an "every start" checkbox (`macros/<id>` in the settings → `--macro`).
 - **Steps:** `keys` (digits), `press`, `hold`/`release`, `set` (analog), `wait`, `tap N gap M`.
+- **Timing:** taps of 8 frames, 16 apart, by default. With 4/12, pop'n 4 lost a press (it never
+  reached the ring) in the sixth code of a row; with 4/8, pop'n 5 lost one.
 - **pop'n 5** (`FUN_8005b408`, called from the title screen `FUN_800385a0`):
   - 16 presses in a ring (`0x80264dc8`), compared newest first against the table at
     `0x8005b5e0` (0x28 bytes each: 16 u16 masks, length, name); 60 idle frames clear it.
@@ -939,7 +941,13 @@ input script), with inputs through `core().set_input` like the scripts'.
   - Eight codes, one more than RemyWiki lists: `2179223718` [SP]ENDING.
   - All eight were typed back to back by the macros and set their flags; LESSON and
     スペシャルエンディング were seen in the music select.
-  - 12 frames between taps: at 8, a press was lost.
+  - With credits in, the title still cycles through the attract logos (about 1,600 frames after
+    the coins); the new title clears the flags. All eight at 8/16 don't fit in one pass.
+- **pop'n 4** (`FUN_80052e58`, called from `FUN_80034ae0`): the same checker, with a 10-press
+  ring (`0x80268410`) and 0x1c-byte entries at `0x80053030` (10 masks, length, name); flags at
+  `0x80268010`. Eight codes: BRITPOP `33997733`, HORROR `333111333`, GROOVEROCK `6861379`,
+  [RX]POPS `44322366`, [RX]J-TEKNO `864291`, [RX]DANCE `68686824`, [RX]BNSTRK `444322211`,
+  [SP]ENDING `2179223718`. All eight set their flags typed back to back (frames 5100–6142).
 
 ## M0 steps (all done)
 

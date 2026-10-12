@@ -245,11 +245,15 @@ has the SECRET songs.
   - Like pop'n 8's event, it never looks at the date.
 - **The checksum:** the save's checksum is kept right, and the old save stays beside it.
 
-**pop'n 5 codes:** Ctrl+1 to Ctrl+8 on the title screen, with credits in, then START as usual.
-Several can be entered for one credit. They give:
-- the hidden songs LESSON and スペシャルエンディング (a service track; its code isn't on RemyWiki);
-- ENKA, NEO ACO, GIRLY and POSITIVE REMIX;
-- the hidden characters SANAE-chan and Ash.
+**pop'n 4 and 5 codes:** Ctrl+1 to Ctrl+8 on the title screen, with credits in, then START as
+usual. Several can be entered for one credit, about two seconds each.
+- **On one title screen:** with credits in, the title still cycles through the KONAMI logo about
+  every 25 s, and it forgets the codes when it comes back. Type them and press START before that.
+- **pop'n 4:** the hidden songs BRITPOP, HORROR and GROOVE ROCK; the POPS, J-TEKNO, DANCE and
+  BNSTRK remixes; the special ending track.
+- **pop'n 5:** the hidden songs LESSON and スペシャルエンディング (a service track); ENKA, NEO
+  ACO, GIRLY and POSITIVE REMIX; the hidden characters SANAE-chan and Ash.
+- Both games' lists hold a special-ending code that RemyWiki doesn't have: `2179223718`.
 
 ## ParaParaParadise (in progress, M8)
 

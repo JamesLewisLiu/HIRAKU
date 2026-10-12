@@ -67,7 +67,7 @@ bool load(const std::string &path) {
     if (!in) return true;   // a game without codes
     Macro *m = nullptr;
     uint64_t cursor = 0;
-    int tap = 4, gap = 8;
+    int tap = 8, gap = 16;
     int n = 0;
     auto press = [&](const std::string &field, int len) {
         m->steps.push_back({field, 1, cursor});
@@ -86,8 +86,8 @@ bool load(const std::string &path) {
                     m = &g_macros.back();
                     m->info.name = t.at(1);
                     cursor = 0;
-                    tap = 4;
-                    gap = 8;
+                    tap = 8;
+                    gap = 16;
                 } else throw std::runtime_error("expected 'button' or 'macro'");
                 continue;
             }

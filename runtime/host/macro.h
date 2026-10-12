@@ -8,12 +8,13 @@
 //     at 3000                        optional: run by itself at this frame (power-on codes),
 //                                    when the launcher asks for it (--macro NAME)
 //     keys 94781362                  taps, in order: one digit each, or numbers apart (2 2 10 9)
-//     press "P1 Button 5" [frames]   one tap (held `frames`, default 4)
+//     press "P1 Button 5" [frames]   one tap (held `frames`, default 8)
 //     hold "2 Players Start"         down until `release`
 //     release "2 Players Start"
 //     set "P2 Wheel" 255             an analog input
 //     wait 30                        frames
-//     tap 4 gap 8                    tap length and spacing for what follows (frames)
+//     tap 8 gap 16                   tap length and spacing for what follows (frames; the
+//                                    default: the games miss shorter taps when they stall)
 //   end
 //
 // Steps run one after another, a tap every `gap` frames. Inputs go through core().set_input,

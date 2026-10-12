@@ -1,0 +1,45 @@
+# pop'n music 4: the player codes, typed at the title screen with credits in; a sound confirms
+# each. Several can be entered, then START (the red button) as usual. Buttons 1-9 from left to
+# right. From the game's own list (FUN_80052e58, the table at 0x80053030: ten presses at most);
+# each was checked in HIRAKU by its accept flag (0x80268010 + 4 x its index).
+# In the game window: Ctrl+1..8 (runtime/host/macro.h).
+
+macro "BRITPOP"
+  text "Title screen, credits in: the hidden song BRITPOP."
+  keys 33997733
+end
+
+macro "HORROR"
+  text "Title screen, credits in: the hidden song HORROR."
+  keys 333111333
+end
+
+macro "GROOVE ROCK"
+  text "Title screen, credits in: the hidden song GROOVE ROCK."
+  keys 6861379
+end
+
+macro "POPS REMIX"
+  text "Title screen, credits in: the remix [RX]POPS."
+  keys 44322366
+end
+
+macro "J-TEKNO REMIX"
+  text "Title screen, credits in: the remix [RX]J-TEKNO."
+  keys 864291
+end
+
+macro "DANCE REMIX"
+  text "Title screen, credits in: the remix [RX]DANCE."
+  keys 68686824
+end
+
+macro "BNSTRK REMIX"
+  text "Title screen, credits in: the remix [RX]BNSTRK."
+  keys 444322211
+end
+
+macro "SPECIAL ENDING"
+  text "Title screen, credits in: [SP]ENDING, the special ending track."
+  keys 2179223718
+end
