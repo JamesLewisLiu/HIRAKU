@@ -117,6 +117,16 @@ void UnlocksDialog::rebuild() {
         });
         v->addWidget(box);
     }
+    for (const QJsonValue &pv : st["progress"].toArray()) {
+        QJsonObject p = pv.toObject();
+        auto *box = new QGroupBox(p["title"].toString() + ": event progress");
+        auto *bv = new QVBoxLayout(box);
+        auto *t = new QLabel(p["text"].toString());
+        t->setWordWrap(true);
+        t->setTextInteractionFlags(Qt::TextSelectableByMouse);
+        bv->addWidget(t);
+        v->addWidget(box);
+    }
     for (const QJsonValue &nv : st["notes"].toArray()) {
         QJsonObject n = nv.toObject();
         auto *box = new QGroupBox(n["title"].toString());

@@ -23,13 +23,13 @@ text = "No event: the songs of a new cabinet."
 value = 1
 name = "1.SUGOROKU de 8"
 code = "IZCDMNKXCN"
-text = "Starts the Sugoroku de 8 event."
+text = "Starts the Sugoroku de 8 event: play it to unlock the songs city by city (Event progress, below)."
 
 [[unlock.level]]
 value = 2
 name = "2.SUGOROKU de 8 + SECRET DATA RELEASE"
 code = "IDEZ1VSXKD"
-text = "Unlocks the LIVE songs, and EX charts for all default songs."
+text = "Unlocks the LIVE songs and EX charts for all default songs; Sugoroku de 8 still runs."
 
 [[unlock.level]]
 value = 3
@@ -42,6 +42,54 @@ value = 4
 name = "MAX.ALL DATA RELEASE"
 code = "ARCVWZGFEP"
 text = "Everything: also the hidden title-screen songs and their characters, and the expert-course-only songs in every mode."
+
+# The Sugoroku de 8 event, as the game plays it (phases 1 and 2). Found in the program
+# (FUN_800bab40, FUN_800b8e64, the board at 0x800bcad0, the cities at 0x800bb5d0) and checked
+# with autoplayed credits (PLAN.md section 20). After a round whose requirement was met, a
+# roulette (1-6) moves KRAFT along a ring of 1004 spaces with 18 cities. The first time around
+# a stage, a city's unlock needs an exact landing; a city passed is "missed" and given on the
+# next pass. As RemyWiki has it: stage 1 the songs (18 cities), stage 2 the courses (8 cities)
+# and the island songs (land exactly on 鹿児島, 金沢 or 東京), stage 3 the characters; finishing
+# everything gives the HELL the 8 course.
+# The fields are big-endian 32-bit values of the event block, kept three times like the phase.
+[[progress]]
+id = "sugoroku"
+title = "Sugoroku de 8"
+nvram = "rtc.nv"
+copies = [0x0, 0x4bc, 0x978]
+active = { unlock = "phase", values = [1, 2] }
+stage = 0xc0
+unlocked = 0xc4
+missed = 0xc8
+position = 0xcc
+lap = 0xd0
+spaces = 1004
+stages = [
+  { name = "the songs", goal = 0x3ffff },
+  { name = "the courses and island songs", goal = 0x7f8 },
+  { name = "the characters", goal = 0x1fffff },
+]
+# in route order; stages: bit k = a city in stage k+1; masks: its unlock bit per stage
+cities = [
+  { name = "静岡", romaji = "SHIZUOKA", space = 27, stages = 7, masks = [0x20, 0x8, 0x20000] },
+  { name = "名古屋", romaji = "NAGOYA", space = 52, stages = 5, masks = [0x2, 0x0, 0x10] },
+  { name = "大阪", romaji = "OSAKA", space = 148, stages = 7, masks = [0x400, 0x10, 0x400] },
+  { name = "神戸", romaji = "KOBE", space = 158, stages = 7, masks = [0x1, 0x20, 0x8000] },
+  { name = "高知", romaji = "KOCHI", space = 206, stages = 5, masks = [0x200, 0x0, 0x40000] },
+  { name = "広島", romaji = "HIROSHIMA", space = 254, stages = 7, masks = [0x800, 0x40, 0x1000] },
+  { name = "鹿児島", romaji = "KAGOSHIMA", space = 329, stages = 13, masks = [0x2000, 0x0, 0x40] },
+  { name = "下関", romaji = "SHIMONOSEKI", space = 398, stages = 5, masks = [0x80, 0x0, 0x20] },
+  { name = "鳥取", romaji = "TOTTORI", space = 454, stages = 5, masks = [0x10000, 0x0, 0x100000] },
+  { name = "金沢", romaji = "KANAZAWA", space = 490, stages = 13, masks = [0x100, 0x0, 0x800] },
+  { name = "新潟", romaji = "NIGATA", space = 525, stages = 7, masks = [0x4000, 0x80, 0x100] },
+  { name = "青森", romaji = "AOMORI", space = 572, stages = 5, masks = [0x1000, 0x0, 0x80000] },
+  { name = "札幌", romaji = "SAPPORO", space = 663, stages = 7, masks = [0x10, 0x100, 0x200] },
+  { name = "網走", romaji = "ABASHIRI", space = 744, stages = 5, masks = [0x8, 0x0, 0x4000] },
+  { name = "函館", romaji = "HAKODATE", space = 885, stages = 7, masks = [0x8000, 0x200, 0x80] },
+  { name = "仙台", romaji = "SENDAI", space = 924, stages = 7, masks = [0x4, 0x400, 0x2000] },
+  { name = "水戸", romaji = "MITO", space = 940, stages = 5, masks = [0x40, 0x0, 0x8] },
+  { name = "東京", romaji = "TOKYO", space = 0, stages = 13, masks = [0x20000, 0x0, 0x10000] },
+]
 
 # Per credit, not saved: for a lower phase, or for doing it the cabinet way.
 [[note]]

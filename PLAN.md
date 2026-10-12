@@ -814,8 +814,48 @@ The order of work:
   event's own code and state.
 - **`HK_RTC="YYYY-MM-DD[ HH:MM:SS]"`** sets the Firebeat clock for experiments; the default
   stays 2002-07-26 12:00.
-- **Next:** one round that meets its requirement, to see the board, where progress is saved,
-  and whether it survives a restart. Then progress in the launcher.
+
+### Sugoroku de 8, step 2: a round played to the board (done, 2026-10-12)
+
+- **A round reaches the board.** Before each round, `FUN_80024c84` draws the requirement into
+  `0x8052d7b0`: one of 13 for the mode, from the table at `0x80024ea0`. A round that meets it
+  ends on the board: the roulette, then KRAFT moving (`oracle/scripts/popn8-sugoroku.his`).
+- **The autoplay that met the requirement:**
+  - Stage 1 is played from the chart in RAM: 8-byte records `{u32 time, type, 0x45, lane,
+    sample}`, with type 1 a note in lane 0–8.
+  - The times are in 1/1024 s, so a note is due at song frame t × 58.5 / 1000. The song's frame
+    count is at `0x8021825c`.
+  - Stage results are at `0x80218310`: combo, -, GREAT, GOOD, BAD.
+  - The result was 176 GREAT, 2 GOOD, 0 BAD.
+- **The event block** follows the phase in the RTC NVRAM, kept three times (+0, +0x4bc, +0x978).
+  Each field is big-endian u32:
+
+  | Offset | Field |
+  |---|---|
+  | `0xbc` | phase |
+  | `0xc0` | stage, 0–2 |
+  | `0xc4` | unlocked mask |
+  | `0xc8` | missed mask |
+  | `0xcc` | position, 0–1003 |
+  | `0xd0` | lap |
+
+  - `FUN_800bab40` loads the block (`FUN_8006fe8c`), moves KRAFT one space at a time, and saves
+    it (`FUN_8006fee4`).
+  - Two credits moved the position 0 → 1 → 6, and it survives a restart: the attract board's
+    progress bar moved.
+- **The rules** are in `FUN_800b8e64`:
+  - **The board** is 1004 spaces (`0x800bcad0`, 12 bytes each: coordinates, flags, city). The
+    city records (`0x800bb5d0`, 0x34 bytes) hold each stage's unlock bit.
+  - **First time around a stage**, a city needs an exact landing; a city passed goes in the
+    missed mask and is given on the next pass.
+  - **Stage goals:** `0x3ffff` (18 cities), `0x7f8` (8 cities), `0x1fffff` (18 cities plus the
+    three island bits). Completing the last gives `0xbb001e`, the HELL the 8 course.
+  - **RemyWiki's "week"** is this stage, not a date.
+- **The event runs at phases 1 and 2**; phase 3 replaces the board in attract mode.
+- **In HIRAKU:** `games/popn8/unlocks.toml` `[[progress]]` describes the block, the board's
+  cities, and the stage goals. `tools/unlock.py` decodes it, and the Unlocks dialog shows the
+  stage, unlocks, KRAFT's space and lap, the next city, and the cities missed.
+- **Not yet seen:** a city actually unlocked. 静岡 is 21 spaces on, an exact landing.
 
 ## M0 steps (all done)
 

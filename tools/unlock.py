@@ -53,6 +53,51 @@ def current(u: dict, nvram: str):
     return vals.pop()
 
 
+def progress(p: dict, nvram: str, unlocks: dict) -> dict | None:
+    """An event's state from the save (games/<id>/unlocks.toml [[progress]]), or None (no save)."""
+    path = os.path.join(nvram, p["nvram"])
+    if not os.path.exists(path):
+        return None
+    data = open(path, "rb").read()
+    def field(off):
+        vals = {int.from_bytes(data[c + off:c + off + 4], "big") for c in p.get("copies", [0])}
+        if len(vals) != 1:
+            raise Error(f"{path}: the copies of {p['id']} disagree: not a save this tool knows")
+        return vals.pop()
+    a = p.get("active")
+    active = a is None or current(unlocks[a["unlock"]], nvram) in a["values"]
+    stage, unl, missed, pos, lap = (field(p[k]) for k in ("stage", "unlocked", "missed", "position", "lap"))
+    st = p["stages"][min(stage, len(p["stages"]) - 1)]
+    goal = st["goal"]
+    here = [c for c in p["cities"] if c["stages"] >> stage & 1]
+    ahead = sorted(here, key=lambda c: (c["space"] - pos - 1) % p["spaces"])
+    nxt = ahead[0] if ahead else None
+    return {
+        "active": active, "stage": stage + 1, "stages": len(p["stages"]), "stage_name": st["name"],
+        "unlocked": bin(unl & goal).count("1"), "goal": bin(goal).count("1"),
+        "position": pos, "spaces": p["spaces"], "lap": lap,
+        "next": nxt and nxt["name"], "next_romaji": nxt and nxt["romaji"],
+        "next_in": nxt and (nxt["space"] - pos - 1) % p["spaces"] + 1,
+        "next_unlocked": bool(nxt and nxt["masks"][stage] & unl),
+        "missed": [c["name"] for c in here if c["masks"][stage] & missed & ~unl],
+        "done": unl & goal == goal and stage == len(p["stages"]) - 1,
+    }
+
+
+def describe_progress(p: dict, s: dict) -> str:
+    if s is None:
+        return "no save yet"
+    lines = [] if s["active"] else ["the event is not running (it runs at phase 1 or 2)"]
+    if s["done"]:
+        return "\n".join(lines + ["all done: everything unlocked"])
+    lines.append(f"Stage {s['stage']} of {s['stages']} ({s['stage_name']}): {s['unlocked']} of {s['goal']} unlocked")
+    lines.append(f"KRAFT: space {s['position']} of {s['spaces']}, lap {s['lap'] + 1}; next city {s['next']} "
+                 f"({s['next_romaji']}), {s['next_in']} spaces away" + (" (already unlocked)" if s["next_unlocked"] else ""))
+    if s["missed"]:
+        lines.append("passed without landing (given on the next pass): " + ", ".join(s["missed"]))
+    return "\n".join(lines)
+
+
 def level_name(u: dict, v) -> str:
     for lv in u.get("level", []):
         if lv["value"] == v:
@@ -102,9 +147,13 @@ def main() -> int:
         state = []
         for u in spec.get("unlock", []):
             state.append({**u, "current": current(u, nvram)})
+        prog = []
+        for p in spec.get("progress", []):
+            s = progress(p, nvram, unlocks)
+            prog.append({"id": p["id"], "title": p["title"], "state": s, "text": describe_progress(p, s)})
         if a.json:
-            print(json.dumps({"game": a.game, "nvram": nvram, "unlocks": state, "notes": spec.get("note", [])},
-                             ensure_ascii=False))
+            print(json.dumps({"game": a.game, "nvram": nvram, "unlocks": state, "progress": prog,
+                              "notes": spec.get("note", [])}, ensure_ascii=False))
         elif not a.set:
             print(f"{a.game}, save {nvram}")
             for u in state:
@@ -113,6 +162,8 @@ def main() -> int:
                     mark = "*" if lv["value"] == u["current"] else " "
                     code = f"  code {lv['code']}" if lv.get("code") else ""
                     print(f" {mark} {u['id']}={lv['value']}  {lv['name']}{code}\n      {lv['text']}")
+            for p in prog:
+                print(f"\n{p['title']}:\n{p['text']}")
             for n in spec.get("note", []):
                 print(f"\n{n['title']}:\n{n['text']}")
     except Error as e:

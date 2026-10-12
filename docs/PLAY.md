@@ -184,6 +184,24 @@ phase, and **Apply** (the game must not be running).
   sets one.
 - The per-credit codes (the LIVE button code, the title-screen timing) are listed there too.
 
+**Sugoroku de 8, the event itself:** set the phase to **1** (or 2) and the game runs its 2002
+unlock event, which HIRAKU plays unchanged:
+- **The requirement:** before each round a roulette draws one (スゴロク・ノルマ), such as "clear
+  a new song" or "score 70000".
+- **The board:** if your round meets it, a dice roll (1–6) moves KRAFT around Japan, a board of
+  1,004 spaces through 18 cities.
+- **Unlocking a city:** the first time around, you get a city's unlock by landing on it exactly.
+  A city you pass is given on the next pass.
+- **The three stages:**
+  1. the songs;
+  2. the courses and island songs;
+  3. the characters, ending with the HELL the 8 course.
+- **No calendar:** the game never looks at the date, so play at your own pace.
+- **Progress** is saved with the game. The Unlocks dialog (or `tools/unlock.py popn8`) shows the
+  stage, KRAFT's space and lap, the next city, and the cities passed without landing.
+- **Skipping it:** the phase codes were the operators' way to skip the event, and phase 3 or
+  MAX releases everything at once.
+
 ## ParaParaParadise (in progress, M8)
 
 You need the program CD (`a11jaa01`), the audio CD (`a11jaa02`) and the MAME `ppp1mp` ROM set, which holds the dongle image `gqa11-ja`. To unpack MAME's CHDs:
