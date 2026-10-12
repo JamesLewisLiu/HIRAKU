@@ -217,7 +217,7 @@ Durations are rough, assume one person, and are assisted. Each milestone has a c
 | **M8** | ParaParaParadise family | `!:EXE:00` loader, YMZ280B, CDDA, sensor input mapping. | **in progress**:<br>• 1st Mix Plus plays (coin, song select, a full song with CD music).<br>• `ppp`, `ppp11` and `ppd` boot to attract.<br>• **Left:** compare against MAME (CD music sync, sensors), and play the others through.<br>• `ppp2nd` is different hardware, out of scope. |
 | **M9** | Native polish | Low-latency audio backends, display options, input remap UI, Windows build, per-game config UX. | ongoing — the `hiraku` launcher (game list, controls and lights mapping, settings) and cabinet lamps (HID LEDs, socket: docs/LIGHTS.md) are in |
 | **M10** | Keyboardmania (stretch) | Dual GCU / dual screen, MIDI-in, the XT446 synth card. | **in progress**:<br>• kbm, kbh, kbm2nd and kbm3rd boot to attract (dual GCU, ROT270, MIDI keyboards, CD audio).<br>• The real XT446 card runs (MAME H8S/2655 + SWP30, pinned to MAME master): in lockstep with MAME 0.289 for the first 84.5 s of attract MIDI; SoundFont stand-in when its ROMs are missing.<br>• **Left:** play a song through; cost, 38 % of a desktop core (SWP30 MEG ~40 % of that), the N100 risk. |
-| **M11** | Efficiency for N100-class PCs | Every Firebeat game within its budget on an N100-class mini PC (§14): average under 25 % of one core, no frame over ~8 ms of host work. Bit-identical to the current runs (`tools/regress.py`). | **in progress** (§14):<br>• bm3final about 3.4× more efficient than MAME, 9.6 % of a desktop core in gameplay.<br>• **Left:** SWP30 MEG speed-up (kbm); read-ahead for the hard disk and DVD images.<br>• **Blocked** on measuring real N100 hardware (not available right now). |
+| **M11** | Efficiency for N100-class PCs | Every Firebeat game within its budget on an N100-class mini PC (§14): average under 25 % of one core, no frame over ~8 ms of host work. Bit-identical to the current runs (`tools/regress.py`). | **in progress** (§14):<br>• bm3final about 3.4× more efficient than MAME, 9.6 % of a desktop core in gameplay.<br>• Keyboardmania: the XT446 synth card runs on its own thread, mean frame 7.2 → 6.5 ms, worst 12.8 → 10.6 ms (bit-identical).<br>• **Left:** the SWP30 MEG is still ~5 ms a frame on its core (kbm); read-ahead for the hard disk and DVD images.<br>• **Blocked** on measuring real N100 hardware (not available right now). |
 | **M12** | Cores: the shell split | The host layer (launcher, window, input, lights, scripts, oracle) talks to the machine through one core interface. Firebeat moves behind it unchanged (bit-identical digests). | **done 2026-10-12** (§17): `runtime/shell/core.h`; Firebeat and DJ Main are cores, each binary links one. Firebeat bit-identical. |
 | **M13** | DJ Main core | beatmania 1st mix → THE FINAL, pop'n 1–3, pop'n stage: interpreted 68EC020 plus MAME's devices, checked against MAME. Analog turntable and lamps. | **in progress** (§17, docs/PLAY.md):<br>• `bm1stmix` and `popn1j` run in **cycle-exact lockstep with MAME**: work RAM, sprites and palette identical on every frame, with sound sample-identical. This holds through boot (both games) and through a scripted game of beatmania (coin, turntable, song select, a song played with keys and scratches, game over).<br>• In `tools/regress.py`.<br>• **Left:** hands-on test, ATA password (complete MIX on), the other sets, faster drawing. |
 | **M14** | System 573 core | PS1 core (interpreted, then statically recompiled MIPS), analog-I/O games first (CD audio), then digital I/O (MP3 + FPGA). | months, **unblocked 2026-10-12** (§16):<br>• `ddr3mj` (DDR 3rd Mix, analog I/O): MAME stops at error 147 until the first install from CD (install cassette).<br>• `drmn10m` (DrumMania 10th, digital I/O): installs from CD to flash in MAME, then wants a reboot.<br>• Both are NOT_WORKING in MAME; MAME runs them at ~650–670 % real time. |
@@ -355,9 +355,26 @@ The target machine is an **N100-class x86 mini PC**: 4 cores, roughly 60 % of a 
   - scanout ~8 %.
 - Keyboardmania: the SWP30's MEG effects DSP (MAME code) is ~40 % of its run, so kbm is the one family likely to struggle on an N100.
 
+**Keyboardmania's synth card (later on 2026-10-12):**
+- The XT446 runs on a thread of its own (`runtime/firebeat/synth.cpp`), beside the game's CPU.
+  - The game only sends it MIDI. The board queues "render n samples" and "MIDI byte" in the same order as before, so every byte lands on the same sample.
+  - The board holds each frame's audio and adds the card's samples at vblank, with the same sums in the same order. The output is bit-identical (`kbm-attract`).
+  - Latency is unchanged: the frame's audio is handed on at the same point.
+  - `HK_XT446_INLINE=1` runs the card on the main thread, as before.
+- The MEG's interpreter is about 8 % faster (`third_party/mame/README.md`), bit-identical with MAME's `step()`.
+- Measured on the 5700X3D, kbm attract:
+  - mean host work per frame 7.18 → 6.46 ms;
+  - worst frame 12.8 → 10.6 ms.
+- The card is now the critical path, at about 5.3 ms a frame:
+  - the MEG is 64 % of it, about 12 ns a step, limited by the serial dependencies between its steps rather than instruction count;
+  - the H8 firmware does real work (7.3 M instructions/s, no idle loop to skip).
+- Tried and dropped, bit-identical but no faster:
+  - a branchless MEG ALU (slower);
+  - a fast path for arithmetic-only steps (1 %).
+
 **Next:**
 1. Measure on real N100 hardware, in `--window`, with `HK_LOG_STALLS=1`.
-2. Speed up the SWP30 MEG (kbm).
+2. The SWP30 MEG (kbm) is still ~5 ms a frame on one core. What's left is structural: a compiled (JIT-style) MEG program, or a faster H8 core.
 3. Read-ahead for the large images. CD images up to 1.5 GB are already warmed in the background, and every READ gets a `WILLNEED` hint (`ata.cpp`). The hard disk (bm3, 20 GB) and the DVDs (pop'n) only get the hint, issued just before the synchronous read, so it gives little lead time. One run had a single 125 ms frame at a song load that never reproduced, most likely a cold host file cache. Slower storage on an N100 makes that likelier.
 
 ## 15. Other BEMANI platforms as cores (discussed 2026-10-12)

@@ -3653,7 +3653,10 @@ void swp30_device::meg_state::step()
 
 // HIRAKU: the MEG program pre-decoded. step() extracts every field of every
 // instruction on every one of 17 M steps a second; decode() does it when a
-// program word changes and step_decoded() is step() working from the fields.
+// program word changes and step_decoded() is step() working from the fields:
+// the multiplier's operands through pointers chosen at decode time, and the
+// pipeline's 3- and 2-step delay slots as template constants (run_decoded()
+// cycles through the 6 phases) instead of counters wrapped on every step.
 // HK_XT446_MEG_REF=1 runs step() instead, to check the two agree.
 void swp30_device::meg_state::decode()
 {
@@ -3671,6 +3674,8 @@ void swp30_device::meg_state::decode()
 		d.m1_from_t = m1t == 1 || m1t == 2;
 		d.m1_expand = BIT(opcode, 0x13);
 		d.m2_from_m = BIT(opcode, 0x12);
+		d.m1p = d.m1_from_t ? &m_t[d.t] : &m_const[pc];
+		d.m2p = d.m2_from_m ? &m_m[d.sm] : &m_r[d.sr];
 		d.amode = BIT(opcode, 0x18, 2);
 		d.op = BIT(opcode, 0x1a, 2);
 		u32 shift = BIT(opcode, 0x1c, 2);
@@ -3690,35 +3695,35 @@ void swp30_device::meg_state::decode()
 	m_dec_dirty = false;
 }
 
-void swp30_device::meg_state::step_decoded()
+template<int D3, int D2> inline __attribute__((always_inline)) void swp30_device::meg_state::step_decoded(s64 &p)
 {
-	if(m_mw_reg[m_delay_3])
-		m_m[m_mw_reg[m_delay_3]] = m_mw_value[m_delay_3];
+	if(m_mw_reg[D3])
+		m_m[m_mw_reg[D3]] = m_mw_value[D3];
 
-	if(m_rw_reg[m_delay_3])
-		m_r[m_rw_reg[m_delay_3]] = m_rw_value[m_delay_3];
+	if(m_rw_reg[D3])
+		m_r[m_rw_reg[D3]] = m_rw_value[D3];
 
-	if(m_index_active[m_delay_3])
-		m_ram_index = m_index_value[m_delay_3];
+	if(m_index_active[D3])
+		m_ram_index = m_index_value[D3];
 
-	if(m_memw_active[m_delay_2]) {
-		m_ram_write = m_memw_value[m_delay_2];
-		m_memw_active[m_delay_2] = false;
+	if(m_memw_active[D2]) {
+		m_ram_write = m_memw_value[D2];
+		m_memw_active[D2] = false;
 	}
-	if(m_memr_active[m_delay_2]) {
-		m_ram_read = m_memr_value[m_delay_2];
-		m_memr_active[m_delay_2] = false;
+	if(m_memr_active[D2]) {
+		m_ram_read = m_memr_value[D2];
+		m_memr_active[D2] = false;
 	}
 
 	const decoded &d = m_dec[m_pc];
 	const int sm = d.sm, sr = d.sr, dm = d.dm, dr = d.dr, t = d.t;
 
 	if(d.alu) {
-		s64 m1 = d.m1_from_t ? m_t[t] : m_const[m_pc];
+		s64 m1 = *d.m1p;
 		if(d.m1_expand)
 			m1 = m1_expand(m1);
 
-		s64 m2 = d.m2_from_m ? m_m[sm] : m_r[sr];
+		s64 m2 = *d.m2p;
 
 		s64 m;
 		switch(d.mmode) {
@@ -3730,9 +3735,9 @@ void swp30_device::meg_state::step_decoded()
 
 		s64 a;
 		switch(d.amode) {
-		case 0: a = m_p; break;
-		case 1: a = sr ? (s64(m_r[sr]) << 15) : (m_p >> 15); break;
-		case 2: a = sm ? (s64(m_m[sm]) << 15) : (m_p >> 15); break;
+		case 0: a = p; break;
+		case 1: a = sr ? (s64(m_r[sr]) << 15) : (p >> 15); break;
+		case 2: a = sm ? (s64(m_m[sm]) << 15) : (p >> 15); break;
 		default: a = 0; break;
 		}
 
@@ -3753,10 +3758,10 @@ void swp30_device::meg_state::step_decoded()
 		default: r = std::min<s64>((r < 0) ? -r : r, 0x3fffffffff); break;
 		}
 
-		m_p = r;
+		p = r;
 	}
 
-	m_mw_reg[m_delay_3] = dm;
+	m_mw_reg[D3] = dm;
 	if(dm) {
 		u32 v;
 		switch(d.dsrc) {
@@ -3766,50 +3771,50 @@ void swp30_device::meg_state::step_decoded()
 		case 4: v = m_ram_read; break;
 		case 5: v = m_swp->machine().rand() & 0xffffff; if(v & 0x00800000) v |= 0xff000000; break;
 		case 6: {
-			s64 p = m_p;
+			s64 pr = p;
 			if(d.add_rand)
-				p += m_swp->machine().rand() & 0x07e0;
-			v = pack24(p);
+				pr += m_swp->machine().rand() & 0x07e0;
+			v = pack24(pr);
 			break;
 		}
 		default: v = m_m[sm]; break;
 		}
-		m_mw_value[m_delay_3] = v;
+		m_mw_value[D3] = v;
 	}
 
-	m_rw_reg[m_delay_3] = dr;
+	m_rw_reg[D3] = dr;
 	if(dr) {
 		u32 v;
 		if(d.r_from_r)
 			v = m_r[sr];
 		else {
-			s64 p = m_p;
+			s64 pr = p;
 			if(d.add_rand)
-				p += m_swp->machine().rand() & 0x07e0;
-			v = pack24(p);
+				pr += m_swp->machine().rand() & 0x07e0;
+			v = pack24(pr);
 		}
-		m_rw_value[m_delay_3] = v;
+		m_rw_value[D3] = v;
 	}
 
 	if(d.memw) {
-		m_memw_active[m_delay_2] = true;
-		m_memw_value[m_delay_2] = m_p / 32768;
+		m_memw_active[D2] = true;
+		m_memw_value[D2] = p / 32768;
 	} else
-		m_memw_active[m_delay_2] = false;
+		m_memw_active[D2] = false;
 
 	if(d.idx) {
-		m_index_active[m_delay_3] = true;
-		m_index_value[m_delay_3] = m_p >> (15+8);
+		m_index_active[D3] = true;
+		m_index_value[D3] = p >> (15+8);
 	} else
-		m_index_active[m_delay_3] = false;
+		m_index_active[D3] = false;
 
 	if(d.twr) {
 		if(d.t_from_value)
-			m_t[t] = m_t_value[m_delay_2];
+			m_t[t] = m_t_value[D2];
 		else
 			m_t[t] = m_const[m_pc];
 	}
-	m_t_value[m_delay_2] = s16(d.idx ? (m_p >> 8) & 0x7fff : std::clamp<s64>(m_p >> (15+8), -0x8000, 0x7fff));
+	m_t_value[D2] = s16(d.idx ? (p >> 8) & 0x7fff : std::clamp<s64>(p >> (15+8), -0x8000, 0x7fff));
 
 	switch(d.memop) {
 	case 0:
@@ -3824,35 +3829,46 @@ void swp30_device::meg_state::step_decoded()
 	default: {
 		const s32 plus = d.memop == 3 ? 1 : 0;
 		if(!d.absolute && BIT(m_swp->m_revram_enable, map_bank(m_pc))) {
-			m_memr_value[m_delay_2] = 0;
-			m_memr_active[m_delay_2] = true;
+			m_memr_value[D2] = 0;
+			m_memr_active[D2] = true;
 		} else {
 			u32 address = d.absolute ?
 				(m_offset[m_pc/3] + (d.use_index ? m_ram_index : 0) + plus) & 0x3ffff :
 				resolve_address(m_pc, m_offset[m_pc/3] + (d.use_index ? m_ram_index : 0) - m_sample_counter + plus);
 			if(address != 0xffffffff) {
 				u16 val = m_swp->m_reverb_cache.read_word(address);
-				m_memr_value[m_delay_2] = revram_decode(val);
-				m_memr_active[m_delay_2] = true;
+				m_memr_value[D2] = revram_decode(val);
+				m_memr_active[D2] = true;
 			}
 		}
 		break;
 	}
 	}
 
-	m_delay_3 ++;
-	if(m_delay_3 == 3)
-		m_delay_3 = 0;
-
-	m_delay_2 ++;
-	if(m_delay_2 == 2)
-		m_delay_2 = 0;
-
 	m_pc ++;
-	m_icount --;
+}
 
-	if(m_pc == 0x180)
-		m_pc = 0;
+// n steps from m_pc, not past the end of the program (the caller wraps m_pc)
+void swp30_device::meg_state::run_decoded(int n)
+{
+	// phase k: D3 = k % 3, D2 = k % 2
+	static constexpr int phase_of[3][2] = {{0, 3}, {4, 1}, {2, 5}};
+	int k = phase_of[m_delay_3][m_delay_2];
+	m_icount -= n;
+	s64 p = m_p;   // in a register for the whole run
+	while(n) {
+		switch(k) {
+		case 0: step_decoded<0, 0>(p); if(!--n) { k = 1; break; } [[fallthrough]];
+		case 1: step_decoded<1, 1>(p); if(!--n) { k = 2; break; } [[fallthrough]];
+		case 2: step_decoded<2, 0>(p); if(!--n) { k = 3; break; } [[fallthrough]];
+		case 3: step_decoded<0, 1>(p); if(!--n) { k = 4; break; } [[fallthrough]];
+		case 4: step_decoded<1, 0>(p); if(!--n) { k = 5; break; } [[fallthrough]];
+		case 5: step_decoded<2, 1>(p); --n; k = 0; break;
+		}
+	}
+	m_p = p;
+	m_delay_3 = k % 3;
+	m_delay_2 = k % 2;
 }
 
 void swp30_device::execute_run()
@@ -3868,8 +3884,11 @@ void swp30_device::execute_run()
 			sample_step();
 		if(reference)
 			m_meg->step();
-		else
-			m_meg->step_decoded();
+		else {
+			m_meg->run_decoded(std::min<int>(m_meg->m_icount, 0x180 - m_meg->m_pc));
+			if(m_meg->m_pc == 0x180)
+				m_meg->m_pc = 0;
+		}
 	}
 }
 

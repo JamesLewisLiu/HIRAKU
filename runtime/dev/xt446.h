@@ -25,6 +25,7 @@ public:
     bool load(const std::string &dir, std::string &err);
     void midi(uint8_t byte);                          // the next byte on the MIDI line, sent now
     void render(float *lr, int frames, float gain);   // add 44.1 kHz stereo (full scale = 1.0)
+    void take(float *lr, int frames);                 // the same samples, written rather than added
 
     // statistics
     uint64_t samples() const;
@@ -32,6 +33,7 @@ public:
     double cpu_seconds() const;                       // host time spent emulating
 
 private:
+    void produce(int frames, float *lr, float gain, bool add);
     struct Impl;
     std::unique_ptr<Impl> m;
 };

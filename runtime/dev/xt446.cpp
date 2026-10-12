@@ -5,6 +5,7 @@
 // ROM layout and CPU hookups. See xt446.h for what differs.
 #include "xt446.h"
 
+#include <algorithm>
 #include <chrono>
 #include <cstdio>
 #include <deque>
@@ -187,7 +188,10 @@ void Xt446::midi(uint8_t b) {
     s.arm_line();
 }
 
-void Xt446::render(float *lr, int frames, float gain) {
+void Xt446::render(float *lr, int frames, float gain) { produce(frames, lr, gain, true); }
+void Xt446::take(float *lr, int frames) { produce(frames, lr, 1.0f, false); }
+
+void Xt446::produce(int frames, float *lr, float gain, bool add) {
     Impl &s = *m;
     if (!s.dev || frames <= 0) return;
     auto t0 = std::chrono::steady_clock::now();
@@ -196,7 +200,10 @@ void Xt446::render(float *lr, int frames, float gain) {
         s.sample_index++;
         s.machine.run_until(attotime::from_ticks(s.sample_index, 44100u));
     }
-    for (size_t k = 0; k < need; k++) lr[k] += s.out[s.out_pos + k] * gain;
+    if (add)
+        for (size_t k = 0; k < need; k++) lr[k] += s.out[s.out_pos + k] * gain;
+    else
+        std::copy_n(s.out.begin() + (std::ptrdiff_t)s.out_pos, need, lr);
     s.out_pos += need;
     if (s.out_pos > 65536) {
         s.out.erase(s.out.begin(), s.out.begin() + (std::ptrdiff_t)s.out_pos);

@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "synth.h"
 
+#include <condition_variable>
+#include <deque>
 #include <memory>
+#include <mutex>
+#include <thread>
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
@@ -17,6 +21,74 @@ namespace hk::synth {
 
 namespace {
 std::unique_ptr<Xt446> g_card;   // the real card, when its ROMs are there
+
+// The card on a thread of its own, so that it runs beside the game's CPU on
+// another core. The board's commands (render n more samples, a MIDI byte) reach
+// it in the same order as before, so every byte lands on the same sample and
+// the output is bit-identical. The game never reads anything back from the
+// card; the board collects the samples once a frame (collect()).
+class Worker {
+public:
+    explicit Worker(Xt446 &card) : card_(card), th_([this] { loop(); }) {}
+    ~Worker() {
+        {
+            std::lock_guard<std::mutex> lk(mu_);
+            stop_ = true;
+        }
+        cv_.notify_one();
+        th_.join();
+    }
+    void post(bool midi, uint32_t v) {
+        {
+            std::lock_guard<std::mutex> lk(mu_);
+            q_.push_back({midi, v});
+            if (!midi) requested_ += v;
+        }
+        cv_.notify_one();
+    }
+    // every sample asked for so far, interleaved stereo, in order
+    void wait_all(std::vector<float> &out) {
+        std::unique_lock<std::mutex> lk(mu_);
+        done_cv_.wait(lk, [&] { return q_.empty() && !busy_; });
+        out.swap(out_);
+        out_.clear();
+    }
+    uint64_t requested() const { return requested_; }
+
+private:
+    struct Cmd { bool midi; uint32_t v; };
+    void loop() {
+        std::vector<float> buf;
+        std::unique_lock<std::mutex> lk(mu_);
+        for (;;) {
+            cv_.wait(lk, [&] { return stop_ || !q_.empty(); });
+            if (q_.empty()) return;
+            const Cmd c = q_.front();
+            q_.pop_front();
+            busy_ = true;
+            lk.unlock();
+            if (c.midi) card_.midi((uint8_t)c.v);
+            else {
+                buf.resize(2 * (size_t)c.v);
+                card_.take(buf.data(), (int)c.v);
+            }
+            lk.lock();
+            if (!c.midi) out_.insert(out_.end(), buf.begin(), buf.end());
+            busy_ = false;
+            if (q_.empty()) done_cv_.notify_all();
+        }
+    }
+    Xt446 &card_;
+    std::mutex mu_;
+    std::condition_variable cv_, done_cv_;
+    std::deque<Cmd> q_;
+    std::vector<float> out_;
+    uint64_t requested_ = 0;
+    bool stop_ = false, busy_ = false;
+    std::thread th_;   // last: starts once the rest is set up
+};
+std::unique_ptr<Worker> g_worker;
+std::vector<float> g_collected;
 }
 
 namespace fluid {
@@ -172,6 +244,7 @@ bool init(const std::string &rom_dir, const std::string &soundfont, bool stand_i
         if (card->load(rom_dir, err)) {
             g_card = std::move(card);
             fprintf(stderr, "synth: XT446 (MU100B firmware on the H8S/2655 + SWP30)\n");
+            if (!getenv("HK_XT446_INLINE")) g_worker = std::make_unique<Worker>(*g_card);
             return true;
         }
         fprintf(stderr, "synth: no XT446 ROMs (%s in %s): using the SoundFont stand-in\n", err.c_str(), rom_dir.c_str());
@@ -182,7 +255,8 @@ bool init(const std::string &rom_dir, const std::string &soundfont, bool stand_i
 bool active() { return g_card || fluid::active(); }
 
 void midi(uint8_t b) {
-    if (g_card) g_card->midi(b);
+    if (g_worker) g_worker->post(true, b);
+    else if (g_card) g_card->midi(b);
     else fluid::midi(b);
 }
 
@@ -190,6 +264,22 @@ void render(float *lr, int frames, float gain) {
     if (g_card) g_card->render(lr, frames, gain);
     else fluid::render(lr, frames, gain);
 }
+
+bool deferred() { return g_worker != nullptr; }
+
+void request(int frames) {
+    if (g_worker && frames > 0) g_worker->post(false, (uint32_t)frames);
+}
+
+void collect(float *lr, int frames, float gain) {
+    if (!g_worker) return;
+    g_worker->wait_all(g_collected);
+    // the board collects exactly what it requested since the last collect
+    const size_t n = std::min(g_collected.size(), 2 * (size_t)frames);
+    for (size_t k = 0; k < n; k++) lr[k] += g_collected[k] * gain;
+}
+
+void stop() { g_worker.reset(); }
 
 std::string describe() {
     if (g_card) {

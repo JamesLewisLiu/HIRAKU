@@ -37,6 +37,7 @@ effects DSP. HIRAKU runs MAME's own emulation of both. The glue is in
   - **speed (same results):**
     - the MEG reads its program array directly. MAME's `read_qword` goes through the address map to `meg_prg_map_r`, which returns the same word.
     - `meg_state::step_decoded()` is `step()` with the instruction fields extracted once, when a program word changes, rather than on every one of the 17 M steps per second.
+    - `step_decoded()` keeps the pipeline's 3- and 2-step delay slots as template constants: `run_decoded()` runs a whole sample's steps, cycling through the 6 phases. It picks the multiplier's operands through pointers set at decode time and keeps the accumulator in a register. About 8 % faster than the first pre-decoded version.
     - `HK_XT446_MEG_REF=1` runs MAME's `step()` instead. The two give bit-identical output.
 - The H8 files are unchanged.
 

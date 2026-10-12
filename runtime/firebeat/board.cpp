@@ -557,6 +557,7 @@ void traced_write(uint32_t p, uint32_t v, int size) {
 // drive's Red Book audio is mixed in.
 uint64_t g_ymz_samples = 0;     // 88.2 kHz samples rendered
 AudioSink g_audio_sink;
+std::vector<float> g_audio_held;   // see audio_release()
 float g_ymz_carry[2];
 bool g_ymz_odd = false;
 
@@ -582,9 +583,24 @@ void ymz_render_until(uint64_t t) {
             g_ymz_odd = !g_ymz_odd;
         }
         if (m) g_ata->cdda_render(1, out, m, 0.5f);      // CD audio from the slave drive (MAME: 0.5 to the speaker)
+        if (m && synth::deferred()) {                    // the synth card adds its part at the frame's end
+            synth::request(m);
+            g_audio_held.insert(g_audio_held.end(), out, out + 2 * m);
+            continue;
+        }
         if (m) synth::render(out, m, 1.0f);              // Keyboardmania's synth card (stand-in)
         if (g_audio_sink && m) g_audio_sink(out, m);
     }
+}
+
+// The audio held for the synth card's samples (synth::deferred()), handed on
+// once a frame: the same samples, sums and order as chunk by chunk.
+void audio_release() {
+    if (g_audio_held.empty()) return;
+    const int n = (int)(g_audio_held.size() / 2);
+    synth::collect(g_audio_held.data(), n, 1.0f);
+    if (g_audio_sink) g_audio_sink(g_audio_held.data(), n);
+    g_audio_held.clear();
 }
 
 void ymz_tick_fire();
@@ -604,6 +620,7 @@ uint64_t frame_ticks() {
 }
 
 void vblank_fire() {
+    audio_release();
     g_frame++;
     g_vblank.in(frame_ticks());
     g_gcu->vblank(true);
@@ -784,6 +801,8 @@ void shutdown() {
     static bool done = false;
     if (done) return;
     done = true;
+    audio_release();
+    synth::stop();
     g_trace.emit();
     if (g_trace.f) fclose(g_trace.f);
     g_trace.f = nullptr;

@@ -326,11 +326,14 @@ private:
 			u8 sm, sr, dm, dr, t;
 			u8 mmode, alu, m1_from_t, m1_expand, m2_from_m, amode, op, shift, sat;
 			u8 dsrc, add_rand, r_from_r, memw, idx, twr, t_from_value, memop, use_index, absolute;
+			const s16 *m1p;   // the multiplier's operands: m_t[t] or m_const[pc], and m_m[sm] or m_r[sr]
+			const s32 *m2p;
 		};
 		std::array<decoded, 0x180> m_dec;
 		bool m_dec_dirty = true;
 		void decode();
-		void step_decoded();
+		template<int D3, int D2> void step_decoded(s64 &p);
+		void run_decoded(int n);
 		void reset();
 	};
 
