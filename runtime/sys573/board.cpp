@@ -599,6 +599,9 @@ struct Board {
     FrameHook frame_hook;
     AudioSink audio_sink;
     u64 frames = 0;
+    float sound_peak = 0;     // the mix's largest |sample| (1.0 = full scale)
+    u64 sound_over = 0;       // samples past full scale (clipped at the output)
+    u64 sound_samples = 0;
     std::vector<u32> frame_rgb;
 } g;
 
@@ -709,6 +712,13 @@ void set_audio_sink(AudioSink s) { g.audio_sink = std::move(s); }
                             c.erase(c.begin(), c.begin() + n);
                         }
                     }
+                    for (float &v : lr) {
+                        v *= g.cfg.mix_gain;
+                        const float a = std::fabs(v);
+                        if (a > g.sound_peak) g.sound_peak = a;
+                        if (a > 1.0f) g.sound_over++;
+                    }
+                    g.sound_samples += lr.size();
                     g.audio_sink(lr.data(), (int)n);
                 }
             }
@@ -752,6 +762,14 @@ bool set_input(const std::string &name, int value) {
 }
 
 const std::vector<uint8_t> &lamp_state() { return g.state->m_lamps; }
+std::string sound_report() {
+    if (!g.sound_samples) return {};
+    char b[160];
+    snprintf(b, sizeof b, "sound: mix peak %.2f of full scale, %.3f %% of samples over it", g.sound_peak,
+             100.0 * (double)g.sound_over / (double)g.sound_samples);
+    return b;
+}
+
 uint64_t lamp_changes() { return g.state->m_lamp_changes; }
 
 const uint8_t *mem(uint32_t addr, uint32_t len) {

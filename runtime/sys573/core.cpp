@@ -29,10 +29,13 @@ class Sys573Core final : public Core {
 public:
     bool option(const std::string &name, const std::function<std::string()> &value) override {
         if (name == "--rtc") { rtc_ = std::stoll(value()); return true; }
+        if (name == "--mame-mix") { mame_mix_ = true; return true; }
         return false;
     }
     std::string options_help() const override {
-        return "  --rtc SECONDS     the timekeeper's time at power-on (default: now), seconds since 1970\n";
+        return "  --rtc SECONDS     the timekeeper's time at power-on (default: now), seconds since 1970\n"
+               "  --mame-mix        sound at MAME's level: the SPU and CD audio summed at full gain, clipping\n"
+               "                    where they add up past full scale (default: half, which never clips)\n";
     }
 
     bool init(const Options &o) override {
@@ -59,6 +62,7 @@ public:
         cfg.cd = o.data_path(machine["cd"]);
         cfg.nvram_dir = o.nvram_dir;
         cfg.rtc_time = rtc_ >= 0 ? rtc_ : (int64_t)time(nullptr);
+        if (mame_mix_) cfg.mix_gain = 1.0f;
         if (!k573::init(cfg)) return false;
         printf("hiraku %s: System 573, MAME's PS1 interpreted\n", o.game.c_str());
         return true;
@@ -73,6 +77,7 @@ public:
     void report() override {
         printf("frames %llu, virtual time %.3f s, pc %08x, %llu lamp changes\n", (unsigned long long)k573::frame_count(),
                k573::seconds(), k573::pc(), (unsigned long long)k573::lamp_changes());
+        if (std::string s = k573::sound_report(); !s.empty()) printf("%s\n", s.c_str());
     }
     void debug_line(uint64_t f) override { printf("f%llu pc %08x\n", (unsigned long long)f, k573::pc()); }
 
@@ -88,6 +93,7 @@ public:
 private:
     std::function<void()> on_fatal_;
     long long rtc_ = -1;
+    bool mame_mix_ = false;
 };
 
 }  // namespace

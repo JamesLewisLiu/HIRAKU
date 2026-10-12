@@ -464,8 +464,11 @@ A dance pad is bound in the launcher's Controls (Dance Dance Revolution page): c
 
 **Lamps:** the analog I/O board's outputs as MAME names them (foot panels, start lamps, the four body lamps, the speaker neon), through the lights socket and HID lamps (docs/LIGHTS.md).
 
-**Sound:** the SPU and the CD's music, mixed as MAME's speaker does (the CD at the volume the game sets with MODE SELECT).
+**Sound:** the SPU and the CD's music in MAME's balance, the CD at the volume the game sets with MODE SELECT.
+- **Played at half level, which never clips.** MAME sums the two at full level and clips the sum, and in DDR they reach twice full scale. That crackles on loud songs: about 1 % of all samples in a game, and a third of them on the loudest. The real board mixes them in analog.
+- `--mame-mix` gives MAME's level and clipping back, for comparing with MAME's recordings (`oracle/audiosync.py`).
+- The exit report's `sound:` line gives the mix's peak and how much of it clipped.
 
-**Checked against MAME, clock for clock** (`oracle/scripts/ddr2m-boot.his`, `ddr2m-play.his`): the first boot and flash install, attract mode, and a game. That game is coins, mode and song select, and a song stepped through to CLEARED. Main RAM is identical on every frame, every snapshot is pixel-identical, and the sound matches MAME's recording. Both are regress cases.
+**Checked against MAME, clock for clock** (`oracle/scripts/ddr2m-boot.his`, `ddr2m-play.his`): the first boot and flash install, attract mode, and a game. That game is coins, mode and song select, and a song stepped through to CLEARED. Main RAM is identical on every frame, every snapshot is pixel-identical, and the sound matches MAME's recording (with `--mame-mix`). Both are regress cases.
 
 **Not yet:** a hands-on test with a pad.

@@ -29,6 +29,10 @@ struct Config {
     std::string cd;                        // the CD image (.cue or .iso)
     std::string pccard2;                   // "32mb": a Fujitsu 32 MiB flash card in slot 2
     bool memory_card_reader = false;       // the JVS memory card reader (ddr3m)
+    // The output's gain. MAME sums the SPU and the CD audio at 1.0 each and clips the sum at full
+    // scale: DDR's mix peaks at 2.0 and crackles. The board mixes them in analog; 0.5 keeps MAME's
+    // balance with no clipping. 1.0 (--mame-mix) is MAME's output, for comparing with its WAV.
+    float mix_gain = 0.5f;
     std::string nvram_dir;                 // flash, timekeeper, cassette, card ("" = blank each run)
     int64_t rtc_time = 0;                  // the timekeeper's time at power-on (seconds since 1970)
 };
@@ -50,6 +54,7 @@ const std::string &family();
 bool set_input(const std::string &name, int value);
 const std::vector<uint8_t> &lamp_state();
 uint64_t lamp_changes();
+std::string sound_report();                // the mix's peak and how much of it clips ("" without sound)
 const uint8_t *mem(uint32_t addr, uint32_t len);
 uint32_t pc();
 
