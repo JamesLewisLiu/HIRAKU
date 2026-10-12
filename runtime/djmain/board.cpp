@@ -68,6 +68,7 @@ std::vector<uint32_t> g_screen(SCREEN_W * SCREEN_H);
 uint64_t g_snd_done = 0;        // 48 kHz samples rendered so far
 std::vector<float> g_snd48;     // rendered, not yet resampled (stereo)
 double g_rs_pos = 0;            // resampler position in g_snd48 (input samples)
+size_t g_raw_done = 0;          // floats of g_snd48 already written to HK_DJ_RAW48
 
 uint64_t now() { return g_cycles + (g_in_execute ? (uint64_t)m68k_cycles_run() : 0); }
 
@@ -76,6 +77,15 @@ uint64_t now() { return g_cycles + (g_in_execute ? (uint64_t)m68k_cycles_run() :
 // ---------------------------------------------------------------------------
 void update_irq() { m68k_set_irq(g_hold4 ? 4 : g_hold1 ? 1 : 0); }
 
+// A device changed an interrupt line. Musashi looks at the lines only when
+// m68k_execute() starts; MAME's scheduler aborts the timeslice on any input
+// change (device_input::set_state_synced -> synchronize), so the interrupt is
+// taken right after the current instruction. Do the same.
+void irq_changed() {
+    update_irq();
+    if (g_in_execute) m68k_end_timeslice();
+}
+
 void ide_interrupt(bool state) {
     if (state) {
         g_hold1 = true;
@@ -83,7 +93,7 @@ void ide_interrupt(bool state) {
     } else {
         g_hold1 = false;
     }
-    update_irq();
+    irq_changed();
 }
 
 void vb_interrupt() {
@@ -91,7 +101,7 @@ void vb_interrupt() {
         g_hold4 = true;
         g_stats.irq4++;
         g_pending_vb_int = 0;
-        update_irq();
+        irq_changed();
     } else {
         g_pending_vb_int = 1;
     }
@@ -195,7 +205,7 @@ uint16_t ata_read(int cs, int reg) {
     // READ SECTORS: the next sector's interrupt comes 400 ns after the last word
     if (cs == 0 && reg == 0 && (g_ata_command == 0x20 || g_ata_command == 0x21) && !irq_before && g_hold1) {
         g_hold1 = false;
-        update_irq();
+        irq_changed();
         ata_start_busy(us_to_cycles(0.4));
         g_ata_irq_deferred = true;
     }
@@ -216,9 +226,24 @@ void sound_sync() {
     g_stats.sound_samples += n;
 }
 
+// HK_DJ_RAW48=FILE: also write the chips' own 48 kHz output (16-bit stereo,
+// headerless), to compare with MAME's -wavwrite sample for sample.
+FILE *raw48() {
+    static FILE *f = getenv("HK_DJ_RAW48") ? fopen(getenv("HK_DJ_RAW48"), "wb") : nullptr;
+    return f;
+}
+
 // Resample what has been rendered to 44.1 kHz (linear) and hand it to the shell.
 void sound_flush() {
     sound_sync();
+    if (FILE *f = raw48()) {
+        for (size_t k = g_raw_done; k < g_snd48.size(); k++) {
+            const float v = g_snd48[k] * 32768.0f;
+            const int16_t i = (int16_t)(v > 32767 ? 32767 : v < -32768 ? -32768 : v);
+            fwrite(&i, 2, 1, f);
+        }
+        fflush(f);
+    }
     const size_t have = g_snd48.size() / 2;
     if (have < 2) return;
     static std::vector<float> out;
@@ -232,6 +257,7 @@ void sound_flush() {
     }
     const size_t used = (size_t)g_rs_pos;
     g_snd48.erase(g_snd48.begin(), g_snd48.begin() + 2 * (ptrdiff_t)used);
+    g_raw_done = g_snd48.size();   // what is left was already written to HK_DJ_RAW48
     g_rs_pos -= (double)used;
     if (g_audio && !out.empty()) g_audio(out.data(), (int)(out.size() / 2));
 }
@@ -396,7 +422,7 @@ void bus_write32(uint32_t a, uint32_t data, uint32_t mask) {
                 g_pending_vb_int = 0;
                 g_hold4 = true;
                 g_stats.irq4++;
-                update_irq();
+                irq_changed();
             }
         }
         return;
@@ -680,11 +706,9 @@ void run() {
         }
     };
     for (;;) {
-        const uint64_t frame_start = g_frame * FRAME_CYCLES;
-        run_until(frame_start + VBLANK_CYCLE);
-        vb_interrupt();
-        run_until(frame_start + FRAME_CYCLES);
+        run_until((g_frame + 1) * FRAME_CYCLES);
         g_frame++;
+        vb_interrupt();
         screen_update();
         sound_flush();
         if (g_frame_hook) g_frame_hook(g_frame, g_screen.data(), SCREEN_W, SCREEN_H);

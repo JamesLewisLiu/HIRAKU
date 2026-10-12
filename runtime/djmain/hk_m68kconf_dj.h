@@ -129,6 +129,9 @@ int hk_dj_int_ack(int level);   /* runtime/djmain/board.cpp: clears a held line,
    (m_cyc_movem_store_w/l), not 4. */
 #define HK_SHIFT_CYCLES(shift) 0
 #define HK_MOVEM_STORE_CYCLES(count, cyc) ((count) * 3)
+/* ... and a TRAP costs its instruction cycles plus the whole exception
+   (m68ki_exception_trapN / m68ki_exception_trap): beatmania's kernel calls are TRAP #0 */
+#define HK_TRAP_EXCEPTION_CYCLES(vector) (CYC_EXCEPTION[vector])
 #endif
 
 

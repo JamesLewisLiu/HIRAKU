@@ -39,6 +39,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <string>
+#include <vector>
 
 #include "core/prof.h"
 #include "host/script.h"
@@ -63,10 +64,13 @@ void write_ppm(const std::string &path, const uint32_t *rgb, int w, int h) {
     FILE *f = fopen(path.c_str(), "wb");
     if (!f) return;
     fprintf(f, "P6\n%d %d\n255\n", w, h);
-    for (int k = 0; k < w * h; k++) {
-        uint8_t px[3] = {(uint8_t)(rgb[k] >> 16), (uint8_t)(rgb[k] >> 8), (uint8_t)rgb[k]};
-        fwrite(px, 1, 3, f);
+    std::vector<uint8_t> px((size_t)w * h * 3);
+    for (size_t k = 0; k < (size_t)w * h; k++) {
+        px[3 * k] = (uint8_t)(rgb[k] >> 16);
+        px[3 * k + 1] = (uint8_t)(rgb[k] >> 8);
+        px[3 * k + 2] = (uint8_t)rgb[k];
     }
+    fwrite(px.data(), 1, px.size(), f);
     fclose(f);
 }
 

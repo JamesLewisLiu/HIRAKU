@@ -155,6 +155,11 @@ typedef uint32 uint64;
 #ifndef HK_MOVEM_STORE_CYCLES
 #define HK_MOVEM_STORE_CYCLES(count, cyc) ((count)<<(cyc))
 #endif
+/* TRAP #n and the CHK/TRAPV/divide-by-zero traps: Musashi undoes the instruction's
+   own cycles, MAME doesn't */
+#ifndef HK_TRAP_EXCEPTION_CYCLES
+#define HK_TRAP_EXCEPTION_CYCLES(vector) (CYC_EXCEPTION[vector] - CYC_INSTRUCTION[REG_IR])
+#endif
 
 /* ======================================================================== */
 /* ============================ GENERAL DEFINES =========================== */
@@ -1869,7 +1874,7 @@ static inline void m68ki_exception_trap(uint vector)
 	m68ki_jump_vector(vector);
 
 	/* Use up some clock cycles and undo the instruction's cycles */
-	USE_CYCLES(CYC_EXCEPTION[vector] - CYC_INSTRUCTION[REG_IR]);
+	USE_CYCLES(HK_TRAP_EXCEPTION_CYCLES(vector));
 }
 
 /* Trap#n stacks a 0 frame but behaves like group2 otherwise */
@@ -1889,7 +1894,7 @@ static inline void m68ki_exception_trapN(uint vector)
 	m68ki_jump_vector(vector);
 
 	/* Use up some clock cycles and undo the instruction's cycles */
-	USE_CYCLES(CYC_EXCEPTION[vector] - CYC_INSTRUCTION[REG_IR]);
+	USE_CYCLES(HK_TRAP_EXCEPTION_CYCLES(vector));
 }
 
 /* Exception for trace mode */

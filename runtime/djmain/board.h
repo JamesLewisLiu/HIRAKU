@@ -27,7 +27,6 @@ struct Config {
 constexpr uint32_t CPU_HZ = 16'000'000;        // 32 MHz / 2
 constexpr int SCREEN_W = 512, SCREEN_H = 384;
 constexpr uint64_t FRAME_CYCLES = 660 * 418;  // pixel clock = CPU clock: 57.9962 Hz
-constexpr uint64_t VBLANK_CYCLE = 660 * 384;  // vblank starts after the 384 visible lines
 
 bool init(const Config &cfg);                  // false: a message was printed
 

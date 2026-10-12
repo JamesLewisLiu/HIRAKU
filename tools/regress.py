@@ -30,6 +30,9 @@ CASES = {
     "popn7-attract": ("popn7", 3600, []),
     "ppp-attract": ("ppp", 3600, []),
     "kbm-attract": ("kbm", 3600, []),
+    # DJ Main: power-on, self-test, disk load, attract (in lockstep with MAME, PLAN.md §17)
+    "bm1stmix-boot": ("bm1stmix", 9000, ["--script", "oracle/scripts/bm1stmix-boot.his"]),
+    "popn1j-boot": ("popn1j", 9000, ["--script", "oracle/scripts/popn1j-boot.his"]),
 }
 
 # report lines that describe the host, not the machine

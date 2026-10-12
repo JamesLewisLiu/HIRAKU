@@ -195,13 +195,11 @@ build/cmake/hiraku-bm1stmix --window
 
 pop'n music 1 (`popn1j`) is the same with `803jaa11` and `popn1j.7z`. The game is found by the set's name (`games/<id>/game.toml`, `core = "djmain"`).
 
-**Status:**
-- **beatmania** boots through its self-test and disk load to the title screen and attract mode, with sound.
-  - Against MAME (`oracle/scripts/bm1stmix-boot.his`, 155 s): it runs 2 frames behind MAME after the disk load; at that offset, 129 of 150 snapshots are pixel-identical.
-  - The rest are attract-demo frames where note positions differ slightly.
-  - The sound's loudness follows MAME within 1 % in every 10 s window.
-- **pop'n music 1** boots to its title screen and attract mode. Differences against MAME are timing (the blink phase of INSERT COIN), not drawing.
-- **Not yet:** a hands-on play test, turntable feel, the ATA password of complete MIX and later, and the other DJ Main sets.
+**Status:** both games run in lockstep with MAME through power-on, self-test, the disk loads and attract mode (`oracle/scripts/*-boot.his`, 155 s):
+- every snapshot is pixel-identical, with no frame offset;
+- the sound chips' output is sample-identical to MAME's (before HIRAKU's 48 → 44.1 kHz resampling).
+
+**Not yet:** a hands-on play test, turntable feel, the ATA password of complete MIX and later, and the other DJ Main sets.
 
 | Key | beatmania | pop'n music |
 |---|---|---|
@@ -220,5 +218,5 @@ A controller's analog axis drives the turntable (`P1 Turntable = joy0:axis0`). M
 ```bash
 HIRAKU_ROMS=~/bm3mame/roms-cores HIRAKU_TAPS=none oracle/mame.sh bm1stmix oracle/scripts/bm1stmix-boot.his boot
 build/cmake/hiraku-bm1stmix --script oracle/scripts/bm1stmix-boot.his --out out/run/bm1stmix-boot
-oracle/snapcmp.py out/run/bm1stmix-boot out/oracle/bm1stmix/boot   # --offset 2 with snaps shifted by 2
+oracle/snapcmp.py out/run/bm1stmix-boot out/oracle/bm1stmix/boot
 ```
