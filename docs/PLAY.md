@@ -144,7 +144,7 @@ By hand: write a bindings file and pass `--bindings FILE`. See `docs/bindings-bm
 
 ## Latency
 
-**In the game:** HIRAKU measures it as the time from a key press to the RF5C400 starting the keysound. beatmania III scans its keys once per video frame (60 Hz), so this is **2–20 ms, mean about 9.5 ms**, exactly as on a real cabinet. Everything above that is the PC.
+**In the game:** HIRAKU measures it as the time from a key press to the RF5C400 starting the keysound. beatmania III scans its keys once per video frame (59.94 Hz), so this is **2–20 ms, mean about 9.5 ms**, exactly as on a real cabinet. Everything above that is the PC.
 
 **In real-time mode, audio is the clock.** The machine runs until 8 ms of sound is queued (`--audio-ms N`), and controls are read every couple of milliseconds while it waits. Total latency is therefore roughly:
 
@@ -155,6 +155,37 @@ On exit, the console prints the buffer it actually got.
 **The queue tunes itself.** It starts at `--audio-ms` (8) and grows by 1 ms after each underrun, up to 30 ms, so it settles at the smallest crackle-free lead this PC needs. The exit report prints where it settled, how many underruns there were, and the worst stall.
 
 **Sound server settings:** the first reports came before the performance fixes in this release. Re-test with the defaults first. On PipeWire the server quantum adds its own latency; a smaller one (`PIPEWIRE_LATENCY=256/48000`) is worth trying, but only if the default is already clean.
+
+## Frame pacing
+
+The games don't run at 60 Hz. Each sets its own video timing, which HIRAKU runs as MAME does:
+
+| Games | Frames per second |
+|---|---|
+| beatmania III | 59.94 (VGA timing, 25.175 MHz) |
+| pop'n music 4–8, Animelo 1/2 | 58.4866 (16.6666 MHz pixel clock) |
+| Keyboardmania | 58.51 |
+
+**The window never waits for the display.** Audio is the clock, and each frame is shown as soon
+as it's drawn. The exit report's `video:` line shows how evenly: frames come at the game's rate
+(mean error -0.005 ms), within about ±3 ms (sd 1.3 ms, the sound card's 2.8 ms blocks).
+
+**What you see depends on the display:**
+- **Variable refresh (FreeSync, G-Sync, HDMI VRR):** the display refreshes when HIRAKU presents,
+  at the game's own rate. Notes scroll evenly. This is the setup to use.
+- **A fixed refresh can't divide the game's rate**, so some frames stay up longer than others:
+  - 60 Hz: one frame shown twice about every 0.66 s, a visible hitch in the scrolling (pop'n).
+  - 144 Hz: frames alternate 2 and 3 refreshes (14 and 21 ms), a steady fine judder.
+  - 240 Hz: 4 refreshes, and 5 for about every tenth frame (17 and 21 ms), the least visible.
+
+**Turning variable refresh on (KDE Plasma):**
+1. Enable FreeSync / Adaptive-Sync in the monitor's own menu. Until then KDE lists it as
+   incapable: `kscreen-doctor -o` shows `Vrr: incapable`.
+2. System Settings > Display > Adaptive sync: **Automatic** (on for fullscreen windows).
+3. Play fullscreen (**F11** or the launcher's fullscreen setting).
+
+The display's range must include the game's rate. Most start at 48 Hz, and the games' 58–60 Hz
+is inside it.
 
 ## Recording and testing
 

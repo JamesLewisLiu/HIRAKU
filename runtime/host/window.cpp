@@ -134,6 +134,24 @@ bool window_open(const char *title, int scale, const std::string &bindings, int 
     return true;
 }
 
+// Present pacing: real time between presents, against the machine's own frame period. With the
+// display not waiting (vsync off), this is what a variable-refresh display shows; a fixed one
+// shows each frame for a whole number of its refreshes (docs/PLAY.md, "Frame pacing").
+struct PresentStats {
+    uint64_t n = 0, last_ns = 0;
+    double last_vsec = 0, sum = 0, sum2 = 0, worst = 0;   // deviation from the period, ms
+    uint64_t hist[6] = {};   // |deviation| <0.5, <1, <2, <4, <8, >=8 ms
+    void add(double vsec) {
+        uint64_t t = prof::now_ns();
+        if (last_ns && !g_fast && t >= g_settle_until) {
+            double d = (t - last_ns) / 1e6 - (vsec - last_vsec) * 1e3, a = std::fabs(d);
+            n++, sum += d, sum2 += d * d, worst = std::max(worst, a);
+            hist[a < 0.5 ? 0 : a < 1 ? 1 : a < 2 ? 2 : a < 4 ? 3 : a < 8 ? 4 : 5]++;
+        }
+        last_ns = t, last_vsec = vsec;
+    }
+} g_present;
+
 bool window_frame(const uint32_t *rgb, int w, int h, double vsec) {
     if (g_gl) {
         prof::Scope ps(prof::PRESENT);
@@ -163,6 +181,7 @@ bool window_frame(const uint32_t *rgb, int w, int h, double vsec) {
         SDL_RenderTexture(g_ren, g_tex, nullptr, nullptr);
         SDL_RenderPresent(g_ren);
     }
+    g_present.add(vsec);
 
     if (g_title_dirty && g_win) {
         g_title_dirty = false;
@@ -260,7 +279,7 @@ void audio_push(const float *lr, int frames) {
 
 std::string audio_describe() {
     if (!g_audio) return "no audio device";
-    char b[1024];
+    char b[2048];
     int n = snprintf(b, sizeof b,
                      "audio: device buffer %d frames (%.1f ms), queue target %d frames (%.1f ms, after self-tuning)\n"
                      "audio: %llu chunks, %llu ran low (<1 ms queued), %llu found the queue empty; worst gap %.1f ms\n"
@@ -274,6 +293,16 @@ std::string audio_describe() {
                      (unsigned long long)g_ast.gap_hist[6], (unsigned long long)g_ast.gap_hist[7]);
     for (int c = 0; c < prof::NCAT; c++)
         n += snprintf(b + n, sizeof b - n, " %s %.0f ms", prof::NAMES[c], g_ast.low_ns[c] / 1e6);
+    if (g_present.n) {
+        const PresentStats &p = g_present;
+        double mean = p.sum / p.n, sd = std::sqrt(std::max(0.0, p.sum2 / p.n - mean * mean));
+        snprintf(b + n, sizeof b - n,
+                 "\nvideo: %llu presents, time between them minus the frame period: mean %+.3f ms, sd %.2f ms, worst %.2f ms; "
+                 "|off| <0.5:%llu <1:%llu <2:%llu <4:%llu <8:%llu >=8:%llu ms",
+                 (unsigned long long)p.n, mean, sd, p.worst, (unsigned long long)p.hist[0], (unsigned long long)p.hist[1],
+                 (unsigned long long)p.hist[2], (unsigned long long)p.hist[3], (unsigned long long)p.hist[4],
+                 (unsigned long long)p.hist[5]);
+    }
     return b;
 }
 
