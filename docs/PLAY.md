@@ -74,6 +74,13 @@ P2 uses M K Comma L Period, Up/Down and 2.
 
 **Navigating:** turn the turntable to choose, and press a white key (1, 3 or 5) to confirm. Start toggles DOUBLE on the option panel.
 
+**Unlocks:** right-click the game > **Unlocks** applies the COLOR CHECK code. It unlocks:
+- Miracle Moon, CLOUDY MUSIC, RETROFUTURE, The Least 100 sec and COREDESAT;
+- IMPLANTATION's ANOTHER chart.
+
+The title screen then shows the alien icon. The floppy-disk unlocks (RETROFUTURE via SIMON,
+CLOUDY MUSIC, sozai mode) are earned per player and listed there too.
+
 **Saves:** NVRAM (operator settings, rankings) lives in `~/.local/share/hiraku/bm3final/`. It is saved on Esc, on window close and on Ctrl-C. Use `--nvram DIR` to keep it elsewhere.
 
 **Persistence is unconfirmed.** In MAME and in HIRAKU alike, the scripted sessions so far never made the game write its NVRAM. It probably writes only when a setting or a ranking changes, and none of those sessions changed either. Check whether a test-mode change or a new high score survives a restart.
@@ -297,6 +304,12 @@ Each asks three times. Answer "YES?" and "ARE YOU SURE?" with **1** (move to YES
 - `HK_MIDI_LOG=1` prints the MIDI stream.
 - `build/cmake/hiraku-xt446 ROMDIR OUT.wav --midi LOG` runs the card on its own. LOG has one `<seconds> <hex byte>` per line.
 - The card is MAME's emulation from a later master commit than the 0.289 oracle, for the SWP30's accuracy fixes (third_party/mame/README.md).
+
+**Unlocks:** right-click the game > **Unlocks**.
+- **Keyboardmania 3rd:** the startup code (PRESSURE mode and three hidden songs).
+- **Keyboardmania 2nd:** PRESSURE mode, normally unlocked by a long wheel hold on the 2P side.
+- **Playing PRESSURE:** once it's unlocked, hold the wheel down on SELECT PLAY MODE until
+  PRESSURE appears below FREE.
 
 ## DJ Main: beatmania, pop'n music 1 (in progress, M13)
 

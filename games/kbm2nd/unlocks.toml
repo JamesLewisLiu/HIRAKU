@@ -1,0 +1,25 @@
+# Keyboardmania 2nd Mix: what can be unlocked (tools/unlock.py; launcher: right-click > Unlocks).
+#
+# PRESSURE mode (remywiki.com/AC_KBM_2nd): start a game on the 2P side alone, then on SELECT PLAY
+# MODE hold the wheel down past FREE. The game counts the clicks past the bottom (FUN_80013600):
+# more than 49, before the timer runs out, and PRESSURE appears. Leaving the selection saves it
+# as one byte of the battery RAM, three times; from then on 3 clicks are enough, on either side.
+# Found by doing it in HIRAKU (oracle/scripts/kbm2nd-pressure.his) and comparing the saves.
+
+[[unlock]]
+id = "unlock"
+title = "PRESSURE mode"
+nvram = "rtc.nv"
+offsets = [0x95, 0x4ab, 0x8c1]
+how = "In the game: start on the 2P side, then on SELECT PLAY MODE hold the wheel down past FREE until PRESSURE appears (about 13 s of clicks, before the timer ends)."
+
+[[unlock.level]]
+value = 0
+name = "--"
+text = "PRESSURE mode hidden."
+
+[[unlock.level]]
+value = 1
+name = "Unlocked"
+code = "2P side: wheel held down on SELECT PLAY MODE"
+text = "PRESSURE mode: six four-song courses (Dramatic, Upper, Fantasy, Summer, World, Impossible?). To pick it: on SELECT PLAY MODE, hold the wheel down; a few clicks past FREE, PRESSURE appears."

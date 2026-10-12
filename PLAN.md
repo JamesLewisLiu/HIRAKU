@@ -904,6 +904,23 @@ The order of work:
 - **Checked in play:** with SECRET MUSIC on, the music select has the SECRET songs.
 - **Not checked:** the other switches' effects, which are RemyWiki's.
 
+### beatmania III THE FINAL, Keyboardmania 3rd and 2nd (done, 2026-10-12)
+
+Each unlock is one byte of the RTC NVRAM, kept three times, with no checksum. Each was done in
+HIRAKU, the saves were compared, and `tools/unlock.py`'s save is byte-identical to the game's.
+
+| Game | Offsets | How | Script |
+|---|---|---|---|
+| bm3final | `0x52f`/`0x9ff`/`0xecf` | COLOR CHECK code, 2P START held, keys 1-5 1P and 6-10 2P; written when test mode is left. Test mode is entered by holding Test through the boot check. | `bm3final-unlock.his` |
+| kbm3rd | `0xf8`/`0x599`/`0xa3a` | 2P START + 1P F#2/G#2/A#2 pressed during the startup test | `kbm3rd-unlock.his` |
+| kbm2nd | `0x95`/`0x4ab`/`0x8c1` | 2P side, wheel held down on SELECT PLAY MODE | `kbm2nd-pressure.his` |
+
+- **kbm3rd:** the keyboards report changes, so the keys must go down during the test.
+- **kbm2nd** (`FUN_80013600`): PRESSURE appears after more than 49 clicks past FREE, 3 once
+  unlocked. A click is 48 of the wheel's offset from centre / 32 per frame: 16 frames at full
+  deflection, so 50 clicks only just fit in the 15 s timer. The flag is saved when the selection
+  ends.
+
 ## M0 steps (all done)
 
 1. ~~`git init` HIRAKU and add `.gitignore` for `dumps/` and `build/`~~ Done.

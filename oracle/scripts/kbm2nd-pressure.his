@@ -1,0 +1,15 @@
+# Keyboardmania 2nd Mix: PRESSURE mode (games/kbm2nd/unlocks.toml), from a save at '--':
+#   hiraku-kbm2nd --nvram DIR --script oracle/scripts/kbm2nd-pressure.his
+# A credit on the 2P side; the wheel held fully down (255) from the start of SELECT PLAY MODE:
+# 3 per frame, a click every 16 frames; PRESSURE appears after 50 clicks past FREE, at the end
+# of the timer, and the course select follows. Leaving the selection saves the flag.
+game kbm2nd
+at 4400 press "Coin 1" 6
+at 4440 press "Coin 1" 6
+at 4500 press "Coin 1" 6
+at 4540 press "Coin 1" 6
+at 4700 press "2 Players Start" 6
+at 4720 set "P2 Wheel" 255
+
+at 6200 set "P2 Wheel" 128
+at 9000 quit

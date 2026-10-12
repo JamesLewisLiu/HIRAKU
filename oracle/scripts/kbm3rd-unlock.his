@@ -1,0 +1,14 @@
+# Keyboardmania 3rd Mix: the startup unlock (games/kbm3rd/unlocks.toml), from a save at '--':
+#   hiraku-kbm3rd --nvram DIR --script oracle/scripts/kbm3rd-unlock.his
+# 2P START and the 1P keyboard's three rightmost black keys (keys 19, 21, 23: F#2, G#2, A#2) go
+# down during the hardware test (from frame 1900) and stay down until the next screen.
+game kbm3rd
+at 1900 hold "2 Players Start"
+at 1900 hold "P1 Key 19"
+at 1900 hold "P1 Key 21"
+at 1900 hold "P1 Key 23"
+at 3600 release "2 Players Start"
+at 3600 release "P1 Key 19"
+at 3600 release "P1 Key 21"
+at 3600 release "P1 Key 23"
+at 6000 quit

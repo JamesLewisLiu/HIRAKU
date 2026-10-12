@@ -1,0 +1,34 @@
+# Keyboardmania 3rd Mix: what the operator can unlock (tools/unlock.py; launcher: right-click > Unlocks).
+#
+# The code (remywiki.com/AC_KBM_3rd): during the startup hardware test, press and hold 2P START
+# and the three rightmost black keys of the 1P keyboard (F#2, G#2, A#2) until the next screen.
+# A voice says "PLAY" and the USAO-kun icons appear on the title screen. The game keeps it as one
+# byte of its battery RAM, three times. Found by doing it in HIRAKU
+# (oracle/scripts/kbm3rd-unlock.his) and comparing the saves. The keyboards report key changes,
+# so the keys have to go down during the test, not before it.
+
+[[unlock]]
+id = "unlock"
+title = "PRESSURE mode and the hidden songs"
+nvram = "rtc.nv"
+offsets = [0xf8, 0x599, 0xa3a]
+how = "In the game: during the startup hardware test, hold 2P START and the three rightmost black keys of the 1P keyboard until the next screen."
+
+[[unlock.level]]
+value = 0
+name = "--"
+text = "The songs of a new cabinet."
+
+[[unlock.level]]
+value = 1
+name = "Unlocked"
+code = "2P START + 1P F#2, G#2, A#2 during the hardware test"
+text = "PRESSURE mode and three hidden songs: The Least 100sec, エリーゼのために and おもちゃの兵隊の行進 (RemyWiki). The title screen shows the USAO-kun icons."
+
+[[note]]
+title = "Playing PRESSURE"
+text = """On SELECT PLAY MODE, hold the wheel down: after a few clicks past FREE, PRESSURE appears (push the wheel up to go back)."""
+
+[[note]]
+title = "ANOTHER charts (per song)"
+text = """On a song with an ANOTHER chart (Carezza, Illegally Sane, Pink Rose, Smoky Town), Single play: hold the two leftmost black keys, press any white key, release; hold the three left black keys, press any white key, release. "ANOTHER" appears above the title (RemyWiki)."""
