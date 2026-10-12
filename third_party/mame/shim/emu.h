@@ -827,7 +827,7 @@ private:
     };
     struct page_t {
         u8 *direct_r = nullptr, *direct_w = nullptr;   // one memory entry covers the page: host pointer for its base
-        u16 did_r = 0, did_w = 0;                       // ... and that entry's index + 1
+        u16 did_r = 0, did_w = 0;                       // one entry covers the page: its index + 1 (memory or not)
         std::unique_ptr<u16[]> ridx, widx;              // otherwise per byte: entry index + 1 (0 = unmapped)
     };
 

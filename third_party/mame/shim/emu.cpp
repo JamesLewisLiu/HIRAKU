@@ -330,18 +330,21 @@ void address_space::apply(address_map_entry &er) {
                 auto &idx = side ? p.widx : p.ridx;
                 u8 *&direct = side ? p.direct_w : p.direct_r;
                 u16 &did = side ? p.did_w : p.did_r;
-                if (!idx) {
-                    idx.reset(new u16[psize]());
-                    if (direct) std::fill_n(idx.get(), psize, did);   // the page was one entry's: per byte now
-                    direct = nullptr;
-                    did = 0;
-                }
                 if (whole && e->m_umask == ~u64(0)) {
-                    // a whole page of one non-memory entry: no longer per byte
-                    std::fill_n(idx.get(), psize, id);
+                    // a whole page of one non-memory entry: the page's id, no per-byte table (MAME's
+                    // PS1 unmaps ~1.5 GB above its RAM: per-byte tables for that took over 12 GB)
+                    idx.reset();
+                    direct = nullptr;
+                    did = id;
                     a += psize;
                     if (a == 0) break;
                     continue;
+                }
+                if (!idx) {
+                    idx.reset(new u16[psize]());
+                    if (did) std::fill_n(idx.get(), psize, did);   // the page was one entry's: per byte now
+                    direct = nullptr;
+                    did = 0;
                 }
                 u64 end = std::min(hi, pbase + psize - 1);
                 for (; a <= end; a++) {
@@ -370,7 +373,7 @@ u64 address_space::read_bus(u64 bus_ba, u64 mask) {
     for (int b = 0; b < m_bus_bytes; b++) {
         u64 lm = u64(0xff) << lane_shift(bus_ba + b, 1);
         if (!(mask & lm)) continue;
-        u16 id = p.ridx ? p.ridx[(bus_ba + b) & (psize - 1)] : 0;
+        u16 id = p.ridx ? p.ridx[(bus_ba + b) & (psize - 1)] : p.did_r;
         int j = 0;
         while (j < n && ids[j] != id) j++;
         if (j == n) { ids[n] = id; masks[n] = 0; n++; }
@@ -430,14 +433,14 @@ void address_space::write_bus(u64 bus_ba, u64 data, u64 mask) {
         }
         return;
     }
-    if (!p.widx) return;
+    if (!p.widx && !p.did_w) return;
     u16 ids[8];
     u64 masks[8];
     int n = 0;
     for (int b = 0; b < m_bus_bytes; b++) {
         u64 lm = u64(0xff) << lane_shift(bus_ba + b, 1);
         if (!(mask & lm)) continue;
-        u16 id = p.widx[(bus_ba + b) & (psize - 1)];
+        u16 id = p.widx ? p.widx[(bus_ba + b) & (psize - 1)] : p.did_w;
         int j = 0;
         while (j < n && ids[j] != id) j++;
         if (j == n) { ids[n] = id; masks[n] = 0; n++; }
