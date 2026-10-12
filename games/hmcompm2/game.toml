@@ -1,0 +1,18 @@
+# hiphopmania complete MIX 2 (ver UA-A), Konami 2000: generated from MAME's djmain.cpp
+id = "hmcompm2"
+title = "hiphopmania complete MIX 2 (UA-A)"
+family = "djbm"         # DJ Main beatmania cabinet: 5 keys + turntable per player, effect
+mame = "hmcompm2"       # MAME set name, used by the oracle
+core = "djmain"         # interpreted 68EC020 on the DJ Main board (runtime/djmain/)
+map = "u"               # MAME djmainu: main_map_u (the IDE ports and tile RAM elsewhere)
+
+[roms]
+program = ["988uaa01.6a", "988uaa02.8a"]
+sprites = ["988uaa03.19a", "988uaa04.20a", "988uaa05.22a", "988uaa06.24a"]
+tiles   = ["988uaa07.22d", "988uaa08.23d", "988uaa09.25d", "988uaa10.27d"]
+
+[hdd]
+chd = "988jaa11"
+# ATA security, from MAME init_hmcompm2(): the disk stays locked until the game sends these
+ata_master_password = "4d4743284b294e4f4d4120494c41204c49524847535452205345524545562e44"
+ata_user_password = "3b39243e4e595c323b4c72576904796576106a771f650a160968710b7715171e"

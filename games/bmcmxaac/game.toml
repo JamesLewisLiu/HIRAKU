@@ -1,0 +1,15 @@
+# beatmania complete MIX (ver AA-C), Konami 1999: generated from MAME's djmain.cpp
+id = "bmcmxaac"
+title = "beatmania complete MIX (AA-C)"
+family = "djbm"         # DJ Main beatmania cabinet: 5 keys + turntable per player, effect
+mame = "bmcmxaac"       # MAME set name, used by the oracle
+core = "djmain"         # interpreted 68EC020 on the DJ Main board (runtime/djmain/)
+map = "u"               # MAME djmainu: main_map_u (the IDE ports and tile RAM elsewhere)
+
+[roms]
+program = ["858aac01.6a", "858aac02.8a"]
+sprites = ["858aac03.19a", "858aac04.20a", "858aac05.22a", "858aac06.24a"]
+tiles   = ["858aac07.22d", "858aac08.23d", "858aac09.25d", "858aac10.27d"]
+
+[hdd]
+chd = "858aac11"

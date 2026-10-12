@@ -77,6 +77,13 @@ public:
     std::unique_ptr<DiscImage> disc;   // ATAPI: null = drive present, no medium
     std::unique_ptr<DiskImage> disk;   // ATA hard disk
     CddaState cdda;
+    // ATA security (MAME ata_mass_storage): a hard disk with a password set is
+    // locked at power-on and soft reset; reads fail until SECURITY UNLOCK gets
+    // the password (32 bytes; empty = none). DJ Main complete MIX and later.
+    std::vector<uint8_t> master_password, user_password;
+    bool master_locked = false, user_locked = false;
+    void lock() { master_locked = !master_password.empty(); user_locked = !user_password.empty(); }
+    bool locked() const { return master_locked || user_locked; }
 };
 using AtapiDrive = AtaDevice;
 
@@ -133,6 +140,8 @@ private:
     size_t filled_ = 0;
     void fill(size_t upto);
     void data_out_done();
+    void security_error();
+    uint8_t data_out_cmd_ = 0;        // the ATA command taking data out (0: an ATAPI packet's)
     uint16_t byte_limit_ = 0;
     uint8_t multiple_ = 1;            // sectors per DRQ block (READ MULTIPLE)
     uint8_t sense_key_[2]{}, asc_[2]{};

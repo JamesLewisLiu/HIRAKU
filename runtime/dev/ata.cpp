@@ -221,11 +221,36 @@ uint32_t from_msf(uint32_t msf) {
 }
 }  // namespace
 
+// ATA status and interrupt-reason bits
+namespace {
+enum : uint8_t { ST_ERR = 0x01, ST_DRQ = 0x08, ST_DSC = 0x10, ST_DRDY = 0x40, ST_BSY = 0x80 };
+enum : uint8_t { IR_COD = 0x01, IR_IO = 0x02 };
+}  // namespace
+
 // MODE SELECT(10) parameter list (MAME t10mmc::WriteData): the audio control page
 // sets the CD audio volume per channel.
 void AtaBus::data_out_done() {
     AtaDevice *d = cur();
     const std::vector<uint8_t> &p = data_;
+    if (data_out_cmd_ == 0xf2) {                         // SECURITY UNLOCK (MAME process_buffer)
+        const bool master = p[0] & 0x01;
+        const std::vector<uint8_t> &pw = master ? d->master_password : d->user_password;
+        if (pw.size() == 32 && p.size() >= 34 && memcmp(pw.data(), p.data() + 2, 32) == 0) (master ? d->master_locked : d->user_locked) = false;
+        if (log) fprintf(stderr, "ata: %s: unlock %s password %s\n", d->name_.c_str(), master ? "master" : "user", d->locked() ? "still locked" : "ok");
+        data_out_cmd_ = 0;
+        phase_ = Phase::idle;
+        data_.clear();
+        status_ = ST_DRDY | ST_DSC;                      // DRQ off; MAME raises no interrupt here
+        if (d->locked()) security_error();
+        return;
+    }
+    if (data_out_cmd_ == 0xf6) {                         // SECURITY DISABLE PASSWORD: MAME ignores it
+        data_out_cmd_ = 0;
+        phase_ = Phase::idle;
+        data_.clear();
+        status_ = ST_DRDY | ST_DSC;
+        return;
+    }
     size_t len = std::min(p.size(), data_out_len_), ptr = 8;
     if (len >= 8) ptr += (size_t)(p[6] << 8 | p[7]);    // block descriptors
     while (ptr + 1 < len) {
@@ -284,16 +309,13 @@ void AtaBus::cdda_render(int unit, float *lr, int n, float gain) {
 // ATA registers
 // ---------------------------------------------------------------------------
 
-namespace {
-enum : uint8_t { ST_ERR = 0x01, ST_DRQ = 0x08, ST_DSC = 0x10, ST_DRDY = 0x40, ST_BSY = 0x80 };
-enum : uint8_t { IR_COD = 0x01, IR_IO = 0x02 };
-}  // namespace
 
 AtaBus::AtaBus() = default;
 
 void AtaBus::attach(int unit, std::unique_ptr<AtaDevice> d) {
     // power-on state: a hard disk is ready (DRDY|DSC); an ATAPI device shows 0 and its signature
     if ((unit & 1) == 0 && !d->atapi_) status_ = ST_DRDY | ST_DSC;
+    if (!d->atapi_) d->lock();                           // set its passwords before attaching it
     drives_[unit & 1] = std::move(d);
 }
 
@@ -386,6 +408,8 @@ void AtaBus::write(int cs, int reg, uint16_t v) {
             uint8_t old = devctl_;
             devctl_ = v & 0xff;
             if ((old & 0x04) && !(devctl_ & 0x04)) {     // end of soft reset: device signature
+                for (auto &dr : drives_)
+                    if (dr && !dr->atapi_) dr->lock();   // MAME soft_reset(): the passwords apply again
                 phase_ = Phase::idle;
                 error_ = 1;
                 nsector_ = 1;
@@ -443,6 +467,16 @@ void AtaBus::finish(bool error, uint8_t key, uint8_t asc) {
     error_ = error ? (uint8_t)(key << 4) : 0;
     nsector_ = IR_IO | IR_COD;
     set_irq(true);
+}
+
+// MAME security_error(): ERR with ABRT, no data and no interrupt.
+void AtaBus::security_error() {
+    phase_ = Phase::idle;
+    data_.clear();
+    lazy_disc_ = nullptr;
+    lazy_disk_ = nullptr;
+    status_ = ST_DRDY | ST_DSC | ST_ERR;
+    error_ = 0x04;
 }
 
 // Fetch the lazily-read sectors covering data_[0, upto), 16 at a time.
@@ -531,6 +565,7 @@ void AtaBus::disk_command(uint8_t cmd) {
     case 0x20: case 0x21:                                // READ SECTORS
     case 0xc4:                                           // READ MULTIPLE
     case 0xc8: case 0xc9: {                              // READ DMA
+        if (d->locked()) { security_error(); return; }   // MAME read_first_sector()
         uint32_t count = nsector_ ? nsector_ : 256, first = lba();
         if ((uint64_t)first + count > d->disk->sectors()) {
             finish(true, 0x10);                          // IDNF: sector not found
@@ -555,11 +590,23 @@ void AtaBus::disk_command(uint8_t cmd) {
         }
         return;
     }
+    case 0xf2:                                           // SECURITY UNLOCK: 512 bytes from the host
+    case 0xf6:                                           // SECURITY DISABLE PASSWORD (ignored, as in MAME)
+        data_.clear();
+        data_out_len_ = 512;
+        data_out_cmd_ = cmd;
+        phase_ = Phase::data_out;
+        status_ = ST_DRDY | ST_DSC | ST_DRQ;
+        set_irq(true);
+        return;
     case 0xc6:                                           // SET MULTIPLE MODE
         multiple_ = nsector_ ? nsector_ : 1;
         finish(false);
         return;
     case 0x40: case 0x41:                                // READ VERIFY
+        if (d->locked()) { security_error(); return; }   // MAME read_first_sector()
+        finish(false);
+        return;
     case 0x10:                                           // RECALIBRATE
     case 0x91:                                           // INITIALIZE DEVICE PARAMETERS
     case 0xef:                                           // SET FEATURES

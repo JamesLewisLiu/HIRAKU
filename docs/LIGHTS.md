@@ -18,6 +18,7 @@ The names are the ones lights files and the socket use (table: `runtime/shell/ca
 | beatmania III | none known yet: MAME does not decode its lamp registers |
 | beatmania (DJ Main) | P1 Button Lamp 1–5, P2 Button Lamp 1–5, P1/P2 Start Lamp, Effect Lamp, Left/Right Red/Blue Highlight, Neon (SSR) (as MAME decodes them) |
 | pop'n music 1–3 (DJ Main) | Button Lamp 1–9, Top Lamp 1–5, Side Lamp 1–4: the same names as Firebeat pop'n. Worked out from what pop'n music 1 does with the bits; which top lamp is topmost isn't known |
+| pop'n stage (DJ Main) | not decoded yet: Light A0–A15, B0–B15 (the two registers' bits) |
 
 Every cabinet also has **Status LED 1–8**: the board's diagnostic LEDs, which blink while the game runs.
 

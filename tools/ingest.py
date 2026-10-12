@@ -90,16 +90,22 @@ def ingest_djmain(args) -> int:
     if os.path.exists(machine_path):
         with open(machine_path) as fh:
             machine = dict(l.rstrip("\n").split("=", 1) for l in fh if "=" in l)
-    machine.update(core="djmain", family=game["family"],
+    machine.update(core="djmain", family=game["family"], map=game.get("map", "j"),
                    program=",".join(roms["program"]), sprites=",".join(roms["sprites"]), tiles=",".join(roms["tiles"]))
+    for k in ("ata_master_password", "ata_user_password"):   # complete MIX on (MAME init_<game>())
+        if game["hdd"].get(k):
+            machine[k] = game["hdd"][k]
+        else:
+            machine.pop(k, None)
     if args.hdd:
         machine["hdd"] = os.path.abspath(args.hdd)
     if not machine.get("hdd"):
         print(f"ERROR    no hard disk: --hdd {game['hdd']['chd']}.img (chdman extracthd -i {game['hdd']['chd']}.chd -o ...)")
         return 1
     with open(machine_path, "w") as fh:
-        for k in ["core", "family", "program", "sprites", "tiles", "hdd"]:
-            fh.write(f"{k}={machine[k]}\n")
+        for k in ["core", "family", "map", "program", "sprites", "tiles", "hdd", "ata_master_password", "ata_user_password"]:
+            if k in machine:
+                fh.write(f"{k}={machine[k]}\n")
     print(f"wrote    {os.path.relpath(machine_path, ROOT)}")
     return 0
 

@@ -1,0 +1,14 @@
+# pop'n music 3 (ver JA-A), Konami 1999: generated from MAME's djmain.cpp
+id = "popn3"
+title = "pop'n music 3"
+family = "djpopn"       # DJ Main pop'n music cabinet: 9 buttons
+mame = "popn3"          # MAME set name, used by the oracle
+core = "djmain"         # interpreted 68EC020 on the DJ Main board (runtime/djmain/)
+
+[roms]
+program = ["980a01.6a", "980a02.8a"]
+sprites = ["980a03.19a", "980a04.20a", "980a05.22a", "980a06.24a"]
+tiles   = ["980a07.22d", "980a08.23d", "980a09.25d", "980a10.27d"]
+
+[hdd]
+chd = "980hdda01"

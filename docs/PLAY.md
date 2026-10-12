@@ -195,6 +195,16 @@ build/cmake/hiraku-bm1stmix --window
 
 pop'n music 1 (`popn1j`) is the same with `803jaa11` and `popn1j.7z`. The game is found by the set's name (`games/<id>/game.toml`, `core = "djmain"`).
 
+**Every MAME DJ Main set has a `games/<set>/game.toml`** (29, generated from MAME's driver), so any of them is ingested the same way:
+- beatmania 1st mix → THE FINAL with the hiphopmania and beatstage versions;
+- pop'n music 1–3 and pop'n stage EX.
+
+The disk each set needs is its `[hdd] chd`; clones may share their parent's disk. Things to know:
+- **complete MIX and later lock their hard disk with an ATA password.** HIRAKU unlocks it as MAME does: the passwords from MAME's driver are in the `game.toml`, and the game sends them itself.
+- **The UA/KA/AA versions and pop'n music 1 TA/AA/KA use other address maps** (`map = "u"` / `"a"`).
+- **pop'n stage EX** has ten buttons and three selection buttons (left, OK, right).
+- **Only `bm1stmix` and `popn1j` have been run so far.** The other sets are untested until dumps are on hand.
+
 **Status:** HIRAKU runs both games in step with MAME, clock for clock (`oracle/scripts/*-boot.his`, 155 s):
 - power-on, self-test, the disk loads and attract mode;
 - a whole game of each:

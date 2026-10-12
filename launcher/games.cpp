@@ -122,6 +122,7 @@ QIcon familyIcon(const QString &family) {
     Look l = family == "popn" ? Look{QColor(0xe8, 0x4a, 0x8a), "pop'n"}
            : family == "djbm" ? Look{QColor(0x22, 0x2a, 0x5a), "bm"}
            : family == "djpopn" ? Look{QColor(0xf0, 0xb4, 0x1e), "pop'n"}
+           : family == "djpstage" ? Look{QColor(0xe0, 0x50, 0x90), "stage"}
            : family == "ppp"  ? Look{QColor(0xf0, 0x8a, 0x24), "PPP"}
            : family == "kbm"  ? Look{QColor(0x2e, 0x9e, 0x6a), "KBM"}
                               : Look{QColor(0x3a, 0x4c, 0xb8), "bm III"};

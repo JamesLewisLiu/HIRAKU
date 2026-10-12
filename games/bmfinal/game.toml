@@ -1,0 +1,17 @@
+# beatmania THE FINAL (ver JA-A), Konami 2002: generated from MAME's djmain.cpp
+id = "bmfinal"
+title = "beatmania THE FINAL"
+family = "djbm"         # DJ Main beatmania cabinet: 5 keys + turntable per player, effect
+mame = "bmfinal"        # MAME set name, used by the oracle
+core = "djmain"         # interpreted 68EC020 on the DJ Main board (runtime/djmain/)
+
+[roms]
+program = ["c01jaa01.6a", "c01jaa02.8a"]
+sprites = ["c01jaa03.19a", "c01jaa04.20a", "c01jaa05.22a", "c01jaa06.24a"]
+tiles   = ["c01jaa07.22d", "c01jaa08.23d", "c01jaa09.25d", "c01jaa10.27d"]
+
+[hdd]
+chd = "c01jaa11"
+# ATA security, from MAME init_bmfinal(): the disk stays locked until the game sends these
+ata_master_password = "4d4743284b294e4f4d4120494c41204c49524847535452205345524545562e44"
+ata_user_password = "4442564b3f4f4a235a520c3e0704637f76746a647e680c0c0c06716e77797d7a"

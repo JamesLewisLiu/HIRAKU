@@ -1,0 +1,17 @@
+# beatmania featuring Dreams Come True (ver JA-A), Konami 2000: generated from MAME's djmain.cpp
+id = "bmdct"
+title = "beatmania featuring Dreams Come True"
+family = "djbm"         # DJ Main beatmania cabinet: 5 keys + turntable per player, effect
+mame = "bmdct"          # MAME set name, used by the oracle
+core = "djmain"         # interpreted 68EC020 on the DJ Main board (runtime/djmain/)
+
+[roms]
+program = ["995jaa01.6a", "995jaa02.8a"]
+sprites = ["995jaa03.19a", "995jaa04.20a", "995jaa05.22a", "995jaa06.24a"]
+tiles   = ["995jaa07.22d", "995jaa08.23d", "995jaa09.25d", "995jaa10.27d"]
+
+[hdd]
+chd = "995jaa11"
+# ATA security, from MAME init_bmdct(): the disk stays locked until the game sends these
+ata_master_password = "4d4743284b294e4f4d4120494c41204c49524847535452205345524545562e44"
+ata_user_password = "5247303f2f39545e4f4b653e076e6c677d797b166d7365060e0a050f13740919"

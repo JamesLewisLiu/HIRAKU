@@ -1,0 +1,15 @@
+# pop'n music (ver TA-A, HDD 1.01), Konami 1998: generated from MAME's djmain.cpp
+id = "popn1"
+title = "pop'n music"
+family = "djpopn"       # DJ Main pop'n music cabinet: 9 buttons
+mame = "popn1"          # MAME set name, used by the oracle
+core = "djmain"         # interpreted 68EC020 on the DJ Main board (runtime/djmain/)
+map = "a"               # MAME djmaina: main_map_a (the IDE ports and tile RAM elsewhere)
+
+[roms]
+program = ["803t_a01.6a", "803j_a02.8a"]
+sprites = ["803t_a03.19a", "803t_a04.20a", "803t_a05.22a", "803t_a06.24a"]
+tiles   = ["803t_a07.22d", "803t_a08.23d", "803t_a09.25d", "803t_a10.27d"]
+
+[hdd]
+chd = "803_ta_hdd"

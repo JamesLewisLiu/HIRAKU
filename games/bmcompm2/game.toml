@@ -1,0 +1,17 @@
+# beatmania complete MIX 2 (ver JA-A), Konami 2000: generated from MAME's djmain.cpp
+id = "bmcompm2"
+title = "beatmania complete MIX 2"
+family = "djbm"         # DJ Main beatmania cabinet: 5 keys + turntable per player, effect
+mame = "bmcompm2"       # MAME set name, used by the oracle
+core = "djmain"         # interpreted 68EC020 on the DJ Main board (runtime/djmain/)
+
+[roms]
+program = ["988jaa01.6a", "988jaa02.8a"]
+sprites = ["988jaa03.19a", "988jaa04.20a", "988jaa05.22a", "988jaa06.24a"]
+tiles   = ["988jaa07.22d", "988jaa08.23d", "988jaa09.25d", "988jaa10.27d"]
+
+[hdd]
+chd = "988jaa11"
+# ATA security, from MAME init_bmcompm2(): the disk stays locked until the game sends these
+ata_master_password = "4d4743284b294e4f4d4120494c41204c49524847535452205345524545562e44"
+ata_user_password = "3a20313e462c354648516f3e736b680a6071196f706807626b0d710f1d107d7a"

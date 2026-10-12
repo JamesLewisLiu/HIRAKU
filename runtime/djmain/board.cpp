@@ -123,6 +123,11 @@ uint64_t g_ata_cur_lba = 0;           // MAME m_cur_lba: where the heads are
 uint64_t g_ata_index_since = 0;       // CPU clock of the last status read that showed IDX
 uint32_t g_hdd_cylinders = 1;
 
+// MAME's three address maps (main_map_j / _u / _a) differ only in where the
+// tile RAM and the IDE ports are
+char g_map = 'j';
+uint32_t g_tile_base = 0xc00000, g_ata_base[2] = {0xf00000, 0xf40000};
+
 // MAME's drive times are exact attotimes; its scheduler runs the CPU up to the
 // last whole clock at or before a timer, so a busy period ends on that clock.
 constexpr uint64_t AS_PER_US = 1'000'000'000'000ull, AS_PER_CYCLE = 62'500'000'000ull;   // 16 MHz
@@ -379,12 +384,12 @@ uint32_t bus_read32(uint32_t a, uint32_t mask) {
         if (mask & 0xff00ff00u) offset++;
         return g_objrom.empty() ? 0 : (uint32_t)g_objrom[offset % g_objrom.size()] * 0x01010101u;
     }
-    if (a >= 0xc00000 && a < 0xc02000)
-        return read16x2((a - 0xc00000) >> 2, mask, [](uint32_t o, uint16_t) { return (uint32_t)g_tiles.ram_word_r(o); });
-    if (a >= 0xf00000 && a < 0xf00010)
-        return read16x2((a - 0xf00000) >> 2, mask, [](uint32_t o, uint16_t) { return (uint32_t)ata_read(0, (int)o); });
-    if (a >= 0xf40000 && a < 0xf40010)
-        return read16x2((a - 0xf40000) >> 2, mask, [](uint32_t o, uint16_t) { return (uint32_t)ata_read(1, (int)o); });
+    if (a - g_tile_base < 0x2000)
+        return read16x2((a - g_tile_base) >> 2, mask, [](uint32_t o, uint16_t) { return (uint32_t)g_tiles.ram_word_r(o); });
+    if (a - g_ata_base[0] < 0x10)
+        return read16x2((a - g_ata_base[0]) >> 2, mask, [](uint32_t o, uint16_t) { return (uint32_t)ata_read(0, (int)o); });
+    if (a - g_ata_base[1] < 0x10)
+        return read16x2((a - g_ata_base[1]) >> 2, mask, [](uint32_t o, uint16_t) { return (uint32_t)ata_read(1, (int)o); });
     g_stats.unmapped++;
     return 0;
 }
@@ -454,13 +459,13 @@ void bus_write32(uint32_t a, uint32_t data, uint32_t mask) {
         r = (r & ~mask) | (data & mask);
         return;
     }
-    if (a >= 0xc00000 && a < 0xc02000)
-        return write16x2((a - 0xc00000) >> 2, data, mask, [](uint32_t o, uint16_t d, uint16_t m) { g_tiles.ram_word_w(o, d, m); });
-    if (a >= 0xc02000 && a < 0xc02048) return;   // unknown
-    if (a >= 0xf00000 && a < 0xf00010)
-        return write16x2((a - 0xf00000) >> 2, data, mask, [](uint32_t o, uint16_t d, uint16_t) { ata_write(0, (int)o, d); });
-    if (a >= 0xf40000 && a < 0xf40010)
-        return write16x2((a - 0xf40000) >> 2, data, mask, [](uint32_t o, uint16_t d, uint16_t) { ata_write(1, (int)o, d); });
+    if (a - g_tile_base < 0x2000)
+        return write16x2((a - g_tile_base) >> 2, data, mask, [](uint32_t o, uint16_t d, uint16_t m) { g_tiles.ram_word_w(o, d, m); });
+    if (g_map == 'j' && a >= 0xc02000 && a < 0xc02048) return;   // unknown (main_map_j only)
+    if (a - g_ata_base[0] < 0x10)
+        return write16x2((a - g_ata_base[0]) >> 2, data, mask, [](uint32_t o, uint16_t d, uint16_t) { ata_write(0, (int)o, d); });
+    if (a - g_ata_base[1] < 0x10)
+        return write16x2((a - g_ata_base[1]) >> 2, data, mask, [](uint32_t o, uint16_t d, uint16_t) { ata_write(1, (int)o, d); });
     g_stats.unmapped++;
 }
 
@@ -667,6 +672,13 @@ void decode_sprites() {
 // ---------------------------------------------------------------------------
 bool init(const Config &cfg) {
     g_cfg = cfg;
+    g_map = cfg.map.empty() ? 'j' : cfg.map[0];
+    switch (g_map) {
+    case 'j': g_tile_base = 0xc00000; g_ata_base[0] = 0xf00000; g_ata_base[1] = 0xf40000; break;
+    case 'u': g_tile_base = 0xe00000; g_ata_base[0] = 0xd00000; g_ata_base[1] = 0xd40000; break;
+    case 'a': g_tile_base = 0xf00000; g_ata_base[0] = 0xc00000; g_ata_base[1] = 0xc40000; break;
+    default: fprintf(stderr, "djmain: unknown address map '%s' (j, u or a)\n", cfg.map.c_str()); return false;
+    }
     std::vector<uint8_t> prog;
     if (!load_interleaved(cfg.program, prog, "program")) return false;
     std::copy(prog.begin(), prog.begin() + (ptrdiff_t)std::min(prog.size(), g_rom.size()), g_rom.begin());
@@ -686,6 +698,8 @@ bool init(const Config &cfg) {
         return false;
     }
     g_ata_disk_sectors = disk->disk->sectors();
+    disk->master_password = cfg.ata_master_password;   // MAME init_<game>(): complete MIX and later
+    disk->user_password = cfg.ata_user_password;
     g_ata.attach(0, std::move(disk));
     g_ata.log = cfg.ata_log;
     g_ata.pio_end_irq = false;   // MAME's drive
@@ -766,8 +780,12 @@ bool set_input(const std::string &name, int value) {
             }
         return false;
     };
+    // pop'n stage (MAME popnstage): popn's nine, a tenth, and three selection buttons read as starts
+    static const Bit pstage[] = {{"P1 Button 10", 2, 0x04}, {"1 Player Start", 2, 0x10}, {"2 Players Start", 2, 0x20},
+                                 {"3 Players Start", 2, 0x40}};
     if (try_set(common, std::size(common))) return true;
     if (g_cfg.family == "djpopn") return try_set(popn, std::size(popn));
+    if (g_cfg.family == "djpstage") return try_set(popn, std::size(popn)) || try_set(pstage, std::size(pstage));
     if (try_set(bm, std::size(bm))) return true;
     // MAME's dials: "TT1/Dial" (absolute 8-bit position), as the oracle scripts set them
     if (name == "TT1/Dial" || name == "TT2/Dial") {

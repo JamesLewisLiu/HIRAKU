@@ -1,0 +1,17 @@
+# beatmania 6th MIX (ver JA-A), Konami 2001: generated from MAME's djmain.cpp
+id = "bm6thmix"
+title = "beatmania 6th MIX"
+family = "djbm"         # DJ Main beatmania cabinet: 5 keys + turntable per player, effect
+mame = "bm6thmix"       # MAME set name, used by the oracle
+core = "djmain"         # interpreted 68EC020 on the DJ Main board (runtime/djmain/)
+
+[roms]
+program = ["a21jaa01.6a", "a21jaa02.8a"]
+sprites = ["a21jaa03.19a", "a21jaa04.20a", "a21jaa05.22a", "a21jaa06.24a"]
+tiles   = ["a21jaa07.22d", "a21jaa08.23d", "a21jaa09.25d", "a21jaa10.27d"]
+
+[hdd]
+chd = "a21jaa11"
+# ATA security, from MAME init_bm6thmix(): the disk stays locked until the game sends these
+ata_master_password = "4d4743284b294e4f4d4120494c41204c49524847535452205345524545562e44"
+ata_user_password = "4442564b3d4d4a235a520c3e6a0463657e7f77771f79040f0206090f7a747d7a"

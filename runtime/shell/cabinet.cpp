@@ -123,6 +123,23 @@ std::vector<Control> make_djpopn() {
     return c;
 }
 
+// DJ Main pop'n stage (MAME djmain.cpp popnstage): ten buttons, and three
+// selection buttons that MAME reads as the start buttons
+std::vector<Control> make_djpstage() {
+    std::vector<Control> c;
+    const char *keys = "ZSXDCFVGBH";
+    for (int k = 1; k <= 10; k++)
+        c.push_back({"P1 Button " + std::to_string(k), "Button " + std::to_string(k), "Player", false,
+                     std::string("key:") + keys[k - 1] + ", joy0:button" + std::to_string(k - 1)});
+    c.push_back({"1 Player Start", "Select left", "Selection", false, "key:Left"});
+    c.push_back({"2 Players Start", "Select OK (middle)", "Selection", false, "key:Return, key:1"});
+    c.push_back({"3 Players Start", "Select right", "Selection", false, "key:Right"});
+    c.push_back({"Coin 1", "Coin", "Cabinet", false, "key:5, joy0:button12"});
+    c.push_back({"Test", "Test", "Cabinet", false, "key:F2"});
+    c.push_back({"Service", "Service", "Cabinet", false, "key:9"});
+    return c;
+}
+
 // DJ Main: reg 0 = 0x5d0000 (light_ctrl_1), reg 1 = 0x5d2000 (light_ctrl_2), as
 // MAME decodes them for beatmania; reg 2 = the board's row of 8 LEDs (active low).
 std::vector<Lamp> make_djbm_lamps() {
@@ -196,6 +213,15 @@ std::vector<Lamp> make_bm3_lamps() {
     return l;
 }
 
+// pop'n stage: not decoded yet (no dump to watch); listed by register and bit
+std::vector<Lamp> make_djpstage_lamps() {
+    std::vector<Lamp> l;
+    for (int r = 0; r < 2; r++)
+        for (int b = 0; b < 16; b++) l.push_back({"Light " + std::string(1, (char)('A' + r)) + std::to_string(b), "Lights (undecoded)", r, b});
+    for (int k = 0; k < 8; k++) l.push_back({"Status LED " + std::to_string(k + 1), "Board (diagnostic)", 2, k, true});
+    return l;
+}
+
 std::string trim(std::string s) {
     while (!s.empty() && isspace((unsigned char)s.back())) s.pop_back();
     size_t i = 0;
@@ -208,7 +234,7 @@ std::string trim(std::string s) {
 const std::vector<Control> &controls(const std::string &family) {
     static const std::map<std::string, std::vector<Control>> all = {
         {"bm3", make_bm3()}, {"popn", make_popn()}, {"ppp", make_ppp()}, {"kbm", make_kbm()},
-        {"djbm", make_djbm()}, {"djpopn", make_djpopn()}};
+        {"djbm", make_djbm()}, {"djpopn", make_djpopn()}, {"djpstage", make_djpstage()}};
     auto f = all.find(family);
     return f != all.end() ? f->second : all.at("bm3");
 }
@@ -216,7 +242,7 @@ const std::vector<Control> &controls(const std::string &family) {
 const std::vector<Lamp> &lamps(const std::string &family) {
     static const std::map<std::string, std::vector<Lamp>> all = {
         {"bm3", make_bm3_lamps()}, {"popn", make_popn_lamps()}, {"ppp", make_ppp_lamps()}, {"kbm", make_kbm_lamps()},
-        {"djbm", make_djbm_lamps()}, {"djpopn", make_djpopn_lamps()}};
+        {"djbm", make_djbm_lamps()}, {"djpopn", make_djpopn_lamps()}, {"djpstage", make_djpstage_lamps()}};
     auto f = all.find(family);
     return f != all.end() ? f->second : all.at("bm3");
 }

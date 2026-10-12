@@ -1,0 +1,14 @@
+# beatmania 2nd MIX (ver JA-A), Konami 1998: generated from MAME's djmain.cpp
+id = "bm2ndmixa"
+title = "beatmania 2nd MIX (JA-A)"
+family = "djbm"         # DJ Main beatmania cabinet: 5 keys + turntable per player, effect
+mame = "bm2ndmixa"      # MAME set name, used by the oracle
+core = "djmain"         # interpreted 68EC020 on the DJ Main board (runtime/djmain/)
+
+[roms]
+program = ["853jaa01.6a", "853jaa02.8a"]
+sprites = ["853jaa03.19a", "853jaa04.20a", "853jaa05.22a", "853jaa06.24a"]
+tiles   = ["853jaa07.22d", "853jaa08.23d", "853jaa09.25d", "853jaa10.27d"]
+
+[hdd]
+chd = "853jaa11"

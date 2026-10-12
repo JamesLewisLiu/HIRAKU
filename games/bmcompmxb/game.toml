@@ -1,0 +1,14 @@
+# beatmania complete MIX (ver JA-B), Konami 1999: generated from MAME's djmain.cpp
+id = "bmcompmxb"
+title = "beatmania complete MIX (JA-B)"
+family = "djbm"         # DJ Main beatmania cabinet: 5 keys + turntable per player, effect
+mame = "bmcompmxb"      # MAME set name, used by the oracle
+core = "djmain"         # interpreted 68EC020 on the DJ Main board (runtime/djmain/)
+
+[roms]
+program = ["858jab01.6a", "858jab02.8a"]
+sprites = ["858jaa03.19a", "858jaa04.20a", "858jaa05.22a", "858jaa06.24a"]
+tiles   = ["858jaa07.22d", "858jaa08.23d", "858jaa09.25d", "858jaa10.27d"]
+
+[hdd]
+chd = "858jaa11"

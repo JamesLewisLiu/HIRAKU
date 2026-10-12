@@ -219,7 +219,7 @@ Durations are rough, assume one person, and are assisted. Each milestone has a c
 | **M10** | Keyboardmania (stretch) | Dual GCU / dual screen, MIDI-in, the XT446 synth card. | **in progress**:<br>• kbm, kbh, kbm2nd and kbm3rd boot to attract (dual GCU, ROT270, MIDI keyboards, CD audio).<br>• The real XT446 card runs (MAME H8S/2655 + SWP30, pinned to MAME master): in lockstep with MAME 0.289 for the first 84.5 s of attract MIDI; SoundFont stand-in when its ROMs are missing.<br>• **Left:** play a song through; cost, 38 % of a desktop core (SWP30 MEG ~40 % of that), the N100 risk. |
 | **M11** | Efficiency for N100-class PCs | Every Firebeat game within its budget on an N100-class mini PC (§14): average under 25 % of one core, no frame over ~8 ms of host work. Bit-identical to the current runs (`tools/regress.py`). | **in progress** (§14):<br>• bm3final about 3.4× more efficient than MAME, 9.6 % of a desktop core in gameplay.<br>• Keyboardmania: the XT446 synth card runs on its own thread, mean frame 7.2 → 6.5 ms, worst 12.8 → 10.6 ms (bit-identical).<br>• Disk images read ahead in big stretches: a cold-cache bm3 practice run went from a 251 ms worst frame to 9.8 ms.<br>• **Left:** the SWP30 MEG is still ~5 ms a frame on its core (kbm).<br>• **Blocked** on measuring real N100 hardware (not available right now). |
 | **M12** | Cores: the shell split | The host layer (launcher, window, input, lights, scripts, oracle) talks to the machine through one core interface. Firebeat moves behind it unchanged (bit-identical digests). | **done 2026-10-12** (§17): `runtime/shell/core.h`; Firebeat and DJ Main are cores, each binary links one. Firebeat bit-identical. |
-| **M13** | DJ Main core | beatmania 1st mix → THE FINAL, pop'n 1–3, pop'n stage: interpreted 68EC020 plus MAME's devices, checked against MAME. Analog turntable and lamps. | **in progress** (§17, docs/PLAY.md):<br>• `bm1stmix` and `popn1j` run in **cycle-exact lockstep with MAME**: work RAM, sprites and palette identical on every frame, with sound sample-identical. This holds through boot and a scripted game of each: beatmania (coin, turntable, song select, a song with keys and scratches, game over) and pop'n (all 9 buttons).<br>• In `tools/regress.py`.<br>• **Left:** hands-on test, ATA password (complete MIX on), the other sets, faster drawing. |
+| **M13** | DJ Main core | beatmania 1st mix → THE FINAL, pop'n 1–3, pop'n stage: interpreted 68EC020 plus MAME's devices, checked against MAME. Analog turntable and lamps. | **in progress** (§17, docs/PLAY.md):<br>• `bm1stmix` and `popn1j` run in **cycle-exact lockstep with MAME**: work RAM, sprites and palette identical on every frame, with sound sample-identical. This holds through boot and a scripted game of each: beatmania (coin, turntable, song select, a song with keys and scratches, game over) and pop'n (all 9 buttons).<br>• In `tools/regress.py`.<br>• All 29 MAME sets have game files; the ATA password lock is ported from MAME (unit-tested).<br>• **Left:** hands-on test, running the other sets (no dumps yet), faster drawing. |
 | **M14** | System 573 core | PS1 core (interpreted, then statically recompiled MIPS), analog-I/O games first (CD audio), then digital I/O (MP3 + FPGA). | months, **unblocked 2026-10-12** (§16):<br>• `ddr3mj` (DDR 3rd Mix, analog I/O): MAME stops at error 147 until the first install from CD (install cassette).<br>• `drmn10m` (DrumMania 10th, digital I/O): installs from CD to flash in MAME, then wants a reboot.<br>• Both are NOT_WORKING in MAME; MAME runs them at ~650–670 % real time. |
 | **M15** | Twinkle core (beatmania IIDX 1st–8th) | The M14 PS1 core plus Twinkle's SPU (68000 + RF5C400, already in HIRAKU), SCSI CD, ATA hard disk. Then the background video MAME lacks: Video CD (MPEG-1) for early styles, DVD for 6th–8th. | **unblocked 2026-10-12** (§16):<br>• `bmiidx3` (3rd style) is on hand; MAME passes its device check and stops at the normal first-boot backup-RAM error (E150).<br>• MAME ~570 % real time; its driver lists "emulate dvd player and video mixing" as a TODO. |
 
@@ -518,6 +518,19 @@ Points 9, 10 and 13 are opt-in Musashi hooks (`third_party/musashi/HIRAKU.md`), 
 - work RAM, sprites and palette identical on all 13,500 frames, and 225/225 snapshots;
 - the sound chips sample-identical (11.2 M samples);
 - it's the case `popn1j-play` in `tools/regress.py`.
+
+**Every MAME DJ Main set (2026-10-12).**
+- `games/<set>/game.toml` for all 29 sets, generated from MAME's driver.
+- `map = "u"` / `"a"` for MAME's `main_map_u` / `_a`: the IDE ports and tile RAM elsewhere.
+- `djpstage` for pop'n stage EX: 10 buttons plus 3 selection buttons; lamps not decoded.
+- CMake builds a binary for every `core = "djmain"` file.
+- The **ATA password lock** is ported from MAME (`runtime/dev/ata.cpp`):
+  - a disk with passwords is locked at power-on and soft reset;
+  - reads fail with ERR/ABRT;
+  - SECURITY UNLOCK clears a password when its 32 bytes match;
+  - both must be cleared;
+  - `tests/ata/test_ata_security.cpp` covers it.
+- Only `bm1stmix` and `popn1j` have actually run: no other dump is on hand yet.
 
 **Lamps.**
 - beatmania's lamp table follows MAME's decoding bit for bit: buttons, start, effect, the four highlights, the neon and the board LEDs. The writes themselves are cycle-exact with MAME.

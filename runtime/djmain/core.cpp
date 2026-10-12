@@ -50,6 +50,15 @@ public:
         cfg.sprites = split(machine["sprites"]);
         cfg.tiles = split(machine["tiles"]);
         cfg.hdd = machine["hdd"];
+        if (!machine["map"].empty()) cfg.map = machine["map"];
+        // ATA passwords as 64 hex digits (games/<id>/game.toml [hdd], from MAME's init_<game>())
+        auto hex = [](const std::string &h) {
+            std::vector<uint8_t> v;
+            for (size_t i = 0; i + 1 < h.size(); i += 2) v.push_back((uint8_t)std::stoul(h.substr(i, 2), nullptr, 16));
+            return v;
+        };
+        cfg.ata_master_password = hex(machine["ata_master_password"]);
+        cfg.ata_user_password = hex(machine["ata_user_password"]);
         cfg.ata_log = o.ata_log;
         if (!dj::init(cfg)) return false;
         printf("hiraku %s: DJ Main, 68EC020 interpreted\n", o.game.c_str());

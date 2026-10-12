@@ -1,0 +1,18 @@
+# beatstage 4th MIX (ver KA-A), Konami 1999: generated from MAME's djmain.cpp
+id = "bs4thmix"
+title = "beatstage 4th MIX (KA-A)"
+family = "djbm"         # DJ Main beatmania cabinet: 5 keys + turntable per player, effect
+mame = "bs4thmix"       # MAME set name, used by the oracle
+core = "djmain"         # interpreted 68EC020 on the DJ Main board (runtime/djmain/)
+map = "u"               # MAME djmainu: main_map_u (the IDE ports and tile RAM elsewhere)
+
+[roms]
+program = ["847kaa01.6a", "847kaa02.8a"]
+sprites = ["847kaa03.19a", "847kaa04.20a", "847kaa05.22a", "847kaa06.24a"]
+tiles   = ["847kaa07.22d", "847kaa08.23d", "847kaa09.25d", "847kaa10.27d"]
+
+[hdd]
+chd = "847kaa01"
+# ATA security, from MAME init_bs4thmix(): the disk stays locked until the game sends these
+ata_master_password = "4d4743284b294e4f4d4120494c41204c49524847535452205345524545562e44"
+ata_user_password = "4442564b4e474c32485d0c3e626f7e73671019796c7d000118061e07771a7d77"

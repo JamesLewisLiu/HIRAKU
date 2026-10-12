@@ -1,0 +1,14 @@
+# beatmania 3rd MIX (ver JA-B), Konami 1998: generated from MAME's djmain.cpp
+id = "bm3rdmix"
+title = "beatmania 3rd MIX"
+family = "djbm"         # DJ Main beatmania cabinet: 5 keys + turntable per player, effect
+mame = "bm3rdmix"       # MAME set name, used by the oracle
+core = "djmain"         # interpreted 68EC020 on the DJ Main board (runtime/djmain/)
+
+[roms]
+program = ["825_b01.6a", "825_b02.8a"]
+sprites = ["825_a03.19a", "825_a04.20a", "825_a05.22a", "825_a06.24a"]
+tiles   = ["825_b07.22d", "825_b08.23d", "825_b09.25d", "825_b10.27d"]
+
+[hdd]
+chd = "825jab11"

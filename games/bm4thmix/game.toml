@@ -1,0 +1,16 @@
+# beatmania 4th MIX (ver JA-A), Konami 1999: generated from MAME's djmain.cpp
+id = "bm4thmix"
+title = "beatmania 4th MIX"
+family = "djbm"         # DJ Main beatmania cabinet: 5 keys + turntable per player, effect
+mame = "bm4thmix"       # MAME set name, used by the oracle
+core = "djmain"         # interpreted 68EC020 on the DJ Main board (runtime/djmain/)
+
+[roms]
+program = ["847jaa01.6a", "847jaa02.8a"]
+sprites = ["847jaa03.19a", "847jaa04.20a", "847jaa05.22a", "847jaa06.24a"]
+tiles   = ["847jab07.22d", "847jab08.23d", "847jab09.25d", "847jab10.27d"]
+
+[hdd]
+chd = "847jaa11"
+# ATA security, from MAME init_bm4thmix(): the disk stays locked until the game sends these
+ata_user_password = "4442294b2f2c4c32485d0c3e626f7e73671019796c7d000118061e07771a7d77"
