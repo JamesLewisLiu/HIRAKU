@@ -131,6 +131,7 @@ QIcon familyIcon(const QString &family) {
            : family == "djpstage" ? Look{QColor(0xe0, 0x50, 0x90), "stage"}
            : family == "ppp"  ? Look{QColor(0xf0, 0x8a, 0x24), "PPP"}
            : family == "kbm"  ? Look{QColor(0x2e, 0x9e, 0x6a), "KBM"}
+           : family == "ddr"  ? Look{QColor(0x8a, 0x2b, 0xc8), "DDR"}
                               : Look{QColor(0x3a, 0x4c, 0xb8), "bm III"};
     QIcon icon;
     for (int size : {32, 64}) {

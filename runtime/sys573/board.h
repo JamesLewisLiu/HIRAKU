@@ -22,12 +22,13 @@ struct Config {
     std::string rom_dir;                   // dumps/<game>/rom: the BIOS, cassette and I/O board chips
     std::string bios = "700a01.22g";
     std::string h8 = "h8a01.bin";
-    std::string cassette;                  // y (X76F100) + i (DS2401), ...: MAME's cassette variant
-    std::string cassette_eeprom, cassette_id;   // files in rom_dir
-    std::string io_board;                  // analog | digital
+    std::string cassette = "x";            // MAME's cassette variant: x (X76F041), yi (X76F100 + DS2401)
+    std::string cassette_eeprom, cassette_id;   // files in rom_dir (no id for x)
+    std::string io_board = "analog";       // analog (GX700-PWB(F)) | digital (GX894-PWB(B), MP3)
     std::string digital_id = "digital-id.bin";
     std::string cd;                        // the CD image (.cue or .iso)
     std::string pccard2;                   // "32mb": a Fujitsu 32 MiB flash card in slot 2
+    bool memory_card_reader = false;       // the JVS memory card reader (ddr3m)
     std::string nvram_dir;                 // flash, timekeeper, cassette, card ("" = blank each run)
     int64_t rtc_time = 0;                  // the timekeeper's time at power-on (seconds since 1970)
 };

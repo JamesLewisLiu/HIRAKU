@@ -432,3 +432,36 @@ oracle/snapcmp.py out/run/bm1stmix-boot out/oracle/bm1stmix/boot
 ```
 
 The same with `bm1stmix-play.his` or `popn1j-play.his` checks a game played through.
+
+## System 573: Dance Dance Revolution 2ndMIX (in progress, M14)
+
+DDR 2ndMIX (`ddr2m`) runs on HIRAKU's System 573 core: MAME's PS1 devices with the CPU interpreted, about 2–3.5 ms of host time a frame. It needs MAME's `ddr2m` set (BIOS, the cassette's X76F041) and the CD `895jaa02`:
+
+```bash
+tools/ingest.py ddr2m.7z 895jaa02.chd
+ninja -C build/cmake hiraku-ddr2m
+build/cmake/hiraku-ddr2m --window
+```
+
+**The first boot installs the game to the board's flash:**
+1. The game asks "DO YOU WANT TO INITIALIZE FLASH-ROM?": press Test (F2).
+2. Erasing and writing take about 2.5 minutes.
+3. "FLASH-ROM INITIALIZE COMPLETE": press Test again.
+
+Later boots check the flash (about 80 s, as the real board does) and go to attract mode. The flash lives in the game's NVRAM folder like any other save.
+
+**Coins:** two coins make a credit.
+
+| Key | Dance Dance Revolution |
+|---|---|
+| Arrows | player 1's panels (a dance pad's buttons 0–3: left, down, up, right) |
+| Keypad 4 2 8 6 | player 2's panels |
+| 1 / 2 | 1P / 2P start |
+| 5 | coin |
+| F2 / 9 | test / service |
+
+**Lamps:** the analog I/O board's outputs as MAME names them (foot panels, start lamps, the four body lamps, the speaker neon), through the lights socket and HID lamps (docs/LIGHTS.md).
+
+**Sound:** the SPU and the CD's music, mixed as MAME's speaker does (the CD at the volume the game sets with MODE SELECT).
+
+**Not yet:** a scripted song against MAME, and a hands-on test with a pad.

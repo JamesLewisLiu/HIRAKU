@@ -14,7 +14,9 @@ digital_id = "digital-id.bin"   # the digital I/O board's DS2401
 
 [board]
 io_board = "digital"            # GX894-PWB(B): FPGA + MAS3507D MP3
+cassette = "yi"                 # MAME's cassette variant: X76F100 + DS2401
 pccard2 = "32mb"                # a Fujitsu 32 MiB flash card in slot 2 (edit data)
+memory_card_reader = true       # the JVS memory card reader: the game polls it at frame 187
 
 [cd]
 chd = "887jaa02"        # the game CD; installs to the onboard flash on first boot (install cassette)

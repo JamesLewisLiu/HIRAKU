@@ -54,6 +54,8 @@ public:
         get("digital_id", cfg.digital_id);
         get("io_board", cfg.io_board);
         get("pccard2", cfg.pccard2);
+        get("cassette", cfg.cassette);
+        cfg.memory_card_reader = machine["memory_card_reader"] == "1";
         cfg.cd = o.data_path(machine["cd"]);
         cfg.nvram_dir = o.nvram_dir;
         cfg.rtc_time = rtc_ >= 0 ? rtc_ : (int64_t)time(nullptr);
@@ -69,7 +71,8 @@ public:
     [[noreturn]] void run() override { k573::run(); }
     void shutdown() override { k573::save_nvram(); }
     void report() override {
-        printf("frames %llu, virtual time %.3f s, pc %08x\n", (unsigned long long)k573::frame_count(), k573::seconds(), k573::pc());
+        printf("frames %llu, virtual time %.3f s, pc %08x, %llu lamp changes\n", (unsigned long long)k573::frame_count(),
+               k573::seconds(), k573::pc(), (unsigned long long)k573::lamp_changes());
     }
     void debug_line(uint64_t f) override { printf("f%llu pc %08x\n", (unsigned long long)f, k573::pc()); }
 

@@ -1,0 +1,15 @@
+# DDR 2ndMIX (System 573, analog I/O board): first power-on. The 573 BIOS boots
+# the CD, and the game asks "DO YOU WANT TO INITIALIZE FLASH-ROM?" (by frame 360):
+# Test answers yes. Then it goes on towards attract mode with CD audio. Hashes the
+# main RAM every frame and snapshots every 60 frames, to compare HIRAKU's 573 core
+# with MAME. The flash install is done by frame ~9600 ("FLASH-ROM INITIALIZE
+# COMPLETE"); a second Test press starts the game: warning, title, How To Play,
+# a demo song, the intro video.
+game ddr2m
+
+hash ram  0x80000000 0x80400000   # 4 MiB main RAM (KSEG0)
+
+at 600 press "Service Mode" 8
+at 10200 press "Service Mode" 8
+from 0 every 60 snap
+at 24000 quit

@@ -49,17 +49,21 @@ bool cdrom_file::open(const std::string &path) {
     std::string dir = path.substr(0, path.find_last_of('/') + 1);
     char line[1024];
     FILE *cur = nullptr;
+    bool cur_le = true;   // the FILE's byte order for audio: BINARY little-endian, MOTOROLA big-endian
     u64 cur_size = 0;
     int ntr = -1;
     std::vector<std::pair<FILE *, u32>> index01;   // per track: file, INDEX 01 frame within it
+    std::vector<bool> le;                          // per track: its file is little-endian
     while (fgets(line, sizeof line, cue)) {
         char *p = line;
         while (*p == ' ' || *p == '\t') p++;
         if (!strncasecmp(p, "FILE ", 5)) {
             std::string name;
             char *q = p + 5;
-            if (*q == '"') { char *e = strchr(q + 1, '"'); name.assign(q + 1, e ? e : q + 1); }
-            else { char *e = strpbrk(q, " \t\r\n"); name.assign(q, e ? e : q + strlen(q)); }
+            const char *rest = q;
+            if (*q == '"') { char *e = strchr(q + 1, '"'); name.assign(q + 1, e ? e : q + 1); rest = e ? e + 1 : q + 1; }
+            else { char *e = strpbrk(q, " \t\r\n"); name.assign(q, e ? e : q + strlen(q)); rest = e ? e : q + strlen(q); }
+            cur_le = strcasestr(rest, "MOTOROLA") == nullptr;
             cur = fopen((name.size() && name[0] == '/' ? name : dir + name).c_str(), "rb");
             if (!cur) { fclose(cue); return false; }
             m_files.push_back(cur);
@@ -77,6 +81,7 @@ bool cdrom_file::open(const std::string &path) {
             t.datasize = size;
             t.control_flags = tt == CD_TRACK_AUDIO ? 0 : CD_FLAG_CONTROL_DATA_TRACK;
             index01.emplace_back(cur, 0);
+            le.push_back(cur_le);
         } else if (!strncasecmp(p, "INDEX 01 ", 9) && ntr >= 0) {
             int m = 0, s = 0, f = 0;
             sscanf(p + 9, "%d:%d:%d", &m, &s, &f);
@@ -97,7 +102,7 @@ bool cdrom_file::open(const std::string &path) {
         else { fseeko(f, 0, SEEK_END); end = (u64)ftello(f); }
         t.frames = t.logframes = (u32)((end - start) / t.datasize);
         t.logframeofs = logofs;
-        m_part[k] = {f, start};
+        m_part[k] = {f, start, t.trktype == CD_TRACK_AUDIO && le[k]};
         logofs += t.frames;
     }
     cdtoc.tracks[cdtoc.numtrks].logframeofs = logofs;   // the lead-out
@@ -125,7 +130,15 @@ bool cdrom_file::read_data(u32 lbasector, void *buffer, u32 datatype, bool) {
     u32 track = get_track(lbasector);
     if (track >= cdtoc.numtrks) return false;
     u32 tracktype = cdtoc.tracks[track].trktype;
-    if (datatype == tracktype || datatype == CD_TRACK_RAW_DONTCARE) return read_partial(buffer, lbasector, track, 0, cdtoc.tracks[track].datasize);
+    if (datatype == tracktype || datatype == CD_TRACK_RAW_DONTCARE) {
+        if (!read_partial(buffer, lbasector, track, 0, cdtoc.tracks[track].datasize)) return false;
+        // MAME keeps CD audio big-endian (as a CHD stores it) and swaps a little-endian file's
+        if (m_part[track].swap) {
+            u8 *b = (u8 *)buffer;
+            for (u32 i = 0; i + 1 < cdtoc.tracks[track].datasize; i += 2) std::swap(b[i], b[i + 1]);
+        }
+        return true;
+    }
     if (datatype == CD_TRACK_MODE1 && tracktype == CD_TRACK_MODE1_RAW) return read_partial(buffer, lbasector, track, 16, 2048);
     if (datatype == CD_TRACK_MODE1_RAW && tracktype == CD_TRACK_MODE1) {
         u8 *b = (u8 *)buffer;

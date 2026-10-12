@@ -165,15 +165,17 @@ def ingest_sys573(args) -> int:
         if roms.get(k):
             machine[k] = roms[k]
     board = game.get("board", {})
-    for k in ("io_board", "pccard2"):
+    for k in ("io_board", "cassette", "pccard2"):
         if board.get(k):
             machine[k] = board[k]
+    if board.get("memory_card_reader"):
+        machine["memory_card_reader"] = "1"
     if getattr(args, "cd", None):
         machine["cd"] = media_path(args.cd, outdir)
     if not machine.get("cd"):
         print(f"ERROR    no CD: add {game['cd']['chd']}.chd (or its .cue/.bin)")
         return 1
-    order = ["core", "family", *keys, "io_board", "pccard2", "cd"]
+    order = ["core", "family", *keys, "io_board", "cassette", "pccard2", "memory_card_reader", "cd"]
     with open(machine_path, "w") as fh:
         for k in order:
             if k in machine:

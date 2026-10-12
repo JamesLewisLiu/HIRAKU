@@ -83,6 +83,27 @@ std::vector<Control> make_kbm() {
     return c;
 }
 
+// Dance Dance Revolution (System 573, MAME ksys573.cpp "ddr"): four panels per player on the
+// GN845-PWB(B) stage, and the base panel's Start and buttons. A dance pad usually sends its
+// arrows as buttons 0-3.
+std::vector<Control> make_ddr() {
+    std::vector<Control> c;
+    const char *dirs[4] = {"Left", "Down", "Up", "Right"};
+    const char *p1[4] = {"key:Left, joy0:button0", "key:Down, joy0:button1", "key:Up, joy0:button2", "key:Right, joy0:button3"};
+    const char *p2[4] = {"key:Keypad 4, joy1:button0", "key:Keypad 2, joy1:button1", "key:Keypad 8, joy1:button2",
+                         "key:Keypad 6, joy1:button3"};
+    for (int p = 1; p <= 2; p++) {
+        std::string P = "P" + std::to_string(p), g = "Player " + std::to_string(p);
+        for (int k = 0; k < 4; k++) c.push_back({P + " " + dirs[k], std::string(dirs[k]) + " panel", g, false, p == 1 ? p1[k] : p2[k]});
+        c.push_back({p == 1 ? "1 Player Start" : "2 Players Start", "Start", g, false, p == 1 ? "key:1, joy0:button9" : "key:2, joy1:button9"});
+        for (int k = 1; k <= 3; k++) c.push_back({P + " Button " + std::to_string(k), "Panel button " + std::to_string(k), g, false, ""});
+    }
+    c.push_back({"Coin 1", "Coin", "Cabinet", false, "key:5, joy0:button8"});
+    c.push_back({"Test", "Test", "Cabinet", false, "key:F2"});
+    c.push_back({"Service", "Service", "Cabinet", false, "key:9"});
+    return c;
+}
+
 // The board's status LEDs (lamp_output_w, active low): every family has them.
 void add_status(std::vector<Lamp> &l) {
     for (int k = 0; k < 8; k++) l.push_back({"Status LED " + std::to_string(k + 1), "Board (diagnostic)", 0, k, true});
@@ -213,6 +234,25 @@ std::vector<Lamp> make_bm3_lamps() {
     return l;
 }
 
+// DDR: the I/O board's outputs as MAME's ddr_output_callback names them. reg 0, bit = output
+// number (analog: gx700pwbf latch * 8 + bit; digital: k573dio's); the speaker neon is 30 on the
+// analog board and 28 on the digital one, both shown as 30.
+std::vector<Lamp> make_ddr_lamps() {
+    std::vector<Lamp> l;
+    const char *dirs[4] = {"Up", "Left", "Right", "Down"};
+    for (int p = 0; p < 2; p++)
+        for (int k = 0; k < 4; k++)
+            l.push_back({"P" + std::to_string(p + 1) + " Foot " + dirs[k], "Pad " + std::to_string(p + 1), 0, p * 8 + k});
+    l.push_back({"P1 Start Lamp", "Cabinet", 0, 17});
+    l.push_back({"P2 Start Lamp", "Cabinet", 0, 18});
+    l.push_back({"Body Right Low", "Cabinet", 0, 20});
+    l.push_back({"Body Left Low", "Cabinet", 0, 21});
+    l.push_back({"Body Left High", "Cabinet", 0, 22});
+    l.push_back({"Body Right High", "Cabinet", 0, 23});
+    l.push_back({"Speaker Neon", "Cabinet", 0, 30});
+    return l;
+}
+
 // pop'n stage: not decoded yet (no dump to watch); listed by register and bit
 std::vector<Lamp> make_djpstage_lamps() {
     std::vector<Lamp> l;
@@ -234,7 +274,7 @@ std::string trim(std::string s) {
 const std::vector<Control> &controls(const std::string &family) {
     static const std::map<std::string, std::vector<Control>> all = {
         {"bm3", make_bm3()}, {"popn", make_popn()}, {"ppp", make_ppp()}, {"kbm", make_kbm()},
-        {"djbm", make_djbm()}, {"djpopn", make_djpopn()}, {"djpstage", make_djpstage()}};
+        {"djbm", make_djbm()}, {"djpopn", make_djpopn()}, {"djpstage", make_djpstage()}, {"ddr", make_ddr()}};
     auto f = all.find(family);
     return f != all.end() ? f->second : all.at("bm3");
 }
@@ -242,7 +282,8 @@ const std::vector<Control> &controls(const std::string &family) {
 const std::vector<Lamp> &lamps(const std::string &family) {
     static const std::map<std::string, std::vector<Lamp>> all = {
         {"bm3", make_bm3_lamps()}, {"popn", make_popn_lamps()}, {"ppp", make_ppp_lamps()}, {"kbm", make_kbm_lamps()},
-        {"djbm", make_djbm_lamps()}, {"djpopn", make_djpopn_lamps()}, {"djpstage", make_djpstage_lamps()}};
+        {"djbm", make_djbm_lamps()}, {"djpopn", make_djpopn_lamps()}, {"djpstage", make_djpstage_lamps()},
+        {"ddr", make_ddr_lamps()}};
     auto f = all.find(family);
     return f != all.end() ? f->second : all.at("bm3");
 }

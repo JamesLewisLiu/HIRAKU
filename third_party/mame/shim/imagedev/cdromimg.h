@@ -62,7 +62,8 @@ public:
 
 private:
     bool read_partial(void *dst, u32 lba, u32 track, u32 offset, u32 len);
-    struct file_part { FILE *f = nullptr; u64 offset = 0; };   // where each track's frames start
+    struct file_part { FILE *f = nullptr; u64 offset = 0; bool swap = false; };   // where each track's frames start;
+                                                                               // swap: little-endian audio (cue BINARY)
     toc cdtoc;
     file_part m_part[MAX_TRACKS + 1];
     std::vector<FILE *> m_files;

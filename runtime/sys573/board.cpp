@@ -4,6 +4,8 @@
 // below follows ksys573_state and ddr_state; where it differs, a comment says so.
 #include "sys573/board.h"
 
+#include "shell/cabinet.h"
+
 #include "emu.h"
 #include "screen.h"
 #include "speaker.h"
@@ -82,6 +84,10 @@ const device_creator<sys573_jvs_host> SYS573_JVS_HOST("sys573_jvs_host", "JVS Ho
 sys573_jvs_host::sys573_jvs_host(const machine_config &mconfig, const char *tag, device_t *owner, u32 clock)
     : jvs_host(mconfig, SYS573_JVS_HOST, tag, owner, clock) {}
 
+// The game's configuration while the board is built: the shim runs device_add_mconfig as each
+// device is constructed, before init() can hand the board its cfg.
+const Config *g_build = nullptr;
+
 // MAME's ioport output field: the write callback runs when its bits change
 // (dynamic_field::write), with the active-low inversion of the field's default.
 struct OutField {
@@ -144,6 +150,7 @@ public:
     int m_jvs_input_idx_r = 0, m_jvs_input_idx_w = 0, m_jvs_output_idx_w = 0, m_jvs_output_len_w = 0;
     u8 m_jvs_input_buffer[512] = {}, m_jvs_output_buffer[512] = {};
     std::vector<OutField> m_out0_fields, m_out1_fields, m_out2_fields;
+    u8 m_gx700pwbf_output_data[4] = {};   // the analog I/O board's output latches
 
     // ddr_state: the GN845-PWB(B) stage multiplexor
     struct stage_state { int DO = 0, clk = 0, shift = 0, state = 0, bit = 0; } m_stage_state[2];
@@ -156,7 +163,8 @@ public:
     u32 m_in1_coins = 0x13000000; // coins and service 1, active low
     u8 m_analog[4] = {0, 0, 0, 0};
 
-    std::vector<u8> m_lamps = std::vector<u8>(32, 0);
+    u32 m_outputs = 0;              // the I/O board's outputs, lit = 1, by output number
+    std::vector<u8> m_lamps;        // in cab::lamps(family) order
     u64 m_lamp_changes = 0;
 
     void device_add_mconfig(machine_config &config) override;
@@ -164,6 +172,8 @@ public:
     void device_reset_after_children() override;   // machine_reset
 
     void konami573_map(address_map &map);
+    void konami573a_map(address_map &map);
+    void konami573d_map(address_map &map);
 
     // ---- handlers (ksys573.cpp) ----
     u16 flash_r(offs_t offset, u16 mem_mask);
@@ -193,6 +203,11 @@ public:
     int h8_d(int bit) { return (m_h8_response[m_h8_index] >> bit) & 1; }
     double analogue_inputs_callback(u8 input);
 
+    // GX700-PWB(F), the analog I/O board
+    u16 gx700pwbf_io_r(offs_t offset, u16 mem_mask);
+    void gx700pwbf_io_w(offs_t offset, u16 data, u16 mem_mask);
+    void gx700pwbf_output(int offset, u8 data);
+
     // ddr_state
     void gn845pwbb_do_w(int offset, int data) { m_stage_state[offset].DO = !data; }
     void gn845pwbb_clk_w(int offset, int data);
@@ -201,10 +216,13 @@ public:
 
 const device_creator<sys573_state> sys573_state::SYS573_STATE("sys573", "Konami System 573");
 
-// ---- configuration: konami573() + k573d() + ddr3m() ----------------------------------------
+// ---- configuration: konami573(), then k573d() + ddr3m() or k573a() + ddr() -------------------
 void sys573_state::device_add_mconfig(machine_config &config) {
+    const Config &c = *g_build;
+    const bool digital = c.io_board == "digital";
     CXD8530CQ(config, m_maincpu, 67.7376_MHz_XTAL);
-    m_maincpu->set_addrmap(AS_PROGRAM, address_map_constructor(&sys573_state::konami573_map, this));
+    m_maincpu->set_addrmap(AS_PROGRAM, digital ? address_map_constructor(&sys573_state::konami573d_map, this)
+                                               : address_map_constructor(&sys573_state::konami573a_map, this));
     m_maincpu->set_ram(m_ram);
     m_maincpu->subdevice<psxdma_device>("dma")->install_read_handler(5, psxdma_device::read_delegate(&sys573_state::cdrom_dma_read, this));
     m_maincpu->subdevice<psxdma_device>("dma")->install_write_handler(5, psxdma_device::write_delegate(&sys573_state::cdrom_dma_write, this));
@@ -248,15 +266,24 @@ void sys573_state::device_add_mconfig(machine_config &config) {
     ADC0834(config, "adc0834").set_input_callback(*this, &sys573_state::analogue_inputs_callback);
     SYS573_JVS_HOST(config, m_sys573_jvs_host);
 
-    // k573d(): the digital I/O board, and its cassette options
-    KONAMI_573_DIGITAL_IO_BOARD(config, m_k573dio, XTAL(19'660'800));
-    // ddr3m(): DDR's outputs, a 32 MiB flash card in slot 2, the YI cassette
-    m_k573dio->output_callback().set(*this, &sys573_state::ddr_output_callback);
-    m_pccard2->option_add("32mb", FUJITSU_32MB_FLASH_CARD);
-    m_pccard2->set_default_option("32mb");
-    m_cassette->option_add("game", KONAMI573_CASSETTE_YI);
+    if (digital) {
+        // k573d(): the digital I/O board; ddr3m(): DDR's outputs on it
+        KONAMI_573_DIGITAL_IO_BOARD(config, m_k573dio, XTAL(19'660'800));
+        m_k573dio->output_callback().set(*this, &sys573_state::ddr_output_callback);
+    }
+    // k573a(): the analog board is the driver's own handlers (konami573a_map); init_ddr() sends
+    // its outputs to ddr_output_callback (gx700pwbf_output)
+    if (c.pccard2 == "32mb") {   // pccard2_32mb()
+        m_pccard2->option_add("32mb", FUJITSU_32MB_FLASH_CARD);
+        m_pccard2->set_default_option("32mb");
+    }
+    // the cassette: konami573() adds cassx(); ddr3m's cassyyi() replaces it
+    if (c.cassette == "yi") m_cassette->option_add("game", KONAMI573_CASSETTE_YI);
+    else if (c.cassette == "xi") m_cassette->option_add("game", KONAMI573_CASSETTE_XI);
+    else if (c.cassette == "y") m_cassette->option_add("game", KONAMI573_CASSETTE_Y);
+    else m_cassette->option_add("game", KONAMI573_CASSETTE_X);
     m_cassette->set_default_option("game");
-    KONAMI_573_MEMORY_CARD_READER(config, "k573mcr", m_sys573_jvs_host);
+    if (c.memory_card_reader) KONAMI_573_MEMORY_CARD_READER(config, "k573mcr", m_sys573_jvs_host);
 
     // MAME's OUT0/OUT1/OUT2 port fields, in mask order (ioport fields are kept sorted)
     m_out0_fields = {
@@ -297,8 +324,16 @@ void sys573_state::konami573_map(address_map &map) {
     map(0x1f620000, 0x1f623fff).rw("m48t58", FUNC(timekeeper_device::read), FUNC(timekeeper_device::write)).umask32(0x00ff00ff);
     map(0x1f680000, 0x1f680001).rw(FUNC(sys573_state::jvs_input_r), FUNC(sys573_state::jvs_input_w));
     map(0x1f6a0000, 0x1f6a0001).rw(FUNC(sys573_state::security_r), FUNC(sys573_state::security_w));
-    // konami573d_map
+}
+
+void sys573_state::konami573d_map(address_map &map) {
+    konami573_map(map);
     map(0x1f640000, 0x1f6400ff).m(m_k573dio, FUNC(k573dio_device::amap));
+}
+
+void sys573_state::konami573a_map(address_map &map) {
+    konami573_map(map);
+    map(0x1f640000, 0x1f6400ff).rw(FUNC(sys573_state::gx700pwbf_io_r), FUNC(sys573_state::gx700pwbf_io_w));
 }
 
 // MAME's driver_device starts last, once every other device has (driver_device::device_start)
@@ -310,6 +345,7 @@ void sys573_state::device_start() {
     m_h8_length = (int)h8->bytes();
     m_h8_index = 0;
     m_stage_mask = 0xffffffff;   // ddr_state::machine_start
+    m_lamps.assign(cab::lamps(cfg.family).size(), 0);
 }
 
 void sys573_state::device_reset_after_children() {
@@ -481,6 +517,28 @@ double sys573_state::analogue_inputs_callback(u8 input) {
     return 0;
 }
 
+// GX700-PWB(F), the analog I/O board: four 8-bit output latches; reads return 0 (MAME)
+u16 sys573_state::gx700pwbf_io_r(offs_t, u16) { return 0; }
+
+void sys573_state::gx700pwbf_io_w(offs_t offset, u16 data, u16) {
+    switch (offset) {
+    case 0x40: gx700pwbf_output(0, data & 0xff); break;
+    case 0x44: gx700pwbf_output(1, data & 0xff); break;
+    case 0x48: gx700pwbf_output(2, data & 0xff); break;
+    case 0x4c: gx700pwbf_output(3, data & 0xff); break;
+    }
+}
+
+void sys573_state::gx700pwbf_output(int offset, u8 data) {
+    static const int shift[] = {7, 6, 1, 0, 5, 4, 3, 2};
+    for (int i = 0; i < 8; i++) {
+        int oldbit = (m_gx700pwbf_output_data[offset] >> shift[i]) & 1;
+        int newbit = (data >> shift[i]) & 1;
+        if (oldbit != newbit) ddr_output_callback((offs_t)(offset * 8 + i), (u8)newbit);
+    }
+    m_gx700pwbf_output_data[offset] = data;
+}
+
 // ddr_state: GN845-PWB(B), the DDR stage multiplexor
 void sys573_state::gn845pwbb_clk_w(int offset, int data) {
     static const int mask[] = {0, 6, 2, 4, 0, 4, 0, 4, 0, 4, 0, 4, 0, 4, 0, 4, 0, 4, 0, 4, 0, 6};
@@ -520,11 +578,17 @@ void sys573_state::ddr_output_callback(offs_t offset, u8 data) {
     case 12: gn845pwbb_do_w(1, !data); return;
     case 15: gn845pwbb_clk_w(1, !data); return;
     }
-    // the cabinet's lamps (MAME's outputs): lit = data 0
-    if (offset < m_lamps.size()) {
-        u8 lit = data ? 0 : 1;
-        if (m_lamps[offset] != lit) { m_lamps[offset] = lit; m_lamp_changes++; }
-    }
+    // the cabinet's lamps (MAME's outputs): lit = data 0; the digital board's speaker neon (28)
+    // is the analog board's 30
+    if (offset == 28) offset = 30;
+    if (offset >= 32) return;
+    const u32 bit = 1u << offset, was = m_outputs;
+    m_outputs = data ? m_outputs & ~bit : m_outputs | bit;
+    if (m_outputs == was) return;
+    const auto &defs = cab::lamps(cfg.family);
+    m_lamps.resize(defs.size());
+    for (size_t k = 0; k < defs.size(); k++) m_lamps[k] = (u8)((m_outputs >> defs[k].bit) & 1);
+    m_lamp_changes++;
 }
 
 // ---- the machine --------------------------------------------------------------------------
@@ -555,16 +619,18 @@ bool init(const Config &cfg) {
         {":maincpu:rom", rom(cfg.bios)},
         {":h8_response", rom(cfg.h8)},
         {":cassette:game:eeprom", rom(cfg.cassette_eeprom)},
-        {":cassette:game:id", rom(cfg.cassette_id)},
-        {":k573dio:digital_id", rom(cfg.digital_id)},
+        {":cassette:game:id", cfg.cassette_id.empty() ? "" : rom(cfg.cassette_id)},           // the "i" cassettes
+        {":k573dio:digital_id", cfg.io_board == "digital" ? rom(cfg.digital_id) : ""},
     };
     for (auto &r : regions) {
+        if (r.file.empty()) continue;
         std::vector<u8> d = load_file(r.file);
         if (d.empty()) { fprintf(stderr, "cannot read %s\n", r.file.c_str()); return false; }
         m.add_region(r.tag, std::move(d));
     }
     cdrom_image_device::hk_set_path(":ata:0:cr589:image", cfg.cd);
 
+    g_build = &g.cfg;
     sys573_state &st = sys573_state::SYS573_STATE(m.config(), "");
     g.state = &st;
     st.cfg = cfg;
@@ -613,18 +679,38 @@ void set_audio_sink(AudioSink s) { g.audio_sink = std::move(s); }
     running_machine &m = *g.machine;
     for (;;) {
         m.timeslice();
-        // sound: the SPU's stream (MAME's mixing of the CD-DA and MP3 streams comes later)
+        // sound: MAME's speaker, the SPU plus the CR-589's CD audio (both 44.1 kHz, routed at 1.0;
+        // the CD at its MODE SELECT volume, set_output_gain). The MP3 board's stream comes later.
         if (g.audio_sink) {
-            for (sound_stream *s : m.m_streams) {
-                if (&s->m_device->machine() != &m || s->m_device != g.state->m_spu.target()) continue;
-                auto &l = s->m_out[0], &r = s->m_out[1];
+            static sound_stream *spu = nullptr, *cd = nullptr;
+            if (!spu)
+                for (sound_stream *s : m.m_streams) {
+                    if (s->m_device == g.state->m_spu.target()) spu = s;
+                    else if (dynamic_cast<cdda_device *>(s->m_device) && s->sample_rate() == 44100) cd = s;
+                }
+            if (spu) {
+                // the CD stream to now, so the SPU's samples don't wait for its 50 Hz update (the
+                // game sees the same either way: get_audio_lba() updates the stream itself)
+                if (cd) cd->update();
+                auto &l = spu->m_out[0], &r = spu->m_out[1];
                 size_t n = std::min(l.size(), r.size());
-                if (!n) continue;
-                std::vector<float> lr(n * 2);
-                for (size_t i = 0; i < n; i++) { lr[2 * i] = l[i]; lr[2 * i + 1] = r[i]; }
-                l.erase(l.begin(), l.begin() + n);
-                r.erase(r.begin(), r.begin() + n);
-                g.audio_sink(lr.data(), (int)n);
+                if (cd) n = std::min({n, cd->m_out[0].size(), cd->m_out[1].size()});
+                if (n) {
+                    std::vector<float> lr(n * 2);
+                    for (size_t i = 0; i < n; i++) { lr[2 * i] = l[i]; lr[2 * i + 1] = r[i]; }
+                    l.erase(l.begin(), l.begin() + n);
+                    r.erase(r.begin(), r.begin() + n);
+                    if (cd) {
+                        auto *cdd = static_cast<cdda_device *>(cd->m_device);
+                        for (int ch = 0; ch < 2; ch++) {
+                            auto &c = cd->m_out[ch];
+                            const float gain = cdd->output_gain(ch);
+                            for (size_t i = 0; i < n; i++) lr[2 * i + ch] += c[i] * gain;
+                            c.erase(c.begin(), c.begin() + n);
+                        }
+                    }
+                    g.audio_sink(lr.data(), (int)n);
+                }
             }
         } else {
             for (sound_stream *s : m.m_streams) for (auto &o : s->m_out) o.clear();
@@ -654,7 +740,8 @@ bool set_input(const std::string &name, int value) {
         // IN1
         {"Coin 1", {3, 0x1000000}}, {"Coin 2", {3, 0x2000000}}, {"Service 1", {3, 0x10000000}},
     };
-    auto it = names.find(name);
+    // the shell's cabinet names for MAME's (runtime/shell/cabinet.cpp)
+    auto it = names.find(name == "Test" ? "Service Mode" : name == "Service" ? "Service 1" : name);
     if (it == names.end()) return false;
     switch (it->second.first) {
     case 0: return bit(st.m_stage, it->second.second);
