@@ -23,8 +23,17 @@ QSettings &settings() {
 }
 
 QString rootDir() {
+    // the setting, else $HIRAKU_ROOT, else the checkout the launcher was built from,
+    // else the launcher's folder or its parent (a copied build): as the game binaries
     QString r = settings().value("paths/root").toString();
-    return r.isEmpty() ? QString(HK_ROOT) : r;
+    if (!r.isEmpty()) return r;
+    QString env = qEnvironmentVariable("HIRAKU_ROOT");
+    if (!env.isEmpty()) return env;
+    if (QDir(QString(HK_ROOT) + "/dumps").exists()) return QString(HK_ROOT);
+    QDir app(QCoreApplication::applicationDirPath());
+    if (app.exists("dumps")) return app.absolutePath();
+    if (app.cdUp() && app.exists("dumps")) return app.absolutePath();
+    return QString(HK_ROOT);
 }
 
 QString binDir() {
@@ -54,9 +63,12 @@ QString familyName(const QString &family) {
     if (family == "popn") return "pop'n music";
     if (family == "ppp") return "ParaParaParadise";
     if (family == "kbm") return "Keyboardmania";
+    if (family == "djbm") return "beatmania (DJ Main)";
+    if (family == "djpopn") return "pop'n music (DJ Main)";
+    if (family == "djpstage") return "pop'n stage (DJ Main)";
     return family;
 }
 
-QStringList families() { return {"bm3", "popn", "ppp", "kbm"}; }
+QStringList families() { return {"bm3", "popn", "ppp", "kbm", "djbm", "djpopn", "djpstage"}; }
 
 }  // namespace cfg

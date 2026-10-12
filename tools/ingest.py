@@ -23,6 +23,7 @@ import argparse
 import glob
 import hashlib
 import os
+import shutil
 import subprocess
 import sys
 import tomllib
@@ -51,11 +52,19 @@ def copy_romset(romset: str, romdir: str) -> list[str]:
     os.makedirs(romdir, exist_ok=True)
     names = []
     if romset.lower().endswith(".7z"):
-        # 7-Zip sets (e.g. standalone/non-merged): needs the 7z tool
-        listing = subprocess.run(["7z", "l", "-slt", romset], check=True, capture_output=True, text=True).stdout
-        names = [os.path.basename(l[7:]) for l in listing.splitlines()[1:]
-                 if l.startswith("Path = ") and l[7:] != romset and not l[7:].endswith(".7z")]
-        subprocess.run(["7z", "e", "-y", f"-o{romdir}", romset], check=True, capture_output=True)
+        # 7-Zip sets (e.g. standalone/non-merged): the 7z tool, or bsdtar (libarchive) when 7z is missing
+        if shutil.which("7z"):
+            listing = subprocess.run(["7z", "l", "-slt", romset], check=True, capture_output=True, text=True).stdout
+            names = [os.path.basename(l[7:]) for l in listing.splitlines()[1:]
+                     if l.startswith("Path = ") and l[7:] != romset and not l[7:].endswith(".7z")]
+            subprocess.run(["7z", "e", "-y", f"-o{romdir}", romset], check=True, capture_output=True)
+        elif shutil.which("bsdtar"):
+            listing = subprocess.run(["bsdtar", "-tf", romset], check=True, capture_output=True, text=True).stdout
+            names = [os.path.basename(l) for l in listing.splitlines() if l and not l.endswith("/")]
+            # flat, as 7z e: every file straight into romdir
+            subprocess.run(["bsdtar", "-xf", romset, "-C", romdir, "-s", ",.*/,,"], check=True, capture_output=True)
+        else:
+            sys.exit(f"{romset}: a .7z set needs 7z (package 7zip or p7zip) or bsdtar (libarchive)")
     else:
         with zipfile.ZipFile(romset) as z:
             for name in z.namelist():

@@ -77,8 +77,8 @@ public:
         cfg.rom_dir = o.root + "/dumps/" + o.game + "/rom";
         cfg.dongle_file = machine["dongle"];
         if (!machine["cabinet"].empty()) cfg.cabinet = std::stoi(machine["cabinet"]);
-        cfg.cd_master = machine["cd_master"];
-        cfg.cd_slave = machine["cd_slave"];
+        cfg.cd_master = o.data_path(machine["cd_master"]);
+        cfg.cd_slave = o.data_path(machine["cd_slave"]);
         cfg.nvram_dir = o.nvram_dir;
         if (o.trace) cfg.trace_dir = o.out;
         cfg.ata_log = o.ata_log;
@@ -89,8 +89,8 @@ public:
         if (!machine["spu_rom"].empty()) {
             spu::Config sc;
             sc.rom = cfg.rom_dir + "/" + machine["spu_rom"];
-            sc.hdd = machine["spu_hdd"];
-            sc.dvd = machine["spu_dvd"];
+            sc.hdd = o.data_path(machine["spu_hdd"]);
+            sc.dvd = o.data_path(machine["spu_dvd"]);
             sc.mix_effect = cfg.family == "bm3";
             sc.log = o.ata_log;
             if (!spu::init(sc)) {

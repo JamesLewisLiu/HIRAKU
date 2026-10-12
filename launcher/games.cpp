@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
+#include <QCoreApplication>
 #include "games.h"
 
 #include <QDir>
@@ -99,9 +100,10 @@ QList<Game> scanGames() {
         g.id = sub;
         readManifest(manifest, g);
         if (g.title.isEmpty()) g.title = g.id;
-        // next to the launcher, else where the README's build puts it
+        // the binaries folder (Settings), next to the launcher, a copied build's bin/,
+        // else where the README's build puts it
         bool built = false;
-        for (const QString &d : {bin, root + "/build/cmake"}) {
+        for (const QString &d : {bin, QCoreApplication::applicationDirPath(), root + "/bin", root + "/build/cmake"}) {
             QFileInfo exe(d + "/hiraku-" + g.id);
             if (exe.isFile() && exe.isExecutable()) {
                 g.exe = exe.absoluteFilePath();

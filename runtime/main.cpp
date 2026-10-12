@@ -30,6 +30,7 @@
 // The machine is described by dumps/<game>/machine.txt and dumps/<game>/rom/,
 // both written by tools/ingest.py from the user's own dumps.
 #include <sys/stat.h>
+#include <unistd.h>
 
 #include <algorithm>
 #include <atomic>
@@ -130,12 +131,32 @@ void mkdirs(const std::string &path) {
         if (k == path.size() || path[k] == '/') mkdir(path.substr(0, k).c_str(), 0755);
 }
 
+// The HIRAKU root (dumps/, games/, out/): $HIRAKU_ROOT, else the checkout the binary
+// was built from, else the folder holding the binary or its parent (a copied build).
+std::string find_root() {
+    if (const char *r = getenv("HIRAKU_ROOT"); r && *r) return r;
+    struct stat st;
+    auto has_dumps = [&st](const std::string &d) { return stat((d + "/dumps").c_str(), &st) == 0 && S_ISDIR(st.st_mode); };
+    if (has_dumps(HK_ROOT)) return HK_ROOT;
+    char exe[4096];
+    ssize_t n = readlink("/proc/self/exe", exe, sizeof exe - 1);
+    if (n > 0) {
+        exe[n] = 0;
+        std::string dir = exe;
+        dir.erase(dir.rfind('/'));
+        if (has_dumps(dir)) return dir;
+        std::string up = dir.substr(0, dir.rfind('/'));
+        if (!up.empty() && has_dumps(up)) return up;
+    }
+    return HK_ROOT;
+}
+
 }  // namespace
 
 int main(int argc, char **argv) {
     Core &machine = core();
     Core::Options opt;
-    opt.root = HK_ROOT;
+    opt.root = find_root();
     opt.game = HK_GAME_ID;
     const std::string &game = opt.game;
     std::string out = opt.root + "/out/run/" + game;

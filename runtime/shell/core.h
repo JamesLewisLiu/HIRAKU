@@ -27,6 +27,11 @@ public:
         std::string nvram_dir;   // persistent NVRAM ("" = none: every run starts from the defaults)
         bool trace = false;      // write an oracle-format MMIO trace into `out`
         bool ata_log = false;    // log disk commands
+        // a file named in machine.txt: absolute, or relative to dumps/<game>/
+        std::string data_path(const std::string &p) const {
+            if (p.empty() || p[0] == '/') return p;
+            return root + "/dumps/" + game + "/" + p;
+        }
     };
     using FrameHook = std::function<void(uint64_t frame, const uint32_t *rgb, int w, int h)>;
     using AudioSink = std::function<void(const float *lr, int frames)>;   // stereo, at audio_rate()

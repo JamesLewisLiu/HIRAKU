@@ -386,6 +386,11 @@ void MainWindow::play(const QString &id) {
     m_running = g->id;
     m_stopping = false;
     m_proc.setWorkingDirectory(cfg::rootDir());
+    {
+        QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+        env.insert("HIRAKU_ROOT", cfg::rootDir());   // the games use the launcher's root
+        m_proc.setProcessEnvironment(env);
+    }
     m_proc.start(g->exe, args);
     statusBar()->showMessage("Running " + g->title);
     cfg::settings().setValue("ui/lastGame", g->id);

@@ -49,7 +49,7 @@ public:
         cfg.program = split(machine["program"]);
         cfg.sprites = split(machine["sprites"]);
         cfg.tiles = split(machine["tiles"]);
-        cfg.hdd = machine["hdd"];
+        cfg.hdd = o.data_path(machine["hdd"]);
         if (!machine["map"].empty()) cfg.map = machine["map"];
         // ATA passwords as 64 hex digits (games/<id>/game.toml [hdd], from MAME's init_<game>())
         auto hex = [](const std::string &h) {
