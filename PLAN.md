@@ -336,6 +336,17 @@ The target machine is an **N100-class x86 mini PC**: 4 cores, roughly 60 % of a 
 | kbm attract | 43.8 % | 38.2 % |
 | bm3final 90 s attract vs MAME `-bench` | 7.7× real time (MAME 3.6×) | 12.3× real time, **about 3.4× MAME** |
 
+**The MAME-device cores against MAME (2026-10-12 night).** The same method as above: MAME's `-bench` against HIRAKU headless, the same 150 s of game time, 3 runs each, on the same desktop (wall time, start-up included).
+
+| Case | MAME (flatpak 0.289) | MAME at the pin | HIRAKU | HIRAKU per frame |
+|---|---|---|---|---|
+| `ddr2m`, from the installed flash (flash check, attract with 3D, demo, video) | 650 % real time | 595 % | 683 %, **1.05× MAME** | mean 2.46 ms, p99 4.0, worst 4.8 |
+| `bm1stmix`, power-on to attract | 1,807 % | — | 1,762 %, **0.98× MAME** | mean 0.94 ms, p99 1.7, worst 2.2 |
+
+- **These cores are level with MAME, by design.** They run MAME's own CPU and device code; only the scheduler and memory map are HIRAKU's. Firebeat's 3.4× comes from the static recompiler.
+- **DJ Main needs nothing more.** Under 1 ms a frame is under 2 ms on an N100.
+- **System 573 is at the edge of the budget on an N100.** Scaled by ~0.6, ddr2m is ~4 ms a frame on average (~25 % of a core) and ~8 ms at worst. Section 19's 573-4 has the profile.
+
 **What it took:**
 - **Fibers:** guest thread switches use a small x86-64 context switch instead of `swapcontext`. `swapcontext` made a system call (signal mask) on each of ~48,000 switches per second, which was 14 % of a run.
 - **GCU:** blits, fills and scanout run per row wherever a row neither wraps VRAM nor overlaps itself. Same-parity rows are plain array copies; opposite-parity rows use a fixed pair shuffle. Full-brightness scanout uses SSE2. Every other case keeps MAME's per-pixel loop.
@@ -695,6 +706,23 @@ Each phase has an exit test. Sizes are assisted-effort guesses; DJ Main went fas
 - **Exit:** `ddr3mj` plays a full song with the MP3 in step with the arrows (`oracle/audiosync.py` against MAME's WAV), and `drmn10m` plays a song.
 
 **573-4. Efficiency** (sized by the measurements in 573-1)
+- **Measured (2026-10-12, `HK_PROFILE=1`, ddr2m 150 s from the installed flash, 21,600 samples):**
+
+  | Where | Share |
+  |---|---|
+  | R3000 interpreter (`psxcpu_device::execute_run`) | ~45 % |
+  | Memory accesses through the shim's address map, mostly instruction fetch (`read_sized`) | ~30 % |
+  | MAME's per-instruction breakpoint and debugger hooks | ~5 % |
+  | GPU drawing | ~5 % |
+  | Copying the frame out of the screen bitmap | ~3 % |
+  | MDEC (the intro video) | ~2–3 % |
+  | SPU, CD, DMA, timers | ~3 % |
+
+  - **The CPU dominates (~80 %), so the MIPS recompiler below is the way to Firebeat-like gains.**
+  - **Cheaper first steps, each to be kept bit-identical:**
+    - a fast instruction fetch (the current page's host pointer, cached);
+    - skipping the breakpoint hooks while no debugger is attached;
+    - handing the frame to the host without the per-pixel copy.
 - **Budget**, as for M11: under 25 % of an N100 core on average, and no frame over ~8 ms of host work.
 - **If the CPU dominates, statically recompile the MIPS.**
   - The code runs from RAM, loaded from flash or CD, so the recompiler works from the blocks the interpreter has executed in reference runs, keyed by a hash of their bytes.

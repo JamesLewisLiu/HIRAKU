@@ -16,7 +16,8 @@
 #   WINDOW=1      show a window and play sound (otherwise headless, unthrottled)
 #   WAV=1         also record the mixed audio to <run>/audio.wav
 #   HIRAKU_LUA    one more Lua file to run with the script (a one-off probe)
-#   HIRAKU_NVRAM  a HIRAKU --nvram directory to start from (Firebeat), instead of blank
+#   HIRAKU_NVRAM  a HIRAKU --nvram directory to start from, instead of blank (Firebeat's files
+#                 are renamed; the MAME-device cores, DJ Main and System 573, already use MAME's names)
 #   EXACT_PC=1    run under -debug -debugger none: the PPC recompiler then
 #                 updates PC per instruction, so trace PCs are exact (slower)
 #   MAME_BIN      a MAME binary to run instead of the flatpak (System 573: the
@@ -43,9 +44,13 @@ mkdir -p "$out/nvram" "$out/snap" "$out/cfg"
 # HIRAKU_NVRAM=DIR: start from a HIRAKU NVRAM directory (Firebeat: rtc.nv and flashN.bin)
 if [[ -n "${HIRAKU_NVRAM:-}" ]]; then
     mkdir -p "$out/nvram/$set_name"
-    for pair in rtc.nv:rtc flash0.bin:flash_main flash1.bin:flash_snd1 flash2.bin:flash_snd2; do
-        [[ -f "$HIRAKU_NVRAM/${pair%%:*}" ]] && cp "$HIRAKU_NVRAM/${pair%%:*}" "$out/nvram/$set_name/${pair##*:}"
-    done
+    if [[ -f "$HIRAKU_NVRAM/rtc.nv" || -f "$HIRAKU_NVRAM/flash0.bin" ]]; then
+        for pair in rtc.nv:rtc flash0.bin:flash_main flash1.bin:flash_snd1 flash2.bin:flash_snd2; do
+            [[ -f "$HIRAKU_NVRAM/${pair%%:*}" ]] && cp "$HIRAKU_NVRAM/${pair%%:*}" "$out/nvram/$set_name/${pair##*:}"
+        done
+    else
+        cp "$HIRAKU_NVRAM"/* "$out/nvram/$set_name/"   # already MAME's names (System 573)
+    fi
 fi
 
 if [[ -z "${MAME_BIN:-}" ]] && ! flatpak info org.mamedev.MAME >/dev/null 2>&1; then
