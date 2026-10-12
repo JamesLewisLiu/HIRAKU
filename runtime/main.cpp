@@ -18,6 +18,10 @@
 //     --window [SCALE]  show the game in a window, in real time, with sound (SDL3 builds);
 //                       F2 test, 9 service, 5 coin, 1 start, Esc quits; controls per cabinet
 //     --fullscreen      start the window fullscreen (F11 toggles)
+//     --display-sync on|off  on (the default): on a fixed-refresh display, show every frame for a
+//                       whole number of refreshes, running the game at the display's rate (up to
+//                       3 % off: pop'n 2.6 % fast at 60 Hz); off: the game's exact speed, frames
+//                       shown as they come (for variable-refresh displays). runtime/host/pacing.h
 //     --macro NAME[@F]  run one of the game's code macros (games/<game>/macros.txt) at frame F, or
 //                       at its own `at` frame (power-on codes); repeatable. In the window,
 //                       Ctrl+1..9 types the 1st..9th macro
@@ -175,6 +179,7 @@ int main(int argc, char **argv) {
     std::string picture_mode = "off";
     std::vector<std::string> picture_config;
     std::vector<std::string> macro_specs;
+    bool display_sync = true;
     bool nvram_given = false;
     int audio_ms = 8;
     for (int k = 1; k < argc; k++) {
@@ -200,6 +205,7 @@ int main(int argc, char **argv) {
         else if (a == "--picture") picture_mode = val();
         else if (a == "--picture-config") picture_config.push_back(val());
         else if (a == "--macro") macro_specs.push_back(val());
+        else if (a == "--display-sync") display_sync = val() != "off";
         else if (a == "--nvram") { nvram_dir = val(); nvram_given = true; }
         else if (a == "--audio-ms") audio_ms = std::stoi(val());
         else if (a == "--window") window_scale = (k + 1 < argc && argv[k + 1][0] != '-') ? std::stoi(val()) : 2;
@@ -294,6 +300,7 @@ int main(int argc, char **argv) {
 
 #ifdef HK_WITH_SDL
     host::window_set_picture(picture_mode, opt.root + "/shaders", picture_config);
+    host::window_set_display_sync(display_sync);
     if (window_scale && !host::window_open(("HIRAKU - " + game).c_str(), window_scale, bindings, audio_ms, fullscreen, machine.audio_rate())) {
         fprintf(stderr, "cannot open a window\n");
         return 1;

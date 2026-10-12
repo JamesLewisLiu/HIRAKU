@@ -956,6 +956,32 @@ input script), with inputs through `core().set_input` like the scripts'.
   in modes 2 and 6. NON STOP `1496149614961496` calls a region check (`FUN_8002ebd8`) and drops
   the result: in JAC nothing sets its flag `0x80102384`.
 
+### Display pacing: smooth frames on fixed-refresh displays (2026-10-12)
+
+The games run at 59.94 (beatmania III), 58.4866 (pop'n) and 58.51 Hz (Keyboardmania). Shown as
+they come, a fixed-refresh display judders. `runtime/host/pacing.{h,cpp}` runs the machine on the
+display's refresh grid when the display is within 3 % of a whole multiple (the game 2.6 % fast at
+60/120/240 Hz, the sound resampled with `SDL_SetAudioStreamFrequencyRatio`, steered to keep the
+queue at its target). The emulated machine is unchanged.
+- **Per frame:** burst (the machine), draw, wait until the commit time (a lead before a grid
+  vblank), present, wait until the next burst (a budget, p99 of burst + draw + 1 ms, before the
+  next commit). The audio queue is topped up at once when it's under half its target.
+- **Wayland presentation-time** gives the vblank times, the refresh period and each frame's
+  commit-to-screen time. KWin 6.7 at 240 Hz: about 8 ms at best, and the deadline wanders by up
+  to a refresh with its render-time estimate. Frames committed near it came out irregular, and
+  0.5-1 % were irregular at any phase.
+- **fifo-v1** (each frame's commit plus k-1 empty commits, each waiting for the previous barrier)
+  stops early display. Irregular frames, 2.5 min runs: 144 Hz at 2 refreshes per frame 838 without
+  fifo, 3 with (0.03 %); 240 Hz at 4, about 2,500 (the first designs) against 15 (0.17 %).
+- **Finding the deadline:** the commit moves later, a 32nd of a refresh every 20 frames, until the
+  median of 10 commit-to-screen times is a refresh slower than the best (a miss: with fifo the
+  queue moved). Then the grid catches up a refresh and the commit goes a 32nd plus 1.5 ms earlier;
+  later misses add 0.75 ms. Learning a fixed "pipeline" offset, or reacting to single irregular
+  frames, failed (both chase the compositor's own jank).
+- **Without Wayland** (X11): the grid runs on the display mode's rate with an unknown phase.
+- Tested with the window on DP-1 (240 Hz) and DP-2 (144 Hz, with `HK_DISPLAY_SYNC_SKEW` to force a
+  fit); 60 Hz still to test on a real 60 Hz display (the N100 cabinet).
+
 ## M0 steps (all done)
 
 1. ~~`git init` HIRAKU and add `.gitignore` for `dumps/` and `build/`~~ Done.

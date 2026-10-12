@@ -419,6 +419,7 @@ QStringList MainWindow::arguments(const Game &g) const {
     auto &s = cfg::settings();
     QStringList a = {"--window", QString::number(s.value("video/scale", 2).toInt())};
     if (s.value("video/fullscreen", false).toBool()) a << "--fullscreen";
+    if (!s.value("video/displaySync", true).toBool()) a << "--display-sync" << "off";   // runtime/host/pacing.h
     // the picture mode, and its settings: all games', then the game's (picturedialog.h)
     a << "--picture" << picture::mode(g.id) << "--picture-config" << picture::configDir() << "--picture-config"
       << picture::configDir(g.id);

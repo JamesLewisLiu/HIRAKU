@@ -54,6 +54,13 @@ SettingsDialog::SettingsDialog(QWidget *parent) : QDialog(parent) {
     m_fullscreen = new QCheckBox("Start in fullscreen (F11 or Alt+Enter toggles)");
     m_fullscreen->setChecked(s.value("video/fullscreen", false).toBool());
     fv->addRow("", m_fullscreen);
+    m_displaySync = new QCheckBox("Smooth frames on a 60, 120 or 240 Hz display");
+    m_displaySync->setChecked(s.value("video/displaySync", true).toBool());
+    m_displaySync->setToolTip("The games run at their own rates (pop'n 58.49 Hz, beatmania III 59.94 Hz), which a "
+                              "fixed-refresh display can't show evenly. On: each frame stays up the same number of "
+                              "refreshes, and the game runs at the display's rate (pop'n 2.6 % faster, its sound "
+                              "with it). Off: the exact speed, for a variable-refresh (FreeSync, G-Sync) display.");
+    fv->addRow("", m_displaySync);
     m_picture = new QComboBox;
     m_picture->addItem("Off: sharp pixels", "off");
     m_picture->addItem("CRT light: crt-guest-advanced-fast", "light");
@@ -131,6 +138,7 @@ void SettingsDialog::accept() {
     auto &s = cfg::settings();
     s.setValue("video/scale", m_scale->value());
     s.setValue("video/fullscreen", m_fullscreen->isChecked());
+    s.setValue("video/displaySync", m_displaySync->isChecked());
     s.setValue("video/picture", m_picture->currentData().toString());
     s.setValue("audio/ms", m_audioMs->value());
     s.setValue("audio/soundfont", m_soundfont->text().trimmed());

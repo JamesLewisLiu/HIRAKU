@@ -13,6 +13,7 @@
 
 #include "../shell/core.h"
 #include "macro.h"
+#include "pacing.h"
 #include "picture.h"
 #include "input.h"
 #include "../core/prof.h"
@@ -39,6 +40,10 @@ int g_target_frames = 0;          // audio queued ahead, when audio paces
 bool g_fast = false;              // Tab held: run as fast as possible (audio is dropped)
 int g_device_frames = 0;
 bool g_quit = false;
+bool g_display_sync = true;       // display pacing (pacing.h)
+double g_ratio = 1.0;             // the audio stream's frequency ratio: the game's speed, steered
+double g_last_vsec = -1;
+void (*g_glFlush)() = nullptr;
 auto g_last_poll = std::chrono::steady_clock::now();
 
 // Poll controls: called every few milliseconds of emulated time.
@@ -63,6 +68,8 @@ void poll() {
         if (e.type == SDL_EVENT_KEY_DOWN && !e.key.repeat && e.key.key == SDLK_F10 && g_gl)   // F10: off, light, full
             g_mode = g_mode == picture::Mode::off ? picture::Mode::light
                    : g_mode == picture::Mode::light ? picture::Mode::full : picture::Mode::off;
+        if (e.type == SDL_EVENT_WINDOW_DISPLAY_CHANGED || e.type == SDL_EVENT_DISPLAY_CURRENT_MODE_CHANGED)
+            pacing::display_changed();
         if (e.type == SDL_EVENT_JOYSTICK_ADDED) input_joystick_added(e.jdevice.which);
         input_event(e);
     }
@@ -99,6 +106,8 @@ void window_set_picture(const std::string &mode, const std::string &shaders_dir,
     g_picture_config = config_dirs;
 }
 
+void window_set_display_sync(bool on) { g_display_sync = on; }
+
 bool window_open(const char *title, int scale, const std::string &bindings, int target_ms, bool fullscreen, int rate) {
     g_rate = rate;
     SDL_SetHint(SDL_HINT_AUDIO_DEVICE_SAMPLE_FRAMES, "128");   // ask for a small device buffer
@@ -125,12 +134,15 @@ bool window_open(const char *title, int scale, const std::string &bindings, int 
     if (open_gl(title, scale)) {
         picture::prepare(g_mode);
         if (fullscreen) SDL_SetWindowFullscreen(g_win, true);
+        g_glFlush = (void (*)())SDL_GL_GetProcAddress("glFlush");
+        pacing::init(g_win, g_display_sync);
         return true;
     }
     if (!SDL_CreateWindowAndRenderer(title, 640 * scale, 480 * scale, SDL_WINDOW_RESIZABLE, &g_win, &g_ren)) return false;
-    SDL_SetRenderVSync(g_ren, 0);   // audio paces the machine; presenting must never block on the display
+    SDL_SetRenderVSync(g_ren, 0);   // presenting must never block on the display: we choose when (pacing.h)
     SDL_SetRenderLogicalPresentation(g_ren, 640, 480, SDL_LOGICAL_PRESENTATION_LETTERBOX);
     if (fullscreen) SDL_SetWindowFullscreen(g_win, true);
+    pacing::init(g_win, g_display_sync);
     return true;
 }
 
@@ -152,7 +164,26 @@ struct PresentStats {
     }
 } g_present;
 
+// Display pacing: steer the sound's playback rate to the game's speed, keeping the queue at its
+// target where it is lowest (as the burst starts).
+void steer_audio() {
+    if (!g_audio) return;
+    double q_ms = SDL_GetAudioStreamQueued(g_audio) / 8 * 1000.0 / (g_rate * g_ratio);
+    double target_ms = g_target_frames * 1000.0 / g_rate;
+    if (q_ms < target_ms / 2) {   // starting, or after a stall: fill up at once, not over seconds
+        std::vector<float> silence((size_t)((target_ms - q_ms) * g_rate * g_ratio / 1000) * 2, 0.0f);
+        SDL_PutAudioStreamData(g_audio, silence.data(), (int)(silence.size() * sizeof(float)));
+        q_ms = target_ms;
+    }
+    double e = std::clamp((q_ms - target_ms) / target_ms, -1.0, 1.0);
+    double r = pacing::speed() * (1.0 + 0.005 * e);
+    if (std::fabs(r - g_ratio) > 1e-6) SDL_SetAudioStreamFrequencyRatio(g_audio, (float)r), g_ratio = r;
+}
+
 bool window_frame(const uint32_t *rgb, int w, int h, double vsec) {
+    const double period = g_last_vsec < 0 || g_fast ? 0.0 : vsec - g_last_vsec;
+    g_last_vsec = vsec;
+    const bool sync = pacing::frame(period) && !g_fast;
     if (g_gl) {
         prof::Scope ps(prof::PRESENT);
         int ww = 0, wh = 0;
@@ -161,7 +192,13 @@ bool window_frame(const uint32_t *rgb, int w, int h, double vsec) {
         float s = std::min((float)ww / w, (float)wh / h);
         int vw = std::max(1, (int)std::lround(w * s)), vh = std::max(1, (int)std::lround(h * s));
         picture::Mode shown = picture::draw(rgb, w, h, (ww - vw) / 2, (wh - vh) / 2, vw, vh, ww, wh, g_mode);
+        if (sync) {
+            if (g_glFlush) g_glFlush();   // the GPU draws while we wait for the commit time
+            pacing::wait_commit();
+            pacing::commit();
+        }
         SDL_GL_SwapWindow(g_win);
+        if (sync) pacing::committed();
         if (shown != g_shown) {
             g_shown = shown;
             g_title_dirty = true;
@@ -179,9 +216,15 @@ bool window_frame(const uint32_t *rgb, int w, int h, double vsec) {
         SDL_UpdateTexture(g_tex, nullptr, rgb, w * 4);
         SDL_RenderClear(g_ren);
         SDL_RenderTexture(g_ren, g_tex, nullptr, nullptr);
+        if (sync) {
+            SDL_FlushRenderer(g_ren);
+            pacing::wait_commit();
+            pacing::commit();
+        }
         SDL_RenderPresent(g_ren);
+        if (sync) pacing::committed();
     }
-    g_present.add(vsec);
+    if (!sync) g_present.add(vsec);
 
     if (g_title_dirty && g_win) {
         g_title_dirty = false;
@@ -193,6 +236,14 @@ bool window_frame(const uint32_t *rgb, int w, int h, double vsec) {
     poll();
     if (g_quit) return false;
     if (g_fast) return true;    // fast-forward: no pacing at all
+    if (sync) {                 // the display's grid paces time; the sound follows
+        pacing::wait_next();
+        poll();
+        pacing::pump();
+        steer_audio();
+        return !g_quit;
+    }
+    if (g_audio && g_ratio != 1.0) SDL_SetAudioStreamFrequencyRatio(g_audio, 1.0f), g_ratio = 1.0;
     if (g_audio) return true;   // audio paces time (audio_push)
 
     // no audio device: pace virtual time to real time on video frames
@@ -251,8 +302,9 @@ void push_chunk(const float *lr, int frames) {
     }
     SDL_PutAudioStreamData(g_audio, lr, frames * 8);
     // audio is the clock: wait while more than the target is queued, polling controls
+    // (with display pacing, the display is the clock: window_frame waits instead)
     const uint64_t w0 = prof::ticks();
-    while (SDL_GetAudioStreamQueued(g_audio) > g_target_frames * 8 && !g_quit) {
+    while (!pacing::active() && SDL_GetAudioStreamQueued(g_audio) > g_target_frames * 8 && !g_quit) {
         poll();
         SDL_DelayPrecise(250'000);   // 0.25 ms
     }
@@ -303,10 +355,11 @@ std::string audio_describe() {
                  (unsigned long long)p.hist[2], (unsigned long long)p.hist[3], (unsigned long long)p.hist[4],
                  (unsigned long long)p.hist[5]);
     }
-    return b;
+    return std::string(b) + "\n" + pacing::describe();
 }
 
 void window_close() {
+    pacing::shutdown();
     if (g_audio) SDL_DestroyAudioStream(g_audio);
     if (g_tex) SDL_DestroyTexture(g_tex);
     if (g_ren) SDL_DestroyRenderer(g_ren);

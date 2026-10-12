@@ -166,26 +166,35 @@ The games don't run at 60 Hz. Each sets its own video timing, which HIRAKU runs 
 | pop'n music 4–8, Animelo 1/2 | 58.4866 (16.6666 MHz pixel clock) |
 | Keyboardmania | 58.51 |
 
-**The window never waits for the display.** Audio is the clock, and each frame is shown as soon
-as it's drawn. The exit report's `video:` line shows how evenly: frames come at the game's rate
-(mean error -0.005 ms), within about ±3 ms (sd 1.3 ms, the sound card's 2.8 ms blocks).
+**Smooth frames on a fixed-refresh display (the default).** A 60, 120 or 240 Hz display can't
+show 58.49 frames a second evenly: some frames would stay up a refresh longer than others, and the
+notes judder. So when the display's rate is within 3 % of a whole multiple of the game's, HIRAKU
+runs the game on the display's refreshes:
+- Every frame stays up the same number of refreshes (1 at 60 Hz, 2 at 120 Hz, 4 at 240 Hz).
+- The game runs at the display's rate: pop'n and Keyboardmania **2.6 % faster** at 60/120/240 Hz,
+  beatmania III 0.1 %. The sound plays at the same speed, so it's 2.6 % higher in pitch. The
+  game itself is unchanged: its judgement, charts and sound stay in step with each other.
+- On Wayland, HIRAKU learns from the compositor when each frame reached the screen, and finds
+  how late it can hand a frame over (the lowest latency that still makes the refresh). With
+  KWin 6.7's fifo protocol, 99.8-99.97 % of frames stay up exactly their refreshes (measured at
+  144 and 240 Hz); the rest are the compositor's own.
+- The console says what it chose (`display sync: on: 60.00 Hz display, 1 refresh per frame, the
+  game at +2.6 % speed`), and the exit report's `video: display sync` line how it went.
 
-**What you see depends on the display:**
-- **Variable refresh (FreeSync, G-Sync, HDMI VRR):** the display refreshes when HIRAKU presents,
-  at the game's own rate. Notes scroll evenly. This is the setup to use.
-- **A fixed refresh can't divide the game's rate**, so some frames stay up longer than others:
-  - 60 Hz: one frame shown twice about every 0.66 s, a visible hitch in the scrolling (pop'n).
-  - 144 Hz: frames alternate 2 and 3 refreshes (14 and 21 ms), a steady fine judder.
-  - 240 Hz: 4 refreshes, and 5 for about every tenth frame (17 and 21 ms), the least visible.
+**When it's off:**
+- **A display that doesn't fit**, such as 144 Hz (58.49 × 2 = 117, × 3 = 175): frames are shown as
+  they come and judder (2 and 3 refreshes alternately). Set the display to 60, 120 or 240 Hz.
+- **Variable refresh (FreeSync, G-Sync, HDMI VRR):** turn display sync off (launcher: Settings >
+  "Smooth frames on a 60, 120 or 240 Hz display"; or `--display-sync off`). The display then
+  follows the game at its exact speed. In KDE: enable FreeSync in the monitor's menu, set System
+  Settings > Display > Adaptive sync to Automatic, and play fullscreen (F11).
+- **Fast-forward** (Tab).
 
-**Turning variable refresh on (KDE Plasma):**
-1. Enable FreeSync / Adaptive-Sync in the monitor's own menu. Until then KDE lists it as
-   incapable: `kscreen-doctor -o` shows `Vrr: incapable`.
-2. System Settings > Display > Adaptive sync: **Automatic** (on for fullscreen windows).
-3. Play fullscreen (**F11** or the launcher's fullscreen setting).
-
-The display's range must include the game's rate. Most start at 48 Hz, and the games' 58–60 Hz
-is inside it.
+**Free-running (display sync off):** audio is the clock, and each frame is shown as soon as it's
+drawn. The exit report's `video:` line shows how evenly: at the game's rate (mean error
+-0.005 ms), within about ±3 ms (sd 1.3 ms, the sound card's 2.8 ms blocks). On a fixed-refresh
+display: at 60 Hz one frame shown twice every 0.66 s; at 144 Hz frames alternate 2 and 3
+refreshes; at 240 Hz about one frame in ten stays up 5 refreshes instead of 4.
 
 ## Recording and testing
 
