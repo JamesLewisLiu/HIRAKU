@@ -197,7 +197,9 @@ pop'n music 1 (`popn1j`) is the same with `803jaa11` and `popn1j.7z`. The game i
 
 **Status:** HIRAKU runs both games in step with MAME, clock for clock (`oracle/scripts/*-boot.his`, 155 s):
 - power-on, self-test, the disk loads and attract mode;
-- for beatmania, a whole game too (`oracle/scripts/bm1stmix-play.his`, 217 s): coins, the turntable at the practice-stage prompt, song select, a song played with keys and scratches, game over.
+- a whole game of each:
+  - beatmania (`oracle/scripts/bm1stmix-play.his`, 217 s): coins, the turntable at the practice-stage prompt, song select, a song played with keys and scratches, game over;
+  - pop'n music (`oracle/scripts/popn1j-play.his`, 233 s): coins, game mode and genre select, a song played over all 9 buttons, game over.
 
 In these runs:
 - the work RAM, sprites and palette are identical to MAME's on every frame;
@@ -226,4 +228,4 @@ build/cmake/hiraku-bm1stmix --script oracle/scripts/bm1stmix-boot.his --out out/
 oracle/snapcmp.py out/run/bm1stmix-boot out/oracle/bm1stmix/boot
 ```
 
-The same with `bm1stmix-play.his` checks a game played through.
+The same with `bm1stmix-play.his` or `popn1j-play.his` checks a game played through.
