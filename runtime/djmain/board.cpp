@@ -66,9 +66,7 @@ std::vector<uint32_t> g_screen(SCREEN_W * SCREEN_H);
 
 // sound: both chips render at 48 kHz up to the present on every access
 uint64_t g_snd_done = 0;        // 48 kHz samples rendered so far
-std::vector<float> g_snd48;     // rendered, not yet resampled (stereo)
-double g_rs_pos = 0;            // resampler position in g_snd48 (input samples)
-size_t g_raw_done = 0;          // floats of g_snd48 already written to HK_DJ_RAW48
+std::vector<float> g_snd48;     // rendered, not yet handed to the shell (stereo, 48 kHz)
 
 uint64_t now() { return g_cycles + (g_in_execute ? (uint64_t)m68k_cycles_run() : 0); }
 
@@ -260,33 +258,19 @@ FILE *raw48() {
     return f;
 }
 
-// Resample what has been rendered to 44.1 kHz (linear) and hand it to the shell.
+// Hand what has been rendered to the shell, at the chips' own 48 kHz.
 void sound_flush() {
     sound_sync();
     if (FILE *f = raw48()) {
-        for (size_t k = g_raw_done; k < g_snd48.size(); k++) {
-            const float v = g_snd48[k] * 32768.0f;
+        for (float x : g_snd48) {
+            const float v = x * 32768.0f;
             const int16_t i = (int16_t)(v > 32767 ? 32767 : v < -32768 ? -32768 : v);
             fwrite(&i, 2, 1, f);
         }
         fflush(f);
     }
-    const size_t have = g_snd48.size() / 2;
-    if (have < 2) return;
-    static std::vector<float> out;
-    out.clear();
-    const double step = (double)K054539::RATE / 44100.0;
-    while (g_rs_pos + 1 < (double)have) {
-        size_t i = (size_t)g_rs_pos;
-        float f = (float)(g_rs_pos - (double)i);
-        for (int ch = 0; ch < 2; ch++) out.push_back(g_snd48[2 * i + ch] * (1 - f) + g_snd48[2 * i + 2 + ch] * f);
-        g_rs_pos += step;
-    }
-    const size_t used = (size_t)g_rs_pos;
-    g_snd48.erase(g_snd48.begin(), g_snd48.begin() + 2 * (ptrdiff_t)used);
-    g_raw_done = g_snd48.size();   // what is left was already written to HK_DJ_RAW48
-    g_rs_pos -= (double)used;
-    if (g_audio && !out.empty()) g_audio(out.data(), (int)(out.size() / 2));
+    if (g_audio && !g_snd48.empty()) g_audio(g_snd48.data(), (int)(g_snd48.size() / 2));
+    g_snd48.clear();
 }
 
 // ---------------------------------------------------------------------------

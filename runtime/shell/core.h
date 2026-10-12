@@ -29,7 +29,7 @@ public:
         bool ata_log = false;    // log disk commands
     };
     using FrameHook = std::function<void(uint64_t frame, const uint32_t *rgb, int w, int h)>;
-    using AudioSink = std::function<void(const float *lr, int frames)>;   // 44.1 kHz stereo
+    using AudioSink = std::function<void(const float *lr, int frames)>;   // stereo, at audio_rate()
 
     virtual ~Core() = default;
 
@@ -71,6 +71,9 @@ public:
     // Analog values set by a script are read live in MAME and never lag. Host
     // input doesn't go through this. 0 keeps the cores whose recorded runs predate it.
     virtual int script_button_delay() const { return 0; }
+    // The sample rate of what the audio sink gets: the machine's own where the
+    // host can take it as it is (DJ Main's sound chips run at 48 kHz).
+    virtual int audio_rate() const { return 44100; }
     // Move player's turntable by `delta` encoder counts (cores without one ignore it).
     virtual void turntable_add(int player, int delta) = 0;
     // Lamps as the game last drove them, in cab::lamps(family()) order (1 = lit),

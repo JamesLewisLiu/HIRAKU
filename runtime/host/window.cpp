@@ -25,6 +25,7 @@ int g_tw = 0, g_th = 0;
 std::chrono::steady_clock::time_point g_t0;
 bool g_started = false;
 
+int g_rate = 44100;               // the core's audio rate (Core::audio_rate)
 int g_target_frames = 0;          // audio queued ahead, when audio paces
 bool g_fast = false;              // Tab held: run as fast as possible (audio is dropped)
 int g_device_frames = 0;
@@ -54,16 +55,17 @@ void poll() {
 }
 }  // namespace
 
-bool window_open(const char *title, int scale, const std::string &bindings, int target_ms, bool fullscreen) {
+bool window_open(const char *title, int scale, const std::string &bindings, int target_ms, bool fullscreen, int rate) {
+    g_rate = rate;
     SDL_SetHint(SDL_HINT_AUDIO_DEVICE_SAMPLE_FRAMES, "128");   // ask for a small device buffer
     if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO)) return false;
     input_init(bindings);
-    SDL_AudioSpec spec{SDL_AUDIO_F32, 2, 44100};
+    SDL_AudioSpec spec{SDL_AUDIO_F32, 2, g_rate};
     g_audio = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &spec, nullptr, nullptr);
     if (g_audio) {
         SDL_AudioSpec dev{};
         SDL_GetAudioDeviceFormat(SDL_GetAudioStreamDevice(g_audio), &dev, &g_device_frames);
-        g_target_frames = 44100 * target_ms / 1000;
+        g_target_frames = g_rate * target_ms / 1000;
         // start with the target lead of silence: the first frames' window setup
         // would otherwise find an empty queue (and grow the target for nothing)
         std::vector<float> silence((size_t)g_target_frames * 2, 0.0f);
@@ -142,9 +144,9 @@ void push_chunk(const float *lr, int frames) {
         if (queued == 0) {
             g_ast.empty++;
             // self-tuning: an underrun means the machine needs more lead on this host
-            if (g_target_frames < 44100 * 30 / 1000) g_target_frames += 44;   // +1 ms, up to 30 ms
+            if (g_target_frames < g_rate * 30 / 1000) g_target_frames += g_rate / 1000;   // +1 ms, up to 30 ms
         }
-        if (queued < 44) {   // under 1 ms left: about to crackle
+        if (queued < g_rate / 1000) {   // under 1 ms left: about to crackle
             g_ast.low++;
             for (int c = 0; c < prof::NCAT; c++) g_ast.low_ns[c] += (uint64_t)prof::ns((prof::Cat)c);
             if (g_log_stalls) {
@@ -190,7 +192,7 @@ std::string audio_describe() {
                      "audio: %llu chunks, %llu ran low (<1 ms queued), %llu found the queue empty; worst gap %.1f ms\n"
                      "audio: host work per chunk  <1:%llu <2:%llu <4:%llu <8:%llu <16:%llu <32:%llu <64:%llu >=64:%llu ms\n"
                      "audio: during low chunks:",
-                     g_device_frames, g_device_frames * 1000.0 / 44100, g_target_frames, g_target_frames * 1000.0 / 44100,
+                     g_device_frames, g_device_frames * 1000.0 / g_rate, g_target_frames, g_target_frames * 1000.0 / g_rate,
                      (unsigned long long)g_ast.chunks, (unsigned long long)g_ast.low, (unsigned long long)g_ast.empty,
                      g_ast.worst_gap_ms, (unsigned long long)g_ast.gap_hist[0], (unsigned long long)g_ast.gap_hist[1],
                      (unsigned long long)g_ast.gap_hist[2], (unsigned long long)g_ast.gap_hist[3],

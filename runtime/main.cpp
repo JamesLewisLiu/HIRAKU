@@ -11,7 +11,7 @@
 //     --trace           write an oracle-format MMIO trace (out/mmio.bin), see oracle/
 //     --ata-log         log ATA/ATAPI commands
 //     --script FILE     run an oracle input script (.his): same inputs, same frames as in MAME
-//     --wav FILE        record the sound output (16-bit stereo, 44.1 kHz)
+//     --wav FILE        record the sound output (16-bit stereo, at the core's rate: 44.1 kHz, DJ Main 48 kHz)
 //     --digest FILE     write one line per frame: frame number, a hash of the picture and a running
 //                       hash of all sound so far (tools/regress.py checks runs are bit-identical with it)
 //     --debug-every N   print the CPU state every N frames
@@ -207,7 +207,7 @@ int main(int argc, char **argv) {
 #endif
         if (!wav) return;
         for (int k = 0; k < 2 * n; k++) {
-            float f = lr[k] * 32767.0f;
+            float f = lr[k] * 32768.0f;   // full scale 1.0 = 32768, as the chips and MAME's WAVs have it
             int16_t v = (int16_t)(f > 32767 ? 32767 : f < -32768 ? -32768 : f);
             fwrite(&v, 2, 1, wav);
         }
@@ -221,7 +221,7 @@ int main(int argc, char **argv) {
 #endif
     auto close_wav = [&]() {
         if (!wav) return;
-        uint32_t data = (uint32_t)(wav_frames * 4), riff = data + 36, rate = 44100, brate = rate * 4, fmt = 16;
+        uint32_t data = (uint32_t)(wav_frames * 4), riff = data + 36, rate = (uint32_t)machine.audio_rate(), brate = rate * 4, fmt = 16;
         uint16_t pcm = 1, ch = 2, align = 4, bits = 16;
         fseek(wav, 0, SEEK_SET);
         fwrite("RIFF", 1, 4, wav); fwrite(&riff, 4, 1, wav); fwrite("WAVEfmt ", 1, 8, wav);
@@ -257,7 +257,7 @@ int main(int argc, char **argv) {
     machine.set_on_fatal(finish);
 
 #ifdef HK_WITH_SDL
-    if (window_scale && !host::window_open(("HIRAKU - " + game).c_str(), window_scale, bindings, audio_ms, fullscreen)) {
+    if (window_scale && !host::window_open(("HIRAKU - " + game).c_str(), window_scale, bindings, audio_ms, fullscreen, machine.audio_rate())) {
         fprintf(stderr, "cannot open a window\n");
         return 1;
     }

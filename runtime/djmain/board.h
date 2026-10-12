@@ -31,7 +31,7 @@ constexpr uint64_t FRAME_CYCLES = 660 * 418;  // pixel clock = CPU clock: 57.996
 bool init(const Config &cfg);                  // false: a message was printed
 
 using FrameHook = std::function<void(uint64_t frame, const uint32_t *rgb, int w, int h)>;
-using AudioSink = std::function<void(const float *lr, int frames)>;   // 44.1 kHz stereo
+using AudioSink = std::function<void(const float *lr, int frames)>;   // 48 kHz stereo (K054539::RATE)
 void set_frame_hook(FrameHook h);
 void set_audio_sink(AudioSink s);
 [[noreturn]] void run();

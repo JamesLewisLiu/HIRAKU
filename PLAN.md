@@ -529,7 +529,10 @@ Points 9, 10 and 13 are opt-in Musashi hooks (`third_party/musashi/HIRAKU.md`), 
 - They take Firebeat pop'n's names (`runtime/shell/cabinet.cpp`, docs/LIGHTS.md), so one lights file serves both.
 
 **Still open:**
-- **The 48 → 44.1 kHz resampling** (linear for now; the chips' own output is exact).
+- ~~The 48 → 44.1 kHz resampling.~~ Done 2026-10-12:
+  - a core now says what rate it hands the shell (`Core::audio_rate()`), and DJ Main hands on the K054539s' 48 kHz as they are;
+  - the SDL device and `--wav` follow that rate, so there's no resampling (most devices run at 48 kHz);
+  - `--wav` now scales by 32768, as the chips and MAME do, so a DJ Main recording is sample-identical to MAME's `-wavwrite` (10.4 M samples in `bm1stmix-play`).
 - **The ATA security unlock**, for complete MIX and later.
 - **Faster drawing:** the tilemaps are drawn per pixel.
 

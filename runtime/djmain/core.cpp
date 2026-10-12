@@ -9,6 +9,7 @@
 
 #include "../shell/core.h"
 #include "board.h"
+#include "k054539.h"
 #include "m68k.h"
 
 namespace hk {
@@ -79,6 +80,7 @@ public:
 
     bool set_input(const std::string &name, int value) override { return dj::set_input(name, value); }
     int script_button_delay() const override { return 1; }
+    int audio_rate() const override { return dj::K054539::RATE; }
     void turntable_add(int player, int delta) override { dj::turntable_add(player, delta); }
     const std::vector<uint8_t> &lamp_state() const override { return dj::lamp_state(); }
     uint64_t lamp_changes() const override { return dj::lamp_changes(); }

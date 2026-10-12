@@ -8,12 +8,13 @@
 
 namespace hk::host {
 
-bool window_open(const char *title, int scale, const std::string &bindings, int audio_target_ms, bool fullscreen = false);
+bool window_open(const char *title, int scale, const std::string &bindings, int audio_target_ms, bool fullscreen = false,
+                 int audio_rate = 44100);
 // Present one frame; then sleep so that `virtual_seconds` does not run ahead
 // of real time. Returns false when the user closed the window.
 bool window_frame(const uint32_t *rgb, int w, int h, double virtual_seconds);
 void window_close();
-// Queue stereo float audio for playback (44.1 kHz) and pace the machine on it:
+// Queue stereo float audio for playback (at window_open()'s audio_rate) and pace the machine on it:
 // the emulation waits while more than the target is queued, and controls are
 // polled meanwhile. Audio is then the master clock (low, steady latency);
 // without an audio device, video frames pace time instead.

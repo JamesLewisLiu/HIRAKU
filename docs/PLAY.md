@@ -204,7 +204,7 @@ pop'n music 1 (`popn1j`) is the same with `803jaa11` and `popn1j.7z`. The game i
 In these runs:
 - the work RAM, sprites and palette are identical to MAME's on every frame;
 - every snapshot is pixel-identical;
-- the sound chips' output is sample-identical, before HIRAKU's 48 → 44.1 kHz resampling.
+- the sound is sample-identical: HIRAKU plays and records it at the chips' own 48 kHz (`--wav` matches MAME's `-wavwrite`).
 
 **Not yet:** a hands-on play test, turntable feel, the ATA password of complete MIX and later, and the other DJ Main sets.
 
