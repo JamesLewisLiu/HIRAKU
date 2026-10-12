@@ -346,6 +346,7 @@ The target machine is an **N100-class x86 mini PC**: 4 cores, roughly 60 % of a 
 - **These cores are level with MAME, by design.** They run MAME's own CPU and device code; only the scheduler and memory map are HIRAKU's. Firebeat's 3.4× comes from the static recompiler.
 - **DJ Main needs nothing more.** Under 1 ms a frame is under 2 ms on an N100.
 - **System 573 is at the edge of the budget on an N100.** Scaled by ~0.6, ddr2m is ~4 ms a frame on average (~25 % of a core) and ~8 ms at worst. Section 19's 573-4 has the profile.
+- **With `tools/pgo.py` (2026-10-13):** ddr2m runs at 993 % real time, ~1.5× MAME. Mean 1.67 ms a frame, worst 4.1 ms; ~2.8 / ~7 ms scaled to an N100.
 
 **What it took:**
 - **Fibers:** guest thread switches use a small x86-64 context switch instead of `swapcontext`. `swapcontext` made a system call (signal mask) on each of ~48,000 switches per second, which was 14 % of a run.
@@ -719,10 +720,17 @@ Each phase has an exit test. Sizes are assisted-effort guesses; DJ Main went fas
   | SPU, CD, DMA, timers | ~3 % |
 
   - **The CPU dominates (~80 %), so the MIPS recompiler below is the way to Firebeat-like gains.**
-  - **Cheaper first steps, each to be kept bit-identical:**
-    - a fast instruction fetch (the current page's host pointer, cached);
-    - skipping the breakpoint hooks while no debugger is attached;
-    - handing the frame to the host without the per-pixel copy.
+  - **Done (2026-10-13): profile-guided optimisation, 1.44× for free.**
+    - `tools/pgo.py` builds the 573 code instrumented, trains it on the ingested games (ddr2m-play, ddr3mj-boot), and rebuilds with the profile. The profile stays out of the repo.
+    - ddr2m from the flash: 21.8 → 15.1 s for 150 s of game time (993 % real time, ~1.5× MAME's 650 %). Frames: mean 2.41 → 1.67 ms, p99 4.0 → 3.4, worst 4.8 → 4.1.
+    - Every regress case is bit-identical.
+    - `-O3` alone is ~4 % and is now the default. `-march=x86-64-v3` added nothing and could let FMA contraction change floating-point results.
+  - **Tried and dropped: the "cheap steps" below, measured A/B.**
+    - A cached instruction-fetch page: 6 % *slower*.
+    - A row-wise frame copy: no change.
+    - The breakpoint checks are the emulated CPU's own debug registers (CP0 DCIC); they must stay, and they exit on their first test.
+    - The sampler's shares inside the interpreter loop are skewed: the switch's dispatch cost lands on the fetch line.
+  - **Cheaper first steps considered** (each tried above): a cached instruction-fetch page, skipping the breakpoint hooks, a row-wise frame copy.
 - **Budget**, as for M11: under 25 % of an N100 core on average, and no frame over ~8 ms of host work.
 - **If the CPU dominates, statically recompile the MIPS.**
   - The code runs from RAM, loaded from flash or CD, so the recompiler works from the blocks the interpreter has executed in reference runs, keyed by a hash of their bytes.

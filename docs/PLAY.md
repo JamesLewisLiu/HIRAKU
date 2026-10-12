@@ -443,6 +443,8 @@ ninja -C build/cmake hiraku-ddr2m
 build/cmake/hiraku-ddr2m --window
 ```
 
+**Faster with profile-guided optimisation:** after ingesting a 573 game, `tools/pgo.py` trains the build on it and rebuilds. It takes a few minutes, and the 573 games then need ~30 % less CPU (ddr2m: 1.67 ms a frame instead of 2.41 on the desktop), with identical results. Run it again after updating HIRAKU's 573 code.
+
 **The first boot installs the game to the board's flash:**
 1. The game asks "DO YOU WANT TO INITIALIZE FLASH-ROM?": press Test (F2).
 2. Erasing and writing take about 2.5 minutes.

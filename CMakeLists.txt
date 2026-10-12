@@ -258,9 +258,28 @@ set(HK_573_MAME
 list(TRANSFORM HK_573_MAME PREPEND ${HK_MAME}/)
 set(HK_573_INC ${HK_MAME}/shim ${HK_MAME}/shim/stubs ${HK_MAME}/src/devices ${HK_MAME}/src/mame/konami
   ${HK_MAME}/src/emu ${HK_MAME}/src/3rdparty)
+# The System 573's MAME code (CPU interpreter, GPU, SPU). Its time is MAME's interpreter, which
+# profile-guided optimisation speeds up by ~30 % (PLAN.md section 19, 573-4): tools/pgo.py trains
+# on the ingested games and sets HK_573_PGO_PROFILE. The profile stays out of the repo (it comes
+# from running the games). No -march: FMA contraction could change floating-point results.
+set(HK_573_OPT "-O3" CACHE STRING "compiler optimisation flags for the System 573's MAME code")
+set(HK_573_PGO_PROFILE "" CACHE FILEPATH "llvm-profdata profile for the System 573's MAME code (tools/pgo.py)")
+option(HK_573_PGO_GENERATE "build the System 573 code instrumented, to train a profile (tools/pgo.py)" OFF)
+separate_arguments(HK_573_OPT_LIST UNIX_COMMAND "${HK_573_OPT}")
+if((HK_573_PGO_GENERATE OR HK_573_PGO_PROFILE) AND NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+  message(WARNING "System 573 PGO needs clang (tools/pgo.py configures it): building without")
+elseif(HK_573_PGO_GENERATE)
+  list(APPEND HK_573_OPT_LIST -fprofile-instr-generate)
+elseif(HK_573_PGO_PROFILE AND EXISTS "${HK_573_PGO_PROFILE}")
+  list(APPEND HK_573_OPT_LIST "-fprofile-instr-use=${HK_573_PGO_PROFILE}")
+  message(STATUS "System 573: profile-guided, ${HK_573_PGO_PROFILE}")
+endif()
 add_library(hiraku_mame573 STATIC ${HK_573_MAME})
 target_include_directories(hiraku_mame573 PUBLIC ${HK_573_INC})
-target_compile_options(hiraku_mame573 PRIVATE -w -O2)
+target_compile_options(hiraku_mame573 PRIVATE -w ${HK_573_OPT_LIST})
+if(HK_573_PGO_GENERATE AND CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+  target_link_options(hiraku_mame573 INTERFACE -fprofile-instr-generate)
+endif()
 
 add_library(hiraku_sys573 STATIC runtime/sys573/board.cpp runtime/sys573/core.cpp)
 target_include_directories(hiraku_sys573 PUBLIC runtime)

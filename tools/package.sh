@@ -9,6 +9,8 @@
 #     '-DCMAKE_EXE_LINKER_FLAGS=-static-libstdc++ -static-libgcc' '-DCMAKE_BUILD_RPATH=$ORIGIN/lib'
 # (CMAKE_BUILD_RPATH, not -Wl,-rpath: ninja hands the flags to a shell, which eats $ORIGIN)
 # (no FluidSynth, the C++ runtime linked in, SDL3 looked for beside the binaries).
+# For the System 573 games ~30 % faster, add -DHK_573_PGO_PROFILE=<this PC's build/pgo/573.profdata>
+# (made by tools/pgo.py).
 #
 # The archive holds hiraku/bin (the binaries, stripped, with libSDL3 in bin/lib),
 # hiraku/games, hiraku/docs and an empty hiraku/dumps: the binaries take the folder
