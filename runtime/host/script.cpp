@@ -7,9 +7,7 @@
 #include <sstream>
 #include <vector>
 
-#include "../core/runtime.h"
-#include "../core/sched.h"
-#include "../firebeat/board.h"
+#include "../shell/core.h"
 
 namespace hk::script {
 
@@ -34,7 +32,7 @@ FILE *g_frames = nullptr, *g_log = nullptr;
 std::string g_out;
 
 void set_field(const std::string &name, int64_t value) {
-    if (!fb::set_input(name, (int)value)) fprintf(stderr, "script: unknown input field '%s'\n", name.c_str());
+    if (!core().set_input(name, (int)value)) fprintf(stderr, "script: unknown input field '%s'\n", name.c_str());
 }
 
 std::vector<std::string> tokens(const std::string &line) {
@@ -76,9 +74,11 @@ Action parse_action(const std::vector<std::string> &t, size_t k) {
 
 uint32_t fnv(uint32_t lo, uint32_t hi) {
     uint32_t h = 0x811c9dc5u;
+    const uint8_t *m = hi > lo ? core().mem(lo, hi - lo) : nullptr;
+    if (!m) return h;
     for (uint32_t a = lo; a + 3 < hi; a += 4) {
-        uint32_t p = HK_PHYS(a);
-        uint32_t v = (uint32_t)hk_ram[p] << 24 | (uint32_t)hk_ram[p + 1] << 16 | (uint32_t)hk_ram[p + 2] << 8 | hk_ram[p + 3];
+        const uint8_t *q = m + (a - lo);
+        uint32_t v = (uint32_t)q[0] << 24 | (uint32_t)q[1] << 16 | (uint32_t)q[2] << 8 | q[3];
         h = (h ^ v) * 0x01000193u;
     }
     return h;
@@ -134,10 +134,11 @@ bool frame(uint64_t f, const std::function<void()> &snap) {
         else ++it;
     }
     if (g_frames) {
-        fprintf(g_frames, "%llu %.6f", (unsigned long long)f, (double)now() / CPU_HZ);
+        fprintf(g_frames, "%llu %.6f", (unsigned long long)f, core().seconds());
         for (auto &[name, w, a] : g_watch) {
-            uint32_t p = HK_PHYS(a), v = 0;
-            for (int k = 0; k < w; k++) v = (v << 8) | hk_ram[p + k];
+            const uint8_t *m = core().mem(a, (uint32_t)w);
+            uint32_t v = 0;
+            for (int k = 0; m && k < w; k++) v = (v << 8) | m[k];
             fprintf(g_frames, " %x", v);
         }
         for (auto &[name, lo, hi] : g_hash) fprintf(g_frames, " %08x", fnv(lo, hi));
@@ -154,8 +155,10 @@ bool frame(uint64_t f, const std::function<void()> &snap) {
         else if (a.verb == "dump") {
             char name[256];
             snprintf(name, sizeof name, "%s/dump-%s-f%llu.bin", g_out.c_str(), a.field.c_str(), (unsigned long long)f);
-            if (FILE *o = fopen(name, "wb")) {
-                fwrite(hk_ram + HK_PHYS((uint32_t)a.a), 1, (size_t)(a.b - a.a), o);
+            const uint8_t *m = a.b > a.a ? core().mem((uint32_t)a.a, (uint32_t)(a.b - a.a)) : nullptr;
+            if (!m) fprintf(stderr, "script: dump %s: not plain memory\n", a.field.c_str());
+            else if (FILE *o = fopen(name, "wb")) {
+                fwrite(m, 1, (size_t)(a.b - a.a), o);
                 fclose(o);
             }
         } else if (a.verb == "quit") keep = false;

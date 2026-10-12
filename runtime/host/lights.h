@@ -2,7 +2,7 @@
 // Cabinet lamps out to the real world: HID controller LEDs, and a local socket
 // for anything else (LED strips, microcontrollers, the launcher's preview).
 //
-// Lights file (one per line, '#' comments), lamp names from runtime/firebeat/cabinet.cpp:
+// Lights file (one per line, '#' comments), lamp names from runtime/shell/cabinet.cpp:
 //     <lamp> = <output>[, <output>...]
 //   output:   hid:<vid>:<pid>[:<interface>]/<n>   (see hidout.h)
 //

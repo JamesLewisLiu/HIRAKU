@@ -11,7 +11,7 @@
 #include <QTimer>
 #include <QVector>
 
-#include "firebeat/cabinet.h"
+#include "shell/cabinet.h"
 
 class QComboBox;
 class QLabel;

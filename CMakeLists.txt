@@ -74,10 +74,16 @@ add_executable(hiraku-xt446 tools/xt446/xt446_render.cpp runtime/core/sampler.cp
 target_link_libraries(hiraku-xt446 PRIVATE hiraku_xt446)
 
 # --- cabinet tables, lights file formats (shared with the launcher) -------------
-add_library(hiraku_cabinet STATIC runtime/firebeat/cabinet.cpp runtime/host/hiddesc.cpp)
+add_library(hiraku_cabinet STATIC runtime/shell/cabinet.cpp runtime/host/hiddesc.cpp)
 target_include_directories(hiraku_cabinet PUBLIC runtime)
 
-# --- runtime core ------------------------------------------------------------
+# --- the shell: what every machine core shares (runtime/shell/core.h) --------------
+# Input scripts; the host front end below. Cores provide hk::core().
+add_library(hiraku_shell STATIC runtime/host/script.cpp)
+target_include_directories(hiraku_shell PUBLIC runtime)
+target_link_libraries(hiraku_shell PUBLIC hiraku_cabinet)
+
+# --- the Firebeat core: PPC403 runtime and the Firebeat board ------------------------
 add_library(hiraku_rt STATIC
   runtime/core/state.cpp
   runtime/core/interp.cpp
@@ -93,7 +99,6 @@ add_library(hiraku_rt STATIC
   runtime/dev/rf5c400.cpp
   runtime/dev/ymz280b.cpp
   runtime/spu/spu.cpp
-  runtime/host/script.cpp
   runtime/firebeat/board.cpp
   runtime/firebeat/spectrum.cpp
   runtime/firebeat/synth.cpp)
@@ -119,7 +124,7 @@ if(SDL3_FOUND)
   target_link_libraries(hiraku_hidout PUBLIC SDL3::SDL3 hiraku_cabinet)
   add_library(hiraku_host STATIC runtime/host/window.cpp runtime/host/input.cpp runtime/host/lights.cpp)
   target_include_directories(hiraku_host PUBLIC runtime)
-  target_link_libraries(hiraku_host PUBLIC SDL3::SDL3 hiraku_rt hiraku_hidout)
+  target_link_libraries(hiraku_host PUBLIC SDL3::SDL3 hiraku_shell hiraku_hidout)
   target_compile_definitions(hiraku_host PUBLIC HK_WITH_SDL=1)
   message(STATUS "hiraku: SDL3 front end enabled")
 endif()
@@ -184,13 +189,13 @@ function(hiraku_game id entry)
   target_include_directories(hiraku_${id}_code PRIVATE ${gen})
   # generated code: unused labels and parameters are normal
   target_compile_options(hiraku_${id}_code PRIVATE -w -O2 -fwrapv)
-  add_executable(hiraku-${id} runtime/main.cpp runtime/core/sampler.cpp)
+  add_executable(hiraku-${id} runtime/main.cpp runtime/firebeat/core.cpp runtime/core/sampler.cpp)
   target_compile_definitions(hiraku-${id} PRIVATE
     HK_GAME_ID="${id}" HK_ENTRY=${entry}u HK_LOAD=${load}u HK_ROOT="${CMAKE_SOURCE_DIR}")
-  target_link_libraries(hiraku-${id} PRIVATE hiraku_rt hiraku_${id}_code hiraku_rt)
   if(TARGET hiraku_host)
     target_link_libraries(hiraku-${id} PRIVATE hiraku_host)
   endif()
+  target_link_libraries(hiraku-${id} PRIVATE hiraku_shell hiraku_rt hiraku_${id}_code hiraku_rt)
 endfunction()
 
 hiraku_game(bm3final 0x80003000)

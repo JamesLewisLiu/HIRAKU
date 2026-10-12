@@ -10,8 +10,8 @@
 #include <set>
 #include <vector>
 
-#include "../firebeat/board.h"
-#include "../firebeat/cabinet.h"
+#include "../shell/core.h"
+#include "../shell/cabinet.h"
 
 namespace hk::host {
 
@@ -77,7 +77,7 @@ void press(const std::string &name, bool down) {
     n = std::max(0, n + (down ? 1 : -1));
     if ((before > 0) == (n > 0)) return;
     if (name.find("Turntable") != std::string::npos) return;   // handled in input_update
-    fb::set_input(name, n > 0 ? 1 : 0);
+    core().set_input(name, n > 0 ? 1 : 0);
 }
 
 int joy_index(SDL_JoystickID id) {
@@ -90,7 +90,7 @@ int joy_index(SDL_JoystickID id) {
 
 void input_init(const std::string &file) {
     SDL_InitSubSystem(SDL_INIT_JOYSTICK);
-    load_text(cab::default_bindings(fb::family()), "defaults");
+    load_text(cab::default_bindings(core().family()), "defaults");
     if (!file.empty()) {
         std::ifstream in(file);
         if (in) load_text(std::string((std::istreambuf_iterator<char>(in)), {}), file.c_str());
@@ -156,7 +156,7 @@ void input_update(double ms) {
         frac[p] += v * ms * 0.9;
         int whole = (int)frac[p];
         frac[p] -= whole;
-        if (whole) fb::turntable_add(p, whole);
+        if (whole) core().turntable_add(p, whole);
         // analog axis: follow its motion (wrapping, as turntable encoders do)
         for (auto &b : g_bind[base]) {
             if (b.src != Src::axis || b.joy >= (int)g_joys.size() || b.index >= 16) continue;
@@ -165,7 +165,7 @@ void input_update(double ms) {
                 int d = (int)a - g_axis_last[b.joy][b.index];
                 if (d > 32768) d -= 65536;
                 if (d < -32768) d += 65536;
-                if (d) fb::turntable_add(p, (int)std::lround(d * g_tt_scale));
+                if (d) core().turntable_add(p, (int)std::lround(d * g_tt_scale));
             }
             g_axis_last[b.joy][b.index] = a;
             g_axis_seen[b.joy][b.index] = true;

@@ -8,7 +8,7 @@ The easiest way to set this up is the launcher (`hiraku`, **Lights**). This page
 
 ## Lamps per cabinet
 
-The names are the ones lights files and the socket use (table: `runtime/firebeat/cabinet.cpp`).
+The names are the ones lights files and the socket use (table: `runtime/shell/cabinet.cpp`).
 
 | Cabinet | Lamps |
 |---|---|

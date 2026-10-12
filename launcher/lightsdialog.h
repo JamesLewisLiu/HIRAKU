@@ -11,7 +11,7 @@
 #include <QTimer>
 #include <QVector>
 
-#include "firebeat/cabinet.h"
+#include "shell/cabinet.h"
 #include "host/hidout.h"
 
 class QComboBox;

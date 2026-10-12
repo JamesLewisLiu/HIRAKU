@@ -14,8 +14,8 @@
 #include <thread>
 #include <vector>
 
-#include "../firebeat/board.h"
-#include "../firebeat/cabinet.h"
+#include "../shell/core.h"
+#include "../shell/cabinet.h"
 #include "hidout.h"
 
 namespace hk::host {
@@ -151,12 +151,12 @@ bool lights_init(const std::string &game, const std::string &family, const std::
 
 void lights_frame() {
     if (!g_running) return;
-    uint64_t c = fb::lamp_changes();
+    uint64_t c = core().lamp_changes();
     if (c == g_seen_changes) return;
     g_seen_changes = c;
     {
         std::lock_guard<std::mutex> lk(g_mu);
-        g_pending = fb::lamp_state();
+        g_pending = core().lamp_state();
         g_have_pending = true;
     }
     g_cv.notify_one();

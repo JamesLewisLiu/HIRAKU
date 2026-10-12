@@ -9,7 +9,7 @@
 #include <cstdlib>
 #include <thread>
 
-#include "../firebeat/board.h"
+#include "../shell/core.h"
 #include "input.h"
 #include "../core/prof.h"
 
@@ -148,7 +148,7 @@ void push_chunk(const float *lr, int frames) {
             g_ast.low++;
             for (int c = 0; c < prof::NCAT; c++) g_ast.low_ns[c] += (uint64_t)prof::ns((prof::Cat)c);
             if (g_log_stalls) {
-                fprintf(stderr, "stall: frame %llu, %.2f ms of work, queue %d frames:", (unsigned long long)fb::frame_count(), gap, queued);
+                fprintf(stderr, "stall: frame %llu, %.2f ms of work, queue %d frames:", (unsigned long long)core().frame_count(), gap, queued);
                 for (int c = 0; c < prof::NCAT; c++) fprintf(stderr, " %s %.2f", prof::NAMES[c], prof::ns((prof::Cat)c) / 1e6);
                 fprintf(stderr, "\n");
             }

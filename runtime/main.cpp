@@ -1,33 +1,31 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// hiraku-<game>: run a recompiled Firebeat game.
+// hiraku-<game>: the shell around a machine core (shell/core.h). It parses the
+// command line, records pictures, sound and digests, runs input scripts, drives
+// the window, controls and lamps, and decides when the run ends. The core
+// (Firebeat, DJ Main, ...) is whichever this binary was linked with.
 //
-//   hiraku-bm3final [options]
+//   hiraku-<game> [options]
 //     --frames N        stop after N video frames (default: run until killed)
 //     --snap-every N    write every Nth frame as PPM into --out (default off)
 //     --out DIR         output directory for snapshots/trace (default out/run/<game>)
 //     --trace           write an oracle-format MMIO trace (out/mmio.bin), see oracle/
-//     --interp-only     run everything in the interpreter (a plain emulator; no fibers)
-//     --shadow K        compare native vs interpreted for the first K calls of each function
 //     --ata-log         log ATA/ATAPI commands
-//     --image FILE      program image (default dumps/<game>/program.bin)
 //     --script FILE     run an oracle input script (.his): same inputs, same frames as in MAME
 //     --wav FILE        record the sound output (16-bit stereo, 44.1 kHz)
 //     --digest FILE     write one line per frame: frame number, a hash of the picture and a running
 //                       hash of all sound so far (tools/regress.py checks runs are bit-identical with it)
-//     --bios-seconds S  time the skipped BIOS would have taken (default 21.65, as measured in
-//                       MAME for beatmania III); boards like the SPU boot during it
+//     --debug-every N   print the CPU state every N frames
 //     --window [SCALE]  show the game in a window, in real time, with sound (SDL3 builds);
-//                       F2 test, 9 service, 5 coin, 1 start, Z S X D C keys, Left/Right turntable, Esc quits
+//                       F2 test, 9 service, 5 coin, 1 start, Esc quits; controls per cabinet
 //     --fullscreen      start the window fullscreen (F11 toggles)
 //     --bindings FILE   controls (see runtime/host/input.h)
 //     --lights FILE     drive HID controller LEDs from the cabinet lamps (see runtime/host/lights.h)
 //     --lights-socket P publish the lamps on a UNIX socket at path P (docs/LIGHTS.md)
 //     --audio-ms N      initial audio queue target (default 8); grows by 1 ms per underrun, up to 30
-//     --synth-stand-in  Keyboardmania: play the MIDI through FluidSynth even when the XT446 ROMs are there
-//     --soundfont FILE  ... with this SoundFont (implies --synth-stand-in)
-//     --nvram DIR       keep the machine's NVRAM (RTC RAM, flash) in DIR: loaded at start, saved on exit.
+//     --nvram DIR       keep the machine's NVRAM in DIR: loaded at start, saved on exit.
 //                       Default with --window: ~/.local/share/hiraku/<game>; otherwise none (every
 //                       run starts from the ROM set's defaults, so scripted runs are reproducible)
+//   plus the core's own options (--help lists them).
 //
 // The machine is described by dumps/<game>/machine.txt and dumps/<game>/rom/,
 // both written by tools/ingest.py from the user's own dumps.
@@ -40,17 +38,11 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-#include <fstream>
-#include <map>
 #include <string>
 
 #include "core/prof.h"
-#include "core/runtime.h"
-#include "core/sched.h"
-#include "firebeat/board.h"
-#include "firebeat/synth.h"
-#include "spu/spu.h"
 #include "host/script.h"
+#include "shell/core.h"
 #ifdef HK_WITH_SDL
 #include "host/lights.h"
 #include "host/window.h"
@@ -62,26 +54,10 @@
 #ifndef HK_ROOT
 #define HK_ROOT "."
 #endif
-#ifndef HK_LOAD
-#define HK_LOAD 0x80000000u   // where the BIOS puts the program (Keyboardmania 1st: 0x80080000)
-#endif
-#ifndef HK_ENTRY
-#define HK_ENTRY 0x80003000u
-#endif
 
 using namespace hk;
 
 namespace {
-
-std::map<std::string, std::string> read_kv(const std::string &path) {
-    std::map<std::string, std::string> kv;
-    std::ifstream in(path);
-    for (std::string line; std::getline(in, line);) {
-        auto eq = line.find('=');
-        if (eq != std::string::npos) kv[line.substr(0, eq)] = line.substr(eq + 1);
-    }
-    return kv;
-}
 
 void write_ppm(const std::string &path, const uint32_t *rgb, int w, int h) {
     FILE *f = fopen(path.c_str(), "wb");
@@ -153,34 +129,29 @@ void mkdirs(const std::string &path) {
 }  // namespace
 
 int main(int argc, char **argv) {
-    const std::string root = HK_ROOT, game = HK_GAME_ID;
-    std::string image = root + "/dumps/" + game + "/program.bin";
-    std::string out = root + "/out/run/" + game;
+    Core &machine = core();
+    Core::Options opt;
+    opt.root = HK_ROOT;
+    opt.game = HK_GAME_ID;
+    const std::string &game = opt.game;
+    std::string out = opt.root + "/out/run/" + game;
     uint64_t frames = 0, snap_every = 0, debug_every = 0;
-    bool trace = false, ata_log = false;
     int window_scale = 0;
     std::string wav_path, digest_path, script_path, bindings, nvram_dir, lights_file, lights_socket;
     bool fullscreen = false;
     bool nvram_given = false;
     int audio_ms = 8;
-    double bios_seconds = 21.65;
-    std::string soundfont;   // Keyboardmania: the synth card's stand-in
-    bool synth_stand_in = false;   // ... used even when the XT446 ROMs are there
     for (int k = 1; k < argc; k++) {
         std::string a = argv[k];
         auto val = [&]() -> std::string {
             if (k + 1 >= argc) { fprintf(stderr, "%s needs a value\n", a.c_str()); exit(2); }
             return argv[++k];
         };
-        if (a == "--image") image = val();
-        else if (a == "--frames") frames = std::stoull(val());
+        if (a == "--frames") frames = std::stoull(val());
         else if (a == "--snap-every") snap_every = std::stoull(val());
         else if (a == "--out") out = val();
-        else if (a == "--trace") trace = true;
-        else if (a == "--interp-only") { g_interp.call_native = false; g_interp.lle = true; }
-        else if (a == "--shadow") g_interp.shadow_checks = std::stoul(val());
-        else if (a == "--ata-log") ata_log = true;
-        else if (a == "--itrace") g_interp.trace = true;
+        else if (a == "--trace") opt.trace = true;
+        else if (a == "--ata-log") opt.ata_log = true;
         else if (a == "--debug-every") debug_every = std::stoull(val());
         else if (a == "--wav") wav_path = val();
         else if (a == "--digest") digest_path = val();
@@ -191,53 +162,29 @@ int main(int argc, char **argv) {
         else if (a == "--fullscreen") fullscreen = true;
         else if (a == "--nvram") { nvram_dir = val(); nvram_given = true; }
         else if (a == "--audio-ms") audio_ms = std::stoi(val());
-        else if (a == "--bios-seconds") bios_seconds = std::stod(val());
-        else if (a == "--soundfont") soundfont = val(), synth_stand_in = true;
-        else if (a == "--synth-stand-in") synth_stand_in = true;
         else if (a == "--window") window_scale = (k + 1 < argc && argv[k + 1][0] != '-') ? std::stoi(val()) : 2;
-        else { fprintf(stderr, "unknown option %s\n", a.c_str()); return 2; }
+        else if (a == "--help" || a == "-h") {
+            printf("hiraku-%s [options]: see runtime/main.cpp for the common options. This core also takes:\n%s",
+                   game.c_str(), machine.options_help().c_str());
+            return 0;
+        }
+        else if (!machine.option(a, val)) { fprintf(stderr, "unknown option %s (--help lists them)\n", a.c_str()); return 2; }
     }
     setvbuf(stdout, nullptr, _IOLBF, 0);
     mkdirs(out);
+    opt.out = out;
 
-    auto machine = read_kv(root + "/dumps/" + game + "/machine.txt");
-    if (machine.empty()) {
-        fprintf(stderr, "no dumps/%s/machine.txt - run tools/ingest.py on your program disc first\n", game.c_str());
-        return 1;
-    }
-
-    ram_init();
-    if (!ram_load(image, HK_PHYS(HK_LOAD))) { fprintf(stderr, "cannot load %s\n", image.c_str()); return 1; }
-
-    fb::Config cfg;
-    cfg.game = game;
-    cfg.family = machine["family"];
-    cfg.rom_dir = root + "/dumps/" + game + "/rom";
-    cfg.dongle_file = machine["dongle"];
-    if (!machine["cabinet"].empty()) cfg.cabinet = std::stoi(machine["cabinet"]);
-    cfg.cd_master = machine["cd_master"];
-    cfg.cd_slave = machine["cd_slave"];
     if (!nvram_given && window_scale) {
         const char *xdg = getenv("XDG_DATA_HOME"), *home = getenv("HOME");
         std::string base = xdg && *xdg ? std::string(xdg) : std::string(home ? home : ".") + "/.local/share";
         nvram_dir = base + "/hiraku/" + game;
     }
-    cfg.nvram_dir = nvram_dir;
+    opt.nvram_dir = nvram_dir;
     if (!nvram_dir.empty()) {
         mkdirs(nvram_dir);
         printf("nvram: %s\n", nvram_dir.c_str());
     }
-    if (trace) cfg.trace_dir = out;
-    cfg.ata_log = ata_log;
-    fb::init(cfg);
-    if (cfg.family == "kbm") synth::init(cfg.rom_dir, soundfont, synth_stand_in);
-#ifdef HK_WITH_SDL
-    if (!lights_file.empty() || !lights_socket.empty()) host::lights_init(game, cfg.family, lights_file, lights_socket);
-#else
-    if (!lights_file.empty() || !lights_socket.empty()) fprintf(stderr, "this build has no lights (needs SDL3)\n");
-#endif
 
-    // sound: the SPU board when the machine has one, otherwise the board's YMZ280B
     FILE *wav = nullptr;
     uint64_t wav_frames = 0;
     if (!wav_path.empty()) {
@@ -248,7 +195,8 @@ int main(int argc, char **argv) {
     FILE *digest = digest_path.empty() ? nullptr : fopen(digest_path.c_str(), "w");
     if (!digest_path.empty() && !digest) { fprintf(stderr, "cannot write %s\n", digest_path.c_str()); return 1; }
     uint64_t audio_hash = HASH_SEED;
-    auto sink = [&](const float *lr, int n) {
+    // the sink goes in before init(): machines make sound while the skipped BIOS time passes
+    machine.set_audio_sink([&](const float *lr, int n) {
         if (digest) audio_hash = hash_words(audio_hash, lr, 2 * (size_t)n);
 #ifdef HK_WITH_SDL
         if (window_scale) host::audio_push(lr, n);
@@ -260,23 +208,13 @@ int main(int argc, char **argv) {
             fwrite(&v, 2, 1, wav);
         }
         wav_frames += (uint64_t)n;
-    };
-    if (!machine["spu_rom"].empty()) {
-        spu::Config sc;
-        sc.rom = cfg.rom_dir + "/" + machine["spu_rom"];
-        sc.hdd = machine["spu_hdd"];
-        sc.dvd = machine["spu_dvd"];
-        sc.mix_effect = cfg.family == "bm3";
-        sc.log = ata_log;
-        if (!spu::init(sc)) {
-            fprintf(stderr, "cannot start the SPU (%s)\nthe SPU program comes from the MAME ROM set: tools/ingest.py DISC --romset %s.zip\n",
-                    sc.rom.c_str(), game.c_str());
-            return 1;
-        }
-        spu::set_audio_sink(sink);
-    } else {
-        fb::set_audio_sink(sink);
-    }
+    });
+    if (!machine.init(opt)) return 1;
+#ifdef HK_WITH_SDL
+    if (!lights_file.empty() || !lights_socket.empty()) host::lights_init(game, machine.family(), lights_file, lights_socket);
+#else
+    if (!lights_file.empty() || !lights_socket.empty()) fprintf(stderr, "this build has no lights (needs SDL3)\n");
+#endif
     auto close_wav = [&]() {
         if (!wav) return;
         uint32_t data = (uint32_t)(wav_frames * 4), riff = data + 36, rate = 44100, brate = rate * 4, fmt = 16;
@@ -290,48 +228,10 @@ int main(int argc, char **argv) {
         wav = nullptr;
     };
 
-    // HIRAKU starts in the game, not the BIOS. On the real machine (and in MAME)
-    // everything else powered up with the BIOS: the SPU's 68000, for one, tests
-    // its 32 MiB of wave RAM meanwhile. Give the machine that time.
-    if (bios_seconds > 0) {
-        sched_idle((uint64_t)(bios_seconds * CPU_HZ));
-        spu::catch_up();
-    }
-
-    static hk_ctx ctx;
-    memset(&ctx, 0, sizeof ctx);
-    ctx.pc = HK_ENTRY;
-    glue_init(&ctx);
-    fb::set_trace_ctx(&ctx);
-    printf("hiraku %s: %u recompiled functions, %s\n", game.c_str(), hk_func_count,
-           g_interp.lle ? "interpreter only" : "native");
-
     static FrameTimes frame_times;
     auto report = [&]() {
         frame_times.print();
-        printf("frames %llu, virtual time %.3f s, %llu interpreted insns, %llu native calls, %llu exceptions "
-               "(%llu vectors native), %llu threads, %llu thread switches\n",
-               (unsigned long long)fb::frame_count(), (double)now() / CPU_HZ, (unsigned long long)g_stats.insns,
-               (unsigned long long)g_stats.native_calls, (unsigned long long)g_stats.exceptions,
-               (unsigned long long)g_stats.native_vectors, (unsigned long long)g_stats.threads_started + 1, (unsigned long long)g_stats.thread_switches);
-        if (g_interp.shadow_checks)
-            printf("shadow: %llu identical, %llu MISMATCHED, %llu impure\n", (unsigned long long)g_stats.shadow_ok,
-                   (unsigned long long)g_stats.shadow_bad, (unsigned long long)g_stats.shadow_impure);
-        if (!spu::present()) printf("ymz280b: %llu key-ons\n", (unsigned long long)fb::ymz_key_ons());
-        if (fb::family() == "kbm")
-            printf("midi to the synth: %llu bytes (%s)\n", (unsigned long long)fb::midi_out_bytes(), synth::describe().c_str());
-        if (spu::present()) {
-            auto &st = spu::stats();
-            printf("spu: pc %06x sr %04x, %.2f M 68000 cycles, IRQ2 %llu IRQ4 %llu IRQ6 %llu, %llu ATA commands, %.1f MiB DMA, %llu key-ons\n",
-                   st.pc, st.sr, st.cycles / 1e6, (unsigned long long)st.irq2, (unsigned long long)st.irq4, (unsigned long long)st.irq6,
-                   (unsigned long long)st.ata_commands, st.dma_words * 2 / 1048576.0, (unsigned long long)st.key_ons);
-            if (st.lat_n) {
-                printf("latency (player key -> RF5C400 key-on, virtual time): n=%llu mean %.2f ms, min %.2f, max %.2f; 2 ms buckets:",
-                       (unsigned long long)st.lat_n, st.lat_sum_ms / st.lat_n, st.lat_min_ms, st.lat_max_ms);
-                for (int k = 0; k < 16; k++) printf(" %u", st.lat_hist[k]);
-                printf("\n");
-            }
-        }
+        machine.report();
         close_wav();
         if (digest) { fclose(digest); digest = nullptr; }
 #ifdef HK_WITH_SDL
@@ -343,7 +243,14 @@ int main(int argc, char **argv) {
         host::lights_close();
 #endif
     };
-    g_on_fatal = [&]() { script::close(); fb::shutdown(); lights_off(); report(); };
+    // every way out: the machine saves its NVRAM, lamps go dark, statistics are printed
+    auto finish = [&]() {
+        script::close();
+        machine.shutdown();
+        lights_off();
+        report();
+    };
+    machine.set_on_fatal(finish);
 
 #ifdef HK_WITH_SDL
     if (window_scale && !host::window_open(("HIRAKU - " + game).c_str(), window_scale, bindings, audio_ms, fullscreen)) {
@@ -359,16 +266,13 @@ int main(int argc, char **argv) {
     static std::atomic<bool> stop_requested{false};
     std::signal(SIGINT, [](int) { stop_requested = true; });
     std::signal(SIGTERM, [](int) { stop_requested = true; });
-    fb::set_frame_hook([&](uint64_t f, const uint32_t *rgb, int w, int h) {
+    machine.set_frame_hook([&](uint64_t f, const uint32_t *rgb, int w, int h) {
         frame_times.frame(f);
         if (digest)
             fprintf(digest, "%llu %016llx %016llx\n", (unsigned long long)f,
                     (unsigned long long)hash_words(HASH_SEED, rgb, (size_t)w * h), (unsigned long long)audio_hash);
         if (stop_requested) {
-            script::close();
-            fb::shutdown();
-            lights_off();
-            report();
+            finish();
 #ifdef HK_WITH_SDL
             if (window_scale) host::window_close();
 #endif
@@ -381,27 +285,20 @@ int main(int argc, char **argv) {
                 write_ppm(out + name, rgb, w, h);
             });
             if (!keep) {
-                script::close();
-                fb::shutdown();
-                lights_off();
-                report();
-                exit(g_stats.shadow_bad ? 1 : 0);
+                finish();
+                exit(machine.exit_code());
             }
         }
 #ifdef HK_WITH_SDL
-        if (window_scale && !host::window_frame(rgb, w, h, (double)now() / CPU_HZ)) {
-            fb::shutdown();
+        if (window_scale && !host::window_frame(rgb, w, h, machine.seconds())) {
+            machine.shutdown();
             lights_off();
             report();
             host::window_close();
             exit(0);
         }
 #endif
-        if (debug_every && f % debug_every == 0)
-            printf("f%llu pc %08x lr %08x msr %08x r1 %08x | EXISR %08x EXIER %08x TCR %08x TSR %08x | insns %llu exc %llu sw %llu\n",
-                   (unsigned long long)f, ctx.pc, ctx.lr, ctx.msr, ctx.r[1], g_cpu.dcrs[0x40], g_cpu.dcrs[0x42],
-                   g_cpu.sprs[0x3da], g_cpu.sprs[0x3d8], (unsigned long long)g_stats.insns,
-                   (unsigned long long)g_stats.exceptions, (unsigned long long)g_stats.thread_switches);
+        if (debug_every && f % debug_every == 0) machine.debug_line(f);
 #ifdef HK_WITH_SDL
         host::lights_frame();
 #endif
@@ -411,17 +308,12 @@ int main(int argc, char **argv) {
             write_ppm(out + name, rgb, w, h);
         }
         if (frames && f >= frames) {
-            fb::shutdown();
+            machine.shutdown();
             lights_off();
             report();
-            exit(g_stats.shadow_bad ? 1 : 0);
+            exit(machine.exit_code());
         }
     });
 
-    // Boot as the BIOS leaves the CPU: supervisor state at the image's entry.
-    // The boot code is a recompiled function like any other (it never returns);
-    // --interp-only runs it, and everything else, in the interpreter.
-    if (hk_func boot = g_interp.lle ? nullptr : lookup(HK_ENTRY)) boot(&ctx);
-    else interp_run(&ctx, 0xffffffff, 0, UINT64_MAX);
-    fatal(&ctx, "the guest stopped running");
+    machine.run();
 }

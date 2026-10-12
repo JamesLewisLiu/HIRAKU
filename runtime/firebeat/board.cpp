@@ -26,7 +26,7 @@
 #include "../dev/rtc65271.h"
 #include "../dev/ymz280b.h"
 #include "../spu/spu.h"
-#include "cabinet.h"
+#include "../shell/cabinet.h"
 #include "spectrum.h"
 #include "synth.h"
 
