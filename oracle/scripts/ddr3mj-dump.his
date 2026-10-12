@@ -1,0 +1,8 @@
+# DDR 3rd Mix boot (as ddr3mj-boot), dumping main RAM around the first frame
+# where HIRAKU and MAME differ, to find what differs.
+game ddr3mj
+hash ram  0x80000000 0x80400000
+at 61 mark rtc
+at 139 dump ram 0x80000000 0x80400000
+at 140 dump ram 0x80000000 0x80400000
+at 142 quit

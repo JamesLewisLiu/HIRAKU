@@ -220,7 +220,7 @@ Durations are rough, assume one person, and are assisted. Each milestone has a c
 | **M11** | Efficiency for N100-class PCs | Every Firebeat game within its budget on an N100-class mini PC (§14): average under 25 % of one core, no frame over ~8 ms of host work. Bit-identical to the current runs (`tools/regress.py`). | **in progress** (§14):<br>• bm3final about 3.4× more efficient than MAME, 9.6 % of a desktop core in gameplay.<br>• Keyboardmania: the XT446 synth card runs on its own thread, mean frame 7.2 → 6.5 ms, worst 12.8 → 10.6 ms (bit-identical).<br>• Disk images read ahead in big stretches: a cold-cache bm3 practice run went from a 251 ms worst frame to 9.8 ms.<br>• **Left:** the SWP30 MEG is still ~5 ms a frame on its core (kbm).<br>• **Blocked** on measuring real N100 hardware (not available right now). |
 | **M12** | Cores: the shell split | The host layer (launcher, window, input, lights, scripts, oracle) talks to the machine through one core interface. Firebeat moves behind it unchanged (bit-identical digests). | **done 2026-10-12** (§17): `runtime/shell/core.h`; Firebeat and DJ Main are cores, each binary links one. Firebeat bit-identical. |
 | **M13** | DJ Main core | beatmania 1st mix → THE FINAL, pop'n 1–3, pop'n stage: interpreted 68EC020 plus MAME's devices, checked against MAME. Analog turntable and lamps. | **in progress** (§17, docs/PLAY.md):<br>• `bm1stmix` and `popn1j` run in **cycle-exact lockstep with MAME**: work RAM, sprites and palette identical on every frame, with sound sample-identical. This holds through boot and a scripted game of each: beatmania (coin, turntable, song select, a song with keys and scratches, game over) and pop'n (all 9 buttons).<br>• In `tools/regress.py`.<br>• All 29 MAME sets have game files; the ATA password lock is ported from MAME (unit-tested).<br>• **Left:** hands-on test, running the other sets (no dumps yet), faster drawing. |
-| **M14** | System 573 core | PS1 core (interpreted, then statically recompiled MIPS), analog-I/O games first (CD audio), then digital I/O (MP3 + FPGA). | months, **unblocked 2026-10-12** (§16):<br>• `ddr3mj` (DDR 3rd Mix, analog I/O): MAME stops at error 147 until the first install from CD (install cassette).<br>• `drmn10m` (DrumMania 10th, digital I/O): installs from CD to flash in MAME, then wants a reboot.<br>• Both are NOT_WORKING in MAME; MAME runs them at ~650–670 % real time. |
+| **M14** | System 573 core | The roadmap is §19. MAME's PS1 devices with an interpreted CPU, in cycle-exact lockstep with MAME on an analog-board game (CD audio). Then the digital board (MP3 + FPGA). Then a static MIPS recompiler if the CPU is what costs most on an N100. | **in progress** (§19):<br>• `ddr3mj` (digital board) runs **in lockstep with MAME at the pin**: main RAM identical on all 3,600 frames of a 60 s boot, all 60 snapshots pixel-identical. That covers the BIOS, the CD boot, the cassette and PC Card checks and ERROR 147 (no install yet). It is a regress case. Host cost ~3.5 ms a frame on the desktop, interpreted.<br>• Every device is MAME's own code on the framework shim, run by a copy of MAME's scheduler.<br>• **Next:** `ddr2m` (the owner downloads it), the install flow, ingest, the SPU sound against MAME's WAV, inputs and lamps. |
 | **M15** | Twinkle core (beatmania IIDX 1st–8th) | The M14 PS1 core plus Twinkle's SPU (68000 + RF5C400, already in HIRAKU), SCSI CD, ATA hard disk. Then the background video MAME lacks: Video CD (MPEG-1) for early styles, DVD for 6th–8th. | **unblocked 2026-10-12** (§16):<br>• `bmiidx3` (3rd style) is on hand; MAME passes its device check and stops at the normal first-boot backup-RAM error (E150).<br>• MAME ~570 % real time; its driver lists "emulate dvd player and video mixing" as a TODO. |
 
 Rough total to playable BM3 Final is about 4 months. Each later family should cost weeks, not months, if the SDK-signature bet in §3.3 holds.
@@ -399,7 +399,7 @@ The coupling to remove is `runtime/host/{window,input,lights,script}.cpp` includ
 |---|---|---|
 | Hardware | 68EC020 at 16 MHz, 1 MiB EPROM, 64 KiB RAM; K056832 + K055555 video; 2× K054539; ATA hard disk (password-locked from complete MIX on) | PS1 (R3000A + GTE, GPU, SPU) with an ATAPI CD, PCMCIA flash and security cassettes; digital I/O board (FPGA + MAS3507D MP3) |
 | Games | beatmania 1st mix → THE FINAL, complete MIX 1/2, Club MIX, CORE REMIX, DCT, hiphopmania/beatstage, pop'n music 1–3, pop'n stage/EX (~20) | DDR 1st → Extreme, GuitarFreaks 1st–11th, DrumMania 1st–10th, Dance Maniax, Mambo a GoGo, Martial Beat (~60) |
-| MAME | every set working, no flags | almost every BEMANI set NOT_WORKING, all with imperfect sound |
+| MAME | every set working, no flags | every BEMANI set has imperfect sound. The analog-board games (DDR 1st/2nd, GuitarFreaks 1st/2nd) work; almost every digital-board game is NOT_WORKING (§19) |
 | CPU plan | interpret (Musashi; trivially cheap) | interpret to bring it up, then statically recompile the MIPS (the N100 budget needs it) |
 | Main risk | MAME's tilemap/graphics framework is tangled into K056832 | the MP3/FPGA sync that DDR's timing depends on; the size of a PS1 core |
 
@@ -433,7 +433,7 @@ The coupling to remove is `runtime/host/{window,input,lights,script}.cpp` includ
 |---|---|---|---|---|
 | `bm1stmix` beatmania (1997) | DJ Main | `753jaa11` (HDD) | title screen | 1,961 % |
 | `popn1j` pop'n music (1998) | DJ Main | `803jaa11` (HDD) | title screen | 1,921 % |
-| `ddr3mj` DDR 3rd Mix | 573, analog I/O | `887jaa02` | ERROR 147: flash checksum. Needs the first install: set MAME's cassette slot to "install", reset, install, then back to "game" (ksys573.cpp, note 3). | 672 % |
+| `ddr3mj` DDR 3rd Mix | 573, digital I/O | `887jaa02` | ERROR 147: flash checksum. Needs the first install: set MAME's cassette slot to "install", reset, install, then back to "game" (ksys573.cpp, note 3). | 672 % |
 | `drmn10m` DrumMania 10th Mix | 573, digital I/O | `d40jaa02` (runtime), `d40jba02` (multisession), `d40jca02` (HDD installer, needs the network unit) | INFO 508: install from CD to flash done, power-cycle to play | 657 % |
 | `bmiidx3` IIDX 3rd style | Twinkle | `gc992-jac01` (program CD), `gc992-jaa04` (Video CD), `992hdda01` (HDD) | device check all OK but backup RAM: E150, 1P Start clears it (normal first boot) | 567 % |
 
@@ -584,6 +584,179 @@ Firebeat runs recompiled code, so it can't be in lockstep with MAME. What can be
   - DVDs need `chdman createdvd -hs 2048`: MAME 0.289's DVD drive throws "unhandled exception" on chdman's default 4 KiB hunks.
 
 **Not checked:** ppp's sensors, and gameplay rather than attract.
+
+## 19. System 573 roadmap (M14, written 2026-10-12)
+
+The approach is DJ Main's (§17): port MAME's devices, interpret the CPU, and match MAME cycle for cycle before anything else. Then make it cheap enough for an N100.
+
+### What MAME has
+
+Sources: MAME master `ksys573.cpp` (149 sets), `k573dio`, `k573fpga`, `mas3507d`, `k573cass`, and the PS1 devices in `devices/cpu/psx`, `video/psx`, `sound/spu`. Every file is BSD-3, which is fine for GPLv3.
+
+**The board:**
+- A CXD8530CQ (R3000A with GTE) at 33.8688 MHz with 4 MiB of RAM.
+- The CXD8561Q GPU, and the SPU with 512 KiB of RAM.
+- BIOS `700A01` (4 Mbit).
+- 16 MiB of onboard flash: eight 29F016As, the chip HIRAKU already has (`runtime/dev/flash29f016a`).
+- An M48T58 timekeeper, an ADC0834 for analog inputs, and two PCMCIA slots.
+- A CR-589 ATAPI CD drive, whose CD audio goes into the board.
+- The security cassette on the PS1's serial port 1: an X76F041, X76F100 or ZS01, some with a DS2401 serial number.
+- JVS, for the memory-card reader.
+
+**The I/O boards** (mapped at 0x1f640000):
+- **Analog, GX700-PWB(F):** DDR 1st and 2nd, GuitarFreaks 1st and 2nd, DrumMania 1st, early Dancing Stage. Music is CD audio.
+- **Digital, GX894-PWB(B):** DDR 3rd Mix and later, GuitarFreaks 3rd and later, DrumMania 2nd and later, Dance Maniax, Mambo a GoGo, Martial Beat. It has an FPGA that decrypts MP3 data, held in 64 MiB of EDO RAM, and feeds it to a MAS3507D. It also drives lamps.
+
+**MAME's status:**
+- Every BEMANI set is flagged `IMPERFECT_SOUND`.
+- **The analog-board games mostly work in MAME:** DDR 1st (all but `ddrja`), 2nd Mix with its Link and Club versions, GuitarFreaks 1st and 2nd, and the analog Dancing Stage sets.
+- **Almost every digital-board set is `NOT_WORKING`.** The exceptions are three Korean Percussion Freaks sets. DrumMania 1st (analog) is `NOT_WORKING` too. The driver doesn't say why.
+- **Correction to §15 and §16:** `ddr3mj` is a digital-board game, not an analog one. Both 573 sets on hand, `ddr3mj` and `drmn10m`, are digital.
+
+**MAME's timings, which decide how hard lockstep will be:**
+- **CPU: one cycle per instruction**, including the load delay slots, with no wait states and no cache-miss cost (the execute loop in `psx.cpp`). That is easy to match exactly. It also makes a cycle-exact static recompiler straightforward: a block costs its instruction count.
+- **CD: a fixed 30,000 CPU cycles per sector** (`ATAPI_CYCLES_PER_SECTOR`; the driver notes the BIOS needs at least 2,000).
+- **The MP3 playback counter**, which the digital games read to place their notes:
+  - MAME's FPGA counts machine time from the first MPEG frame sync, at 44.1 kHz, not decoded samples.
+  - So the MP3 decoder can run on a worker thread, as the XT446 does, without changing what the game sees.
+
+**Size of the port:** about 16,000 lines of MAME code.
+
+| Part | Lines |
+|---|---|
+| CPU, GTE, DMA, IRQ, timers, SIO | ~5,200 |
+| GPU | ~3,500 |
+| SPU | ~3,200 |
+| Driver parts | ~1,500 |
+| Digital board (k573dio, FPGA, MAS3507D) | ~1,350 |
+| Cassette chips | ~1,500 |
+
+**Cost in MAME:** 650–670 % of real time, about 15 % of a desktop core (§16).
+
+### Media needed
+
+"Match MAME first" needs a game MAME runs. Neither set on hand qualifies.
+
+Get one analog set:
+- **`ddr2m`** (DDR 2ndMIX, CD `895jaa02`), recommended: DDR is the biggest family and its pads are plain switches.
+- or **`gtrfrks`** (GuitarFreaks, CD `886__d02`).
+
+Each is the analog board, an X76F041 cassette and one CD, nothing else. MAME's set holds the BIOS, the cassette data and the CHD.
+
+### Phases
+
+Each phase has an exit test. Sizes are assisted-effort guesses; DJ Main went faster than its estimate.
+
+**573-0. Oracle and media** (a day or two)
+- **`tools/ingest.py` for 573 sets:**
+  - the BIOS and the cassette EEPROM;
+  - the CD, via `chdman extractcd` (memory-capped);
+  - a `game.toml` giving the I/O board, cassette type, PCMCIA cards and flash.
+- **MAME reference runs** for each set: boot to attract, and a scripted song.
+  - First-boot installs (CD to flash) are done once in MAME, and the flash, timekeeper and cassette are kept as seeded NVRAM (`HIRAKU_NVRAM`), as for kbm and pop'n 8.
+  - `ddr3mj` installs with MAME's "install" cassette (ksys573.cpp, note 3).
+- **Lua taps:** CPU state, main RAM, VRAM and SPU RAM at chosen frames. If Lua can't reach VRAM, use the debugger's `save` command.
+- **Determinism:** two MAME runs from the same script must match. The M48T58's clock comes from the host, as Firebeat's RTC65271 did; pin it or mask it in comparisons.
+- **Exit:** reference runs for `ddr2m` (or `gtrfrks`), `ddr3mj` and `drmn10m` that repeat exactly.
+
+**573-1. The board, interpreted, in lockstep** (1–2 weeks)
+- **What to build in `runtime/sys573/`:**
+  - MAME's PS1 CPU (GTE, DMA, interrupts, root counters, the serial port for the cassette);
+  - the GPU and the SPU;
+  - the 573 memory map;
+  - the flash bank, on the existing flash chip;
+  - the timekeeper, ADC0834, analog I/O board, and X76F041/X76F100 cassettes;
+  - the CR-589 on `runtime/dev/ata` (which already does ATAPI), with MAME's per-sector time;
+  - CD audio, through the existing path.
+- **Bring-up order:** the BIOS to its self-test, then its flash-against-CD check, then the game.
+- **Measure the host cost by part** (CPU, GPU, SPU) with `HK_PROFILE`. This decides 573-4.
+- **Exit:** the analog set boots and runs attract in lockstep with MAME: main RAM and VRAM identical at every snapshot, SPU output sample-identical. Regress cases are added.
+
+**573-2. Playable analog games** (about a week)
+- **Controls**, by MAME name in `cabinet.cpp`:
+  - DDR: 4 panels per player and the menu buttons;
+  - GuitarFreaks: 3 neck buttons, pick, wailing, and the effect knob (analog, through the ADC0834).
+- **Lamps:** the analog board's outputs (`gx700pwbf_output`) mapped to the cabinet and pad lights (docs/LIGHTS.md).
+- **Scripts:** a scripted game (coin, song select, a song with steps, results) in lockstep, like `bm1stmix-play`.
+- **Launcher entries and PLAY.md.**
+- **Exit:** a scripted song in cycle-exact lockstep with MAME, and a hands-on test by the owner, with real pads if available.
+
+**573-3. Digital I/O, the MP3 games** (2–3 weeks; the main risk)
+- **What to port:**
+  - `k573dio` and `k573fpga`: MP3 decryption, the playback counter, lamp outputs;
+  - the MAS3507D: MAME decodes with its `mp3_audio`; HIRAKU decodes on a worker thread;
+  - the DS2401, and the ZS01 and X76F100 cassettes;
+  - the multi-session and network units, stubbed as MAME does.
+- **Games:** `ddr3mj` and `drmn10m` are already on hand.
+- **Lockstep with MAME first.** Then find out why MAME flags these sets `NOT_WORKING`:
+  - play them through in MAME, and read its bug tracker and git log;
+  - depart from MAME only where a second reference shows it is wrong: hardware notes (psx-spx, community 573 research such as spicyjpeg's), or recordings from a real cabinet if the owner can get them;
+  - each departure is a switch, so a MAME-exact mode stays available for the oracle.
+- **Exit:** `ddr3mj` plays a full song with the MP3 in step with the arrows (`oracle/audiosync.py` against MAME's WAV), and `drmn10m` plays a song.
+
+**573-4. Efficiency** (sized by the measurements in 573-1)
+- **Budget**, as for M11: under 25 % of an N100 core on average, and no frame over ~8 ms of host work.
+- **If the CPU dominates, statically recompile the MIPS.**
+  - The code runs from RAM, loaded from flash or CD, so the recompiler works from the blocks the interpreter has executed in reference runs, keyed by a hash of their bytes.
+  - The interpreter runs anything unseen or rewritten; pages holding recompiled code are watched for writes.
+  - It stays cycle-exact under MAME's one-cycle-per-instruction model. A block costs its length, and a block that would cross the end of a timeslice runs in the interpreter.
+  - Firebeat's shadow mode carries over.
+- **If the GPU dominates:** faster span routines, still bit-identical (`tools/regress.py`).
+- **The SPU and MP3 run on a worker thread**, handing over per frame as the XT446 does.
+- **Exit:** every 573 regress case bit-identical, with timings measured on N100-class hardware.
+
+**573-5. The rest of the catalogue** (ongoing, family by family)
+- **In scope:**
+  - DDR 3rd Mix to EXTREME;
+  - the DDR Solo games: their own FPGA map and outputs;
+  - GuitarFreaks 3rd–11th and DrumMania 2nd–10th, with the GF+DM session link stubbed as in MAME;
+  - Dance Maniax (hand sensors), Mambo a GoGo, Martial Beat, Dancing Stage.
+- **Out of scope unless asked:** karaoke (`k573kara`) and the non-BEMANI games (fishing, Bishi Bashi, GunMania).
+- **Later, only if wanted:** PCMCIA edit-data cards and the memory-card reader.
+
+**Then M15, Twinkle.** It reuses 573-1 to 573-4 for the PS1 core. It adds:
+- the 68000 + RF5C400 sound board, already in HIRAKU;
+- a SCSI CD and an ATA hard disk;
+- the background video MAME lacks.
+
+### Progress (2026-10-12): 573-0 and the start of 573-1
+
+**The oracle:**
+- MAME built at HIRAKU's pin, the 573 driver only: `/run/media/roganis/DATA/mame-pin/k573`, from `build573.sh` (memory-capped, `OSD=sdl3`).
+- `oracle/mame.sh` takes `MAME_BIN=...` and caps every MAME run's memory (`MAME_MEM`, default 4G).
+- `oracle/lua/hiraku.lua` knows the 573:
+  - tap groups for its I/O, in all three PS1 address mirrors;
+  - the PC under the PS1's register name;
+  - the M48T58's power-on time in `log.txt` ("power-on time N"). HIRAKU starts at the same time with `--rtc N`.
+- `oracle/lua/itrace573.lua` traces MAME's CPU with total cycles (`EXACT_PC=1`). `HK_573_ITRACE=file,from,to` writes HIRAKU's trace in the same terms.
+
+**The core (`runtime/sys573/`, `core = "sys573"`):**
+- A port of `ksys573.cpp`'s driver class for `ddr3m`: the memory map, flash bank, ports, ATAPI DMA, H8 response, JVS, the DDR stage multiplexor.
+- MAME's own devices on the framework shim: the PS1 (CPU, GTE, DMA, IRQ, timers, SIO, MDEC, GPU, SPU), 29F016A flash, M48T58, ADC0834, the ATAPI stack with the CR-589, the YI cassette (X76F100 + DS2401), the PC Card slots with the 32 MiB flash card, the digital I/O board (FPGA, MAS3507D, minimp3), the JVS memory card reader with its PS1 controller ports.
+- `dumps/ddr3mj/machine.txt` is written by hand for now; the CD comes from the CHD (`chdman extractcd`).
+
+**The shim grew (third_party/mame/README.md):**
+- an exact mode, a copy of MAME's `device_scheduler`:
+  - the timer list in MAME's order;
+  - the quantum, and MAME's cycle division (`divshift`);
+  - aborted timeslices;
+  - input lines through synchronize() timers;
+  - local time through the device clock;
+- MAME's screen timing, sound streams with their 50 Hz update, NVRAM files under MAME's names, slots, device interfaces, runtime map installs, a CD image class over `.cue`/`.iso`.
+- The XT446 keeps the simple scheduler; every regress case is bit-identical.
+
+**What lockstep took:**
+- **Card detect** starts at 1 on both PC Card slots (active low), as in MAME's constructor.
+- **The JVS memory card reader** is part of `ddr3m`: the game polls it at frame 187.
+- **`nvram_default()` at start:** the cassette EEPROM is loaded from its region, and the flash is erased.
+- **The M48T58** shows the time only after its first 1 s tick; the oracle reads it after that.
+
+### Decisions (owner, 2026-10-12)
+1. **The first set is `ddr2m`** (DDR 2ndMIX). MAME runs it, so 573-0 to 573-2 are checked against MAME.
+2. **Where MAME doesn't support a game yet, go as far as the documentation allows, where that makes sense.**
+   - Sources: psx-spx, the 573 hardware notes, the chips' datasheets (the MAS3507D's, the cassette chips').
+   - Each departure from MAME is a switch, with MAME's behaviour kept for the oracle.
+   - Write down which source each departure rests on. Where the documentation runs out, stop and record the gap.
 
 ## M0 steps (all done)
 

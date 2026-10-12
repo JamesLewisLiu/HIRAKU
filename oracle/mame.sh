@@ -19,6 +19,9 @@
 #   HIRAKU_NVRAM  a HIRAKU --nvram directory to start from (Firebeat), instead of blank
 #   EXACT_PC=1    run under -debug -debugger none: the PPC recompiler then
 #                 updates PC per instruction, so trace PCs are exact (slower)
+#   MAME_BIN      a MAME binary to run instead of the flatpak (System 573: the
+#                 build at HIRAKU's MAME pin, /run/media/roganis/DATA/mame-pin/k573)
+#   MAME_MEM      memory cap for the run (default 4G): MAME runs in a systemd scope
 #
 # Converting dumps to CHD (once per game, chdman ships in the flatpak):
 #   flatpak run --command=chdman org.mamedev.MAME createcd -i cd.cue -o <set>/<name>.chd
@@ -45,7 +48,7 @@ if [[ -n "${HIRAKU_NVRAM:-}" ]]; then
     done
 fi
 
-if ! flatpak info org.mamedev.MAME >/dev/null 2>&1; then
+if [[ -z "${MAME_BIN:-}" ]] && ! flatpak info org.mamedev.MAME >/dev/null 2>&1; then
     echo "MAME is not installed:  flatpak install --user -y flathub org.mamedev.MAME" >&2
     exit 1
 fi
@@ -56,21 +59,29 @@ debug=()
 [[ "${WAV:-0}" == 1 ]] && debug+=(-wavwrite "$out/audio.wav")
 [[ "${EXACT_PC:-0}" == 1 ]] && debug+=(-debug -debugger none)
 
-extra=()
-[[ -n "${HIRAKU_LUA:-}" ]] && extra=(--filesystem="$(dirname "$(realpath "$HIRAKU_LUA")")":ro --env=HIRAKU_LUA="$(realpath "$HIRAKU_LUA")")
+# capped, so a runaway MAME can't take the machine's memory
+cap=(systemd-run --user --scope -q -p MemoryMax="${MAME_MEM:-4G}" -p MemorySwapMax=0)
+args=(-rompath "$roms" -homepath "$out"
+    -cfg_directory "$out/cfg" -nvram_directory "$out/nvram"
+    -snapshot_directory "$out/snap" -state_directory "$out/sta" -diff_directory "$out/diff"
+    -skip_gameinfo -noreadconfig "${video[@]}" "${debug[@]}"
+    -seconds_to_run "${RUN_SECONDS:-900}"
+    -autoboot_script "$here/lua/hiraku.lua"
+    "$set_name")
 
-# The flatpak sees only what it is given: every path and every variable.
-flatpak run \
-    --filesystem="$roms":ro --filesystem="$root" --filesystem="$(dirname "$script")":ro "${extra[@]}" \
-    --env=HIRAKU_OUT="$out" --env=HIRAKU_SCRIPT="$script" --env=HIRAKU_TAPS="${HIRAKU_TAPS:-all}" --env=HIRAKU_NOFOLD="${HIRAKU_NOFOLD:-}" \
-    org.mamedev.MAME \
-    -rompath "$roms" -homepath "$out" \
-    -cfg_directory "$out/cfg" -nvram_directory "$out/nvram" \
-    -snapshot_directory "$out/snap" -state_directory "$out/sta" -diff_directory "$out/diff" \
-    -skip_gameinfo -noreadconfig "${video[@]}" "${debug[@]}" \
-    -seconds_to_run "${RUN_SECONDS:-900}" \
-    -autoboot_script "$here/lua/hiraku.lua" \
-    "$set_name" > "$out/mame.log" 2>&1 || true
+if [[ -n "${MAME_BIN:-}" ]]; then
+    env HIRAKU_OUT="$out" HIRAKU_SCRIPT="$script" HIRAKU_TAPS="${HIRAKU_TAPS:-all}" HIRAKU_NOFOLD="${HIRAKU_NOFOLD:-}" \
+        ${HIRAKU_LUA:+HIRAKU_LUA="$(realpath "$HIRAKU_LUA")"} \
+        "${cap[@]}" "$MAME_BIN" "${args[@]}" > "$out/mame.log" 2>&1 || true
+else
+    extra=()
+    [[ -n "${HIRAKU_LUA:-}" ]] && extra=(--filesystem="$(dirname "$(realpath "$HIRAKU_LUA")")":ro --env=HIRAKU_LUA="$(realpath "$HIRAKU_LUA")")
+    # The flatpak sees only what it is given: every path and every variable.
+    "${cap[@]}" flatpak run \
+        --filesystem="$roms":ro --filesystem="$root" --filesystem="$(dirname "$script")":ro "${extra[@]}" \
+        --env=HIRAKU_OUT="$out" --env=HIRAKU_SCRIPT="$script" --env=HIRAKU_TAPS="${HIRAKU_TAPS:-all}" --env=HIRAKU_NOFOLD="${HIRAKU_NOFOLD:-}" \
+        org.mamedev.MAME "${args[@]}" > "$out/mame.log" 2>&1 || true
+fi
 
 grep -E 'hiraku:|error|Error|fatal|not found' "$out/mame.log" | grep -v -E 'tap |f[0-9]+ (press|set|snap)' | tail -20
 echo "-> ${out#$root/}"

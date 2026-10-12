@@ -221,6 +221,45 @@ function(hiraku_game id entry)
   target_link_libraries(hiraku-${id} PRIVATE hiraku_shell hiraku_rt hiraku_${id}_code hiraku_rt)
 endfunction()
 
+# --- the System 573 core (PLAN.md section 19): MAME's PS1 and System 573 devices
+# (BSD-3) on the framework shim, run by MAME's own scheduler (exact mode) --------
+set(HK_573_MAME
+  shim/emu.cpp shim/screen.cpp shim/machine/ram.cpp shim/imagedev/cdromimg.cpp shim/stubs/ata_stubs.cpp
+  src/emu/dirtc.cpp
+  src/devices/cpu/psx/psx.cpp src/devices/cpu/psx/gte.cpp src/devices/cpu/psx/dma.cpp src/devices/cpu/psx/irq.cpp
+  src/devices/cpu/psx/rcnt.cpp src/devices/cpu/psx/sio.cpp src/devices/cpu/psx/mdec.cpp src/devices/cpu/psx/psxdasm.cpp
+  src/devices/video/psx.cpp
+  src/devices/sound/spu.cpp src/devices/sound/spureverb.cpp src/devices/sound/spu_tables.cpp src/devices/sound/cdda.cpp
+  src/devices/sound/mas3507d.cpp src/devices/sound/mp3_audio.cpp
+  src/devices/machine/intelfsh.cpp src/devices/machine/timekpr.cpp src/devices/machine/adc083x.cpp
+  src/devices/machine/ds2401.cpp src/devices/machine/x76f041.cpp src/devices/machine/x76f100.cpp
+  src/devices/machine/atahle.cpp src/devices/machine/t10mmc.cpp src/devices/machine/t10spc.cpp
+  src/devices/bus/ata/ataintf.cpp src/devices/bus/ata/atadev.cpp src/devices/bus/ata/atapihle.cpp
+  src/devices/bus/ata/atapicdr.cpp src/devices/bus/ata/cr589.cpp
+  src/devices/bus/pccard/pccard.cpp src/devices/bus/pccard/linflash.cpp
+  src/devices/machine/jvshost.cpp src/devices/machine/jvsdev.cpp src/devices/bus/psx/ctlrport.cpp src/devices/bus/psx/memcard.cpp
+  src/mame/konami/k573cass.cpp src/mame/konami/zs01.cpp src/mame/konami/k573dio.cpp src/mame/konami/k573fpga.cpp src/mame/konami/k573mcr.cpp)
+list(TRANSFORM HK_573_MAME PREPEND ${HK_MAME}/)
+set(HK_573_INC ${HK_MAME}/shim ${HK_MAME}/shim/stubs ${HK_MAME}/src/devices ${HK_MAME}/src/mame/konami
+  ${HK_MAME}/src/emu ${HK_MAME}/src/3rdparty)
+add_library(hiraku_mame573 STATIC ${HK_573_MAME})
+target_include_directories(hiraku_mame573 PUBLIC ${HK_573_INC})
+target_compile_options(hiraku_mame573 PRIVATE -w -O2)
+
+add_library(hiraku_sys573 STATIC runtime/sys573/board.cpp runtime/sys573/core.cpp)
+target_include_directories(hiraku_sys573 PUBLIC runtime)
+target_link_libraries(hiraku_sys573 PUBLIC hiraku_mame573 hiraku_cabinet)
+target_compile_options(hiraku_sys573 PRIVATE -O2 -Wno-unused-parameter)
+
+function(hiraku_sys573_game id)
+  add_executable(hiraku-${id} runtime/main.cpp runtime/core/sampler.cpp)
+  target_compile_definitions(hiraku-${id} PRIVATE HK_GAME_ID="${id}" HK_ROOT="${CMAKE_SOURCE_DIR}")
+  if(TARGET hiraku_host)
+    target_link_libraries(hiraku-${id} PRIVATE hiraku_host)
+  endif()
+  target_link_libraries(hiraku-${id} PRIVATE hiraku_shell hiraku_sys573)
+endfunction()
+
 # hiraku_djmain_game(<id>): a DJ Main game. No generated code: the program is
 # interpreted, so the binary is the same for every game (the data comes from
 # dumps/<id>/ at run time, written by tools/ingest.py).
@@ -241,6 +280,12 @@ foreach(toml ${HK_GAME_TOMLS})
     get_filename_component(dir ${toml} DIRECTORY)
     get_filename_component(id ${dir} NAME)
     hiraku_djmain_game(${id})
+  endif()
+  file(STRINGS ${toml} sys573_core REGEX "^core *= *\"sys573\"")
+  if(sys573_core)
+    get_filename_component(dir ${toml} DIRECTORY)
+    get_filename_component(id ${dir} NAME)
+    hiraku_sys573_game(${id})
   endif()
 endforeach()
 

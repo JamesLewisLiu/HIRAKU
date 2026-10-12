@@ -35,6 +35,9 @@ CASES = {
     "popn1j-boot": ("popn1j", 9000, ["--script", "oracle/scripts/popn1j-boot.his"]),
     "bm1stmix-play": ("bm1stmix", 12600, ["--script", "oracle/scripts/bm1stmix-play.his"]),
     "popn1j-play": ("popn1j", 13500, ["--script", "oracle/scripts/popn1j-play.his"]),
+    # System 573: power-on, BIOS, CD boot, the game's checks, ERROR 147 (no install yet);
+    # in lockstep with MAME at the pin (PLAN.md section 19). The clock is fixed.
+    "ddr3mj-boot": ("ddr3mj", 3600, ["--rtc", "1791804639", "--script", "oracle/scripts/ddr3mj-boot.his"]),
 }
 
 # report lines that describe the host, not the machine

@@ -44,6 +44,25 @@ local GROUPS = {
     { id = 7, name = "ext",   lo = 0x70000000, hi = 0x7000ffff },  -- extend board: MIDI UART, FDC, FFT, IRQ latch
     { id = 8, name = "flash", lo = 0x7d400000, hi = 0x7dbfffff },  -- 3x 29F016A
 }
+-- System 573 (MAME ksys573.cpp and the PS1 CPU's internal map). The PS1 reaches its
+-- I/O through three mirrors (KUSEG, KSEG0, KSEG1): each group is tapped in all of
+-- them and recorded at its KUSEG address.
+local MIRRORS = { 0 }
+local AMASK = 0xffffffff
+if cpu.shortname == "cxd8530cq" then
+    GROUPS = {
+        { id = 11, name = "flash", lo = 0x1f000000, hi = 0x1f3fffff },  -- onboard flash, PCMCIA (banked)
+        { id = 12, name = "in",    lo = 0x1f400000, hi = 0x1f40000f },  -- IN0-IN3, OUT0
+        { id = 13, name = "ata",   lo = 0x1f480000, hi = 0x1f4c000f },  -- ATA CS0/CS1 (the CD drive)
+        { id = 14, name = "sys",   lo = 0x1f500000, hi = 0x1f6fffff },  -- control, ATAPI reset, lamps, M48T58, JVS, security, I/O board
+        { id = 15, name = "irq",   lo = 0x1f801070, hi = 0x1f80112f },  -- PS1 IRQ, DMA, root counters
+        { id = 16, name = "gpu",   lo = 0x1f801810, hi = 0x1f801817 },
+        { id = 17, name = "spu",   lo = 0x1f801c00, hi = 0x1f801fff },
+        { id = 18, name = "sio",   lo = 0x1f801040, hi = 0x1f80105f },  -- SIO0/1 (the cassette is on SIO1)
+    }
+    MIRRORS = { 0x00000000, 0x80000000, 0xa0000000 }
+    AMASK = 0x1fffffff
+end
 
 -- --------------------------------------------------------------------------
 -- State shared by the taps and the frame loop
@@ -52,7 +71,7 @@ local frame = 0
 local now = 0.0               -- emulated seconds, refreshed per frame and per access
 local mmio_buf, mmio_n, mmio_total = {}, 0, 0
 local mmio = assert(io.open(OUT .. "/mmio.bin", "wb"))
-local pc_state = cpu.state["PC"]
+local pc_state = cpu.state["PC"] or cpu.state["pc"] or cpu.state["GENPC"]
 local taps = {}               -- passthrough handlers must stay referenced
 
 -- Folding. Consecutive accesses with the same (kind, group, addr, mask) become
@@ -116,6 +135,18 @@ local want = {}
 for g in string.gmatch(os.getenv("HIRAKU_TAPS") or "all", "[^,]+") do want[g] = true end
 for _, g in ipairs(GROUPS) do if NOFOLD[g.name] then NOFOLD_ID[g.id] = true end end
 
+-- System 573: the M48T58's clock as MAME set it from the host at power-on, so a
+-- HIRAKU run can start from the same time (--rtc). Registers 0x1ff9-0x1fff (BCD
+-- seconds .. year) on the 16-bit lanes of 0x1f620000 (umask 0x00ff00ff).
+local function log_rtc()
+    local function tk(o) return space:read_u8(0x1f620000 + (o >> 1) * 4 + (o & 1) * 2) end
+    local function bcd(v) return (v >> 4) * 10 + (v & 15) end
+    local y, mo, d = bcd(tk(0x1fff)), bcd(tk(0x1ffe) & 0x1f), bcd(tk(0x1ffd) & 0x3f)
+    local h, mi, se = bcd(tk(0x1ffb) & 0x3f), bcd(tk(0x1ffa) & 0x7f), bcd(tk(0x1ff9) & 0x7f)
+    local t = os.time({ year = (y < 70 and 2000 or 1900) + y, month = mo, day = d, hour = h, min = mi, sec = se })
+    say("rtc %04d-%02d-%02d %02d:%02d:%02d at 1 s: power-on time %d (--rtc)", (y < 70 and 2000 or 1900) + y, mo, d, h, mi, se, t - 1)
+end
+
 -- Taps must be (re)installed once the machine has reset: a map rebuild drops them.
 local function install_taps()
     if finished then return end
@@ -124,10 +155,12 @@ local function install_taps()
     for _, g in ipairs(GROUPS) do
         if want.all or want[g.name] then
             local id = g.id
-            taps[#taps + 1] = space:install_read_tap(g.lo, g.hi, "hiraku_r_" .. g.name,
-                function(offset, data, mask) record(0, id, offset, data, mask) end)
-            taps[#taps + 1] = space:install_write_tap(g.lo, g.hi, "hiraku_w_" .. g.name,
-                function(offset, data, mask) record(1, id, offset, data, mask) end)
+            for _, m in ipairs(MIRRORS) do
+                taps[#taps + 1] = space:install_read_tap(g.lo | m, g.hi | m, "hiraku_r_" .. g.name .. m,
+                    function(offset, data, mask) record(0, id, offset & AMASK, data, mask) end)
+                taps[#taps + 1] = space:install_write_tap(g.lo | m, g.hi | m, "hiraku_w_" .. g.name .. m,
+                    function(offset, data, mask) record(1, id, offset & AMASK, data, mask) end)
+            end
         end
     end
     say("f%d taps installed (%d handlers)", frame, #taps)
@@ -296,6 +329,8 @@ end
 
 local function on_frame()
     frame = frame + 1
+    -- the M48T58 shows its time from its first 1 s tick on: read after it, less that second
+    if frame == 61 and cpu.shortname == "cxd8530cq" then log_rtc() end
     for f, until_frame in pairs(held) do
         if frame >= until_frame then f:set_value(0); held[f] = nil end
     end
