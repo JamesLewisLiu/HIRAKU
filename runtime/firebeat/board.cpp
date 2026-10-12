@@ -684,6 +684,10 @@ void init(const Config &cfg) {
     g_ata = new AtaBus;
     g_rtc = new Rtc65271;
     g_flash = new Flash29F016A[3];
+    for (int k = 0; k < 3; k++) {                 // erases take MAME's time (1 s a sector, 16 s the chip)
+        g_flash[k].clock = [] { return now(); };
+        g_flash[k].clock_hz = CPU_HZ;
+    }
     g_fdc = new Fdc37c665;
     // FDC interrupt -> extend board bit 0x04 (if enabled: bit clear) -> EXT1 (MAME floppy_irq_callback)
     g_fdc->irq = [](bool on) {

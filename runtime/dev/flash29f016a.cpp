@@ -5,8 +5,28 @@
 
 namespace hk {
 
+bool Flash29F016A::erasing() {
+    if (busy_ && clock() >= busy_until_) {
+        busy_ = false;
+        status_ = 0x80;
+        mode_ = Mode::normal;
+    }
+    return busy_;
+}
+
+void Flash29F016A::start_erase(uint64_t seconds) {
+    if (!clock || !clock_hz) return;
+    busy_ = true;
+    busy_until_ = clock() + seconds * clock_hz;
+    status_ = 1 << 3;
+}
+
 uint8_t Flash29F016A::read(uint32_t off) {
     off &= 0x1fffff;
+    if (erasing()) {
+        status_ ^= (1 << 6) | (1 << 2);   // DQ6 and DQ2 toggle on every read
+        return status_;
+    }
     if (mode_ == Mode::readid) {
         switch (off & 0xff) {
         case 0: return 0x04;   // Fujitsu
@@ -19,6 +39,7 @@ uint8_t Flash29F016A::read(uint32_t off) {
 
 void Flash29F016A::write(uint32_t off, uint8_t v) {
     off &= 0x1fffff;
+    if (erasing()) return;
     const uint32_t a = off & 0xfff;
     if (v == 0xf0 && mode_ != Mode::program) { mode_ = Mode::normal; return; }
     switch (mode_) {
@@ -50,10 +71,12 @@ void Flash29F016A::write(uint32_t off, uint8_t v) {
         if (v == 0x10 && a == 0x555) {                           // chip erase
             std::fill(data_.begin(), data_.end(), 0xff);
             dirty = true;
+            start_erase(16);
         } else if (v == 0x30) {                                  // sector erase (64 KiB)
             uint32_t base = off & ~0xffffu;
             std::fill(data_.begin() + base, data_.begin() + base + 0x10000, 0xff);
             dirty = true;
+            start_erase(1);
         }
         mode_ = Mode::normal;
         break;

@@ -558,7 +558,12 @@ Firebeat runs recompiled code, so it can't be in lockstep with MAME. What can be
 **Setup.**
 - MAME sets for `ppp` and `popn8` are in `~/bm3mame/roms-fb`: HIRAKU's ROM files plus the CHDs from ~/Downloads, hard-linked.
 - Both machines start from the same saved state: HIRAKU's `--nvram` directory, and `HIRAKU_NVRAM=dir oracle/mame.sh ...` for MAME.
-- From blank NVRAM, ppp stops at a flash-data error on both, wanting test mode. pop'n 8 gets through its flash check in HIRAKU but MAME was still at it after 2 minutes; probably MAME's flash timing, not checked further.
+- From blank NVRAM, ppp stops at a flash-data error on both, wanting test mode.
+- From blank NVRAM, pop'n 8 spends about a minute at its flash check in MAME. HIRAKU raced through it: its flash chip (`runtime/dev/flash29f016a.cpp`) erased instantly.
+  - It now takes MAME's erase times: 1 s per 64 KiB sector, 16 s for the chip, close to the datasheet's typical values.
+  - Until an erase ends, reads return the toggling status and writes are ignored.
+  - pop'n 8's first boot now follows MAME's: the flash check, then the logos and attract.
+  - It costs a minute or so on a first boot, as on the real board. The regress runs don't erase flash, so they're unchanged.
 
 **Results, 2 minutes of attract:**
 - **pop'n 8, DVD-streamed BGM** (RF5C400 streaming): in step to within 1 sample over 28 s (no drift), waveform correlation 0.998–1.000, the same level.
