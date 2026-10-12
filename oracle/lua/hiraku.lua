@@ -150,7 +150,13 @@ local function find_field(name)
     end
     local f = fields[name]
     if f == false then error("field '" .. name .. "' is ambiguous; use PORT/" .. name) end
-    if f == nil then error("no input field '" .. name .. "'") end
+    if f == nil then
+        local port, near = name:match("^([^/]+)/"), {}
+        for k in pairs(fields) do
+            if port and k:sub(1, #port + 1) == port .. "/" then near[#near + 1] = "'" .. k .. "'" end
+        end
+        error("no input field '" .. name .. "'" .. (#near > 0 and "; " .. port .. " has " .. table.concat(near, ", ") or ""))
+    end
     return f
 end
 
@@ -328,4 +334,7 @@ _G.hiraku_subs = {
 }
 -- The autoboot script runs after the initial reset, so arm the taps now too.
 install_taps()
+-- HIRAKU_LUA: one more Lua file for a one-off probe (its own taps, prints)
+local extra = os.getenv("HIRAKU_LUA") or ""
+if extra ~= "" then dofile(extra) end
 say("armed: %s", mach.system.name)

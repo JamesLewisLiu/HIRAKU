@@ -160,6 +160,25 @@ typedef uint32 uint64;
 #ifndef HK_TRAP_EXCEPTION_CYCLES
 #define HK_TRAP_EXCEPTION_CYCLES(vector) (CYC_EXCEPTION[vector] - CYC_INSTRUCTION[REG_IR])
 #endif
+/* The reset exception's cycles: m68k_execute() takes them from the first slice
+   but leaves them out of the cycles it reports (its return value and
+   m68k_cycles_run()), so the caller's clock never counts them. 1 counts them. */
+/* A branch to itself skips ahead to the slice's last iteration: keep only the
+   cycles the remaining iterations don't use up. Upstream's `% cost` leaves 0
+   when they divide evenly, and the instruction then runs once more than fits
+   (ending `cost` cycles past the slice instead of exactly on it). */
+#ifndef HK_USE_ALL_CYCLES
+#define HK_USE_ALL_CYCLES() m68ki_remaining_cycles %= CYC_INSTRUCTION[REG_IR]
+#endif
+/* 1: m68k_execute() checks the cycles left before its first instruction too, as
+   MAME's while loop does. Upstream's do-while always runs one instruction, even
+   when the interrupt exception taken on entry used up the slice. */
+#ifndef HK_LOOP_CHECKS_FIRST
+#define HK_LOOP_CHECKS_FIRST 0
+#endif
+#ifndef HK_COUNT_RESET_CYCLES
+#define HK_COUNT_RESET_CYCLES 0
+#endif
 
 /* ======================================================================== */
 /* ============================ GENERAL DEFINES =========================== */
@@ -900,7 +919,7 @@ extern jmp_buf m68ki_aerr_trap;
 #define USE_CYCLES(A)    m68ki_remaining_cycles -= (A)
 #define SET_CYCLES(A)    m68ki_remaining_cycles = A
 #define GET_CYCLES()     m68ki_remaining_cycles
-#define USE_ALL_CYCLES() m68ki_remaining_cycles %= CYC_INSTRUCTION[REG_IR]
+#define USE_ALL_CYCLES() HK_USE_ALL_CYCLES()
 
 
 

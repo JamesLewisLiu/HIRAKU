@@ -40,6 +40,7 @@ Runs land in `out/oracle/<game>/<run>/` (gitignored). Each run starts with an em
 | `EXACT_PC=1` | run under `-debug -debugger none`. PCs become exact and `itrace` works, at about 6× slower |
 | `WAV=1` | also write `audio.wav` (48 kHz, 3 channels) |
 | `WINDOW=1` | window and sound instead of headless/unthrottled |
+| `HIRAKU_LUA=file.lua` | one more Lua file run with the script: a one-off probe (taps, `trace`, prints), without editing `hiraku.lua` |
 
 ## Input scripts (`.his`)
 
@@ -58,6 +59,10 @@ Actions:
 - `press "<field>" [frames=8]`
 - `hold "<field>"` / `release "<field>"`
 - `set "<field>" <value>` (analog, e.g. turntable)
+
+In MAME a button pressed at frame F is first seen at frame F+1. MAME latches digital inputs in its frame update, which runs before this script's frame callback. Analog values are read live. The HIRAKU shell copies this for cores that run in lockstep with MAME (`Core::script_button_delay()`: DJ Main).
+
+A field's name is `PORT/Field` or just `Field` when unique: beatmania's turntables are `TT1/Dial` and `TT2/Dial`. A wrong name stops the run, with the port's fields in the error.
 - `snap`
 - `dump <name> <lo> <hi>`
 - `mark <text>`

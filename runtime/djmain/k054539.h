@@ -5,8 +5,9 @@
 // devices/sound/k054539.cpp (BSD-3-Clause): same registers, sample formats,
 // reverb and volume/pan tables. The chip renders on demand: the board calls
 // render() up to the present before every register access, as MAME's
-// stream->update() does, so key-offs and position registers move at the same
-// sample as in MAME. DJ Main runs two of them on one shared 16 MiB sample RAM.
+// stream->update() does on writes, so key-ons and key-offs land on the same
+// sample as in MAME (see commit() for reads). DJ Main runs two of them on one
+// shared 16 MiB sample RAM.
 #pragma once
 
 #include <cstdint>
@@ -26,6 +27,12 @@ public:
     void write(uint32_t offset, uint8_t data);
     // Add n samples (48 kHz stereo, the chip's own scale: 1.0 = 32768) to lr.
     void render(float *lr, int n);
+    // What a read of the registers the chip itself updates (key-on status 0x22c,
+    // channel positions) returns is their state at the last commit(). MAME
+    // brings the chip up to date on writes and on its 50 Hz stream update, not
+    // on reads, so the game sees a sample end only then; the board renders
+    // earlier than that (for latency) and commits where MAME would update.
+    void commit();
 
 private:
     struct Channel { uint32_t pos = 0; int pfrac = 0, val = 0, pval = 0; };
@@ -38,7 +45,10 @@ private:
     double m_gain[8];
     uint8_t m_posreg_latch[8][3]{};
     int m_flags;
+    void write_reg(uint32_t offset, uint8_t data);
+
     uint8_t m_regs[0x230]{};
+    uint8_t m_seen_status = 0, m_seen_pos[8][3]{};   // as of the last commit()
     uint8_t m_ram[0x8000]{};   // reverb RAM
     int m_reverb_pos = 0;
     int32_t m_cur_ptr = 0;

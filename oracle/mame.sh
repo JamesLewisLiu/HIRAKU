@@ -15,6 +15,7 @@
 #   RUN_SECONDS   emulated-time cap, -seconds_to_run           (default 900)
 #   WINDOW=1      show a window and play sound (otherwise headless, unthrottled)
 #   WAV=1         also record the mixed audio to <run>/audio.wav
+#   HIRAKU_LUA    one more Lua file to run with the script (a one-off probe)
 #   EXACT_PC=1    run under -debug -debugger none: the PPC recompiler then
 #                 updates PC per instruction, so trace PCs are exact (slower)
 #
@@ -45,11 +46,14 @@ video=(-video none -sound none -nothrottle)
 [[ "${WINDOW:-0}" == 1 ]] && video=(-window -nomaximize)
 debug=()
 [[ "${WAV:-0}" == 1 ]] && debug+=(-wavwrite "$out/audio.wav")
-[[ "${EXACT_PC:-0}" == 1 ]] && debug=(-debug -debugger none)
+[[ "${EXACT_PC:-0}" == 1 ]] && debug+=(-debug -debugger none)
+
+extra=()
+[[ -n "${HIRAKU_LUA:-}" ]] && extra=(--filesystem="$(dirname "$(realpath "$HIRAKU_LUA")")":ro --env=HIRAKU_LUA="$(realpath "$HIRAKU_LUA")")
 
 # The flatpak sees only what it is given: every path and every variable.
 flatpak run \
-    --filesystem="$roms":ro --filesystem="$root" --filesystem="$(dirname "$script")":ro \
+    --filesystem="$roms":ro --filesystem="$root" --filesystem="$(dirname "$script")":ro "${extra[@]}" \
     --env=HIRAKU_OUT="$out" --env=HIRAKU_SCRIPT="$script" --env=HIRAKU_TAPS="${HIRAKU_TAPS:-all}" --env=HIRAKU_NOFOLD="${HIRAKU_NOFOLD:-}" \
     org.mamedev.MAME \
     -rompath "$roms" -homepath "$out" \

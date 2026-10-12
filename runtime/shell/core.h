@@ -64,6 +64,13 @@ public:
     // Inputs by MAME name ("P1 Button 3", "Coin 1", "TURNTABLE_P1/Turntable"):
     // 1/0 for buttons, the position for analog inputs. false for an unknown name.
     virtual bool set_input(const std::string &name, int value) = 0;
+    // Frames by which an input script's button changes (press, hold, release) lag
+    // behind their frame number, to match the MAME oracle: MAME latches digital
+    // inputs in its frame update, which runs just before the Lua script's frame
+    // callback, so a button pressed at frame F is seen from frame F+1's latch.
+    // Analog values set by a script are read live in MAME and never lag. Host
+    // input doesn't go through this. 0 keeps the cores whose recorded runs predate it.
+    virtual int script_button_delay() const { return 0; }
     // Move player's turntable by `delta` encoder counts (cores without one ignore it).
     virtual void turntable_add(int player, int delta) = 0;
     // Lamps as the game last drove them, in cab::lamps(family()) order (1 = lit),

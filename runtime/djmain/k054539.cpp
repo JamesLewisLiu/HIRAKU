@@ -33,6 +33,7 @@ void K054539::reset() {
     m_cur_ptr = 0;
     m_rom_addr = 0;
     for (auto &c : m_channels) c = Channel{};
+    commit();
 }
 
 void K054539::render(float *lr, int n) {
@@ -197,7 +198,18 @@ void K054539::render(float *lr, int n) {
     }
 }
 
+void K054539::commit() {
+    m_seen_status = m_regs[0x22c];
+    for (int ch = 0; ch < 8; ch++)
+        for (int k = 0; k < 3; k++) m_seen_pos[ch][k] = m_regs[0x20 * ch + 0x0c + k];
+}
+
 void K054539::write(uint32_t offset, uint8_t data) {
+    write_reg(offset, data);
+    commit();   // MAME updated the stream first: everything up to here is visible
+}
+
+void K054539::write_reg(uint32_t offset, uint8_t data) {
     offset &= 0x3ff;
     if (offset >= sizeof m_regs) return;
     const bool latch = (m_flags & UPDATE_AT_KEYON) && (m_regs[0x22f] & 1);
@@ -256,6 +268,9 @@ uint8_t K054539::read(uint32_t offset) {
         }
         return 0;
     }
+    if (offset == 0x22c) return m_seen_status;
+    if (offset < 0x100 && (offset & 0x1f) >= 0x0c && (offset & 0x1f) <= 0x0e)
+        return m_seen_pos[offset >> 5][(offset & 0x1f) - 0x0c];
     return m_regs[offset];
 }
 

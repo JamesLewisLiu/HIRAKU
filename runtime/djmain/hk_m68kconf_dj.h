@@ -132,6 +132,14 @@ int hk_dj_int_ack(int level);   /* runtime/djmain/board.cpp: clears a held line,
 /* ... and a TRAP costs its instruction cycles plus the whole exception
    (m68ki_exception_trapN / m68ki_exception_trap): beatmania's kernel calls are TRAP #0 */
 #define HK_TRAP_EXCEPTION_CYCLES(vector) (CYC_EXCEPTION[vector])
+/* MAME's 68020 runs its first instruction 4 cycles (the reset exception) after power-on */
+#define HK_COUNT_RESET_CYCLES 1
+/* After an interrupt exception that ends past the slice, the next interrupt is
+   checked before any instruction, as in MAME */
+#define HK_LOOP_CHECKS_FIRST 1
+/* An idle loop (bra to itself) ending exactly on a slice boundary stops there, as in MAME */
+#define HK_USE_ALL_CYCLES() \
+    (m68ki_remaining_cycles = m68ki_remaining_cycles > 0 ? (m68ki_remaining_cycles - 1) % CYC_INSTRUCTION[REG_IR] + 1 : m68ki_remaining_cycles)
 #endif
 
 

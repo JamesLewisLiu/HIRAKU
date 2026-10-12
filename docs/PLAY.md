@@ -195,9 +195,14 @@ build/cmake/hiraku-bm1stmix --window
 
 pop'n music 1 (`popn1j`) is the same with `803jaa11` and `popn1j.7z`. The game is found by the set's name (`games/<id>/game.toml`, `core = "djmain"`).
 
-**Status:** both games run in lockstep with MAME through power-on, self-test, the disk loads and attract mode (`oracle/scripts/*-boot.his`, 155 s):
-- every snapshot is pixel-identical, with no frame offset;
-- the sound chips' output is sample-identical to MAME's (before HIRAKU's 48 → 44.1 kHz resampling).
+**Status:** HIRAKU runs both games in step with MAME, clock for clock (`oracle/scripts/*-boot.his`, 155 s):
+- power-on, self-test, the disk loads and attract mode;
+- for beatmania, a whole game too (`oracle/scripts/bm1stmix-play.his`, 217 s): coins, the turntable at the practice-stage prompt, song select, a song played with keys and scratches, game over.
+
+In these runs:
+- the work RAM, sprites and palette are identical to MAME's on every frame;
+- every snapshot is pixel-identical;
+- the sound chips' output is sample-identical, before HIRAKU's 48 → 44.1 kHz resampling.
 
 **Not yet:** a hands-on play test, turntable feel, the ATA password of complete MIX and later, and the other DJ Main sets.
 
@@ -220,3 +225,5 @@ HIRAKU_ROMS=~/bm3mame/roms-cores HIRAKU_TAPS=none oracle/mame.sh bm1stmix oracle
 build/cmake/hiraku-bm1stmix --script oracle/scripts/bm1stmix-boot.his --out out/run/bm1stmix-boot
 oracle/snapcmp.py out/run/bm1stmix-boot out/oracle/bm1stmix/boot
 ```
+
+The same with `bm1stmix-play.his` checks a game played through.

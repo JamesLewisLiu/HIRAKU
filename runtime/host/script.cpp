@@ -31,8 +31,16 @@ std::map<std::string, uint64_t> g_release;                       // field -> fra
 FILE *g_frames = nullptr, *g_log = nullptr;
 std::string g_out;
 
+std::map<uint64_t, std::vector<std::pair<std::string, int>>> g_late;   // frame -> button changes
+
 void set_field(const std::string &name, int64_t value) {
     if (!core().set_input(name, (int)value)) fprintf(stderr, "script: unknown input field '%s'\n", name.c_str());
+}
+
+// A button change made at frame f, applied core().script_button_delay() frames later.
+void set_button(uint64_t f, const std::string &name, int value) {
+    if (int d = core().script_button_delay()) g_late[f + (uint64_t)d].emplace_back(name, value);
+    else set_field(name, value);
 }
 
 std::vector<std::string> tokens(const std::string &line) {
@@ -130,8 +138,12 @@ bool load(const std::string &path, const std::string &out_dir) {
 
 bool frame(uint64_t f, const std::function<void()> &snap) {
     for (auto it = g_release.begin(); it != g_release.end();) {
-        if (f >= it->second) { set_field(it->first, 0); it = g_release.erase(it); }
+        if (f >= it->second) { set_button(f, it->first, 0); it = g_release.erase(it); }
         else ++it;
+    }
+    if (auto it = g_late.find(f); it != g_late.end()) {
+        for (auto &[name, v] : it->second) set_field(name, v);
+        g_late.erase(it);
     }
     if (g_frames) {
         fprintf(g_frames, "%llu %.6f", (unsigned long long)f, core().seconds());
@@ -147,9 +159,9 @@ bool frame(uint64_t f, const std::function<void()> &snap) {
     bool keep = true;
     auto run = [&](const Action &a) {
         if (g_log) fprintf(g_log, "f%llu %s %s\n", (unsigned long long)f, a.verb.c_str(), a.field.c_str());
-        if (a.verb == "press") { set_field(a.field, 1); g_release[a.field] = f + (uint64_t)a.a; }
-        else if (a.verb == "hold") set_field(a.field, 1);
-        else if (a.verb == "release") set_field(a.field, 0);
+        if (a.verb == "press") { set_button(f, a.field, 1); g_release[a.field] = f + (uint64_t)a.a; }
+        else if (a.verb == "hold") set_button(f, a.field, 1);
+        else if (a.verb == "release") set_button(f, a.field, 0);
         else if (a.verb == "set") set_field(a.field, a.a);
         else if (a.verb == "snap") snap();
         else if (a.verb == "dump") {

@@ -78,6 +78,7 @@ public:
     uint64_t frame_count() const override { return dj::frame_count(); }
 
     bool set_input(const std::string &name, int value) override { return dj::set_input(name, value); }
+    int script_button_delay() const override { return 1; }
     void turntable_add(int player, int delta) override { dj::turntable_add(player, delta); }
     const std::vector<uint8_t> &lamp_state() const override { return dj::lamp_state(); }
     uint64_t lamp_changes() const override { return dj::lamp_changes(); }

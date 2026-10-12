@@ -122,9 +122,15 @@ bool g_ata_event = false;             // a busy period is pending
 uint8_t g_ata_regs[8]{};              // the task file as written (for the LBA)
 uint8_t g_ata_command = 0;
 uint64_t g_ata_cur_lba = 0;           // MAME m_cur_lba: where the heads are
+uint64_t g_ata_index_since = 0;       // CPU clock of the last status read that showed IDX
 uint32_t g_hdd_cylinders = 1;
 
-uint64_t us_to_cycles(double us) { return (uint64_t)(us * CPU_HZ / 1e6 + 0.999999); }
+// MAME's drive times are exact attotimes; its scheduler runs the CPU up to the
+// last whole clock at or before a timer, so a busy period ends on that clock.
+constexpr uint64_t AS_PER_US = 1'000'000'000'000ull, AS_PER_CYCLE = 62'500'000'000ull;   // 16 MHz
+uint64_t as_to_cycles(uint64_t as) { return as / AS_PER_CYCLE; }
+constexpr uint64_t TIME_BETWEEN_SECTORS_AS = 400'000'000'000ull;   // 400 ns
+constexpr uint64_t MINIMUM_COMMAND_TIME_AS = 10 * AS_PER_US;
 
 bool g_ide_line = false;   // the drive's INTRQ as MAME's ATA interface sees it
 
@@ -164,8 +170,10 @@ uint64_t ata_seek_cycles() {
     const uint64_t spc = HDD_HEADS * HDD_SECTORS, lba = ata_lba();
     const int64_t diff = std::llabs((int64_t)(g_ata_cur_lba / spc) - (int64_t)(lba / spc));
     g_ata_cur_lba = lba;
-    if (diff == 0) return us_to_cycles(0.4);
-    return us_to_cycles(13000.0 * (double)diff / (double)g_hdd_cylinders + 1300.0);
+    if (diff == 0) return as_to_cycles(TIME_BETWEEN_SECTORS_AS);
+    // TIME_FULL_STROKE_SEEK * diff / cylinders (attotime division: floor), + 1300 us
+    const uint64_t us = 13000 * (uint64_t)diff, q = us / g_hdd_cylinders, r = us % g_hdd_cylinders;
+    return as_to_cycles(q * AS_PER_US + r * AS_PER_US / g_hdd_cylinders + 1300 * AS_PER_US);
 }
 
 void ata_write(int cs, int reg, uint16_t v) {
@@ -173,7 +181,7 @@ void ata_write(int cs, int reg, uint16_t v) {
     if (cs == 0 && reg == 7) {
         g_ata_command = (uint8_t)v;
         if (g_cfg.ata_log)
-            fprintf(stderr, "djmain ata: frame %llu t %.6f pc %06x command %02x lba %llu count %u\n", (unsigned long long)g_frame,
+            fprintf(stderr, "djmain ata: frame %llu t %.9f pc %06x command %02x lba %llu count %u\n", (unsigned long long)g_frame,
                     (double)now() / CPU_HZ, m68k_get_reg(nullptr, M68K_REG_PPC), g_ata_command, (unsigned long long)ata_lba(),
                     g_ata_regs[2]);
         switch (g_ata_command) {
@@ -185,7 +193,7 @@ void ata_write(int cs, int reg, uint16_t v) {
             break;
         }
         case 0xec: case 0x10: case 0x91: case 0xef: case 0xe7:
-            ata_start_busy(us_to_cycles(10));      // MINIMUM_COMMAND_TIME
+            ata_start_busy(as_to_cycles(MINIMUM_COMMAND_TIME_AS));
             break;
         default:
             break;   // SET MULTIPLE, IDLE, ...: the interrupt is immediate
@@ -194,19 +202,31 @@ void ata_write(int cs, int reg, uint16_t v) {
     g_ata.write(cs, reg, v);
 }
 
+// MAME ide_hdd_device_base::calculate_status(): a status read more than one
+// rotation (1/90 s at 5400 rpm) after the last one that showed the index pulse
+// (or after power-on) shows it (IDX, bit 1). More than 1/90 s: 177778 clocks.
+uint16_t ata_index(uint16_t status) {
+    const uint64_t t = now();
+    if (t - g_ata_index_since <= 177777) return status;
+    g_ata_index_since = t;
+    return status | 0x02;
+}
+
 uint16_t ata_read(int cs, int reg) {
     const bool status = (cs == 0 && reg == 7) || (cs == 1 && reg == 6);
     if (g_ata_event && now() < g_ata_busy_until) {
-        if (status) return 0xd0;   // BSY | DRDY | DSC
         if (cs == 0 && reg == 0) return 0;
+        // while busy, MAME answers every register but the data port with the status
+        if (cs == 0 || status) return ata_index(0xd0);   // BSY | DRDY | DSC
     }
     const bool irq_before = g_hold1;
-    const uint16_t v = g_ata.read(cs, reg);
+    uint16_t v = g_ata.read(cs, reg);
+    if (status) v = ata_index(v);
     // READ SECTORS: the next sector's interrupt comes 400 ns after the last word
     if (cs == 0 && reg == 0 && (g_ata_command == 0x20 || g_ata_command == 0x21) && !irq_before && g_hold1) {
         g_hold1 = false;
         irq_changed();
-        ata_start_busy(us_to_cycles(0.4));
+        ata_start_busy(as_to_cycles(TIME_BETWEEN_SECTORS_AS));
         g_ata_irq_deferred = true;
     }
     return v;
@@ -218,12 +238,19 @@ uint16_t ata_read(int cs, int reg) {
 void sound_sync() {
     // MAME's stream update: every sample whose time has come
     const uint64_t target = now() * (uint64_t)K054539::RATE / CPU_HZ;
-    if (target <= g_snd_done) return;
-    const size_t n = (size_t)(target - g_snd_done), at = g_snd48.size();
-    g_snd48.resize(at + 2 * n, 0.0f);
-    for (auto &c : g_snd) c.render(g_snd48.data() + at, (int)n);
-    g_snd_done = target;
-    g_stats.sound_samples += n;
+    while (g_snd_done < target) {
+        // MAME's sound manager also updates every stream 50 times a second
+        // (sound_manager::STREAMS_UPDATE_FREQUENCY): the chips commit there.
+        constexpr uint64_t TICK = K054539::RATE / 50;
+        const uint64_t tick = (g_snd_done / TICK + 1) * TICK, end = std::min(target, tick);
+        const size_t n = (size_t)(end - g_snd_done), at = g_snd48.size();
+        g_snd48.resize(at + 2 * n, 0.0f);
+        for (auto &c : g_snd) c.render(g_snd48.data() + at, (int)n);
+        g_snd_done = end;
+        g_stats.sound_samples += n;
+        if (end == tick)
+            for (auto &c : g_snd) c.commit();
+    }
 }
 
 // HK_DJ_RAW48=FILE: also write the chips' own 48 kHz output (16-bit stereo,
@@ -758,8 +785,8 @@ bool set_input(const std::string &name, int value) {
     if (try_set(common, std::size(common))) return true;
     if (g_cfg.family == "djpopn") return try_set(popn, std::size(popn));
     if (try_set(bm, std::size(bm))) return true;
-    // MAME's dials: "TT1/P1 Dial" (absolute 8-bit position), as the oracle scripts set them
-    if (name == "TT1/P1 Dial" || name == "TT2/P2 Dial") {
+    // MAME's dials: "TT1/Dial" (absolute 8-bit position), as the oracle scripts set them
+    if (name == "TT1/Dial" || name == "TT2/Dial") {
         g_dial[name[2] - '1'] = (uint8_t)value;
         return true;
     }

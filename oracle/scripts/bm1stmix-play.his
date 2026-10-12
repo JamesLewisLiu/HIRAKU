@@ -1,0 +1,807 @@
+# beatmania (DJ Main): boot -> attract -> 2 coins -> 1P start -> the turntable
+# picks "skip" at the practice-stage prompt -> sound select (hip-hop) -> the
+# song "u gotta groove" played with a fixed pattern of keys and scratches (it
+# fails) -> continue countdown -> game over -> attract. Checks the inputs, the
+# turntable and gameplay against MAME frame by frame.
+game bm1stmix
+
+hash ram  0x400000 0x410000     # 68EC020 work RAM
+hash obj  0x801000 0x801800     # sprite list
+hash pal  0x480000 0x484440     # palette
+
+at 4500 mark coin
+at 4500 press "Coin 1" 8
+at 4530 press "Coin 1" 8
+at 4600 press "1 Player Start" 12
+
+# practice stage? turn the turntable towards "skip", then confirm
+
+at 5260 set "TT1/Dial" 252
+at 5261 set "TT1/Dial" 248
+at 5262 set "TT1/Dial" 244
+at 5263 set "TT1/Dial" 240
+at 5264 set "TT1/Dial" 236
+at 5265 set "TT1/Dial" 232
+at 5266 set "TT1/Dial" 228
+at 5267 set "TT1/Dial" 224
+at 5268 set "TT1/Dial" 220
+at 5269 set "TT1/Dial" 216
+at 5270 set "TT1/Dial" 212
+at 5271 set "TT1/Dial" 208
+at 5272 set "TT1/Dial" 204
+at 5273 set "TT1/Dial" 200
+at 5274 set "TT1/Dial" 196
+at 5275 set "TT1/Dial" 192
+at 5276 set "TT1/Dial" 188
+at 5277 set "TT1/Dial" 184
+at 5278 set "TT1/Dial" 180
+at 5279 set "TT1/Dial" 176
+at 5280 set "TT1/Dial" 172
+at 5281 set "TT1/Dial" 168
+at 5282 set "TT1/Dial" 164
+at 5283 set "TT1/Dial" 160
+at 5284 set "TT1/Dial" 156
+at 5285 set "TT1/Dial" 152
+at 5286 set "TT1/Dial" 148
+at 5287 set "TT1/Dial" 144
+at 5288 set "TT1/Dial" 140
+at 5289 set "TT1/Dial" 136
+at 5320 press "P1 Button 1" 8
+
+at 6000 mark sound-select
+at 6000 press "P1 Button 1" 8       # hip-hop
+
+# the song: a key every 15 frames, a 10-frame scratch every 90
+at 6600 press "P1 Button 1" 4
+at 6615 press "P1 Button 2" 4
+at 6630 press "P1 Button 3" 4
+at 6645 press "P1 Button 4" 4
+at 6660 press "P1 Button 5" 4
+at 6675 press "P1 Button 1" 4
+at 6690 press "P1 Button 2" 4
+at 6705 press "P1 Button 3" 4
+at 6720 press "P1 Button 4" 4
+at 6735 press "P1 Button 5" 4
+at 6750 press "P1 Button 1" 4
+at 6765 press "P1 Button 2" 4
+at 6780 press "P1 Button 3" 4
+at 6795 press "P1 Button 4" 4
+at 6810 press "P1 Button 5" 4
+at 6825 press "P1 Button 1" 4
+at 6840 press "P1 Button 2" 4
+at 6855 press "P1 Button 3" 4
+at 6870 press "P1 Button 4" 4
+at 6885 press "P1 Button 5" 4
+at 6900 press "P1 Button 1" 4
+at 6915 press "P1 Button 2" 4
+at 6930 press "P1 Button 3" 4
+at 6945 press "P1 Button 4" 4
+at 6960 press "P1 Button 5" 4
+at 6975 press "P1 Button 1" 4
+at 6990 press "P1 Button 2" 4
+at 7005 press "P1 Button 3" 4
+at 7020 press "P1 Button 4" 4
+at 7035 press "P1 Button 5" 4
+at 7050 press "P1 Button 1" 4
+at 7065 press "P1 Button 2" 4
+at 7080 press "P1 Button 3" 4
+at 7095 press "P1 Button 4" 4
+at 7110 press "P1 Button 5" 4
+at 7125 press "P1 Button 1" 4
+at 7140 press "P1 Button 2" 4
+at 7155 press "P1 Button 3" 4
+at 7170 press "P1 Button 4" 4
+at 7185 press "P1 Button 5" 4
+at 7200 press "P1 Button 1" 4
+at 7215 press "P1 Button 2" 4
+at 7230 press "P1 Button 3" 4
+at 7245 press "P1 Button 4" 4
+at 7260 press "P1 Button 5" 4
+at 7275 press "P1 Button 1" 4
+at 7290 press "P1 Button 2" 4
+at 7305 press "P1 Button 3" 4
+at 7320 press "P1 Button 4" 4
+at 7335 press "P1 Button 5" 4
+at 7350 press "P1 Button 1" 4
+at 7365 press "P1 Button 2" 4
+at 7380 press "P1 Button 3" 4
+at 7395 press "P1 Button 4" 4
+at 7410 press "P1 Button 5" 4
+at 7425 press "P1 Button 1" 4
+at 7440 press "P1 Button 2" 4
+at 7455 press "P1 Button 3" 4
+at 7470 press "P1 Button 4" 4
+at 7485 press "P1 Button 5" 4
+at 7500 press "P1 Button 1" 4
+at 7515 press "P1 Button 2" 4
+at 7530 press "P1 Button 3" 4
+at 7545 press "P1 Button 4" 4
+at 7560 press "P1 Button 5" 4
+at 7575 press "P1 Button 1" 4
+at 7590 press "P1 Button 2" 4
+at 7605 press "P1 Button 3" 4
+at 7620 press "P1 Button 4" 4
+at 7635 press "P1 Button 5" 4
+at 7650 press "P1 Button 1" 4
+at 7665 press "P1 Button 2" 4
+at 7680 press "P1 Button 3" 4
+at 7695 press "P1 Button 4" 4
+at 7710 press "P1 Button 5" 4
+at 7725 press "P1 Button 1" 4
+at 7740 press "P1 Button 2" 4
+at 7755 press "P1 Button 3" 4
+at 7770 press "P1 Button 4" 4
+at 7785 press "P1 Button 5" 4
+at 7800 press "P1 Button 1" 4
+at 7815 press "P1 Button 2" 4
+at 7830 press "P1 Button 3" 4
+at 7845 press "P1 Button 4" 4
+at 7860 press "P1 Button 5" 4
+at 7875 press "P1 Button 1" 4
+at 7890 press "P1 Button 2" 4
+at 7905 press "P1 Button 3" 4
+at 7920 press "P1 Button 4" 4
+at 7935 press "P1 Button 5" 4
+at 7950 press "P1 Button 1" 4
+at 7965 press "P1 Button 2" 4
+at 7980 press "P1 Button 3" 4
+at 7995 press "P1 Button 4" 4
+at 8010 press "P1 Button 5" 4
+at 8025 press "P1 Button 1" 4
+at 8040 press "P1 Button 2" 4
+at 8055 press "P1 Button 3" 4
+at 8070 press "P1 Button 4" 4
+at 8085 press "P1 Button 5" 4
+at 8100 press "P1 Button 1" 4
+at 8115 press "P1 Button 2" 4
+at 8130 press "P1 Button 3" 4
+at 8145 press "P1 Button 4" 4
+at 8160 press "P1 Button 5" 4
+at 8175 press "P1 Button 1" 4
+at 8190 press "P1 Button 2" 4
+at 8205 press "P1 Button 3" 4
+at 8220 press "P1 Button 4" 4
+at 8235 press "P1 Button 5" 4
+at 8250 press "P1 Button 1" 4
+at 8265 press "P1 Button 2" 4
+at 8280 press "P1 Button 3" 4
+at 8295 press "P1 Button 4" 4
+at 8310 press "P1 Button 5" 4
+at 8325 press "P1 Button 1" 4
+at 8340 press "P1 Button 2" 4
+at 8355 press "P1 Button 3" 4
+at 8370 press "P1 Button 4" 4
+at 8385 press "P1 Button 5" 4
+at 8400 press "P1 Button 1" 4
+at 8415 press "P1 Button 2" 4
+at 8430 press "P1 Button 3" 4
+at 8445 press "P1 Button 4" 4
+at 8460 press "P1 Button 5" 4
+at 8475 press "P1 Button 1" 4
+at 8490 press "P1 Button 2" 4
+at 8505 press "P1 Button 3" 4
+at 8520 press "P1 Button 4" 4
+at 8535 press "P1 Button 5" 4
+at 8550 press "P1 Button 1" 4
+at 8565 press "P1 Button 2" 4
+at 8580 press "P1 Button 3" 4
+at 8595 press "P1 Button 4" 4
+at 8610 press "P1 Button 5" 4
+at 8625 press "P1 Button 1" 4
+at 8640 press "P1 Button 2" 4
+at 8655 press "P1 Button 3" 4
+at 8670 press "P1 Button 4" 4
+at 8685 press "P1 Button 5" 4
+at 8700 press "P1 Button 1" 4
+at 8715 press "P1 Button 2" 4
+at 8730 press "P1 Button 3" 4
+at 8745 press "P1 Button 4" 4
+at 8760 press "P1 Button 5" 4
+at 8775 press "P1 Button 1" 4
+at 8790 press "P1 Button 2" 4
+at 8805 press "P1 Button 3" 4
+at 8820 press "P1 Button 4" 4
+at 8835 press "P1 Button 5" 4
+at 8850 press "P1 Button 1" 4
+at 8865 press "P1 Button 2" 4
+at 8880 press "P1 Button 3" 4
+at 8895 press "P1 Button 4" 4
+at 8910 press "P1 Button 5" 4
+at 8925 press "P1 Button 1" 4
+at 8940 press "P1 Button 2" 4
+at 8955 press "P1 Button 3" 4
+at 8970 press "P1 Button 4" 4
+at 8985 press "P1 Button 5" 4
+at 9000 press "P1 Button 1" 4
+at 9015 press "P1 Button 2" 4
+at 9030 press "P1 Button 3" 4
+at 9045 press "P1 Button 4" 4
+at 9060 press "P1 Button 5" 4
+at 9075 press "P1 Button 1" 4
+at 9090 press "P1 Button 2" 4
+at 9105 press "P1 Button 3" 4
+at 9120 press "P1 Button 4" 4
+at 9135 press "P1 Button 5" 4
+at 9150 press "P1 Button 1" 4
+at 9165 press "P1 Button 2" 4
+at 9180 press "P1 Button 3" 4
+at 9195 press "P1 Button 4" 4
+at 9210 press "P1 Button 5" 4
+at 9225 press "P1 Button 1" 4
+at 9240 press "P1 Button 2" 4
+at 9255 press "P1 Button 3" 4
+at 9270 press "P1 Button 4" 4
+at 9285 press "P1 Button 5" 4
+at 9300 press "P1 Button 1" 4
+at 9315 press "P1 Button 2" 4
+at 9330 press "P1 Button 3" 4
+at 9345 press "P1 Button 4" 4
+at 9360 press "P1 Button 5" 4
+at 9375 press "P1 Button 1" 4
+at 9390 press "P1 Button 2" 4
+at 9405 press "P1 Button 3" 4
+at 9420 press "P1 Button 4" 4
+at 9435 press "P1 Button 5" 4
+at 9450 press "P1 Button 1" 4
+at 9465 press "P1 Button 2" 4
+at 9480 press "P1 Button 3" 4
+at 9495 press "P1 Button 4" 4
+at 9510 press "P1 Button 5" 4
+at 9525 press "P1 Button 1" 4
+at 9540 press "P1 Button 2" 4
+at 9555 press "P1 Button 3" 4
+at 9570 press "P1 Button 4" 4
+at 9585 press "P1 Button 5" 4
+at 9600 press "P1 Button 1" 4
+at 9615 press "P1 Button 2" 4
+at 9630 press "P1 Button 3" 4
+at 9645 press "P1 Button 4" 4
+at 9660 press "P1 Button 5" 4
+at 9675 press "P1 Button 1" 4
+at 9690 press "P1 Button 2" 4
+at 9705 press "P1 Button 3" 4
+at 9720 press "P1 Button 4" 4
+at 9735 press "P1 Button 5" 4
+at 9750 press "P1 Button 1" 4
+at 9765 press "P1 Button 2" 4
+at 9780 press "P1 Button 3" 4
+at 9795 press "P1 Button 4" 4
+at 9810 press "P1 Button 5" 4
+at 9825 press "P1 Button 1" 4
+at 9840 press "P1 Button 2" 4
+at 9855 press "P1 Button 3" 4
+at 9870 press "P1 Button 4" 4
+at 9885 press "P1 Button 5" 4
+at 9900 press "P1 Button 1" 4
+at 9915 press "P1 Button 2" 4
+at 9930 press "P1 Button 3" 4
+at 9945 press "P1 Button 4" 4
+at 9960 press "P1 Button 5" 4
+at 9975 press "P1 Button 1" 4
+at 9990 press "P1 Button 2" 4
+at 10005 press "P1 Button 3" 4
+at 10020 press "P1 Button 4" 4
+at 10035 press "P1 Button 5" 4
+at 10050 press "P1 Button 1" 4
+at 10065 press "P1 Button 2" 4
+at 10080 press "P1 Button 3" 4
+at 10095 press "P1 Button 4" 4
+at 10110 press "P1 Button 5" 4
+at 10125 press "P1 Button 1" 4
+at 10140 press "P1 Button 2" 4
+at 10155 press "P1 Button 3" 4
+at 10170 press "P1 Button 4" 4
+at 10185 press "P1 Button 5" 4
+at 10200 press "P1 Button 1" 4
+at 10215 press "P1 Button 2" 4
+at 10230 press "P1 Button 3" 4
+at 10245 press "P1 Button 4" 4
+at 10260 press "P1 Button 5" 4
+at 10275 press "P1 Button 1" 4
+at 10290 press "P1 Button 2" 4
+at 10305 press "P1 Button 3" 4
+at 10320 press "P1 Button 4" 4
+at 10335 press "P1 Button 5" 4
+at 10350 press "P1 Button 1" 4
+at 10365 press "P1 Button 2" 4
+at 10380 press "P1 Button 3" 4
+at 10395 press "P1 Button 4" 4
+at 10410 press "P1 Button 5" 4
+at 10425 press "P1 Button 1" 4
+at 10440 press "P1 Button 2" 4
+at 10455 press "P1 Button 3" 4
+at 10470 press "P1 Button 4" 4
+at 10485 press "P1 Button 5" 4
+at 10500 press "P1 Button 1" 4
+at 10515 press "P1 Button 2" 4
+at 10530 press "P1 Button 3" 4
+at 10545 press "P1 Button 4" 4
+at 10560 press "P1 Button 5" 4
+at 10575 press "P1 Button 1" 4
+at 10590 press "P1 Button 2" 4
+at 10605 press "P1 Button 3" 4
+at 10620 press "P1 Button 4" 4
+at 10635 press "P1 Button 5" 4
+at 10650 press "P1 Button 1" 4
+at 10665 press "P1 Button 2" 4
+at 10680 press "P1 Button 3" 4
+at 10695 press "P1 Button 4" 4
+at 10710 press "P1 Button 5" 4
+at 10725 press "P1 Button 1" 4
+at 10740 press "P1 Button 2" 4
+at 10755 press "P1 Button 3" 4
+at 10770 press "P1 Button 4" 4
+at 10785 press "P1 Button 5" 4
+at 6600 set "TT1/Dial" 141
+at 6601 set "TT1/Dial" 146
+at 6602 set "TT1/Dial" 151
+at 6603 set "TT1/Dial" 156
+at 6604 set "TT1/Dial" 161
+at 6605 set "TT1/Dial" 166
+at 6606 set "TT1/Dial" 171
+at 6607 set "TT1/Dial" 176
+at 6608 set "TT1/Dial" 181
+at 6609 set "TT1/Dial" 186
+at 6690 set "TT1/Dial" 191
+at 6691 set "TT1/Dial" 196
+at 6692 set "TT1/Dial" 201
+at 6693 set "TT1/Dial" 206
+at 6694 set "TT1/Dial" 211
+at 6695 set "TT1/Dial" 216
+at 6696 set "TT1/Dial" 221
+at 6697 set "TT1/Dial" 226
+at 6698 set "TT1/Dial" 231
+at 6699 set "TT1/Dial" 236
+at 6780 set "TT1/Dial" 241
+at 6781 set "TT1/Dial" 246
+at 6782 set "TT1/Dial" 251
+at 6783 set "TT1/Dial" 0
+at 6784 set "TT1/Dial" 5
+at 6785 set "TT1/Dial" 10
+at 6786 set "TT1/Dial" 15
+at 6787 set "TT1/Dial" 20
+at 6788 set "TT1/Dial" 25
+at 6789 set "TT1/Dial" 30
+at 6870 set "TT1/Dial" 35
+at 6871 set "TT1/Dial" 40
+at 6872 set "TT1/Dial" 45
+at 6873 set "TT1/Dial" 50
+at 6874 set "TT1/Dial" 55
+at 6875 set "TT1/Dial" 60
+at 6876 set "TT1/Dial" 65
+at 6877 set "TT1/Dial" 70
+at 6878 set "TT1/Dial" 75
+at 6879 set "TT1/Dial" 80
+at 6960 set "TT1/Dial" 85
+at 6961 set "TT1/Dial" 90
+at 6962 set "TT1/Dial" 95
+at 6963 set "TT1/Dial" 100
+at 6964 set "TT1/Dial" 105
+at 6965 set "TT1/Dial" 110
+at 6966 set "TT1/Dial" 115
+at 6967 set "TT1/Dial" 120
+at 6968 set "TT1/Dial" 125
+at 6969 set "TT1/Dial" 130
+at 7050 set "TT1/Dial" 135
+at 7051 set "TT1/Dial" 140
+at 7052 set "TT1/Dial" 145
+at 7053 set "TT1/Dial" 150
+at 7054 set "TT1/Dial" 155
+at 7055 set "TT1/Dial" 160
+at 7056 set "TT1/Dial" 165
+at 7057 set "TT1/Dial" 170
+at 7058 set "TT1/Dial" 175
+at 7059 set "TT1/Dial" 180
+at 7140 set "TT1/Dial" 185
+at 7141 set "TT1/Dial" 190
+at 7142 set "TT1/Dial" 195
+at 7143 set "TT1/Dial" 200
+at 7144 set "TT1/Dial" 205
+at 7145 set "TT1/Dial" 210
+at 7146 set "TT1/Dial" 215
+at 7147 set "TT1/Dial" 220
+at 7148 set "TT1/Dial" 225
+at 7149 set "TT1/Dial" 230
+at 7230 set "TT1/Dial" 235
+at 7231 set "TT1/Dial" 240
+at 7232 set "TT1/Dial" 245
+at 7233 set "TT1/Dial" 250
+at 7234 set "TT1/Dial" 255
+at 7235 set "TT1/Dial" 4
+at 7236 set "TT1/Dial" 9
+at 7237 set "TT1/Dial" 14
+at 7238 set "TT1/Dial" 19
+at 7239 set "TT1/Dial" 24
+at 7320 set "TT1/Dial" 29
+at 7321 set "TT1/Dial" 34
+at 7322 set "TT1/Dial" 39
+at 7323 set "TT1/Dial" 44
+at 7324 set "TT1/Dial" 49
+at 7325 set "TT1/Dial" 54
+at 7326 set "TT1/Dial" 59
+at 7327 set "TT1/Dial" 64
+at 7328 set "TT1/Dial" 69
+at 7329 set "TT1/Dial" 74
+at 7410 set "TT1/Dial" 79
+at 7411 set "TT1/Dial" 84
+at 7412 set "TT1/Dial" 89
+at 7413 set "TT1/Dial" 94
+at 7414 set "TT1/Dial" 99
+at 7415 set "TT1/Dial" 104
+at 7416 set "TT1/Dial" 109
+at 7417 set "TT1/Dial" 114
+at 7418 set "TT1/Dial" 119
+at 7419 set "TT1/Dial" 124
+at 7500 set "TT1/Dial" 129
+at 7501 set "TT1/Dial" 134
+at 7502 set "TT1/Dial" 139
+at 7503 set "TT1/Dial" 144
+at 7504 set "TT1/Dial" 149
+at 7505 set "TT1/Dial" 154
+at 7506 set "TT1/Dial" 159
+at 7507 set "TT1/Dial" 164
+at 7508 set "TT1/Dial" 169
+at 7509 set "TT1/Dial" 174
+at 7590 set "TT1/Dial" 179
+at 7591 set "TT1/Dial" 184
+at 7592 set "TT1/Dial" 189
+at 7593 set "TT1/Dial" 194
+at 7594 set "TT1/Dial" 199
+at 7595 set "TT1/Dial" 204
+at 7596 set "TT1/Dial" 209
+at 7597 set "TT1/Dial" 214
+at 7598 set "TT1/Dial" 219
+at 7599 set "TT1/Dial" 224
+at 7680 set "TT1/Dial" 229
+at 7681 set "TT1/Dial" 234
+at 7682 set "TT1/Dial" 239
+at 7683 set "TT1/Dial" 244
+at 7684 set "TT1/Dial" 249
+at 7685 set "TT1/Dial" 254
+at 7686 set "TT1/Dial" 3
+at 7687 set "TT1/Dial" 8
+at 7688 set "TT1/Dial" 13
+at 7689 set "TT1/Dial" 18
+at 7770 set "TT1/Dial" 23
+at 7771 set "TT1/Dial" 28
+at 7772 set "TT1/Dial" 33
+at 7773 set "TT1/Dial" 38
+at 7774 set "TT1/Dial" 43
+at 7775 set "TT1/Dial" 48
+at 7776 set "TT1/Dial" 53
+at 7777 set "TT1/Dial" 58
+at 7778 set "TT1/Dial" 63
+at 7779 set "TT1/Dial" 68
+at 7860 set "TT1/Dial" 73
+at 7861 set "TT1/Dial" 78
+at 7862 set "TT1/Dial" 83
+at 7863 set "TT1/Dial" 88
+at 7864 set "TT1/Dial" 93
+at 7865 set "TT1/Dial" 98
+at 7866 set "TT1/Dial" 103
+at 7867 set "TT1/Dial" 108
+at 7868 set "TT1/Dial" 113
+at 7869 set "TT1/Dial" 118
+at 7950 set "TT1/Dial" 123
+at 7951 set "TT1/Dial" 128
+at 7952 set "TT1/Dial" 133
+at 7953 set "TT1/Dial" 138
+at 7954 set "TT1/Dial" 143
+at 7955 set "TT1/Dial" 148
+at 7956 set "TT1/Dial" 153
+at 7957 set "TT1/Dial" 158
+at 7958 set "TT1/Dial" 163
+at 7959 set "TT1/Dial" 168
+at 8040 set "TT1/Dial" 173
+at 8041 set "TT1/Dial" 178
+at 8042 set "TT1/Dial" 183
+at 8043 set "TT1/Dial" 188
+at 8044 set "TT1/Dial" 193
+at 8045 set "TT1/Dial" 198
+at 8046 set "TT1/Dial" 203
+at 8047 set "TT1/Dial" 208
+at 8048 set "TT1/Dial" 213
+at 8049 set "TT1/Dial" 218
+at 8130 set "TT1/Dial" 223
+at 8131 set "TT1/Dial" 228
+at 8132 set "TT1/Dial" 233
+at 8133 set "TT1/Dial" 238
+at 8134 set "TT1/Dial" 243
+at 8135 set "TT1/Dial" 248
+at 8136 set "TT1/Dial" 253
+at 8137 set "TT1/Dial" 2
+at 8138 set "TT1/Dial" 7
+at 8139 set "TT1/Dial" 12
+at 8220 set "TT1/Dial" 17
+at 8221 set "TT1/Dial" 22
+at 8222 set "TT1/Dial" 27
+at 8223 set "TT1/Dial" 32
+at 8224 set "TT1/Dial" 37
+at 8225 set "TT1/Dial" 42
+at 8226 set "TT1/Dial" 47
+at 8227 set "TT1/Dial" 52
+at 8228 set "TT1/Dial" 57
+at 8229 set "TT1/Dial" 62
+at 8310 set "TT1/Dial" 67
+at 8311 set "TT1/Dial" 72
+at 8312 set "TT1/Dial" 77
+at 8313 set "TT1/Dial" 82
+at 8314 set "TT1/Dial" 87
+at 8315 set "TT1/Dial" 92
+at 8316 set "TT1/Dial" 97
+at 8317 set "TT1/Dial" 102
+at 8318 set "TT1/Dial" 107
+at 8319 set "TT1/Dial" 112
+at 8400 set "TT1/Dial" 117
+at 8401 set "TT1/Dial" 122
+at 8402 set "TT1/Dial" 127
+at 8403 set "TT1/Dial" 132
+at 8404 set "TT1/Dial" 137
+at 8405 set "TT1/Dial" 142
+at 8406 set "TT1/Dial" 147
+at 8407 set "TT1/Dial" 152
+at 8408 set "TT1/Dial" 157
+at 8409 set "TT1/Dial" 162
+at 8490 set "TT1/Dial" 167
+at 8491 set "TT1/Dial" 172
+at 8492 set "TT1/Dial" 177
+at 8493 set "TT1/Dial" 182
+at 8494 set "TT1/Dial" 187
+at 8495 set "TT1/Dial" 192
+at 8496 set "TT1/Dial" 197
+at 8497 set "TT1/Dial" 202
+at 8498 set "TT1/Dial" 207
+at 8499 set "TT1/Dial" 212
+at 8580 set "TT1/Dial" 217
+at 8581 set "TT1/Dial" 222
+at 8582 set "TT1/Dial" 227
+at 8583 set "TT1/Dial" 232
+at 8584 set "TT1/Dial" 237
+at 8585 set "TT1/Dial" 242
+at 8586 set "TT1/Dial" 247
+at 8587 set "TT1/Dial" 252
+at 8588 set "TT1/Dial" 1
+at 8589 set "TT1/Dial" 6
+at 8670 set "TT1/Dial" 11
+at 8671 set "TT1/Dial" 16
+at 8672 set "TT1/Dial" 21
+at 8673 set "TT1/Dial" 26
+at 8674 set "TT1/Dial" 31
+at 8675 set "TT1/Dial" 36
+at 8676 set "TT1/Dial" 41
+at 8677 set "TT1/Dial" 46
+at 8678 set "TT1/Dial" 51
+at 8679 set "TT1/Dial" 56
+at 8760 set "TT1/Dial" 61
+at 8761 set "TT1/Dial" 66
+at 8762 set "TT1/Dial" 71
+at 8763 set "TT1/Dial" 76
+at 8764 set "TT1/Dial" 81
+at 8765 set "TT1/Dial" 86
+at 8766 set "TT1/Dial" 91
+at 8767 set "TT1/Dial" 96
+at 8768 set "TT1/Dial" 101
+at 8769 set "TT1/Dial" 106
+at 8850 set "TT1/Dial" 111
+at 8851 set "TT1/Dial" 116
+at 8852 set "TT1/Dial" 121
+at 8853 set "TT1/Dial" 126
+at 8854 set "TT1/Dial" 131
+at 8855 set "TT1/Dial" 136
+at 8856 set "TT1/Dial" 141
+at 8857 set "TT1/Dial" 146
+at 8858 set "TT1/Dial" 151
+at 8859 set "TT1/Dial" 156
+at 8940 set "TT1/Dial" 161
+at 8941 set "TT1/Dial" 166
+at 8942 set "TT1/Dial" 171
+at 8943 set "TT1/Dial" 176
+at 8944 set "TT1/Dial" 181
+at 8945 set "TT1/Dial" 186
+at 8946 set "TT1/Dial" 191
+at 8947 set "TT1/Dial" 196
+at 8948 set "TT1/Dial" 201
+at 8949 set "TT1/Dial" 206
+at 9030 set "TT1/Dial" 211
+at 9031 set "TT1/Dial" 216
+at 9032 set "TT1/Dial" 221
+at 9033 set "TT1/Dial" 226
+at 9034 set "TT1/Dial" 231
+at 9035 set "TT1/Dial" 236
+at 9036 set "TT1/Dial" 241
+at 9037 set "TT1/Dial" 246
+at 9038 set "TT1/Dial" 251
+at 9039 set "TT1/Dial" 0
+at 9120 set "TT1/Dial" 5
+at 9121 set "TT1/Dial" 10
+at 9122 set "TT1/Dial" 15
+at 9123 set "TT1/Dial" 20
+at 9124 set "TT1/Dial" 25
+at 9125 set "TT1/Dial" 30
+at 9126 set "TT1/Dial" 35
+at 9127 set "TT1/Dial" 40
+at 9128 set "TT1/Dial" 45
+at 9129 set "TT1/Dial" 50
+at 9210 set "TT1/Dial" 55
+at 9211 set "TT1/Dial" 60
+at 9212 set "TT1/Dial" 65
+at 9213 set "TT1/Dial" 70
+at 9214 set "TT1/Dial" 75
+at 9215 set "TT1/Dial" 80
+at 9216 set "TT1/Dial" 85
+at 9217 set "TT1/Dial" 90
+at 9218 set "TT1/Dial" 95
+at 9219 set "TT1/Dial" 100
+at 9300 set "TT1/Dial" 105
+at 9301 set "TT1/Dial" 110
+at 9302 set "TT1/Dial" 115
+at 9303 set "TT1/Dial" 120
+at 9304 set "TT1/Dial" 125
+at 9305 set "TT1/Dial" 130
+at 9306 set "TT1/Dial" 135
+at 9307 set "TT1/Dial" 140
+at 9308 set "TT1/Dial" 145
+at 9309 set "TT1/Dial" 150
+at 9390 set "TT1/Dial" 155
+at 9391 set "TT1/Dial" 160
+at 9392 set "TT1/Dial" 165
+at 9393 set "TT1/Dial" 170
+at 9394 set "TT1/Dial" 175
+at 9395 set "TT1/Dial" 180
+at 9396 set "TT1/Dial" 185
+at 9397 set "TT1/Dial" 190
+at 9398 set "TT1/Dial" 195
+at 9399 set "TT1/Dial" 200
+at 9480 set "TT1/Dial" 205
+at 9481 set "TT1/Dial" 210
+at 9482 set "TT1/Dial" 215
+at 9483 set "TT1/Dial" 220
+at 9484 set "TT1/Dial" 225
+at 9485 set "TT1/Dial" 230
+at 9486 set "TT1/Dial" 235
+at 9487 set "TT1/Dial" 240
+at 9488 set "TT1/Dial" 245
+at 9489 set "TT1/Dial" 250
+at 9570 set "TT1/Dial" 255
+at 9571 set "TT1/Dial" 4
+at 9572 set "TT1/Dial" 9
+at 9573 set "TT1/Dial" 14
+at 9574 set "TT1/Dial" 19
+at 9575 set "TT1/Dial" 24
+at 9576 set "TT1/Dial" 29
+at 9577 set "TT1/Dial" 34
+at 9578 set "TT1/Dial" 39
+at 9579 set "TT1/Dial" 44
+at 9660 set "TT1/Dial" 49
+at 9661 set "TT1/Dial" 54
+at 9662 set "TT1/Dial" 59
+at 9663 set "TT1/Dial" 64
+at 9664 set "TT1/Dial" 69
+at 9665 set "TT1/Dial" 74
+at 9666 set "TT1/Dial" 79
+at 9667 set "TT1/Dial" 84
+at 9668 set "TT1/Dial" 89
+at 9669 set "TT1/Dial" 94
+at 9750 set "TT1/Dial" 99
+at 9751 set "TT1/Dial" 104
+at 9752 set "TT1/Dial" 109
+at 9753 set "TT1/Dial" 114
+at 9754 set "TT1/Dial" 119
+at 9755 set "TT1/Dial" 124
+at 9756 set "TT1/Dial" 129
+at 9757 set "TT1/Dial" 134
+at 9758 set "TT1/Dial" 139
+at 9759 set "TT1/Dial" 144
+at 9840 set "TT1/Dial" 149
+at 9841 set "TT1/Dial" 154
+at 9842 set "TT1/Dial" 159
+at 9843 set "TT1/Dial" 164
+at 9844 set "TT1/Dial" 169
+at 9845 set "TT1/Dial" 174
+at 9846 set "TT1/Dial" 179
+at 9847 set "TT1/Dial" 184
+at 9848 set "TT1/Dial" 189
+at 9849 set "TT1/Dial" 194
+at 9930 set "TT1/Dial" 199
+at 9931 set "TT1/Dial" 204
+at 9932 set "TT1/Dial" 209
+at 9933 set "TT1/Dial" 214
+at 9934 set "TT1/Dial" 219
+at 9935 set "TT1/Dial" 224
+at 9936 set "TT1/Dial" 229
+at 9937 set "TT1/Dial" 234
+at 9938 set "TT1/Dial" 239
+at 9939 set "TT1/Dial" 244
+at 10020 set "TT1/Dial" 249
+at 10021 set "TT1/Dial" 254
+at 10022 set "TT1/Dial" 3
+at 10023 set "TT1/Dial" 8
+at 10024 set "TT1/Dial" 13
+at 10025 set "TT1/Dial" 18
+at 10026 set "TT1/Dial" 23
+at 10027 set "TT1/Dial" 28
+at 10028 set "TT1/Dial" 33
+at 10029 set "TT1/Dial" 38
+at 10110 set "TT1/Dial" 43
+at 10111 set "TT1/Dial" 48
+at 10112 set "TT1/Dial" 53
+at 10113 set "TT1/Dial" 58
+at 10114 set "TT1/Dial" 63
+at 10115 set "TT1/Dial" 68
+at 10116 set "TT1/Dial" 73
+at 10117 set "TT1/Dial" 78
+at 10118 set "TT1/Dial" 83
+at 10119 set "TT1/Dial" 88
+at 10200 set "TT1/Dial" 93
+at 10201 set "TT1/Dial" 98
+at 10202 set "TT1/Dial" 103
+at 10203 set "TT1/Dial" 108
+at 10204 set "TT1/Dial" 113
+at 10205 set "TT1/Dial" 118
+at 10206 set "TT1/Dial" 123
+at 10207 set "TT1/Dial" 128
+at 10208 set "TT1/Dial" 133
+at 10209 set "TT1/Dial" 138
+at 10290 set "TT1/Dial" 143
+at 10291 set "TT1/Dial" 148
+at 10292 set "TT1/Dial" 153
+at 10293 set "TT1/Dial" 158
+at 10294 set "TT1/Dial" 163
+at 10295 set "TT1/Dial" 168
+at 10296 set "TT1/Dial" 173
+at 10297 set "TT1/Dial" 178
+at 10298 set "TT1/Dial" 183
+at 10299 set "TT1/Dial" 188
+at 10380 set "TT1/Dial" 193
+at 10381 set "TT1/Dial" 198
+at 10382 set "TT1/Dial" 203
+at 10383 set "TT1/Dial" 208
+at 10384 set "TT1/Dial" 213
+at 10385 set "TT1/Dial" 218
+at 10386 set "TT1/Dial" 223
+at 10387 set "TT1/Dial" 228
+at 10388 set "TT1/Dial" 233
+at 10389 set "TT1/Dial" 238
+at 10470 set "TT1/Dial" 243
+at 10471 set "TT1/Dial" 248
+at 10472 set "TT1/Dial" 253
+at 10473 set "TT1/Dial" 2
+at 10474 set "TT1/Dial" 7
+at 10475 set "TT1/Dial" 12
+at 10476 set "TT1/Dial" 17
+at 10477 set "TT1/Dial" 22
+at 10478 set "TT1/Dial" 27
+at 10479 set "TT1/Dial" 32
+at 10560 set "TT1/Dial" 37
+at 10561 set "TT1/Dial" 42
+at 10562 set "TT1/Dial" 47
+at 10563 set "TT1/Dial" 52
+at 10564 set "TT1/Dial" 57
+at 10565 set "TT1/Dial" 62
+at 10566 set "TT1/Dial" 67
+at 10567 set "TT1/Dial" 72
+at 10568 set "TT1/Dial" 77
+at 10569 set "TT1/Dial" 82
+at 10650 set "TT1/Dial" 87
+at 10651 set "TT1/Dial" 92
+at 10652 set "TT1/Dial" 97
+at 10653 set "TT1/Dial" 102
+at 10654 set "TT1/Dial" 107
+at 10655 set "TT1/Dial" 112
+at 10656 set "TT1/Dial" 117
+at 10657 set "TT1/Dial" 122
+at 10658 set "TT1/Dial" 127
+at 10659 set "TT1/Dial" 132
+at 10740 set "TT1/Dial" 137
+at 10741 set "TT1/Dial" 142
+at 10742 set "TT1/Dial" 147
+at 10743 set "TT1/Dial" 152
+at 10744 set "TT1/Dial" 157
+at 10745 set "TT1/Dial" 162
+at 10746 set "TT1/Dial" 167
+at 10747 set "TT1/Dial" 172
+at 10748 set "TT1/Dial" 177
+at 10749 set "TT1/Dial" 182
+
+from 0 every 60 snap
+at 12600 quit

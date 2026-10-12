@@ -958,17 +958,19 @@ void m68k_set_cpu_type(unsigned int cpu_type)
 int m68k_execute(int num_cycles)
 {
 	/* eat up any reset cycles */
+	int hk_reset = 0;
 	if (RESET_CYCLES) {
 	    int rc = RESET_CYCLES;
 	    RESET_CYCLES = 0;
 	    num_cycles -= rc;
 	    if (num_cycles <= 0)
 		return rc;
+	    hk_reset = HK_COUNT_RESET_CYCLES ? rc : 0;
 	}
 
 	/* Set our pool of clock cycles available */
 	SET_CYCLES(num_cycles);
-	m68ki_initial_cycles = num_cycles;
+	m68ki_initial_cycles = num_cycles + hk_reset;   /* HIRAKU: see HK_COUNT_RESET_CYCLES */
 
 	/* See if interrupts came in */
 	m68ki_check_interrupts();
@@ -982,6 +984,9 @@ int m68k_execute(int num_cycles)
 		m68ki_check_bus_error_trap();
 
 		/* Main loop.  Keep going until we run out of clock cycles */
+		/* HIRAKU: HK_LOOP_CHECKS_FIRST: no instruction if an exception taken above
+		   used up the slice */
+		if (!HK_LOOP_CHECKS_FIRST || GET_CYCLES() > 0)
 		do
 		{
 			int i;
