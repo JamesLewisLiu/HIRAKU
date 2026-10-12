@@ -202,6 +202,21 @@ unlock event, which HIRAKU plays unchanged:
 - **Skipping it:** the phase codes were the operators' way to skip the event, and phase 3 or
   MAX releases everything at once.
 
+**pop'n 7 unlocks:** right-click pop'n music 7 > **Unlocks**:
+- **How pop'n 7 differs:** its operator codes don't unlock anything by themselves. Each code adds
+  a switch to EVENT OPTIONS, and the switch must be YES. The dialog's levels do both, in the
+  operator's order.
+- **The levels:** 1 runs the BINGO de 7!! event, 2 adds the secret songs, 3 the bingo songs,
+  and MAX the expert-course songs.
+- **BINGO de 7!!:** a 5×5 card.
+  - After every stage, each square whose condition the stage met opens. The screen shows one
+    hint each credit.
+  - Each full line (12 of them) gets an item.
+  - The dialog lists the closed squares with the game's own name for each condition (for
+    example `COMBO 573 CLEAR`), and which lines are one square from done.
+  - Like pop'n 8's event, it never looks at the date.
+- **The checksum:** the save's checksum is kept right, and the old save stays beside it.
+
 ## ParaParaParadise (in progress, M8)
 
 You need the program CD (`a11jaa01`), the audio CD (`a11jaa02`) and the MAME `ppp1mp` ROM set, which holds the dongle image `gqa11-ja`. To unpack MAME's CHDs:

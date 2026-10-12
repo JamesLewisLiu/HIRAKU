@@ -43,3 +43,63 @@ value = 0xff
 name = "MAX. + EXPERT MODE DATA RELEASE"
 code = "GZU98N2TW3"
 text = "Everything: also the expert-course-only songs in every mode."
+
+# The BINGO de 7!! event, as the game plays it (BINGO de 7: YES). Found in the program
+# (FUN_800c4824, FUN_800bd98c, FUN_800bd66c; the conditions at 0x800c1134) and checked with an
+# autoplayed credit (PLAN.md section 20). After every stage, each unopened square whose
+# condition the stage met opens; the bottom of the screen hints at one square each credit
+# (random, not saved). A full line (12: the columns B-F, the rows G-K, the diagonals A and L)
+# gets an item; all 12, the last surprise. The squares are the low 24 bits of the same
+# 32-bit word as the switches, column by column without the centre; the card and its numbers
+# (shown doubled on screen) come from the DVD and are the same on every cabinet. The
+# conditions are the game's own names for them.
+[[progress]]
+id = "bingo"
+title = "BINGO de 7!!"
+kind = "bingo"
+nvram = "rtc.nv"
+offsets = [0x84, 0x88, 0x8c]
+active = { unlock = "phase", mask = 0x03, values = [0x03] }
+released = { unlock = "phase", mask = 0x30, values = [0x30] }
+lines = [
+  { name = "A", cells = [0, 6, 12, 18, 24] },
+  { name = "B", cells = [0, 1, 2, 3, 4] },
+  { name = "C", cells = [5, 6, 7, 8, 9] },
+  { name = "D", cells = [10, 11, 12, 13, 14] },
+  { name = "E", cells = [15, 16, 17, 18, 19] },
+  { name = "F", cells = [20, 21, 22, 23, 24] },
+  { name = "G", cells = [0, 5, 10, 15, 20] },
+  { name = "H", cells = [1, 6, 11, 16, 21] },
+  { name = "I", cells = [2, 7, 12, 17, 22] },
+  { name = "J", cells = [3, 8, 13, 18, 23] },
+  { name = "K", cells = [4, 9, 14, 19, 24] },
+  { name = "L", cells = [4, 8, 12, 16, 20] },
+]
+# the 25 squares, column by column (B to F), top to bottom
+cells = [
+  { number = 1, shown = 2, bit = 0, condition = "SCORE TOTAL 300000" },
+  { number = 2, shown = 4, bit = 1, condition = "SCORE TOTAL 100000 LOWER" },
+  { number = 3, shown = 6, bit = 2, condition = "SCORE JUST 77777" },
+  { number = 5, shown = 10, bit = 3, condition = "SCORE TOTAL 300000 5BTN" },
+  { number = 8, shown = 16, bit = 4, condition = "SCORE 283" },
+  { number = 13, shown = 26, bit = 5, condition = "SCORE 100000 DEFSPEED" },
+  { number = 16, shown = 32, bit = 6, condition = "COMBO 77 CLEAR" },
+  { number = 18, shown = 36, bit = 7, condition = "COMBO 123 CLEAR" },
+  { number = 19, shown = 38, bit = 8, condition = "COMBO 222 CLEAR" },
+  { number = 20, shown = 40, bit = 9, condition = "COMBO 333 CLEAR" },
+  { number = 21, shown = 42, bit = 10, condition = "COMBO 444 CLEAR" },
+  { number = 22, shown = 44, bit = 11, condition = "COMBO 555 CLEAR" },
+  { center = true },
+  { number = 23, shown = 46, bit = 12, condition = "COMBO 573 CLEAR" },
+  { number = 24, shown = 48, bit = 13, condition = "COMBO 666 CLEAR" },
+  { number = 32, shown = 64, bit = 14, condition = "OJAMA CHARA POP 100000" },
+  { number = 33, shown = 66, bit = 15, condition = "OJAMA HIDSUDHISPEED FEVER" },
+  { number = 36, shown = 72, bit = 16, condition = "OJAMA EXCITE OJA JAMMIX" },
+  { number = 38, shown = 76, bit = 17, condition = "CLEAR GRAM DEF SPEED" },
+  { number = 40, shown = 80, bit = 18, condition = "CLEAR ALLNIGHT DEF SPEED" },
+  { number = 41, shown = 82, bit = 19, condition = "CHARA 1P 2P MEBAE" },
+  { number = 42, shown = 84, bit = 20, condition = "CHARA MAY OTOKO JAPAN" },
+  { number = 46, shown = 92, bit = 21, condition = "OTHER HANKEN HIST COURSE" },
+  { number = 48, shown = 96, bit = 22, condition = "OTHER GRE GOO BAD 77 777" },
+  { number = 49, shown = 98, bit = 23, condition = "OTHER BT STAGE ALL SAME" },
+]

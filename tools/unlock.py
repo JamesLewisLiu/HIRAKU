@@ -73,8 +73,11 @@ def progress(p: dict, nvram: str, unlocks: dict) -> dict | None:
         if len(vals) != 1:
             raise Error(f"{path}: the copies of {p['id']} disagree: not a save this tool knows")
         return vals.pop()
-    a = p.get("active")
-    active = a is None or current(unlocks[a["unlock"]], nvram) in a["values"]
+    def matches(cond):
+        return cond is not None and (current(unlocks[cond["unlock"]], nvram) & cond.get("mask", 0xffffffff)) in cond["values"]
+    active = p.get("active") is None or matches(p.get("active"))
+    if p.get("kind") == "bingo":
+        return bingo(p, data, active, matches(p.get("released")))
     stage, unl, missed, pos, lap = (field(p[k]) for k in ("stage", "unlocked", "missed", "position", "lap"))
     st = p["stages"][min(stage, len(p["stages"]) - 1)]
     goal = st["goal"]
@@ -93,9 +96,37 @@ def progress(p: dict, nvram: str, unlocks: dict) -> dict | None:
     }
 
 
+def bingo(p: dict, data: bytes, active: bool, released: bool) -> dict:
+    """A bingo card (pop'n 7): which squares are open (bits of a 32-bit word, kept in copies)."""
+    words = {int.from_bytes(data[o:o + 4], "big") for o in p["offsets"]}
+    if len(words) != 1:
+        raise Error(f"the copies of {p['id']} disagree: not a save this tool knows")
+    word = words.pop()
+    cells = p["cells"]
+    open_ = [c.get("center", False) or bool(word >> c["bit"] & 1) for c in cells]
+    lines = [ln["name"] for ln in p["lines"] if all(open_[i] for i in ln["cells"])]
+    closed = [c for c, o in zip(cells, open_) if not o]
+    near = sorted({ln["name"] for ln in p["lines"] if sum(not open_[i] for i in ln["cells"]) == 1})
+    return {"active": active, "released": released, "open": sum(open_) - 1, "squares": len(cells) - 1,
+            "lines": lines, "line_count": len(p["lines"]), "near": near,
+            "closed": [{"shown": c["shown"], "condition": c["condition"]} for c in closed]}
+
+
 def describe_progress(p: dict, s: dict) -> str:
     if s is None:
         return "no save yet"
+    if p.get("kind") == "bingo":
+        lines = [] if s["active"] else ["the event is not running (BINGO de 7: NO)"]
+        if s["released"]:
+            lines.append("BINGO de 7 DATA RELEASE is on: its songs are unlocked anyway")
+        lines.append(f"{s['open']} of {s['squares']} squares open; lines {len(s['lines'])} of {s['line_count']}"
+                     + (f" ({', '.join(s['lines'])})" if s["lines"] else ""))
+        if s["near"]:
+            lines.append("one square from a line: " + ", ".join(s["near"]))
+        if s["closed"]:
+            lines.append("still closed (the number on the card, and the game's name for its condition):")
+            lines += [f"  {c['shown']}: {c['condition']}" for c in s["closed"]]
+        return "\n".join(lines)
     lines = [] if s["active"] else ["the event is not running (it runs at phase 1 or 2)"]
     if s["done"]:
         return "\n".join(lines + ["all done: everything unlocked"])

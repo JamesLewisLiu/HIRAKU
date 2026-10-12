@@ -1,0 +1,186 @@
+# pop'n music 7: one BINGO de 7!! round (PLAN.md section 20).
+# From a save at level 1 (BINGO de 7: YES), e.g. a fresh save (the ROM set's RTC) given
+# tools/unlock.py popn7 --nvram DIR phase=3:
+#   hiraku-popn7 --nvram DIR --script oracle/scripts/popn7-bingo.his
+# Stage 1, ANTHEM / GLORIA (the music select's first song, normal mode), is played from its
+# chart: 154 notes, lanes 0-8 = buttons 1-9, at frame 6181 + t * 58.5 / 1000 (t in 1/1024 s;
+# the song starts at frame 6182, 0x80216c94 counts its frames): 154 GREAT, full combo. That
+# meets square 26's condition (SCORE 100000 DEFSPEED); stage 2 is left to fail. After the
+# round the card opens 26: rtc.nv 0x87/0x8b/0x8f 0 -> 0x20 (bit 5), the checksum at 0x56 follows.
+# Watches: the credit's hint (0x80352ae0, a bingo number - 1), the song's frame, stage results.
+game popn7
+watch target u32 0x80352ae0
+watch songf u32 0x80216c94
+watch r0 u32 0x80216d40
+watch r1 u32 0x80216d44
+watch r2 u32 0x80216d48
+watch r3 u32 0x80216d4c
+watch r4 u32 0x80216d50
+watch r5 u32 0x80216d54
+watch r6 u32 0x80216d58
+watch r7 u32 0x80216d5c
+at 4400 press "Coin 1" 6
+at 4440 press "Coin 1" 6
+at 4560 press "P1 Button 5" 4
+at 4800 press "P1 Button 5" 4
+at 5100 press "P1 Button 5" 4
+at 5400 press "P1 Button 5" 4
+at 5700 press "P1 Button 5" 4
+at 6000 press "P1 Button 5" 4
+at 6309 press "P1 Button 1" 2
+at 6352 press "P1 Button 6" 2
+at 6438 press "P1 Button 7" 2
+at 6502 press "P1 Button 6" 2
+at 6523 press "P1 Button 8" 2
+at 6630 press "P1 Button 9" 2
+at 6672 press "P1 Button 5" 2
+at 6695 press "P1 Button 4" 2
+at 6930 press "P1 Button 2" 2
+at 6951 press "P1 Button 3" 2
+at 6994 press "P1 Button 1" 2
+at 7037 press "P1 Button 6" 2
+at 7123 press "P1 Button 7" 2
+at 7208 press "P1 Button 8" 2
+at 7251 press "P1 Button 9" 2
+at 7294 press "P1 Button 7" 2
+at 7337 press "P1 Button 5" 2
+at 7379 press "P1 Button 3" 2
+at 7444 press "P1 Button 3" 2
+at 7465 press "P1 Button 2" 2
+at 7508 press "P1 Button 4" 2
+at 7551 press "P1 Button 2" 2
+at 7658 press "P1 Button 1" 2
+at 7700 press "P1 Button 4" 2
+at 7722 press "P1 Button 3" 2
+at 7786 press "P1 Button 7" 2
+at 7849 press "P1 Button 5" 2
+at 7893 press "P1 Button 9" 2
+at 7957 press "P1 Button 6" 2
+at 8022 press "P1 Button 4" 2
+at 8064 press "P1 Button 6" 2
+at 8107 press "P1 Button 8" 2
+at 8150 press "P1 Button 7" 2
+at 8193 press "P1 Button 6" 2
+at 8236 press "P1 Button 5" 2
+at 8428 press "P1 Button 5" 2
+at 8471 press "P1 Button 3" 2
+at 8492 press "P1 Button 1" 2
+at 8514 press "P1 Button 9" 2
+at 8557 press "P1 Button 5" 2
+at 8578 press "P1 Button 6" 2
+at 8599 press "P1 Button 9" 2
+at 8642 press "P1 Button 6" 2
+at 8664 press "P1 Button 2" 2
+at 8685 press "P1 Button 7" 2
+at 8728 press "P1 Button 8" 2
+at 8749 press "P1 Button 5" 2
+at 8771 press "P1 Button 5" 2
+at 8814 press "P1 Button 6" 2
+at 8835 press "P1 Button 7" 2
+at 8856 press "P1 Button 5" 2
+at 8878 press "P1 Button 7" 2
+at 8899 press "P1 Button 3" 2
+at 8920 press "P1 Button 6" 2
+at 8942 press "P1 Button 4" 2
+at 8963 press "P1 Button 6" 2
+at 8985 press "P1 Button 2" 2
+at 9006 press "P1 Button 8" 2
+at 9027 press "P1 Button 6" 2
+at 9049 press "P1 Button 8" 2
+at 9070 press "P1 Button 4" 2
+at 9092 press "P1 Button 5" 2
+at 9134 press "P1 Button 7" 2
+at 9177 press "P1 Button 9" 2
+at 9327 press "P1 Button 1" 2
+at 9349 press "P1 Button 2" 2
+at 9370 press "P1 Button 1" 2
+at 9391 press "P1 Button 8" 2
+at 9434 press "P1 Button 7" 2
+at 9497 press "P1 Button 8" 2
+at 9517 press "P1 Button 7" 2
+at 9582 press "P1 Button 5" 2
+at 9603 press "P1 Button 3" 2
+at 9656 press "P1 Button 2" 2
+at 9686 press "P1 Button 4" 2
+at 9740 press "P1 Button 2" 2
+at 9771 press "P1 Button 5" 2
+at 9825 press "P1 Button 3" 2
+at 9856 press "P1 Button 7" 2
+at 9899 press "P1 Button 9" 2
+at 9941 press "P1 Button 8" 2
+at 9994 press "P1 Button 6" 2
+at 10024 press "P1 Button 4" 2
+at 10110 press "P1 Button 7" 2
+at 10163 press "P1 Button 5" 2
+at 10195 press "P1 Button 3" 2
+at 10279 press "P1 Button 6" 2
+at 10331 press "P1 Button 4" 2
+at 10364 press "P1 Button 2" 2
+at 10449 press "P1 Button 5" 2
+at 10684 press "P1 Button 1" 2
+at 10694 press "P1 Button 1" 2
+at 10705 press "P1 Button 1" 2
+at 10749 press "P1 Button 1" 2
+at 10793 press "P1 Button 9" 2
+at 10859 press "P1 Button 5" 2
+at 10880 press "P1 Button 7" 2
+at 10902 press "P1 Button 5" 2
+at 10924 press "P1 Button 7" 2
+at 10978 press "P1 Button 3" 2
+at 11010 press "P1 Button 8" 2
+at 11032 press "P1 Button 5" 2
+at 11053 press "P1 Button 6" 2
+at 11097 press "P1 Button 7" 2
+at 11119 press "P1 Button 4" 2
+at 11140 press "P1 Button 5" 2
+at 11184 press "P1 Button 6" 2
+at 11205 press "P1 Button 3" 2
+at 11227 press "P1 Button 4" 2
+at 11249 press "P1 Button 1" 2
+at 11292 press "P1 Button 4" 2
+at 11314 press "P1 Button 3" 2
+at 11335 press "P1 Button 9" 2
+at 11379 press "P1 Button 7" 2
+at 11400 press "P1 Button 8" 2
+at 11422 press "P1 Button 6" 2
+at 11465 press "P1 Button 5" 2
+at 11487 press "P1 Button 4" 2
+at 11541 press "P1 Button 2" 2
+at 11574 press "P1 Button 3" 2
+at 11616 press "P1 Button 7" 2
+at 11770 press "P1 Button 1" 2
+at 11792 press "P1 Button 3" 2
+at 11813 press "P1 Button 5" 2
+at 11835 press "P1 Button 4" 2
+at 11857 press "P1 Button 7" 2
+at 11901 press "P1 Button 6" 2
+at 11923 press "P1 Button 5" 2
+at 11945 press "P1 Button 9" 2
+at 11967 press "P1 Button 8" 2
+at 12077 press "P1 Button 2" 2
+at 12121 press "P1 Button 1" 2
+at 12165 press "P1 Button 3" 2
+at 12210 press "P1 Button 2" 2
+at 12232 press "P1 Button 2" 2
+at 12342 press "P1 Button 2" 2
+at 12386 press "P1 Button 1" 2
+at 12430 press "P1 Button 3" 2
+at 12475 press "P1 Button 2" 2
+at 12497 press "P1 Button 8" 2
+at 12519 press "P1 Button 6" 2
+at 12541 press "P1 Button 8" 2
+at 12596 press "P1 Button 4" 2
+at 12628 press "P1 Button 9" 2
+at 12651 press "P1 Button 5" 2
+at 12673 press "P1 Button 6" 2
+at 12717 press "P1 Button 7" 2
+at 12738 press "P1 Button 4" 2
+at 12761 press "P1 Button 5" 2
+at 12807 press "P1 Button 6" 2
+at 12831 press "P1 Button 3" 2
+at 12854 press "P1 Button 4" 2
+at 12952 press "P1 Button 3" 2
+at 13059 press "P1 Button 3" 2
+from 13600 every 200 press "P1 Button 5" 4
+from 13600 every 150 snap
+at 34000 quit

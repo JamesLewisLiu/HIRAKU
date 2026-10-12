@@ -857,6 +857,35 @@ The order of work:
   stage, unlocks, KRAFT's space and lap, the next city, and the cities missed.
 - **Not yet seen:** a city actually unlocked. 静岡 is 21 spaces on, an exact landing.
 
+### Pilot 2: pop'n music 7 (done, 2026-10-12)
+
+- **The operator codes** (RemyWiki) add switches to EVENT OPTIONS: BINGO de 7, SECRET DATA
+  RELEASE, BINGO de 7 DATA RELEASE, EXPERT MODE DATA RELEASE. Each is NO until the operator
+  sets it (hold red, press blue) and saves.
+- **In the save:** one 32-bit word, kept three times (`rtc.nv` 0x84/0x88/0x8c).
+  - The high byte holds two bits per switch: code entered, and on.
+  - The low 24 bits are the bingo squares.
+  - A 16-bit byte sum (0x5c-0xec0, at 0x56) covers it.
+  - The boot check (`FUN_8005b940`) repairs the three copies by majority, and drops a switch
+    whose code is missing.
+- **The tool:** `tools/unlock.py` gained checksums; its MAX save is byte-identical to the
+  game's own (`oracle/scripts/popn7-phases.his`).
+- **BINGO de 7!!:**
+  - **Opening squares:** after each stage, `FUN_800c4824` tests every closed square's condition
+    (`FUN_800c2008`; the conditions' names are at `0x800c1134`, 16 bytes per bingo number) and
+    opens those met.
+  - **The card:** 24 numbers loaded from the DVD, plus the free centre. Squares map to bits
+    0-23 column by column (the table at `0x800c18a0`). Lines A-L: the diagonals A and L, the
+    columns B-F, the rows G-K. The numbers are shown doubled on screen.
+  - **The hint** (`0x80352ae0`) is a random closed square each credit, not saved.
+- **Verified:**
+  - An autoplayed stage, ANTHEM / GLORIA at 154 GREAT (same chart format and 58.5-frame timing
+    as pop'n 8), opened square 26, `SCORE 100000 DEFSPEED` (`oracle/scripts/popn7-bingo.his`).
+  - The event never reads the date: the clock readers are bookkeeping, error log, test and
+    boot, and the event screen is identical on four dates, 2002 to 2026.
+- **In the Unlocks dialog:** the level, the open squares, the lines done or one square away,
+  and every closed square's condition.
+
 ## M0 steps (all done)
 
 1. ~~`git init` HIRAKU and add `.gitignore` for `dumps/` and `build/`~~ Done.
