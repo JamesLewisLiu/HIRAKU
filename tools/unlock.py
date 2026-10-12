@@ -41,6 +41,13 @@ def default_nvram(game: str) -> str:
     return os.path.join(base, "hiraku", game)
 
 
+def checksum_ok(u: dict, data: bytes) -> bool:
+    c = u.get("checksum")
+    if not c:
+        return True
+    return sum(data[c["from"]:c["to"]]) & 0xffff == int.from_bytes(data[c["at"]:c["at"] + 2], "big")
+
+
 def current(u: dict, nvram: str):
     """The value in the save, or None (no save yet); Error if the copies disagree."""
     path = os.path.join(nvram, u["nvram"])
@@ -50,6 +57,8 @@ def current(u: dict, nvram: str):
     vals = {data[o] for o in u["offsets"] if o < len(data)}
     if len(vals) != 1:
         raise Error(f"{path}: the copies of {u['id']} disagree ({sorted(vals)}): not a save this tool knows")
+    if not checksum_ok(u, data):
+        raise Error(f"{path}: its checksum doesn't match: not a save this tool knows")
     return vals.pop()
 
 
@@ -102,7 +111,7 @@ def level_name(u: dict, v) -> str:
     for lv in u.get("level", []):
         if lv["value"] == v:
             return lv["name"]
-    return "none" if v is None else str(v)
+    return "none" if v is None else f"other ({v:#x}: set in the game's test mode)"
 
 
 def apply(game: str, u: dict, nvram: str, value: int) -> str:
@@ -117,6 +126,9 @@ def apply(game: str, u: dict, nvram: str, value: int) -> str:
     shutil.copy2(path, backup)
     for o in u["offsets"]:
         data[o] = value
+    c = u.get("checksum")   # a 16-bit sum of the bytes from..to, kept at `at` (big-endian)
+    if c:
+        data[c["at"]:c["at"] + 2] = (sum(data[c["from"]:c["to"]]) & 0xffff).to_bytes(2, "big")
     tmp = path + ".tmp"
     with open(tmp, "wb") as f:
         f.write(data)

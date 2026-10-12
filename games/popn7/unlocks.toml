@@ -1,0 +1,45 @@
+# pop'n music 7: what the operator can unlock (tools/unlock.py; launcher: right-click > Unlocks).
+#
+# Operator codes (remywiki.com/AC_pnm_7), typed in test mode > EVENT OPTIONS > PASSWORD in order.
+# Unlike pop'n 8, a code only adds a switch to EVENT OPTIONS, set to NO; the operator turns it
+# on (hold red, press blue) and saves (SAVE AND EXIT). The game keeps the four as two bits each
+# in one byte of its battery RAM, three times: bit 2k = code k+1 entered, bit 2k+1 = switched on.
+# A 16-bit sum of the block (0x5c-0xec0), at 0x56, covers them. Found by entering the codes
+# and the switches in HIRAKU and comparing the saves; the levels below are what the game wrote.
+
+[[unlock]]
+id = "phase"
+title = "Event phase"
+nvram = "rtc.nv"
+offsets = [0x84, 0x88, 0x8c]
+checksum = { at = 0x56, from = 0x5c, to = 0xec0 }
+how = "In the game: test mode > EVENT OPTIONS > PASSWORD, the codes in order; then each new option to YES (hold red, press blue) and SAVE AND EXIT."
+
+[[unlock.level]]
+value = 0x00
+name = "--"
+text = "No event: the songs of a new cabinet."
+
+[[unlock.level]]
+value = 0x03
+name = "1. BINGO de 7"
+code = "QL43Y5SJYH"
+text = "Runs the BINGO de 7!! event (BINGO de 7: YES). Its rounds also fix the difficulty, stages and score display to the factory settings."
+
+[[unlock.level]]
+value = 0x0f
+name = "2. + SECRET DATA RELEASE"
+code = "4BADGJ2DKF"
+text = "Also unlocks the six hidden songs, every EX chart outside the event, and SANAE♥chan and Rave girl."
+
+[[unlock.level]]
+value = 0x3f
+name = "3. + BINGO de 7 DATA RELEASE"
+code = "6D4BEXONE5"
+text = "Also unlocks all the BINGO de 7!! songs and their EX charts."
+
+[[unlock.level]]
+value = 0xff
+name = "MAX. + EXPERT MODE DATA RELEASE"
+code = "GZU98N2TW3"
+text = "Everything: also the expert-course-only songs in every mode."
