@@ -1,0 +1,24 @@
+# DDR 2ndMIX (System 573, analog board): a game played from power-on, to check
+# HIRAKU's 573 core against MAME through gameplay. The first-boot flash install as
+# in ddr2m-boot.his, then two coins (one credit), Start through the title, mode
+# select (NORMAL), How To Play (skipped) and song select (BOYS), and the song
+# played by stepping on all four panels every 8 frames: some arrows are hit,
+# some missed. Hashes the main RAM every frame, snapshots every 60 frames.
+game ddr2m
+
+hash ram  0x80000000 0x80400000   # 4 MiB main RAM (KSEG0)
+
+at 600 press "Service Mode" 8
+at 10200 press "Service Mode" 8
+at 11400 press "Coin 1" 8
+at 11440 press "Coin 1" 8
+at 11600 press "1 Player Start" 8
+at 12200 press "1 Player Start" 8
+at 12800 press "1 Player Start" 8
+at 13400 press "1 Player Start" 8
+from 13700 every 8 press "P1 Left" 4
+from 13700 every 8 press "P1 Down" 4
+from 13700 every 8 press "P1 Up" 4
+from 13700 every 8 press "P1 Right" 4
+from 0 every 60 snap
+at 21000 quit

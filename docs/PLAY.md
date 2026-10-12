@@ -464,4 +464,6 @@ Later boots check the flash (about 80 s, as the real board does) and go to attra
 
 **Sound:** the SPU and the CD's music, mixed as MAME's speaker does (the CD at the volume the game sets with MODE SELECT).
 
-**Not yet:** a scripted song against MAME, and a hands-on test with a pad.
+**Checked against MAME, clock for clock** (`oracle/scripts/ddr2m-boot.his`, `ddr2m-play.his`): the first boot and flash install, attract mode, and a game. That game is coins, mode and song select, and a song stepped through to CLEARED. Main RAM is identical on every frame, every snapshot is pixel-identical, and the sound matches MAME's recording. Both are regress cases.
+
+**Not yet:** a hands-on test with a pad.

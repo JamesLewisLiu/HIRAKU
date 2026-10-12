@@ -40,6 +40,8 @@ CASES = {
     "ddr3mj-boot": ("ddr3mj", 3600, ["--rtc", "1791804639", "--script", "oracle/scripts/ddr3mj-boot.his"]),
     # the analog board: first boot, the flash install (two Test presses), attract with CD audio
     "ddr2m-boot": ("ddr2m", 24000, ["--rtc", "1791828936", "--script", "oracle/scripts/ddr2m-boot.his"]),
+    # ... and a game: coins, mode and song select, a song stepped through to CLEARED, stage 2
+    "ddr2m-play": ("ddr2m", 21000, ["--rtc", "1791837575", "--script", "oracle/scripts/ddr2m-play.his"]),
 }
 
 # report lines that describe the host, not the machine
