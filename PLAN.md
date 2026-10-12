@@ -791,6 +791,32 @@ The order of work:
   Unlocks.
 - **Checked:** setting MAX with the tool gives a save byte-identical to the game's own.
 
+### Sugoroku de 8, the event itself (step 1: the clock, 2026-10-12)
+
+- **The event runs in HIRAKU.** Phase 1 turns it on, and attract mode shows the
+  すごろく DE 8 絶賛実施中! board, with KRAFT on Tokyo, Shizuoka next, and a hidden-song rate of 0%.
+- **The game never gives the event the date.** pop'n 8 reads the clock chip's time only through
+  `0x8009ccdc`/`0x8009cd34`, and the callers of the readers above them are, exhaustively:
+  - the test-mode clock setting (`0x8007f158`) and operator screens (`0x80083310`/`0x80083728`);
+  - the boot check, with its battery and update-in-progress tests (`0x80071b3c`, `0x800715a4`);
+  - the coin bookkeeping (`0x80079ec0`: a weekday via `0x8008a358`, and a 365-day history
+    shifted at boot by `0x8007a014`);
+  - error-log timestamps (`0x8006d1dc`, `0x800713c4`).
+
+  The bookkeeping block (`*0x80100e64`, 0x10b4 bytes, saved to flash) is reached only through
+  its accessors at `0x80079a70`–`0x8007a54c`. Outside bookkeeping and test mode they are called
+  only for coins, play time and play counts, and none returns a date. No function pointer
+  leads to any of them.
+- **Booting phase 1 on five dates** (10 July, 26 July, 5 August, 30 September 2002, and
+  12 October 2026) gives an identical attract mode, and none of the five boots writes the save.
+- **Consequence:** HIRAKU's fixed clock doesn't hold the event back, and no event calendar is
+  needed. RemyWiki's "each week" can't be a date the game checks. The rule will show in the
+  event's own code and state.
+- **`HK_RTC="YYYY-MM-DD[ HH:MM:SS]"`** sets the Firebeat clock for experiments; the default
+  stays 2002-07-26 12:00.
+- **Next:** one round that meets its requirement, to see the board, where progress is saved,
+  and whether it survives a restart. Then progress in the launcher.
+
 ## M0 steps (all done)
 
 1. ~~`git init` HIRAKU and add `.gitignore` for `dumps/` and `build/`~~ Done.

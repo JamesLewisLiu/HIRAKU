@@ -770,7 +770,14 @@ void init(const Config &cfg) {
         fprintf(stderr, "board: NVRAM loaded from %s\n", cfg.nvram_dir.c_str());
     else if (!(read_file(cfg.rom_dir + "/rtc", nv) && g_rtc->load_nvram(nv.data(), nv.size())))
         fprintf(stderr, "board: no RTC NVRAM image: starting blank\n");
-    g_rtc->set_time(2002, 7, 26, 6, 12, 0, 0);   // fixed, so runs are reproducible
+    {   // fixed, so runs are reproducible; HK_RTC="YYYY-MM-DD[ HH:MM:SS]" for experiments
+        int y = 2002, mo = 7, d = 26, h = 12, mi = 0, se = 0;
+        if (const char *e = getenv("HK_RTC")) sscanf(e, "%d-%d-%d %d:%d:%d", &y, &mo, &d, &h, &mi, &se);
+        static const int t[] = {0, 3, 2, 5, 0, 3, 5, 1, 4, 6, 2, 4};   // Sakamoto: 0 = Sunday
+        int yy = mo < 3 ? y - 1 : y;
+        int wd = (yy + yy / 4 - yy / 100 + yy / 400 + t[mo - 1] + d) % 7;
+        g_rtc->set_time(y, mo, d, wd + 1, h, mi, se);   // the chip's weekday: 1 = Sunday
+    }
     for (int k = 0; k < 3; k++) {
         std::vector<uint8_t> f;
         if (!cfg.nvram_dir.empty() && read_file(cfg.nvram_dir + "/flash" + std::to_string(k) + ".bin", f) && f.size() == 0x200000)
