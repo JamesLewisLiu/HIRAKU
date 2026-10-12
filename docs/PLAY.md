@@ -255,6 +255,10 @@ usual. Several can be entered for one credit, about two seconds each.
   ACO, GIRLY and POSITIVE REMIX; the hidden characters SANAE-chan and Ash.
 - Both games' lists hold a special-ending code that RemyWiki doesn't have: `2179223718`.
 
+**Animelo 2 codes:** Ctrl+1 (DOUBLE EXCITE) or Ctrl+2 (TRIPLE EXCITE) on the title screen with
+credits in, then START and choose EXCITE. NON STOP mode isn't there: this version (JAC) still
+checks its code but never turns it on.
+
 ## ParaParaParadise (in progress, M8)
 
 You need the program CD (`a11jaa01`), the audio CD (`a11jaa02`) and the MAME `ppp1mp` ROM set, which holds the dongle image `gqa11-ja`. To unpack MAME's CHDs:

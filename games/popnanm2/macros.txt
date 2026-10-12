@@ -1,0 +1,17 @@
+# pop'n music Animelo 2: the mode codes, typed on the title screen ("PUSH RED BUTTON TO START")
+# with credits in, then START (the red button). The attract shows them too. Buttons 1-9 from
+# left to right. From the program (FUN_800369a0, the tables at 0x80037a00): the last 16 presses
+# are compared; DOUBLE sets 0x80102374, TRIPLE 0x80102370, both checked in HIRAKU. The play
+# reads them in modes 2 and 6 (FUN_8002862c); the mode select looks the same.
+# NON STOP (1496149614961496) is still checked in this JAC version, but its flag is never set:
+# the mode was in JAA only. In the game window: Ctrl+1..2 (runtime/host/macro.h).
+
+macro "DOUBLE EXCITE mode"
+  text "Title screen, credits in, then START and choose EXCITE: DOUBLE EXCITE, for two or more players."
+  keys 19283746
+end
+
+macro "TRIPLE EXCITE mode"
+  text "Title screen, credits in, then START and choose EXCITE: TRIPLE EXCITE, for three or more players."
+  keys 1919282837374646
+end

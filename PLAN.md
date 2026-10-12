@@ -948,6 +948,11 @@ input script), with inputs through `core().set_input` like the scripts'.
   `0x80268010`. Eight codes: BRITPOP `33997733`, HORROR `333111333`, GROOVEROCK `6861379`,
   [RX]POPS `44322366`, [RX]J-TEKNO `864291`, [RX]DANCE `68686824`, [RX]BNSTRK `444322211`,
   [SP]ENDING `2179223718`. All eight set their flags typed back to back (frames 5100–6142).
+- **Animelo 2** (`FUN_800369a0`): the last 16 presses (`0x80298858`, newest first) against three
+  tables at `0x80037a00`; the attract screens show the codes. DOUBLE EXCITE `19283746` sets
+  `0x80102374`, TRIPLE `1919282837374646` `0x80102370` (both checked); `FUN_8002862c` reads them
+  in modes 2 and 6. NON STOP `1496149614961496` calls a region check (`FUN_8002ebd8`) and drops
+  the result: in JAC nothing sets its flag `0x80102384`.
 
 ## M0 steps (all done)
 
