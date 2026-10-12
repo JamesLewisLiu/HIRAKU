@@ -823,8 +823,10 @@ The order of work:
 - **The autoplay that met the requirement:**
   - Stage 1 is played from the chart in RAM: 8-byte records `{u32 time, type, 0x45, lane,
     sample}`, with type 1 a note in lane 0–8.
-  - The times are in 1/1024 s, so a note is due at song frame t × 58.5 / 1000. The song's frame
-    count is at `0x8021825c`.
+  - The times are in milliseconds, so a note is due at song frame t × 58.4866 / 1000: pop'n runs
+    the GCU at its 16.6666 MHz pixel clock, 58.4866 frames/s (measured, steady after boot, the
+    same in pop'n 4, 5, 7 and Animelo 2), not 60 or 59.94. 58.5 was used and is close enough
+    (under 2 frames in two minutes); 60 drifted 2.6 %. The song's frame count is at `0x8021825c`.
   - Stage results are at `0x80218310`: combo, -, GREAT, GOOD, BAD.
   - The result was 176 GREAT, 2 GOOD, 0 BAD.
 - **The event block** follows the phase in the RTC NVRAM, kept three times (+0, +0x4bc, +0x978).
@@ -879,8 +881,8 @@ The order of work:
     columns B-F, the rows G-K. The numbers are shown doubled on screen.
   - **The hint** (`0x80352ae0`) is a random closed square each credit, not saved.
 - **Verified:**
-  - An autoplayed stage, ANTHEM / GLORIA at 154 GREAT (same chart format and 58.5-frame timing
-    as pop'n 8), opened square 26, `SCORE 100000 DEFSPEED` (`oracle/scripts/popn7-bingo.his`).
+  - An autoplayed stage, ANTHEM / GLORIA at 154 GREAT (same chart format and timing as
+    pop'n 8), opened square 26, `SCORE 100000 DEFSPEED` (`oracle/scripts/popn7-bingo.his`).
   - The event never reads the date: the clock readers are bookkeeping, error log, test and
     boot, and the event screen is identical on four dates, 2002 to 2026.
 - **In the Unlocks dialog:** the level, the open squares, the lines done or one square away,
