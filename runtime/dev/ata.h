@@ -28,6 +28,7 @@ public:
     };
     bool open(const std::string &path);
     bool read_sector(uint32_t lba, uint8_t *out2048) const;   // data tracks
+    bool read_sectors(uint32_t lba, uint32_t n, uint8_t *out) const;   // n of them, 2048 bytes each
     bool read_audio(uint32_t lba, uint8_t *out2352) const;    // audio tracks: 588 stereo 16-bit LE samples
     void prefetch(uint32_t lba, uint32_t count) const;        // ask the kernel to start reading these sectors
     uint32_t sectors() const { return nsectors_; }
@@ -57,6 +58,7 @@ class DiskImage {
 public:
     bool open(const std::string &path);
     bool read_sector(uint32_t lba, uint8_t *out512) const;
+    bool read_sectors(uint32_t lba, uint32_t n, uint8_t *out) const;   // n of them, 512 bytes each
     void prefetch(uint32_t lba, uint32_t count) const;
     uint32_t sectors() const { return nsectors_; }
     ~DiskImage();

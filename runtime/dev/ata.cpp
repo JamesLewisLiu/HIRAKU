@@ -133,17 +133,52 @@ bool DiscImage::read_sector(uint32_t lba, uint8_t *out) const {
     return fread(out, 1, 2048, f_) == 2048;
 }
 
-// A READ's range, requested from the kernel ahead of the sector-by-sector fetches:
-// on a slow disk the fetches then mostly hit the page cache.
+// n data sectors from lba: one pread per run within a track (raw 2352-byte
+// sectors are read as a run, then their 2048 data bytes picked out).
+bool DiscImage::read_sectors(uint32_t lba, uint32_t n, uint8_t *out) const {
+    prof::Scope ps(prof::DISK);
+    static thread_local std::vector<uint8_t> raw;
+    while (n) {
+        if (lba >= nsectors_) return false;
+        const Track &t = tracks_[track_of(lba)];
+        if (t.audio || lba - t.start >= t.frames) return false;
+        const uint32_t run = std::min(n, t.frames - (lba - t.start));
+        const off_t off = (off_t)(t.offset + (uint64_t)(lba - t.start) * t.size);
+        if (t.size == 2048 && t.skip == 0) {
+            if (::pread(fileno(f_), out, (size_t)run * 2048, off) != (ssize_t)run * 2048) return false;
+        } else {
+            raw.resize((size_t)run * t.size);
+            if (::pread(fileno(f_), raw.data(), raw.size(), off) != (ssize_t)raw.size()) return false;
+            for (uint32_t k = 0; k < run; k++) memcpy(out + (size_t)k * 2048, raw.data() + (size_t)k * t.size + t.skip, 2048);
+        }
+        lba += run;
+        n -= run;
+        out += (size_t)run * 2048;
+    }
+    return true;
+}
+
+// Read-ahead: with each READ, the kernel is asked for its range and for the next
+// READ_AHEAD bytes of the image. Nearly all of a game's READs continue the
+// previous one (bm3: 600 of 615), so the next is then cached or on its way,
+// rather than read in one go when the game's CPU asks for its first sector.
+constexpr uint64_t READ_AHEAD = 8ull << 20;
+
 void DiscImage::prefetch(uint32_t lba, uint32_t count) const {
     if (!count || lba >= nsectors_) return;
     const Track &t = tracks_[track_of(lba)];
     uint64_t off = t.offset + (uint64_t)(lba - t.start) * t.size;
-    posix_fadvise(fileno(f_), (off_t)off, (off_t)((uint64_t)count * t.size), POSIX_FADV_WILLNEED);
+    posix_fadvise(fileno(f_), (off_t)off, (off_t)((uint64_t)count * t.size + READ_AHEAD), POSIX_FADV_WILLNEED);
 }
 
 void DiskImage::prefetch(uint32_t lba, uint32_t count) const {
-    if (count) posix_fadvise(fileno(f_), (off_t)lba * 512, (off_t)count * 512, POSIX_FADV_WILLNEED);
+    if (count) posix_fadvise(fileno(f_), (off_t)lba * 512, (off_t)((uint64_t)count * 512 + READ_AHEAD), POSIX_FADV_WILLNEED);
+}
+
+bool DiskImage::read_sectors(uint32_t lba, uint32_t n, uint8_t *out) const {
+    prof::Scope ps(prof::DISK);
+    if (lba >= nsectors_ || n > nsectors_ - lba) return false;
+    return ::pread(fileno(f_), out, (size_t)n * 512, (off_t)lba * 512) == (ssize_t)n * 512;
 }
 
 bool DiscImage::read_audio(uint32_t lba, uint8_t *out) const {
@@ -415,6 +450,13 @@ void AtaBus::fill(size_t upto) {
     if (!lazy_disc_ && !lazy_disk_) return;
     const size_t sec = lazy_disc_ ? 2048 : 512;
     upto = std::min(data_.size(), std::max(upto, filled_ + 16 * sec));
+    if (filled_ >= upto) return;
+    // the whole stretch in one read; sector by sector only if that fails
+    const uint32_t first = lazy_lba_ + (uint32_t)(filled_ / sec), n = (uint32_t)((upto - filled_ + sec - 1) / sec);
+    if (lazy_disc_ ? lazy_disc_->read_sectors(first, n, data_.data() + filled_) : lazy_disk_->read_sectors(first, n, data_.data() + filled_)) {
+        filled_ += (size_t)n * sec;
+        return;
+    }
     while (filled_ < upto) {
         uint32_t lba = lazy_lba_ + (uint32_t)(filled_ / sec);
         bool ok = lazy_disc_ ? lazy_disc_->read_sector(lba, data_.data() + filled_) : lazy_disk_->read_sector(lba, data_.data() + filled_);
