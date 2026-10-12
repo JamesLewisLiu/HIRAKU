@@ -7,6 +7,7 @@ not bounded (a DVD creation once reached 9 GB).
 """
 from __future__ import annotations
 
+import glob
 import os
 import re
 import shutil
@@ -132,6 +133,12 @@ def extract(chd: str, outdir: str) -> tuple[str, str]:
     if os.path.exists(out) and os.path.getsize(out) == ci.logical:
         print(f"have     {os.path.basename(out)}")
         return out, ci.kind
+    # Sets that share a disk (bm3rdmix/bm3rdmixe, bmcompm2/hmcompm2...): link the other game's copy.
+    for other in glob.glob(os.path.join(os.path.dirname(os.path.abspath(outdir)), "*", name + ext)):
+        if os.path.getsize(other) == ci.logical:
+            os.link(other, out)
+            print(f"linked   {os.path.basename(out)} (same disk as {os.path.basename(os.path.dirname(other))})")
+            return out, ci.kind
     free = shutil.disk_usage(outdir).free
     if ci.logical > free:
         raise ChdError(f"{chd}: needs {ci.logical / 1e9:.1f} GB, {free / 1e9:.1f} GB free in {outdir}")
@@ -139,6 +146,9 @@ def extract(chd: str, outdir: str) -> tuple[str, str]:
     _run_with_progress(cmd0 + [verb, "-f", "-i", chd, "-o", tmp], os.path.basename(chd))
     if os.path.getsize(tmp) != ci.logical:
         raise ChdError(f"{chd}: extracted {os.path.getsize(tmp)} bytes, expected {ci.logical}")
+    if ci.kind == "hd":
+        # Hard disks are mostly zeros (DJ Main ~80 %, beatmania III ~40 %): store those as holes.
+        subprocess.run(["fallocate", "--dig-holes", tmp], check=False)
     os.replace(tmp, out)
     return out, ci.kind
 

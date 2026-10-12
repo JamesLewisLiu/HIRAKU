@@ -11,7 +11,7 @@ sprites = ["993jaa03.19a", "993jaa04.20a", "993jaa05.22a", "993jaa06.24a"]
 tiles   = ["993jaa07.22d", "993jaa08.23d", "993jaa09.25d", "993jaa10.27d"]
 
 [hdd]
-chd = "993jaa11"
+chd = "993hdda01"
 # ATA security, from MAME init_bmclubmx(): the disk stays locked until the game sends these
 ata_master_password = "4d4743284b294e4f4d4120494c41204c49524847535452205345524545562e44"
 ata_user_password = "442030573c3f38324f38744c07616c64767d70161f6f0c0f0a1a71071e197d02"

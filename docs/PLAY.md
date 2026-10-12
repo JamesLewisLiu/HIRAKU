@@ -396,7 +396,7 @@ The disk each set needs is its `[hdd] chd`; clones may share their parent's disk
 - **complete MIX and later lock their hard disk with an ATA password.** HIRAKU unlocks it as MAME does: the passwords from MAME's driver are in the `game.toml`, and the game sends them itself.
 - **The UA/KA/AA versions and pop'n music 1 TA/AA/KA use other address maps** (`map = "u"` / `"a"`).
 - **pop'n stage EX** has ten buttons and three selection buttons (left, OK, right).
-- **Only `bm1stmix` and `popn1j` have been run so far.** The other sets are untested until dumps are on hand.
+- **Run so far:** bm1stmix, bm2ndmix, bm3rdmix (and EA), 4th–7th MIX, complete MIX (AA), complete MIX 2, CORE REMIX, DCT, THE FINAL, pop'n 1–3. All reach attract mode. 1st–3rd MIX and pop'n 1 match MAME clock for clock; the later ones drift from MAME after about 75 s (PLAN M13).
 
 **Status:** HIRAKU runs both games in step with MAME, clock for clock (`oracle/scripts/*-boot.his`, 155 s):
 - power-on, self-test, the disk loads and attract mode;
@@ -409,7 +409,7 @@ In these runs:
 - every snapshot is pixel-identical;
 - the sound is sample-identical: HIRAKU plays and records it at the chips' own 48 kHz (`--wav` matches MAME's `-wavwrite`).
 
-**Not yet:** a hands-on play test, turntable feel, the ATA password of complete MIX and later, and the other DJ Main sets.
+**Not yet:** a hands-on play test, turntable feel, and lockstep with MAME for 4th MIX and later.
 
 | Key | beatmania | pop'n music |
 |---|---|---|
