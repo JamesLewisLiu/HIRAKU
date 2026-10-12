@@ -921,6 +921,26 @@ HIRAKU, the saves were compared, and `tools/unlock.py`'s save is byte-identical 
   deflection, so 50 clicks only just fit in the 15 s timer. The flag is saved when the selection
   ends.
 
+### Code macros: per-credit and power-on codes (2026-10-12)
+
+Codes that last a credit or until power-off can't be saved, so HIRAKU types them:
+`games/<id>/macros.txt`, run by `runtime/host/macro.{h,cpp}` from the frame hook (before the
+input script), with inputs through `core().set_input` like the scripts'.
+- **Triggers:** Ctrl+1..9 in the window; `--macro NAME[@FRAME]` (several queue: one due while
+  another types starts after it). The launcher's Unlocks dialog lists them, and a macro with an
+  `at` frame gets an "every start" checkbox (`macros/<id>` in the settings → `--macro`).
+- **Steps:** `keys` (digits), `press`, `hold`/`release`, `set` (analog), `wait`, `tap N gap M`.
+- **pop'n 5** (`FUN_8005b408`, called from the title screen `FUN_800385a0`):
+  - 16 presses in a ring (`0x80264dc8`), compared newest first against the table at
+    `0x8005b5e0` (0x28 bytes each: 16 u16 masks, length, name); 60 idle frames clear it.
+  - A match sets `0x802649c8 + 4·index` until the title is set up again (`FUN_8005b2f0`),
+    and `FUN_8003dbe0` makes the songs available: song 0 for LESSON, 0x3d for [SP]ENDING,
+    5/0x1a for the remixes, 0x1d/0x1c for the characters.
+  - Eight codes, one more than RemyWiki lists: `2179223718` [SP]ENDING.
+  - All eight were typed back to back by the macros and set their flags; LESSON and
+    スペシャルエンディング were seen in the music select.
+  - 12 frames between taps: at 8, a press was lost.
+
 ## M0 steps (all done)
 
 1. ~~`git init` HIRAKU and add `.gitignore` for `dumps/` and `build/`~~ Done.

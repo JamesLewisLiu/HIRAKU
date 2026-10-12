@@ -12,6 +12,7 @@
 #include <thread>
 
 #include "../shell/core.h"
+#include "macro.h"
 #include "picture.h"
 #include "input.h"
 #include "../core/prof.h"
@@ -24,7 +25,8 @@ SDL_Window *g_win = nullptr;
 SDL_Renderer *g_ren = nullptr;
 SDL_Texture *g_tex = nullptr;
 SDL_GLContext g_gl = nullptr;     // OpenGL (the picture modes, runtime/host/picture.h), else the SDL renderer
-std::string g_shaders_dir, g_title;
+std::string g_shaders_dir, g_title, g_macro;   // g_macro: the code macro being typed, for the title
+bool g_title_dirty = false;
 std::vector<std::string> g_picture_config;
 picture::Mode g_mode = picture::Mode::off, g_shown = picture::Mode::off;
 SDL_AudioStream *g_audio = nullptr;
@@ -52,6 +54,11 @@ void poll() {
         if ((e.type == SDL_EVENT_KEY_DOWN || e.type == SDL_EVENT_KEY_UP) && e.key.key == SDLK_TAB) {
             g_fast = e.type == SDL_EVENT_KEY_DOWN;
             if (g_fast && g_audio) SDL_ClearAudioStream(g_audio);
+        }
+        if (e.type == SDL_EVENT_KEY_DOWN && !e.key.repeat && (e.key.mod & SDL_KMOD_CTRL) &&
+            e.key.key >= SDLK_1 && e.key.key <= SDLK_9) {   // Ctrl+1..9: the game's code macros
+            macro::trigger((size_t)(e.key.key - SDLK_1));
+            continue;   // not a game input
         }
         if (e.type == SDL_EVENT_KEY_DOWN && !e.key.repeat && e.key.key == SDLK_F10 && g_gl)   // F10: off, light, full
             g_mode = g_mode == picture::Mode::off ? picture::Mode::light
@@ -111,6 +118,10 @@ bool window_open(const char *title, int scale, const std::string &bindings, int 
         g_settle_until = prof::now_ns() + 250'000'000;
     }
     g_title = title;
+    macro::on_change([](const std::string &name) {
+        g_macro = name;
+        g_title_dirty = true;
+    });
     if (open_gl(title, scale)) {
         picture::prepare(g_mode);
         if (fullscreen) SDL_SetWindowFullscreen(g_win, true);
@@ -135,7 +146,7 @@ bool window_frame(const uint32_t *rgb, int w, int h, double vsec) {
         SDL_GL_SwapWindow(g_win);
         if (shown != g_shown) {
             g_shown = shown;
-            SDL_SetWindowTitle(g_win, (g_title + (shown == picture::Mode::off ? "" : std::string(" - ") + picture::mode_label(shown))).c_str());
+            g_title_dirty = true;
         }
     } else if (!g_tex || w != g_tw || h != g_th) {
         if (g_tex) SDL_DestroyTexture(g_tex);
@@ -153,6 +164,13 @@ bool window_frame(const uint32_t *rgb, int w, int h, double vsec) {
         SDL_RenderPresent(g_ren);
     }
 
+    if (g_title_dirty && g_win) {
+        g_title_dirty = false;
+        std::string t = g_title;
+        if (g_shown != picture::Mode::off) t += std::string(" - ") + picture::mode_label(g_shown);
+        if (!g_macro.empty()) t += " - typing: " + g_macro;
+        SDL_SetWindowTitle(g_win, t.c_str());
+    }
     poll();
     if (g_quit) return false;
     if (g_fast) return true;    // fast-forward: no pacing at all

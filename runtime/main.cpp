@@ -18,6 +18,9 @@
 //     --window [SCALE]  show the game in a window, in real time, with sound (SDL3 builds);
 //                       F2 test, 9 service, 5 coin, 1 start, Esc quits; controls per cabinet
 //     --fullscreen      start the window fullscreen (F11 toggles)
+//     --macro NAME[@F]  run one of the game's code macros (games/<game>/macros.txt) at frame F, or
+//                       at its own `at` frame (power-on codes); repeatable. In the window,
+//                       Ctrl+1..9 types the 1st..9th macro
 //     --picture MODE    off (sharp pixels, the default), light (CRT: crt-guest-advanced-fast) or
 //                       full (CRT: crt-royale); F10 cycles them. --crt is --picture light
 //     --picture-config DIR  read DIR/<shader>.params over the shader's settings (repeatable,
@@ -47,6 +50,7 @@
 #include <vector>
 
 #include "core/prof.h"
+#include "host/macro.h"
 #include "host/script.h"
 #include "shell/core.h"
 #ifdef HK_WITH_SDL
@@ -170,6 +174,7 @@ int main(int argc, char **argv) {
     bool fullscreen = false;
     std::string picture_mode = "off";
     std::vector<std::string> picture_config;
+    std::vector<std::string> macro_specs;
     bool nvram_given = false;
     int audio_ms = 8;
     for (int k = 1; k < argc; k++) {
@@ -194,6 +199,7 @@ int main(int argc, char **argv) {
         else if (a == "--crt") picture_mode = "light";
         else if (a == "--picture") picture_mode = val();
         else if (a == "--picture-config") picture_config.push_back(val());
+        else if (a == "--macro") macro_specs.push_back(val());
         else if (a == "--nvram") { nvram_dir = val(); nvram_given = true; }
         else if (a == "--audio-ms") audio_ms = std::stoi(val());
         else if (a == "--window") window_scale = (k + 1 < argc && argv[k + 1][0] != '-') ? std::stoi(val()) : 2;
@@ -296,6 +302,9 @@ int main(int argc, char **argv) {
     if (window_scale) { fprintf(stderr, "this build has no SDL3 front end\n"); return 1; }
 #endif
     if (!script_path.empty() && !script::load(script_path, out)) return 2;
+    if (!macro::load(opt.root + "/games/" + game + "/macros.txt")) return 2;
+    for (const auto &m : macro_specs)
+        if (!macro::schedule(m)) return 2;
     int script_snaps = 0;
     // Ctrl-C / SIGTERM: leave at the next frame, saving NVRAM like a normal exit
     static std::atomic<bool> stop_requested{false};
@@ -313,6 +322,7 @@ int main(int argc, char **argv) {
 #endif
             exit(130);
         }
+        macro::frame(f);
         if (!script_path.empty()) {
             bool keep = script::frame(f, [&]() {
                 char name[64];

@@ -407,7 +407,7 @@ void MainWindow::showDetails() {
         h += "<p>Saves: <tt>" + cfg::nvramDir(g->id).toHtmlEscaped() + "</tt>" + (fresh ? " (none yet)" : "") + "</p>";
         QString m = picture::mode(g->id);
         bool own = cfg::settings().contains("picture/" + g->id) || QFileInfo::exists(picture::configDir(g->id));
-        if (UnlocksDialog::available(g->id)) h += "<p>Unlocks: right-click the game &gt; Unlocks.</p>";
+        if (UnlocksDialog::available(g->id)) h += "<p>Unlocks and codes: right-click the game &gt; Unlocks.</p>";
         h += QString("<p>Picture: %1%2</p>")
                  .arg(m == "full" ? "CRT full (crt-royale)" : m == "light" ? "CRT light (crt-guest-advanced-fast)" : "sharp pixels",
                       own ? ", with its own settings" : "");
@@ -430,6 +430,7 @@ QStringList MainWindow::arguments(const Game &g) const {
     QString sf = s.value("audio/soundfont").toString();
     if (g.family == "kbm" && !sf.isEmpty()) a << "--soundfont" << sf;
     if (!cfg::nvramBase().isEmpty()) a << "--nvram" << cfg::nvramDir(g.id);
+    a << UnlocksDialog::macroArguments(g.id);   // codes typed at every start
     a << QProcess::splitCommand(s.value("game/extraArgs").toString());
     return a;
 }

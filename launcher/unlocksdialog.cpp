@@ -12,13 +12,83 @@
 #include <QMessageBox>
 #include <QProcess>
 #include <QPushButton>
+#include <QRegularExpression>
 #include <QScrollArea>
+#include <QSettings>
+#include <QTextStream>
 #include <QVBoxLayout>
 
 #include "config.h"
 
+static QString gameFile(const QString &game, const QString &name) { return cfg::rootDir() + "/games/" + game + "/" + name; }
+
 bool UnlocksDialog::available(const QString &game) {
-    return QFileInfo::exists(cfg::rootDir() + "/games/" + game + "/unlocks.toml");
+    return QFileInfo::exists(gameFile(game, "unlocks.toml")) || QFileInfo::exists(gameFile(game, "macros.txt"));
+}
+
+// The names, texts and `at` lines of macros.txt; the game itself reads the steps.
+QList<UnlocksDialog::Macro> UnlocksDialog::macros(const QString &game) {
+    QList<Macro> list;
+    QFile f(gameFile(game, "macros.txt"));
+    if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) return list;
+    static const QRegularExpression line(R"re(^\s*(\w+)\s*(?:"([^"]*)"|(\S+))?)re");
+    QTextStream in(&f);
+    bool inside = false;
+    while (!in.atEnd()) {
+        auto m = line.match(in.readLine());
+        if (!m.hasMatch()) continue;
+        QString key = m.captured(1), arg = m.captured(2).isEmpty() ? m.captured(3) : m.captured(2);
+        if (key == "macro") {
+            list.push_back({arg, {}, false});
+            inside = true;
+        } else if (!inside) continue;
+        else if (key == "end") inside = false;
+        else if (key == "text") list.back().text = arg;
+        else if (key == "at") list.back().atStart = true;
+    }
+    return list;
+}
+
+QStringList UnlocksDialog::macroArguments(const QString &game) {
+    QStringList on = cfg::settings().value("macros/" + game).toStringList(), a;
+    for (const Macro &m : macros(game))
+        if (m.atStart && on.contains(m.name)) a << "--macro" << m.name;
+    return a;
+}
+
+void UnlocksDialog::addMacros(QVBoxLayout *v) {
+    QList<Macro> list = macros(m_game);
+    if (list.isEmpty()) return;
+    auto *box = new QGroupBox("Codes, typed for you");
+    auto *bv = new QVBoxLayout(box);
+    auto *intro = new QLabel("<i>In the game window, Ctrl+1 to Ctrl+9 type the codes below at the moment you press them "
+                             "(the window title shows it while it types). The codes last a credit, or until power-off; "
+                             "a code marked so can be typed at every start by itself.</i>");
+    intro->setWordWrap(true);
+    bv->addWidget(intro);
+    for (int i = 0; i < list.size(); i++) {
+        const Macro &m = list[i];
+        QString key = i < 9 ? QString("Ctrl+%1").arg(i + 1) : QString("(no key)");
+        auto *name = new QLabel("<b>" + key + "</b>&nbsp;&nbsp;" + m.name.toHtmlEscaped());
+        bv->addWidget(name);
+        auto *t = new QLabel(m.text);
+        t->setWordWrap(true);
+        t->setContentsMargins(24, 0, 0, m.atStart ? 0 : 6);
+        bv->addWidget(t);
+        if (m.atStart) {
+            auto *c = new QCheckBox("Type it at every start");
+            c->setChecked(cfg::settings().value("macros/" + m_game).toStringList().contains(m.name));
+            c->setContentsMargins(24, 0, 0, 6);
+            connect(c, &QCheckBox::toggled, this, [game = m_game, n = m.name](bool on) {
+                QStringList l = cfg::settings().value("macros/" + game).toStringList();
+                l.removeAll(n);
+                if (on) l << n;
+                cfg::settings().setValue("macros/" + game, l);
+            });
+            bv->addWidget(c);
+        }
+    }
+    v->addWidget(box);
 }
 
 UnlocksDialog::UnlocksDialog(const QString &game, const QString &title, bool running, QWidget *parent)
@@ -60,7 +130,7 @@ void UnlocksDialog::rebuild() {
     v->setContentsMargins(0, 0, 0, 0);
     m_body->insertWidget(0, m_content);
     QString err;
-    QJsonObject st = run({}, &err);
+    QJsonObject st = QFileInfo::exists(gameFile(m_game, "unlocks.toml")) ? run({}, &err) : QJsonObject{};
     auto *where = new QLabel("Save: <tt>" + cfg::nvramDir(m_game).toHtmlEscaped() + "</tt>");
     where->setTextInteractionFlags(Qt::TextSelectableByMouse);
     where->setToolTip(cfg::nvramDir(m_game));
@@ -71,7 +141,7 @@ void UnlocksDialog::rebuild() {
         e->setWordWrap(true);
         v->addWidget(e);
     }
-    if (m_running) {
+    if (m_running && !st.isEmpty()) {
         auto *r = new QLabel("<b>Stop the game first</b>: it writes its save back when it exits.");
         r->setWordWrap(true);
         v->addWidget(r);
@@ -178,5 +248,6 @@ void UnlocksDialog::rebuild() {
         bv->addWidget(t);
         v->addWidget(box);
     }
+    addMacros(v);
     v->addStretch(1);
 }

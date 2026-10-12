@@ -89,7 +89,7 @@ target_include_directories(hiraku_cabinet PUBLIC runtime)
 
 # --- the shell: what every machine core shares (runtime/shell/core.h) --------------
 # Input scripts; the host front end below. Cores provide hk::core().
-add_library(hiraku_shell STATIC runtime/host/script.cpp)
+add_library(hiraku_shell STATIC runtime/host/script.cpp runtime/host/macro.cpp)
 target_include_directories(hiraku_shell PUBLIC runtime)
 target_link_libraries(hiraku_shell PUBLIC hiraku_cabinet)
 

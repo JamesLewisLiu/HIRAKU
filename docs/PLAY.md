@@ -68,6 +68,7 @@ The machine boots like a cabinet. The skipped BIOS time passes instantly. Then t
 | Tab (hold) | fast-forward |
 | F11, Alt+Enter | fullscreen |
 | F10 | picture: off, CRT light, CRT full |
+| Ctrl+1 … Ctrl+9 | type one of the game's codes (below) |
 | Esc | quit |
 
 P2 uses M K Comma L Period, Up/Down and 2.
@@ -80,6 +81,15 @@ P2 uses M K Comma L Period, Up/Down and 2.
 
 The title screen then shows the alien icon. The floppy-disk unlocks (RETROFUTURE via SIMON,
 CLOUDY MUSIC, sozai mode) are earned per player and listed there too.
+
+**Codes, typed for you:** the button codes players typed on the cabinet (hidden songs, modes),
+for the games that have a `games/<id>/macros.txt`.
+- **In the window:** Ctrl+1 to Ctrl+9 type the game's first to ninth code where you are now, for
+  example on the title screen with credits in. The window title says "typing" until it's done.
+- **The list:** right-click the game > **Unlocks** shows each code with its key and where to
+  type it. A code the game reads at power-on can be set to type itself at every start there.
+- **From a terminal:** `--macro NAME` runs one at its own frame, `--macro NAME@FRAME` at a given
+  frame.
 
 **Saves:** NVRAM (operator settings, rankings) lives in `~/.local/share/hiraku/bm3final/`. It is saved on Esc, on window close and on Ctrl-C. Use `--nvram DIR` to keep it elsewhere.
 
@@ -234,6 +244,12 @@ has the SECRET songs.
     example `COMBO 573 CLEAR`), and which lines are one square from done.
   - Like pop'n 8's event, it never looks at the date.
 - **The checksum:** the save's checksum is kept right, and the old save stays beside it.
+
+**pop'n 5 codes:** Ctrl+1 to Ctrl+8 on the title screen, with credits in, then START as usual.
+Several can be entered for one credit. They give:
+- the hidden songs LESSON and スペシャルエンディング (a service track; its code isn't on RemyWiki);
+- ENKA, NEO ACO, GIRLY and POSITIVE REMIX;
+- the hidden characters SANAE-chan and Ash.
 
 ## ParaParaParadise (in progress, M8)
 
