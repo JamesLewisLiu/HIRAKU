@@ -1,5 +1,30 @@
 # Playing beatmania III The Final with HIRAKU
 
+## Adding a game
+
+Drop the game's files on the launcher's window, or use **File > Add game files** (or
+**Add a game folder**). From a terminal, `tools/ingest.py FILE...` or `hiraku --add FILE...`
+does the same.
+
+The files can be:
+- the MAME ROM set (`.zip`, `.7z`, or a folder of its files);
+- the game's CHDs, which are unpacked with MAME's chdman (installed, or MAME's flatpak) into
+  `dumps/<game>/`;
+- disc and disk images (`.cue`/`.bin`, `.iso`, `.img`).
+
+Give them all at once, in any order. The ingester recognises the game from:
+- for Firebeat, the program on the CD;
+- otherwise, the set's name or a CHD's name.
+
+It also tells each image's role from what it holds: a hard disk, a DVD, or a second CD. The
+sections below give each game's files, and the manual form with the roles spelled out
+(`--romset`, `--hdd`, `--dvd`, `--cd2`).
+
+CHDs need room once unpacked:
+- beatmania III's hard disk: 21 GB;
+- a pop'n music DVD: 4.6 GB;
+- a CD: under 700 MB.
+
 ## Once: build and ingest your dumps
 
 ```bash

@@ -31,7 +31,7 @@ sdl=$(ldd "$build"/hiraku-bm1stmix | awk '/libSDL3/ {print $3}')
 cp -r "$root/games" "$root/docs" "$d/"
 cp -r "$root/oracle/scripts" "$d/scripts"
 mkdir -p "$d/tools"
-cp "$root"/tools/{ingest.py,fbexe.py,pack-data.py,regress.py} "$d/tools/"
+cp "$root"/tools/{ingest.py,chd.py,fbexe.py,pack-data.py,regress.py} "$d/tools/"
 cp "$root/LICENSE" "$d/" 2>/dev/null || true
 cat > "$d/README.txt" <<'EOF'
 HIRAKU, a build for another Linux PC.

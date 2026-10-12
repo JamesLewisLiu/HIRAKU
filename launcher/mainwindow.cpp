@@ -4,7 +4,14 @@
 #include <QAction>
 #include <QApplication>
 #include <QClipboard>
+#include <cstdio>
+
 #include <QCloseEvent>
+#include <QDragEnterEvent>
+#include <QDropEvent>
+#include <QFileDialog>
+#include <QMimeData>
+#include <QRegularExpression>
 #include <QDesktopServices>
 #include <QDir>
 #include <QDockWidget>
@@ -70,6 +77,20 @@ MainWindow::MainWindow() {
     m_controls = new QAction(QIcon::fromTheme("input-gaming"), "Controls", this);
     m_lights = new QAction(QIcon::fromTheme("dialog-information", QIcon::fromTheme("weather-clear")), "Lights", this);
     auto *settings = new QAction(QIcon::fromTheme("preferences-system"), "Settings", this);
+    auto *addFiles = new QAction(QIcon::fromTheme("list-add"), "Add game files…", this);
+    addFiles->setToolTip("Add a game from its files: the MAME ROM set (.zip/.7z), CHDs or disc images.\n"
+                         "You can also drop them on this window.");
+    connect(addFiles, &QAction::triggered, this, [this] {
+        QStringList f = QFileDialog::getOpenFileNames(this, "Add game files", QString(),
+            "Game files (*.zip *.7z *.chd *.cue *.iso *.img *.bin);;All files (*)");
+        if (!f.isEmpty()) addGameFiles(f);
+    });
+    auto *addFolder = new QAction(QIcon::fromTheme("folder-new"), "Add a game folder…", this);
+    connect(addFolder, &QAction::triggered, this, [this] {
+        QString d = QFileDialog::getExistingDirectory(this, "Add a game folder (its ROM set, CHDs, images)");
+        if (!d.isEmpty()) addGameFiles({d});
+    });
+    setAcceptDrops(true);
     auto *refreshAct = new QAction(QIcon::fromTheme("view-refresh"), "Refresh", this);
     refreshAct->setShortcut(QKeySequence::Refresh);
     m_showAll = new QAction("Show games that are not installed", this);
@@ -113,6 +134,7 @@ MainWindow::MainWindow() {
     tb->addAction(settings);
     tb->addSeparator();
     tb->addAction(refreshAct);
+    tb->addAction(addFiles);
     auto *spacer = new QWidget;
     spacer->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
     tb->addWidget(spacer);
@@ -181,6 +203,9 @@ MainWindow::MainWindow() {
     file->addAction(m_play);
     file->addAction(m_stop);
     file->addSeparator();
+    file->addAction(addFiles);
+    file->addAction(addFolder);
+    file->addSeparator();
     file->addAction("Open the HIRAKU folder", this, [] { QDesktopServices::openUrl(QUrl::fromLocalFile(cfg::rootDir())); });
     file->addAction("Open the settings folder", this, [] {
         QDir().mkpath(cfg::configDir());
@@ -210,6 +235,31 @@ MainWindow::MainWindow() {
     });
 
     // ---- the game process ----
+    m_ingest.setProcessChannelMode(QProcess::MergedChannels);
+    connect(&m_ingest, &QProcess::readyRead, this, [this] {
+        QString t = QString::fromLocal8Bit(m_ingest.readAll());
+        m_ingestOutput += t;
+        log(t);
+    });
+    connect(&m_ingest, &QProcess::finished, this, [this](int code, QProcess::ExitStatus st) {
+        refresh();
+        QStringList added, errors;
+        for (const QString &l : m_ingestOutput.split('\n')) {
+            if (l.startsWith("wrote") && l.contains("machine.txt")) added << l.section('/', -2, -2);
+            if (l.startsWith("ERROR") || l.startsWith("NEXT")) errors << l.mid(9).trimmed();
+        }
+        bool ok = st == QProcess::NormalExit && code == 0;
+        QString msg = ok ? "Added: " + added.join(", ") : "The files could not be added.";
+        if (!errors.isEmpty()) msg += "\n\n" + errors.join("\n");
+        log("\n--- " + (ok ? QString("added ") + added.join(", ") : QString("ingest failed")) + " ---\n");
+        if (ok) QMessageBox::information(this, "HIRAKU", msg);
+        else QMessageBox::warning(this, "HIRAKU", msg);
+        startIngest();   // the next batch, if any
+    });
+    connect(&m_ingest, &QProcess::errorOccurred, this, [this](QProcess::ProcessError e) {
+        if (e != QProcess::FailedToStart) return;
+        QMessageBox::warning(this, "HIRAKU", "Could not run tools/ingest.py (python3 is needed):\n" + m_ingest.errorString());
+    });
     m_proc.setProcessChannelMode(QProcess::MergedChannels);
     connect(&m_proc, &QProcess::readyRead, this, [this] { log(QString::fromLocal8Bit(m_proc.readAll())); });
     connect(&m_proc, &QProcess::finished, this, [this](int code, QProcess::ExitStatus st) {
@@ -454,7 +504,42 @@ void MainWindow::contextMenu(const QPoint &pos) {
     menu.exec(m_list->viewport()->mapToGlobal(pos));
 }
 
+void MainWindow::dragEnterEvent(QDragEnterEvent *e) {
+    if (e->mimeData()->hasUrls()) e->acceptProposedAction();
+}
+
+void MainWindow::dropEvent(QDropEvent *e) {
+    QStringList paths;
+    for (const QUrl &u : e->mimeData()->urls())
+        if (u.isLocalFile()) paths << u.toLocalFile();
+    if (!paths.isEmpty()) {
+        e->acceptProposedAction();
+        addGameFiles(paths);
+    }
+}
+
+void MainWindow::addGameFiles(const QStringList &paths) {
+    m_ingestQueue << paths;
+    if (m_ingest.state() == QProcess::NotRunning) startIngest();
+}
+
+void MainWindow::startIngest() {
+    if (m_ingestQueue.isEmpty()) return;
+    QStringList paths = m_ingestQueue.takeFirst();
+    QString script = cfg::rootDir() + "/tools/ingest.py";
+    if (!QFileInfo::exists(script)) {
+        QMessageBox::warning(this, "HIRAKU", script + " is missing: is the HIRAKU folder set right (Settings)?");
+        return;
+    }
+    m_ingestOutput.clear();
+    m_logDock->show();
+    log("\n$ tools/ingest.py " + paths.join(' ') + "\n");
+    m_ingest.setWorkingDirectory(cfg::rootDir());
+    m_ingest.start("python3", QStringList{script} + paths);
+}
+
 void MainWindow::log(const QString &text) {
+    if (m_echo) { fputs(text.toLocal8Bit().constData(), stderr); fflush(stderr); }
     m_log->moveCursor(QTextCursor::End);
     m_log->insertPlainText(text);
     m_log->moveCursor(QTextCursor::End);

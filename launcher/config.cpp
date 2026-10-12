@@ -66,6 +66,7 @@ QString familyName(const QString &family) {
     if (family == "djbm") return "beatmania (DJ Main)";
     if (family == "djpopn") return "pop'n music (DJ Main)";
     if (family == "djpstage") return "pop'n stage (DJ Main)";
+    if (family == "ddr") return "Dance Dance Revolution (System 573)";
     return family;
 }
 

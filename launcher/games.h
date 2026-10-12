@@ -8,6 +8,7 @@
 
 struct Game {
     QString id, title, family, mame;
+    QString core;                        // firebeat (default), djmain, sys573
     QString year, maker;                 // from the manifest's first comment line
     QString firstBoot;                   // what a new cabinet needs in test mode
     enum Status { Ready, NotBuilt, NotInstalled } status = NotInstalled;

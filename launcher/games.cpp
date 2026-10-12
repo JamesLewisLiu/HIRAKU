@@ -39,6 +39,7 @@ void readManifest(const QString &path, Game &g) {
         else if (k == "title") g.title = v;
         else if (k == "family") g.family = v;
         else if (k == "mame") g.mame = v;
+        else if (k == "core") g.core = v;
         else if (k == "first_boot") g.firstBoot = v;
     }
 }
@@ -56,30 +57,33 @@ QString Game::statusText() const {
 
 QString Game::howTo() const {
     QString root = cfg::rootDir();
-    if (family.startsWith("dj")) {   // DJ Main: no program disc, no recompilation
+    if (core == "sys573" && status == NotInstalled)   // System 573: the set and the CD
+        return QString("HIRAKU has no data for %1 yet. You need your own dumps: the MAME ROM set \"%2\" "
+                       "(.zip or .7z) and its CD (CHD).\n\n"
+                       "Drop them on this window, or File > Add game files. The CD is unpacked with MAME's chdman.")
+            .arg(title, mame);
+    if (family.startsWith("dj") || core == "sys573") {   // DJ Main, 573: no program disc, no recompilation
         if (status == NotInstalled)
-            return QString("HIRAKU has no data for %1 yet. You need your own dumps: the MAME ROM set \"%2\" and its "
-                           "hard disk (CHD). Unpack the disk once, then ingest:\n\n"
-                           "In %3:\n\n"
-                           "chdman extracthd -i DISK.chd -o DISK.img\n"
-                           "tools/ingest.py --romset %2.7z --hdd DISK.img")
-                .arg(title, mame, root);
+            return QString("HIRAKU has no data for %1 yet. You need your own dumps: the MAME ROM set \"%2\" "
+                           "(.zip or .7z) and its hard disk (CHD).\n\n"
+                           "Drop them on this window, or File > Add game files. The disk is unpacked "
+                           "with MAME's chdman, which needs about 1.5 GB of space.")
+                .arg(title, mame);
         if (status == NotBuilt)
             return QString("The data for %1 is installed, but %2 has not been built yet.\n\nIn %3:\n\n"
                            "cmake -S . -B build/cmake -G Ninja && ninja -C build/cmake hiraku-%4")
                 .arg(title, exe, root, id);
         return {};
     }
-    QString extra = family == "bm3" ? " --hdd HDD.img" : family == "popn" ? " --dvd DISC2.iso" : " --cd2 DISC2.cue";
     QString build = QString("analyze/ghidra.sh %1 && analyze/prep.py %1\n"
                             "cmake -S . -B build/cmake -G Ninja && ninja -C build/cmake hiraku-%1")
                         .arg(id);
     if (status == NotInstalled)
         return QString("HIRAKU has no data for %1 yet. You need your own dumps: the program disc, "
-                       "its second disc or HDD, and the MAME ROM set \"%2\". docs/PLAY.md lists them per game.\n\n"
-                       "In %3:\n\n"
-                       "tools/ingest.py DISC1.cue%4 --romset %2.zip\n%5")
-            .arg(title, mame, root, extra, build);
+                       "its second disc or HDD, and the MAME ROM set \"%2\" (docs/PLAY.md lists them per game).\n\n"
+                       "Drop them on this window, or File > Add game files: CHDs, disc images (.cue/.iso/.img) "
+                       "and the set (.zip/.7z), all at once. CHDs are unpacked with MAME's chdman.")
+            .arg(title, mame);
     if (status == NotBuilt) {
         bool prepped = QFileInfo::exists(root + "/build/" + id + "/recomp.txt");
         return QString("The data for %1 is installed, but %2 has not been built yet.\n\nIn %3:\n\n%4")

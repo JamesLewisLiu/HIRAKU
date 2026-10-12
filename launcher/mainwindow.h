@@ -19,8 +19,13 @@ class MainWindow : public QMainWindow {
 public:
     MainWindow();
     void play(const QString &id);
+    // ingest a game's files (tools/ingest.py): ROM sets, CHDs, images, folders
+    void addGameFiles(const QStringList &paths);
+    void setEcho(bool on) { m_echo = on; }   // the log on stderr too (hiraku --add from a terminal)
 protected:
     void closeEvent(QCloseEvent *e) override;
+    void dragEnterEvent(QDragEnterEvent *e) override;
+    void dropEvent(QDropEvent *e) override;
 private:
     void refresh();
     void applyFilter();
@@ -41,6 +46,11 @@ private:
     QDockWidget *m_logDock;
     QAction *m_play, *m_stop, *m_controls, *m_lights, *m_showAll;
     QProcess m_proc;
+    QProcess m_ingest;                // tools/ingest.py, one batch at a time
+    QList<QStringList> m_ingestQueue;
+    QString m_ingestOutput;
+    void startIngest();
     QString m_running;          // game id, while one runs
     bool m_stopping = false;
+    bool m_echo = false;
 };
