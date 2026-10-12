@@ -1,0 +1,59 @@
+# pop'n music 8: what the operator can unlock (tools/unlock.py; launcher: right-click > Unlocks).
+#
+# The event phase is the operator's EVENT OPTIONS > PASSWORD, one code per phase, in order
+# (codes: remywiki.com/AC_pnm_8). The game keeps the phase as one byte of its battery RAM,
+# three times over, with no checksum. Found by entering the four codes in HIRAKU
+# (oracle/scripts/popn8-phases.his), each from the save the previous one left, and comparing
+# the save: only these three bytes changed, 0 -> 1 -> 2 -> 3 -> 4. At MAX the music select
+# has a "secret" category with the title-screen timing songs.
+
+[[unlock]]
+id = "phase"
+title = "Event phase"
+nvram = "rtc.nv"
+offsets = [0xbf, 0x57b, 0xa37]
+how = "In the game: test mode > EVENT OPTIONS > PASSWORD, the codes in order."
+
+[[unlock.level]]
+value = 0
+name = "--"
+text = "No event: the songs of a new cabinet."
+
+[[unlock.level]]
+value = 1
+name = "1.SUGOROKU de 8"
+code = "IZCDMNKXCN"
+text = "Starts the Sugoroku de 8 event."
+
+[[unlock.level]]
+value = 2
+name = "2.SUGOROKU de 8 + SECRET DATA RELEASE"
+code = "IDEZ1VSXKD"
+text = "Unlocks the LIVE songs, and EX charts for all default songs."
+
+[[unlock.level]]
+value = 3
+name = "3.SUGOROKU de 8 DATA RELEASE"
+code = "WHWTMHQZ8T"
+text = "Unlocks all Sugoroku de 8 songs, their hidden characters, and all expert courses."
+
+[[unlock.level]]
+value = 4
+name = "MAX.ALL DATA RELEASE"
+code = "ARCVWZGFEP"
+text = "Everything: also the hidden title-screen songs and their characters, and the expert-course-only songs in every mode."
+
+# Per credit, not saved: for a lower phase, or for doing it the cabinet way.
+[[note]]
+title = "LIVE songs (per credit)"
+text = """With credits in, press on the title screen: 7 8 9 9 9 6 7 6 9 8 8 7 2 1 4 3 1 1 4 2 (the buttons numbered 1 to 9 from left to right). A sound confirms it.
+It gives Over The Rainbow, H@ppy Choice, 赤いリンゴ, 今宵Lover's Day and 君を壊したい (LIVE versions). Phase 2 and up has them anyway."""
+
+[[note]]
+title = "Title-screen songs (per credit)"
+text = """Press START while Nyami and Mimi show a given colour and animation on the title screen; the song comes after FINAL STAGE in NORMAL or CHALLENGE:
+2P colour, FEVER! (jumping, flowers behind): みなしごハッチ.
+2P colour, GREAT (thumbs up, "YEAH!!"): SUBURBIA.
+1P colour, GREAT: TRAUMA PUNK.
+1P colour, FEVER!: SPECIAL COOKING.
+MAX phase has them all in the music select's "secret" category."""

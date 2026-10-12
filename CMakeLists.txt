@@ -165,7 +165,8 @@ if(Qt6_FOUND AND TARGET hiraku_hidout)
     launcher/controlsdialog.cpp
     launcher/lightsdialog.cpp
     launcher/settingsdialog.cpp
-    launcher/picturedialog.cpp)
+    launcher/picturedialog.cpp
+    launcher/unlocksdialog.cpp)
   target_compile_definitions(hiraku PRIVATE HK_ROOT="${CMAKE_SOURCE_DIR}")
   target_link_libraries(hiraku PRIVATE Qt6::Widgets Qt6::Network hiraku_cabinet hiraku_hidout)
   set(CMAKE_AUTOMOC OFF)

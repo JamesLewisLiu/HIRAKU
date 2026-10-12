@@ -173,6 +173,17 @@ Animelo 1 and 2 ingest the same way: `--dvd` takes the `extractdvd` ISO of the `
 
 Joystick buttons 0–8 are the nine buttons; button 9 is the coin.
 
+**pop'n 8 unlocks:** in the launcher, right-click pop'n music 8 > **Unlocks**, pick the event
+phase, and **Apply** (the game must not be running).
+- **MAX** unlocks everything: the LIVE songs, EX charts, the Sugoroku de 8 songs and
+  characters, expert courses, and a "secret" category with the title-screen songs.
+- **Apply** writes into the save exactly what the game writes when an operator types the
+  phase codes in EVENT OPTIONS, and the old save is kept beside it as `rtc.nv.<date>.bak`.
+- The game needs a save first: start it once, through its first-boot setup.
+- From a terminal: `tools/unlock.py popn8` lists the phases, and `tools/unlock.py popn8 phase=4`
+  sets one.
+- The per-credit codes (the LIVE button code, the title-screen timing) are listed there too.
+
 ## ParaParaParadise (in progress, M8)
 
 You need the program CD (`a11jaa01`), the audio CD (`a11jaa02`) and the MAME `ppp1mp` ROM set, which holds the dongle image `gqa11-ja`. To unpack MAME's CHDs:

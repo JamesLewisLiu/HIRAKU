@@ -37,6 +37,7 @@
 #include "controlsdialog.h"
 #include "lightsdialog.h"
 #include "picturedialog.h"
+#include "unlocksdialog.h"
 #include "settingsdialog.h"
 
 namespace {
@@ -406,6 +407,7 @@ void MainWindow::showDetails() {
         h += "<p>Saves: <tt>" + cfg::nvramDir(g->id).toHtmlEscaped() + "</tt>" + (fresh ? " (none yet)" : "") + "</p>";
         QString m = picture::mode(g->id);
         bool own = cfg::settings().contains("picture/" + g->id) || QFileInfo::exists(picture::configDir(g->id));
+        if (UnlocksDialog::available(g->id)) h += "<p>Unlocks: right-click the game &gt; Unlocks.</p>";
         h += QString("<p>Picture: %1%2</p>")
                  .arg(m == "full" ? "CRT full (crt-royale)" : m == "light" ? "CRT light (crt-guest-advanced-fast)" : "sharp pixels",
                       own ? ", with its own settings" : "");
@@ -497,6 +499,11 @@ void MainWindow::contextMenu(const QPoint &pos) {
         PictureDialog d(id, title, true, this);
         if (d.exec() == QDialog::Accepted) showDetails();
     });
+    if (UnlocksDialog::available(id))
+        menu.addAction(QIcon::fromTheme("unlock", QIcon::fromTheme("object-unlocked")), "Unlocks…", this, [this, id, title] {
+            UnlocksDialog d(id, title, m_running == id, this);
+            d.exec();
+        });
     menu.addSeparator();
     QString nv = cfg::nvramDir(id);
     auto *open = menu.addAction(QIcon::fromTheme("folder-open"), "Open the save folder", this,

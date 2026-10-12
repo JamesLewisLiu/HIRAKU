@@ -758,6 +758,39 @@ Each phase has an exit test. Sizes are assisted-effort guesses; DJ Main went fas
    - Each departure from MAME is a switch, with MAME's behaviour kept for the oracle.
    - Write down which source each departure rests on. Where the documentation runs out, stop and record the gap.
 
+## 20. Modding (discussed 2026-10-12; pilot: pop'n music 8)
+
+Mods are layers over the MAME-exact game: off by default, with the regression cases run without
+them. A mod set gets its own save, so the clean one is never touched.
+
+The order of work:
+1. **Unlocks and cheats.**
+   - Started with pop'n 8's unlocks; cheats come later.
+   - Cheats will need a writable memory path, `cheat.xml` import, and input scripts attached to a mod.
+2. **Code patches.**
+   - Byte patches to PowerPC code, with the patched functions run by the interpreter (it fetches
+     from RAM; native code never sees the patch).
+   - Native hooks on guest functions, through a per-function override check whose cost is
+     measured first.
+3. **Asset overlays** at the ATA/ATAPI sector level, with file maps from the discs' ISO9660;
+   the hard-disk layouts are per game.
+4. **Pilots on one game:** new songs; notes drawn at the display's rate from the audio clock,
+   the logic staying at 60 Hz.
+
+### Pilot: pop'n music 8 unlocks (done)
+
+- **What the phase is:** the event phase is one byte of the RTC NVRAM, kept three times
+  (`rtc.nv` 0xbf, 0x57b, 0xa37), with no checksum.
+- **How it was found:** the four codes from remywiki were typed in EVENT OPTIONS > PASSWORD
+  by `oracle/scripts/popn8-phases.his`, each from the save the previous one left, and the saves
+  were compared. Each code changed only those bytes, 0 → 4.
+- **Checked in play:** at MAX, the music select gets a "secret" category with the title-screen
+  songs.
+- **The tool:** `games/<id>/unlocks.toml` describes a game's unlocks, and `tools/unlock.py`
+  reads and writes them in the save (with a backup). The launcher shows them under right-click >
+  Unlocks.
+- **Checked:** setting MAX with the tool gives a save byte-identical to the game's own.
+
 ## M0 steps (all done)
 
 1. ~~`git init` HIRAKU and add `.gitignore` for `dumps/` and `build/`~~ Done.
