@@ -1,9 +1,13 @@
-# MAME sources (XT446 synth card)
+# MAME sources (XT446 synth card, System 573)
 
 Keyboardmania's XT446 synth card is an embedded Yamaha MU100B: a Hitachi
 H8S/2655 CPU running the MU100 firmware, and a Yamaha SWP30 tone generator and
 effects DSP. HIRAKU runs MAME's own emulation of both. The glue is in
 `runtime/dev/xt446.cpp`, a port of MAME's `xt446.cpp`.
+
+The System 573 core (`runtime/sys573/`, PLAN.md section 19) runs MAME's PlayStation
+and 573 devices the same way, on the same shim, with a port of `ksys573.cpp`'s
+driver class as the board.
 
 - **Source:** MAME master at commit
   [`58f90f43e7d1`](https://github.com/mamedev/mame/tree/58f90f43e7d1e2ae7078ba8a3c6d9f9cf879cb7a) (2026-10-12). Files keep their MAME paths under `src/`.
@@ -21,6 +25,15 @@ effects DSP. HIRAKU runs MAME's own emulation of both. The glue is in
 |---|---|
 | `src/devices/cpu/h8/` | H8 core (`h8`, `h8h`, `h8s2000`, `h8s2600`, `h8s2655`), on-chip peripherals (ADC, DMA, DTC, INTC, ports, SCI, 8/16-bit timers, watchdog), disassemblers, `h8.lst`, `h8make.py` |
 | `src/devices/sound/swp30.*` | SWP30: AWM2 rompler, MEG effects DSP, mixer |
+| `src/devices/cpu/psx/`, `src/devices/video/psx.*`, `src/devices/sound/spu*` | 573: the PlayStation CPU (GTE, DMA, IRQ, root counters, SIO, MDEC, disassembler), GPU, SPU |
+| `src/devices/machine/{intelfsh,timekpr,adc083x,ds2401,x76f041,x76f100,atahle,t10mmc,t10spc,timehelp,jvshost,jvsdev}.*` | 573: flash, M48T58, ADC0834, security chips, the ATA/SCSI command layers, JVS |
+| `src/devices/bus/ata/{ataintf,atadev,atapihle,atapicdr,cr589}.*` | 573: the ATA interface and the CR-589 ATAPI CD-ROM drive |
+| `src/devices/bus/pccard/{pccard,linflash}.*`, `src/devices/bus/psx/{ctlrport,memcard}.*` | 573: PC Card slots and flash cards; the memory card reader's PS1 ports |
+| `src/devices/sound/{cdda,mas3507d,mp3_audio}.*` | 573: CD audio, the digital I/O board's MP3 decoder |
+| `src/mame/konami/{k573cass,zs01,k573dio,k573fpga,k573mcr}.*` | 573: security cassettes, the digital I/O board and its FPGA, the JVS memory card reader |
+| `src/emu/dirtc.*` | MAME's RTC interface (the M48T58) |
+| `src/3rdparty/minimp3/minimp3.h` | minimp3 (CC0), MAME's MP3 decoder backend |
+| `shim/screen.*`, `shim/machine/ram.*`, `shim/imagedev/*`, `shim/stubs/*`, `shim/*.h` | **HIRAKU code, not MAME:** MAME's screen timing, RAM device, a CD image class reading `.cue`/`.iso` (MAME reads CHDs), stand-ins for drive and controller types no 573 game selects, small utility headers |
 | `shim/` | **HIRAKU code, not MAME:** the part of MAME's framework (`emu.h`) these files use (see below) |
 
 ## Local changes
@@ -42,6 +55,19 @@ effects DSP. HIRAKU runs MAME's own emulation of both. The glue is in
 - The H8 files are unchanged.
 
 ## The shim
+
+**Two schedulers.** The XT446 uses the simple one (CPUs in timeslices up to the next
+timer; its recorded runs were made with it). With `running_machine::m_exact` the
+shim is a copy of MAME's `device_scheduler` instead, for cycle-exact lockstep (the
+573):
+- timers kept in MAME's list order;
+- the quantum, and MAME's cycle count per slice: `(delta >> divshift) / divisor`;
+- `abort_timeslice` when a timer becomes the next one;
+- input lines through a `synchronize()` timer;
+- CPU local time through the device clock (MAME's `clocks_to_attotime`, which differs by an attosecond per cycle from the scheduler's own cycle length at 16.9344 MHz);
+- the sound manager's 50 Hz stream update;
+- NVRAM loaded after start (a file under MAME's name, or `nvram_default()`), then the RTCs set.
+
 
 `shim/emu.h` / `emu.cpp` reimplement the parts of MAME's interfaces that these
 files use. No MAME code is involved.

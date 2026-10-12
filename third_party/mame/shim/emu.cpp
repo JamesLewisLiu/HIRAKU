@@ -2,6 +2,9 @@
 // HIRAKU: the MAME framework subset declared in emu.h.
 #include "emu.h"
 
+#include <ctime>
+#include <map>
+
 bool device_t::s_log = getenv("HK_XT446_LOG") != nullptr;
 
 // ---- formatting -----------------------------------------------------------------------
@@ -59,7 +62,7 @@ std::string format_args(const char *fmt, const std::vector<fmt_arg> &args) {
 void fatalerror(const char *fmt, ...) {
     va_list ap;
     va_start(ap, fmt);
-    fprintf(stderr, "xt446: fatal: ");
+    fprintf(stderr, "mame shim: fatal: ");
     vfprintf(stderr, fmt, ap);
     fprintf(stderr, "\n");
     va_end(ap);
@@ -77,6 +80,9 @@ std::string attotime::as_string(int precision) const {
 device_t::device_t(const machine_config &mconfig, device_type type, const char *tag, device_t *owner, u32 clock)
     : m_type(type), m_basetag(tag ? tag : ""), m_owner(owner), m_clock(clock), m_machine(mconfig.m_machine), m_mconfig(&mconfig) {
     m_tag = owner ? std::string(owner->tag()) + ":" + m_basetag : m_basetag;
+    // DERIVED_CLOCK(num, den): the owner's clock times num / den
+    if ((m_clock & 0xff000000u) == 0xff000000u && owner)
+        m_clock = (u32)((u64)owner->clock() * ((m_clock >> 12) & 0xfff) / (m_clock & 0xfff));
 }
 
 void device_t::hk_log(const char *s) const {
@@ -98,6 +104,9 @@ void hk_register_device(machine_config &config, device_t *dev) {
 device_t *hk_owner_of(device_t *dev) { return dev->owner(); }
 
 device_t *hk_find_device(device_t *owner, const char *tag) {
+    if (!owner) return nullptr;
+    if (tag[0] == '^') return hk_find_device(owner->owner() ? owner->owner() : owner, tag + 1);
+    if (tag[0] == ':') { for (device_t *d : owner->machine().m_devices) if (std::string(tag) == d->tag()) return d; return nullptr; }
     std::string full = owner->subtag(tag);
     for (device_t *d : owner->machine().m_devices)
         if (full == d->tag()) return d;
@@ -105,14 +114,70 @@ device_t *hk_find_device(device_t *owner, const char *tag) {
 }
 
 void device_t::reset() {
+    for (device_interface *i : m_interfaces) i->interface_pre_reset();
     device_reset();
     for (device_t *c : m_children) c->reset();
     device_reset_after_children();
+    for (device_interface *i : m_interfaces) i->interface_post_reset();
+}
+
+void device_t::start() {
+    for (device_interface *i : m_interfaces) i->interface_pre_start();
+    device_start();
+    for (device_interface *i : m_interfaces) i->interface_post_start();
+    m_started = true;
+}
+
+device_t *hk_interface_device(device_interface &i) { return &i.device(); }
+
+device_interface::device_interface(device_t &device, const char *type) : m_device(&device), m_type(type) {
+    device.m_interfaces.push_back(this);
+}
+
+void device_slot_interface::hk_create_card(machine_config &config) {
+    if (m_default.empty() || m_card) return;
+    auto it = m_options.find(m_default);
+    if (it == m_options.end()) fatalerror("%s: no slot option %s", device().tag(), m_default.c_str());
+    device_t *saved = config.m_owner;
+    config.m_owner = &device();
+    m_card = it->second->create(config, m_default.c_str(), 0);
+    config.m_owner = saved;
+    auto cfg = m_option_cfg.find(m_default);
+    if (cfg != m_option_cfg.end() && cfg->second) cfg->second(m_card);
+}
+
+void system_time::set(time_t t) {
+    time = t;
+    struct tm lt, ut;
+    localtime_r(&t, &lt);
+    gmtime_r(&t, &ut);
+    local_time.set(lt);
+    utc_time.set(ut);
+}
+
+void system_time::full_time::set(struct tm &t) {
+    second = t.tm_sec;
+    minute = t.tm_min;
+    hour = t.tm_hour;
+    mday = t.tm_mday;
+    month = t.tm_mon;
+    year = t.tm_year + 1900;
+    weekday = t.tm_wday;
+    day = t.tm_yday;
+    is_dst = t.tm_isdst;
 }
 
 memory_region *hk_find_region(device_t &dev, const char *tag) {
-    // regions by base tag (the XT446 has one of each name)
-    return dev.machine().find_region(tag);
+    // by full tag, as MAME (DEVICE_SELF = the device's own region); then by base
+    // name (the XT446 registers its regions under their short names)
+    running_machine &m = dev.machine();
+    std::string t = tag ? tag : "";
+    memory_region *r = nullptr;
+    if (t.empty()) r = m.find_region(dev.tag());
+    else if (t[0] == ':') r = m.find_region(t);
+    else r = m.find_region(dev.subtag(t.c_str()));
+    if (!r && !t.empty()) r = m.find_region(t);
+    return r;
 }
 
 void device_t::set_addrmap(int spacenum, address_map_constructor map) {
@@ -135,7 +200,7 @@ address_space &device_t::space(int spacenum) {
     auto sp = std::make_unique<address_space>(*this, *cfg, spacenum);
     for (auto &[n, ctor] : m_external_maps) {
         if (n != spacenum) continue;
-        auto map = std::make_unique<address_map>(*this);
+        auto map = std::make_unique<address_map>(ctor.m_owner ? *ctor.m_owner : *this);
         ctor(*map);
         sp->install(std::move(map));
     }
@@ -186,72 +251,111 @@ void address_space::collect(address_map &map, offs_t base, offs_t mirror) {
 }
 
 void address_space::install(std::unique_ptr<address_map> map) {
+    if (map->m_global_mask != ~offs_t(0)) m_byte_mask &= (u64)map->m_global_mask;
     collect(*map, 0, 0);
     m_maps.push_back(std::move(map));   // the entries live as long as the space
 }
 
 void address_space::finalize() {
+    for (address_map_entry *e : m_all) apply(*e);
+}
+
+address_map_entry &address_space::runtime_entry(offs_t start, offs_t end) {
+    if (!m_runtime) m_runtime = std::make_unique<address_map>(m_device);
+    address_map_entry &e = (*m_runtime)(start, end);
+    m_all.push_back(&e);
+    return e;
+}
+
+void address_space::install_mem(offs_t start, offs_t end, u8 *base, bool rom) {
+    address_map_entry &e = runtime_entry(start, end);
+    e.m_rkind = address_map_entry::MEM;
+    e.m_wkind = rom ? address_map_entry::NOP : address_map_entry::MEM;
+    e.m_rom = rom;
+    e.m_extmem = base;
+    apply(e);
+}
+
+void address_space::unmap_readwrite(offs_t start, offs_t end) {
+    // an entry that claims the range and does nothing (reads 0)
+    address_map_entry &e = runtime_entry(start, end);
+    e.m_rkind = e.m_wkind = address_map_entry::NOP;
+    apply(e);
+}
+
+void address_space::apply(address_map_entry &er) {
+    address_map_entry *e = &er;
     const u64 psize = u64(1) << m_pbits;
-    for (address_map_entry *e : m_all) {
-        // backing memory
-        u8 *mem = nullptr;
-        if (e->m_rkind == address_map_entry::MEM || e->m_wkind == address_map_entry::MEM) {
-            u64 len = (u64)e->m_end - e->m_start + 1;
-            if (e->m_has_region) {
-                memory_region *r = m_device.machine().find_region(e->m_region);
-                if (!r) fatalerror("%s: region %s missing", m_device.tag(), e->m_region.c_str());
-                if (e->m_region_offset + len > r->bytes()) fatalerror("%s: region %s too small (%x-%x + %x, %x bytes)", m_device.tag(), e->m_region.c_str(), e->m_start, e->m_end, e->m_region_offset, r->bytes());
-                mem = r->base() + e->m_region_offset;
-            } else {
-                m_owned.push_back(std::make_unique<std::vector<u8>>(len + 8, 0));
-                mem = m_owned.back()->data();
+    // backing memory
+    u8 *mem = nullptr;
+    if (e->m_rkind == address_map_entry::MEM || e->m_wkind == address_map_entry::MEM) {
+        u64 len = (u64)e->m_end - e->m_start + 1;
+        if (e->m_extmem) {
+            mem = e->m_extmem;
+        } else if (e->m_has_region) {
+            memory_region *r = m_device.machine().find_region(e->m_region);
+            if (!r) fatalerror("%s: region %s missing", m_device.tag(), e->m_region.c_str());
+            if (e->m_region_offset + len > r->bytes()) fatalerror("%s: region %s too small (%x-%x + %x, %x bytes)", m_device.tag(), e->m_region.c_str(), e->m_start, e->m_end, e->m_region_offset, r->bytes());
+            mem = r->base() + e->m_region_offset;
+        } else {
+            m_owned.push_back(std::make_unique<std::vector<u8>>(len + 8, 0));
+            mem = m_owned.back()->data();
+        }
+    }
+    if (m_rt.size() >= 0xffff) fatalerror("%s: too many address map entries", m_device.tag());
+    m_rt.push_back({e, mem, e->m_start});
+    const u16 id = (u16)m_rt.size();
+    const offs_t extra = e->m_mirror | e->m_select;
+    // every combination of the mirror and select bits
+    offs_t sub = 0;
+    do {
+        u64 lo = (u64)(e->m_start | sub) & m_byte_mask, hi = (u64)(e->m_end | sub) & m_byte_mask;
+        for (int side = 0; side < 2; side++) {
+            address_map_entry::kind_t k = side ? e->m_wkind : e->m_rkind;
+            if (k == address_map_entry::NONE) continue;
+            u64 a = lo;
+            while (a <= hi) {
+                page_t &p = m_pages[a >> m_pbits];
+                u64 pbase = a & ~(psize - 1);
+                bool whole = a == pbase && hi >= pbase + psize - 1;
+                if (whole && k == address_map_entry::MEM && !(extra & (psize - 1)) && e->m_umask == ~u64(0)) {
+                    u8 *host = mem + ((pbase & ~(u64)extra) - e->m_start);
+                    (side ? p.direct_w : p.direct_r) = host;
+                    (side ? p.did_w : p.did_r) = id;
+                    (side ? p.widx : p.ridx).reset();
+                    a += psize;
+                    if (a == 0) break;   // wrapped at the top of a 64-bit-wide walk
+                    continue;
+                }
+                auto &idx = side ? p.widx : p.ridx;
+                u8 *&direct = side ? p.direct_w : p.direct_r;
+                u16 &did = side ? p.did_w : p.did_r;
+                if (!idx) {
+                    idx.reset(new u16[psize]());
+                    if (direct) std::fill_n(idx.get(), psize, did);   // the page was one entry's: per byte now
+                    direct = nullptr;
+                    did = 0;
+                }
+                if (whole && e->m_umask == ~u64(0)) {
+                    // a whole page of one non-memory entry: no longer per byte
+                    std::fill_n(idx.get(), psize, id);
+                    a += psize;
+                    if (a == 0) break;
+                    continue;
+                }
+                u64 end = std::min(hi, pbase + psize - 1);
+                for (; a <= end; a++) {
+                    if (e->m_umask != ~u64(0)) {
+                        u64 lm = u64(0xff) << lane_shift(a, 1);
+                        if (!(e->m_umask & lm)) continue;
+                    }
+                    idx[a - pbase] = id;
+                }
+                if (end == m_byte_mask) break;
             }
         }
-        m_rt.push_back({e, mem, e->m_start});
-        const u16 id = (u16)m_rt.size();
-        const offs_t extra = e->m_mirror | e->m_select;
-        // every combination of the mirror and select bits
-        offs_t sub = 0;
-        do {
-            u64 lo = (u64)(e->m_start | sub) & m_byte_mask, hi = (u64)(e->m_end | sub) & m_byte_mask;
-            for (int side = 0; side < 2; side++) {
-                address_map_entry::kind_t k = side ? e->m_wkind : e->m_rkind;
-                if (k == address_map_entry::NONE) continue;
-                u64 a = lo;
-                while (a <= hi) {
-                    page_t &p = m_pages[a >> m_pbits];
-                    u64 pbase = a & ~(psize - 1);
-                    bool whole = a == pbase && hi >= pbase + psize - 1;
-                    if (whole && k == address_map_entry::MEM && !(extra & (psize - 1)) && e->m_umask == ~u64(0)) {
-                        u8 *host = mem + ((pbase & ~(u64)extra) - e->m_start);
-                        (side ? p.direct_w : p.direct_r) = host;
-                        (side ? p.did_w : p.did_r) = id;
-                        (side ? p.widx : p.ridx).reset();
-                        a += psize;
-                        continue;
-                    }
-                    auto &idx = side ? p.widx : p.ridx;
-                    u8 *&direct = side ? p.direct_w : p.direct_r;
-                    u16 &did = side ? p.did_w : p.did_r;
-                    if (!idx) {
-                        idx.reset(new u16[psize]());
-                        if (direct) std::fill_n(idx.get(), psize, did);   // the page was one entry's: per byte now
-                        direct = nullptr;
-                        did = 0;
-                    }
-                    u64 end = std::min(hi, pbase + psize - 1);
-                    for (; a <= end; a++) {
-                        if (e->m_umask != ~u64(0)) {
-                            u64 lm = u64(0xff) << lane_shift(a, 1);
-                            if (!(e->m_umask & lm)) continue;
-                        }
-                        idx[a - pbase] = id;
-                    }
-                }
-            }
-            sub = (sub - extra) & extra;
-        } while (sub);
-    }
+        sub = (sub - extra) & extra;
+    } while (sub);
 }
 
 // one bus word at bus_ba (aligned), the lanes in mask
@@ -396,11 +500,34 @@ void address_space::write_slow(u64 ba, int size, u64 data) {
 
 // ---- timers ------------------------------------------------------------------------------
 void emu_timer::adjust(attotime duration, s32 param, attotime period) {
-    if (duration < attotime::zero) duration = attotime::zero;
-    m_expire = m_machine->time() + duration;
+    running_machine &m = *m_machine;
+    if (!m.m_exact) {
+        if (duration < attotime::zero) duration = attotime::zero;
+        m_expire = m.time() + duration;
+        m_param = param;
+        m_period = period;
+        m_enabled = true;
+        return;
+    }
+    // MAME's emu_timer::adjust
+    if (m.m_callback_timer == this) m.m_callback_timer_modified = true;
     m_param = param;
-    m_period = period;
     m_enabled = true;
+    if (duration.seconds() < 0) duration = attotime::zero;
+    m_start = m.time();
+    m_expire = m_start + duration;
+    m_period = period;
+    m.timer_reinsert(this);
+    if (!m.m_active.empty() && m.m_active.front() == this) m.abort_timeslice();
+}
+
+bool emu_timer::enable(bool on) {
+    const bool old = m_enabled;
+    if (old != on) {
+        m_enabled = on;
+        if (m_machine->m_exact) m_machine->timer_reinsert(this);
+    }
+    return old;
 }
 
 attotime emu_timer::remaining() const {
@@ -409,10 +536,58 @@ attotime emu_timer::remaining() const {
     return m_expire <= now ? attotime::zero : m_expire - now;
 }
 
+attotime emu_timer::elapsed() const { return m_machine->time() - m_start; }
+
 // ---- CPUs and the machine ------------------------------------------------------------------
+attotime cpu_device::cycles_to_attotime(u64 cycles) const {
+    if (machine().m_exact) return clocks_to_attotime(execute_cycles_to_clocks(cycles));
+    return attotime::raw((attotime::i128)cycles * attoseconds_per_cycle());
+}
+
 attotime cpu_device::local_time() const {
     if (!m_executing) return m_localtime;
     return m_localtime + cycles_to_attotime((u64)(m_cycles_running - *m_icountptr));
+}
+
+void cpu_device::abort_timeslice() {
+    // MAME's device_execute_interface::abort_timeslice: swallow the remaining cycles
+    if (!m_executing || !machine().m_exact) return;
+    if (m_icountptr && *m_icountptr > 0) {
+        m_cycles_stolen += *m_icountptr;
+        m_cycles_running -= *m_icountptr;
+        *m_icountptr = 0;
+    }
+}
+
+void cpu_device::set_input_line(int line, int state) {
+    if (!machine().m_exact) { execute_set_input(line, state); return; }
+    // MAME's device_input::set_state_synced: queue; the first event schedules the flush
+    std::vector<int> *q = nullptr;
+    for (auto &[l, v] : m_input_queue)
+        if (l == line) q = &v;
+    if (!q) { m_input_queue.emplace_back(line, std::vector<int>()); q = &m_input_queue.back().second; }
+    q->push_back(state);
+    if (q->size() == 1) {
+        machine().synchronize([this, line](s32) {
+            for (auto &[l, v] : m_input_queue) {
+                if (l != line) continue;
+                std::vector<int> events;
+                events.swap(v);
+                for (int st : events) execute_set_input(line, st == CLEAR_LINE ? CLEAR_LINE : ASSERT_LINE);
+            }
+        });
+    }
+}
+
+void hk_set_input_line(device_t *dev, int line, int state) {
+    auto *cpu = dynamic_cast<cpu_device *>(dev);
+    if (!cpu) fatalerror("set_inputline: %s is not a CPU", dev ? dev->tag() : "(null)");
+    cpu->set_input_line(line, state);
+}
+
+device_t *hk_config_current(device_t *owner) {
+    device_t *cur = owner ? owner->mconfig().m_owner : nullptr;
+    return cur ? cur : owner;
 }
 
 running_machine::running_machine() { m_config.m_machine = this; }
@@ -444,14 +619,54 @@ emu_timer *running_machine::alloc_timer(std::function<void(s32)> cb) {
 }
 
 attotime running_machine::time() const {
+    if (m_callback_timer) return m_callback_timer_expire;
     if (m_firing) return m_fire_time;
     if (m_executing) return m_executing->local_time();
     return m_basetime;
 }
 
 void running_machine::start() {
-    for (device_t *d : m_devices) d->device_config_complete();
-    for (device_t *d : m_devices) d->device_start();
+    if (m_exact) {
+        // MAME's sound_manager: every stream brought up to date 50 times a second
+        emu_timer *t = alloc_timer([this](s32) { for (sound_stream *st : m_streams) st->update(); });
+        t->adjust(attotime::from_hz(50), 0, attotime::from_hz(50));
+    }
+    // slot cards, then the device list in tree order again (MAME starts devices in tree order)
+    for (size_t k = 0; k < m_devices.size(); k++)
+        for (device_interface *i : m_devices[k]->m_interfaces)
+            if (auto *slot = dynamic_cast<device_slot_interface *>(i)) slot->hk_create_card(m_config);
+    {
+        std::vector<device_t *> order;
+        std::function<void(device_t *)> walk = [&](device_t *d) { order.push_back(d); for (device_t *c : d->m_children) walk(c); };
+        for (device_t *d : m_devices) if (!d->owner()) walk(d);
+        m_devices = order;
+    }
+    m_phase = machine_phase::INIT;
+    for (device_t *d : m_devices) { d->device_config_complete(); for (device_interface *i : d->m_interfaces) i->interface_config_complete(); }
+    for (device_t *d : m_devices) d->start();
+    if (m_exact) {
+        // MAME: the NVRAM (a file, or the device's defaults), then the time on battery-backed RTCs
+        nvram_load();
+        if (m_after_nvram_load) m_after_nvram_load();   // MAME: set_rtc_datetime (the board sets its RTCs)
+    }
+    m_phase = machine_phase::RUNNING;
+    if (m_exact) {
+        // MAME's update_divisor, and the quantum: 1/60 s, or the perfect interleave
+        // (the second-smallest CPU cycle; about a second with one CPU) if longer
+        attoseconds_t smallest = 0, perfect = ATTOSECONDS_PER_SECOND - 1;
+        bool first = true;
+        for (cpu_device *c : m_cpus) {
+            s64 attos = c->attoseconds_per_cycle();
+            c->m_divshift = 0;
+            while (attos >= (s64(1) << 31)) { c->m_divshift++; attos >>= 1; }
+            c->m_divisor = (u32)attos;
+            attoseconds_t q = c->attoseconds_per_cycle() * c->execute_min_cycles();
+            if (first) { smallest = q; first = false; }
+            else if (q < smallest) { perfect = smallest; smallest = q; }
+            else if (q < perfect) perfect = q;
+        }
+        m_quantum = std::max(HZ_TO_ATTOSECONDS(60), perfect);
+    }
 }
 
 void running_machine::reset() {
@@ -501,5 +716,190 @@ void running_machine::run_until(attotime target) {
             due->m_cb(due->m_param);
             m_firing = nullptr;
         }
+    }
+}
+
+// ---- the exact scheduler (MAME's device_scheduler) ----------------------------------------------
+std::string running_machine::describe_context() const {
+    if (m_executing) return util::string_format("'%s' (%08x)", m_executing->tag(), m_executing->pc());
+    return "(no context)";
+}
+
+void running_machine::timer_reinsert(emu_timer *t) {
+    auto it = std::find(m_active.begin(), m_active.end(), t);
+    if (it != m_active.end()) m_active.erase(it);
+    if (t->m_expire.is_never() || !t->m_enabled) return;   // MAME keeps these on its inactive list
+    // before the first timer that expires later: after those with the same time
+    auto pos = m_active.begin();
+    while (pos != m_active.end() && !((*pos)->m_expire > t->m_expire)) ++pos;
+    m_active.insert(pos, t);
+}
+
+emu_timer *running_machine::synchronize(std::function<void(s32)> cb, s32 param) {
+    emu_timer *t = alloc_timer(std::move(cb));
+    t->m_temporary = true;
+    t->m_param = param;
+    t->m_period = attotime::never;
+    t->m_start = time();
+    t->m_expire = t->m_start;
+    t->m_enabled = true;
+    timer_reinsert(t);
+    if (m_active.front() == t) abort_timeslice();
+    return t;
+}
+
+void running_machine::abort_timeslice() {
+    if (m_executing) m_executing->abort_timeslice();
+}
+
+void running_machine::timeslice() {
+    auto head = [this] { return m_active.empty() ? attotime::never : m_active.front()->m_expire; };
+    while (m_basetime < head()) {
+        attotime target = m_basetime + attotime::raw(m_quantum);
+        if (head() < target) target = head();
+        for (cpu_device *exec : m_cpus) {
+            if (exec->m_suspend != 0 || target.seconds() < exec->m_localtime.seconds()) continue;
+            const attoseconds_t apc = exec->attoseconds_per_cycle();
+            attoseconds_t delta = (attoseconds_t)(target - exec->m_localtime).raw_value();
+            if (delta < apc) continue;
+            int ran = exec->m_cycles_running = (int)((u64(delta) >> exec->m_divshift) / exec->m_divisor);
+            exec->m_cycles_stolen = 0;
+            m_executing = exec;
+            exec->m_executing = true;
+            *exec->m_icountptr = exec->m_cycles_running;
+            exec->execute_run();
+            exec->m_executing = false;
+            ran -= *exec->m_icountptr;
+            ran -= exec->m_cycles_stolen;
+            exec->m_totalcycles += ran;
+            const u64 cps = exec->cycles_per_second();
+            if ((u64)ran < cps) exec->m_localtime += attotime::raw((attotime::i128)apc * ran);
+            else exec->m_localtime += attotime((s64)(ran / cps), (attoseconds_t)(ran % cps) * apc);
+            if (exec->m_localtime < target) target = std::max(exec->m_localtime, m_basetime);
+        }
+        m_executing = nullptr;
+        m_basetime = target;
+    }
+    execute_timers();
+}
+
+void running_machine::execute_timers() {
+    while (!m_active.empty() && m_active.front()->m_expire <= m_basetime) {
+        emu_timer &t = *m_active.front();
+        const bool was_enabled = t.m_enabled;
+        if (t.m_period.is_zero() || t.m_period.is_never()) t.m_enabled = false;
+        m_callback_timer_modified = false;
+        m_callback_timer = &t;
+        m_callback_timer_expire = t.m_expire;
+        if (was_enabled && t.m_cb) t.m_cb(t.m_param);
+        if (!m_callback_timer_modified) {
+            if (!t.m_temporary) {
+                t.m_start = t.m_expire;
+                t.m_expire += t.m_period;
+                timer_reinsert(&t);
+            } else {
+                auto it = std::find(m_active.begin(), m_active.end(), &t);
+                if (it != m_active.end()) m_active.erase(it);
+                for (auto i = m_timers.begin(); i != m_timers.end(); ++i)
+                    if (i->get() == &t) { m_timers.erase(i); break; }
+            }
+        }
+    }
+    m_callback_timer = nullptr;
+}
+
+// ---- sound streams ------------------------------------------------------------------------------
+sound_stream *device_sound_interface::stream_alloc(int inputs, int outputs, u32 rate, sound_stream_flags) {
+    auto *self = this;
+    m_streams.push_back(std::make_unique<sound_stream>(*m_sound_device, inputs, outputs, rate,
+                                                       [self](sound_stream &st) { self->sound_stream_update(st); }));
+    m_sound_device->machine().m_streams.push_back(m_streams.back().get());
+    return m_streams.back().get();
+}
+
+attotime sound_stream::sample_to_time(u64 index) const {
+    // MAME: seconds exact, the remainder rounded up to whole attoseconds
+    const u64 secs = index / m_sample_rate, rem = index % m_sample_rate;
+    const attotime::i128 num = (attotime::i128)rem * ATTOSECONDS_PER_SECOND;
+    const attoseconds_t attos = (attoseconds_t)((num + m_sample_rate - 1) / m_sample_rate);
+    return attotime((s64)secs, attos);
+}
+
+void sound_stream::update() {
+    if (!m_device->machine().m_exact || !m_sample_rate || m_in_update) return;
+    const attotime now = m_device->machine().time();
+    if (now.is_zero()) return;
+    const u64 idx = (u64)now.seconds() * m_sample_rate + (u64)((attotime::i128)now.attoseconds() * m_sample_rate / ATTOSECONDS_PER_SECOND);
+    const s64 n = (s64)(idx - m_write_sample) + 1;   // up to and including the current sample
+    if (n <= 0) return;
+    m_samples_to_update = (s32)n;
+    m_in_update = true;
+    for (auto &b : m_buf) b.assign((size_t)n, 0.0f);
+    m_cb(*this);
+    for (int o = 0; o < m_outputs; o++) m_out[o].insert(m_out[o].end(), m_buf[o].begin(), m_buf[o].end());
+    m_write_sample += (u64)n;
+    m_in_update = false;
+    m_samples_to_update = 0;
+}
+
+// ---- memory shares -------------------------------------------------------------------------------
+namespace {
+std::map<std::string, std::pair<void *, size_t>> &shares() { static std::map<std::string, std::pair<void *, size_t>> m; return m; }
+}
+void hk_register_share(const std::string &fulltag, void *ptr, size_t bytes) { shares()[fulltag] = {ptr, bytes}; }
+std::pair<void *, size_t> hk_find_share(const std::string &fulltag) {
+    auto it = shares().find(fulltag);
+    return it == shares().end() ? std::pair<void *, size_t>{nullptr, 0} : it->second;
+}
+
+// ---- NVRAM files ---------------------------------------------------------------------------------
+namespace {
+struct file_read_stream : util::read_stream {
+    FILE *f;
+    explicit file_read_stream(FILE *fp) : f(fp) {}
+    size_t read_some(void *buf, size_t n) override { return fread(buf, 1, n, f); }
+};
+struct file_write_stream : util::write_stream {
+    FILE *f;
+    explicit file_write_stream(FILE *fp) : f(fp) {}
+    size_t write_some(const void *buf, size_t n) override { return fwrite(buf, 1, n, f); }
+};
+}  // namespace
+
+std::string running_machine::nvram_filename(device_t &dev) {
+    // MAME: the tag without its leading ':', with ':' as '_' (the root device's file is the set's own)
+    std::string t = dev.tag();
+    if (!t.empty() && t[0] == ':') t.erase(0, 1);
+    for (char &c : t) if (c == ':') c = '_';
+    return t;
+}
+
+void running_machine::nvram_load() {
+    for (device_t *d : m_devices) {
+        auto *nv = dynamic_cast<device_nvram_interface *>(d);
+        if (!nv) continue;
+        FILE *f = nullptr;
+        if (nv->nvram_backup_enabled() && !m_nvram_dir.empty()) f = fopen((m_nvram_dir + "/" + nvram_filename(*d)).c_str(), "rb");
+        if (f) {
+            file_read_stream st(f);
+            if (!nv->nvram_load(st)) fprintf(stderr, "error reading NVRAM file %s\n", nvram_filename(*d).c_str());
+            fclose(f);
+        } else {
+            nv->nvram_reset();
+        }
+    }
+}
+
+void running_machine::nvram_save() {
+    if (m_nvram_dir.empty()) return;
+    for (device_t *d : m_devices) {
+        auto *nv = dynamic_cast<device_nvram_interface *>(d);
+        if (!nv || !nv->nvram_can_save()) continue;
+        std::string path = m_nvram_dir + "/" + nvram_filename(*d);
+        FILE *f = fopen(path.c_str(), "wb");
+        if (!f) { fprintf(stderr, "cannot write %s\n", path.c_str()); continue; }
+        file_write_stream st(f);
+        nv->nvram_save(st);
+        fclose(f);
     }
 }

@@ -1,0 +1,165 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// HIRAKU: see cdromimg.h.
+#include "imagedev/cdromimg.h"
+
+#include <map>
+
+DEFINE_DEVICE_TYPE(CDROM, cdrom_image_device, "cdrom_image", "CD-ROM Image")
+
+namespace {
+std::map<std::string, std::string> &paths() { static std::map<std::string, std::string> p; return p; }
+
+// a cue sheet track type: MAME's track type and bytes per sector in the file
+bool track_type(const std::string &t, u32 &type, u32 &size) {
+    if (t == "MODE1/2048") { type = cdrom_file::CD_TRACK_MODE1; size = 2048; }
+    else if (t == "MODE1/2352") { type = cdrom_file::CD_TRACK_MODE1_RAW; size = 2352; }
+    else if (t == "MODE2/2336") { type = cdrom_file::CD_TRACK_MODE2; size = 2336; }
+    else if (t == "MODE2/2352") { type = cdrom_file::CD_TRACK_MODE2_RAW; size = 2352; }
+    else if (t == "AUDIO") { type = cdrom_file::CD_TRACK_AUDIO; size = 2352; }
+    else return false;
+    return true;
+}
+}  // namespace
+
+cdrom_file::~cdrom_file() {
+    for (FILE *f : m_files) fclose(f);
+}
+
+bool cdrom_file::open(const std::string &path) {
+    auto ends = [&](const char *e) { size_t n = strlen(e); return path.size() >= n && strcasecmp(path.c_str() + path.size() - n, e) == 0; };
+    if (!ends(".cue")) {
+        // an .iso: one MODE1/2048 track
+        FILE *f = fopen(path.c_str(), "rb");
+        if (!f) return false;
+        m_files.push_back(f);
+        fseeko(f, 0, SEEK_END);
+        u32 frames = (u32)(ftello(f) / 2048);
+        cdtoc.numtrks = 1;
+        track_info &t = cdtoc.tracks[0];
+        t.trktype = CD_TRACK_MODE1;
+        t.datasize = 2048;
+        t.frames = t.logframes = frames;
+        t.control_flags = CD_FLAG_CONTROL_DATA_TRACK;
+        m_part[0] = {f, 0};
+        cdtoc.tracks[1].logframeofs = frames;
+        return true;
+    }
+    FILE *cue = fopen(path.c_str(), "r");
+    if (!cue) return false;
+    std::string dir = path.substr(0, path.find_last_of('/') + 1);
+    char line[1024];
+    FILE *cur = nullptr;
+    u64 cur_size = 0;
+    int ntr = -1;
+    std::vector<std::pair<FILE *, u32>> index01;   // per track: file, INDEX 01 frame within it
+    while (fgets(line, sizeof line, cue)) {
+        char *p = line;
+        while (*p == ' ' || *p == '\t') p++;
+        if (!strncasecmp(p, "FILE ", 5)) {
+            std::string name;
+            char *q = p + 5;
+            if (*q == '"') { char *e = strchr(q + 1, '"'); name.assign(q + 1, e ? e : q + 1); }
+            else { char *e = strpbrk(q, " \t\r\n"); name.assign(q, e ? e : q + strlen(q)); }
+            cur = fopen((name.size() && name[0] == '/' ? name : dir + name).c_str(), "rb");
+            if (!cur) { fclose(cue); return false; }
+            m_files.push_back(cur);
+            fseeko(cur, 0, SEEK_END);
+            cur_size = (u64)ftello(cur);
+        } else if (!strncasecmp(p, "TRACK ", 6)) {
+            char type[32] = {};
+            int n = 0;
+            sscanf(p + 6, "%d %31s", &n, type);
+            ntr++;
+            u32 tt, size;
+            if (!track_type(type, tt, size)) { fclose(cue); return false; }
+            track_info &t = cdtoc.tracks[ntr];
+            t.trktype = tt;
+            t.datasize = size;
+            t.control_flags = tt == CD_TRACK_AUDIO ? 0 : CD_FLAG_CONTROL_DATA_TRACK;
+            index01.emplace_back(cur, 0);
+        } else if (!strncasecmp(p, "INDEX 01 ", 9) && ntr >= 0) {
+            int m = 0, s = 0, f = 0;
+            sscanf(p + 9, "%d:%d:%d", &m, &s, &f);
+            index01[ntr].second = (u32)((m * 60 + s) * 75 + f);
+        }
+    }
+    fclose(cue);
+    if (ntr < 0) return false;
+    cdtoc.numtrks = ntr + 1;
+    // frames per track: up to the next track in the same file, or the file's end
+    u32 logofs = 0;
+    for (u32 k = 0; k < cdtoc.numtrks; k++) {
+        track_info &t = cdtoc.tracks[k];
+        FILE *f = index01[k].first;
+        u64 start = (u64)index01[k].second * t.datasize;
+        u64 end = 0;
+        if (k + 1 < cdtoc.numtrks && index01[k + 1].first == f) end = (u64)index01[k + 1].second * t.datasize;
+        else { fseeko(f, 0, SEEK_END); end = (u64)ftello(f); }
+        t.frames = t.logframes = (u32)((end - start) / t.datasize);
+        t.logframeofs = logofs;
+        m_part[k] = {f, start};
+        logofs += t.frames;
+    }
+    cdtoc.tracks[cdtoc.numtrks].logframeofs = logofs;   // the lead-out
+    (void)cur_size;
+    return true;
+}
+
+u32 cdrom_file::get_track(u32 frame) const {
+    u32 track = 0;
+    for (track = 0; track < cdtoc.numtrks; track++)
+        if (frame < cdtoc.tracks[track + 1].logframeofs) break;
+    return track;
+}
+
+bool cdrom_file::read_partial(void *dst, u32 lba, u32 track, u32 offset, u32 len) {
+    const track_info &t = cdtoc.tracks[track];
+    const file_part &fp = m_part[track];
+    u64 pos = fp.offset + (u64)(lba - t.logframeofs) * t.datasize + offset;
+    if (fseeko(fp.f, (off_t)pos, SEEK_SET) != 0) return false;
+    return fread(dst, 1, len, fp.f) == len;
+}
+
+bool cdrom_file::read_data(u32 lbasector, void *buffer, u32 datatype, bool) {
+    // MAME's conversions between the stored and the requested sector type
+    u32 track = get_track(lbasector);
+    if (track >= cdtoc.numtrks) return false;
+    u32 tracktype = cdtoc.tracks[track].trktype;
+    if (datatype == tracktype || datatype == CD_TRACK_RAW_DONTCARE) return read_partial(buffer, lbasector, track, 0, cdtoc.tracks[track].datasize);
+    if (datatype == CD_TRACK_MODE1 && tracktype == CD_TRACK_MODE1_RAW) return read_partial(buffer, lbasector, track, 16, 2048);
+    if (datatype == CD_TRACK_MODE1_RAW && tracktype == CD_TRACK_MODE1) {
+        u8 *b = (u8 *)buffer;
+        static const u8 sync[12] = {0x00, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00};
+        memcpy(b, sync, 12);
+        u32 msf = lba_to_msf(lbasector);
+        b[12] = u8(msf >> 16); b[13] = u8(msf >> 8); b[14] = u8(msf);
+        b[15] = 1;
+        return read_partial(b + 16, lbasector, track, 0, 2048);
+    }
+    if (datatype == CD_TRACK_MODE1 && (tracktype == CD_TRACK_MODE2_FORM1 || tracktype == CD_TRACK_MODE2_RAW)) return read_partial(buffer, lbasector, track, 24, 2048);
+    if (datatype == CD_TRACK_MODE1 && tracktype == CD_TRACK_MODE2_FORM_MIX) return read_partial(buffer, lbasector, track, 8, 2048);
+    if (datatype == CD_TRACK_MODE2 && (tracktype == CD_TRACK_MODE1_RAW || tracktype == CD_TRACK_MODE2_RAW)) return read_partial(buffer, lbasector, track, 16, 2336);
+    return false;
+}
+
+cdrom_image_device::cdrom_image_device(const machine_config &mconfig, const char *tag, device_t *owner, u32 clock)
+    : device_t(mconfig, CDROM, tag, owner, clock), device_image_interface(mconfig, *this) {}
+cdrom_image_device::cdrom_image_device(const machine_config &mconfig, device_type type, const char *tag, device_t *owner, u32 clock)
+    : device_t(mconfig, type, tag, owner, clock), device_image_interface(mconfig, *this) {}
+
+DEFINE_DEVICE_TYPE(GDROM, gdrom_image_device, "gdrom_image", "GD-ROM Image (unavailable)")
+DEFINE_DEVICE_TYPE(DVDROM, dvdrom_image_device, "dvdrom_image", "DVD-ROM Image (unavailable)")
+gdrom_image_device::gdrom_image_device(const machine_config &mconfig, const char *tag, device_t *owner, u32 clock)
+    : cdrom_image_device(mconfig, GDROM, tag, owner, clock) { fatalerror("%s: GD-ROM images are not available in HIRAKU", tag); }
+dvdrom_image_device::dvdrom_image_device(const machine_config &mconfig, const char *tag, device_t *owner, u32 clock)
+    : cdrom_image_device(mconfig, DVDROM, tag, owner, clock) { fatalerror("%s: DVD images are not available here", tag); }
+
+void cdrom_image_device::hk_set_path(const std::string &tag, const std::string &path) { paths()[tag] = path; }
+
+void cdrom_image_device::device_start() {
+    auto it = paths().find(tag());
+    if (it == paths().end() || it->second.empty()) return;
+    m_cd = std::make_unique<cdrom_file>();
+    if (!m_cd->open(it->second)) fatalerror("%s: cannot open the disc image %s", tag(), it->second.c_str());
+    m_sequence++;
+}
