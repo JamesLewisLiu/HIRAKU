@@ -2,7 +2,9 @@
 // HK_PROFILE=1: a 1 kHz SIGPROF sampler of the host instruction pointer, for
 // finding hot spots without perf. Samples are written at exit to
 // hk-profile.txt as executable-relative addresses (symbolise with
-// llvm-symbolizer --obj=<binary>).
+// llvm-symbolizer --obj=<binary>). Samples in shared libraries are written as
+// "count 0xoffset library [symbol]", with the offset relative to the library.
+#include <dlfcn.h>
 #include <link.h>
 #include <signal.h>
 #include <sys/time.h>
@@ -26,10 +28,19 @@ void on_prof(int, siginfo_t *, void *uc) {
 
 void dump() {
     std::map<uintptr_t, int> hist;
-    for (int k = 0; k < g_n; k++) hist[g_samples[k] - g_base]++;
+    for (int k = 0; k < g_n; k++) hist[g_samples[k]]++;
     FILE *f = fopen("hk-profile.txt", "w");
     if (!f) return;
-    for (auto &[a, c] : hist) fprintf(f, "%d 0x%lx\n", c, (unsigned long)a);
+    Dl_info self{};
+    dladdr((void *)&dump, &self);
+    for (auto &[a, c] : hist) {
+        Dl_info i{};
+        if (dladdr((void *)a, &i) && i.dli_fbase && i.dli_fbase != self.dli_fbase)
+            fprintf(f, "%d 0x%lx %s %s\n", c, (unsigned long)(a - (uintptr_t)i.dli_fbase), i.dli_fname,
+                    i.dli_sname ? i.dli_sname : "?");
+        else
+            fprintf(f, "%d 0x%lx\n", c, (unsigned long)(a - g_base));
+    }
     fclose(f);
     fprintf(stderr, "profile: %d samples -> hk-profile.txt\n", (int)g_n);
 }

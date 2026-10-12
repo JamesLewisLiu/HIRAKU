@@ -104,7 +104,11 @@ bool window_frame(const uint32_t *rgb, int w, int h, double vsec) {
     auto now = std::chrono::steady_clock::now();
     if (!g_started) { g_t0 = now - std::chrono::duration_cast<std::chrono::steady_clock::duration>(std::chrono::duration<double>(vsec)); g_started = true; }
     auto due = g_t0 + std::chrono::duration_cast<std::chrono::steady_clock::duration>(std::chrono::duration<double>(vsec));
-    if (due > now) std::this_thread::sleep_until(due);
+    if (due > now) {
+        const uint64_t w0 = prof::ticks();
+        std::this_thread::sleep_until(due);
+        prof::g_wait_ticks += prof::ticks() - w0;
+    }
     else if (now - due > std::chrono::milliseconds(250)) g_t0 += now - due;   // fell behind: don't try to catch up
     return true;
 }
@@ -142,20 +146,22 @@ void push_chunk(const float *lr, int frames) {
         }
         if (queued < 44) {   // under 1 ms left: about to crackle
             g_ast.low++;
-            for (int c = 0; c < prof::NCAT; c++) g_ast.low_ns[c] += prof::g_ns[c];
+            for (int c = 0; c < prof::NCAT; c++) g_ast.low_ns[c] += (uint64_t)prof::ns((prof::Cat)c);
             if (g_log_stalls) {
                 fprintf(stderr, "stall: frame %llu, %.2f ms of work, queue %d frames:", (unsigned long long)fb::frame_count(), gap, queued);
-                for (int c = 0; c < prof::NCAT; c++) fprintf(stderr, " %s %.2f", prof::NAMES[c], prof::g_ns[c] / 1e6);
+                for (int c = 0; c < prof::NCAT; c++) fprintf(stderr, " %s %.2f", prof::NAMES[c], prof::ns((prof::Cat)c) / 1e6);
                 fprintf(stderr, "\n");
             }
         }
     }
     SDL_PutAudioStreamData(g_audio, lr, frames * 8);
     // audio is the clock: wait while more than the target is queued, polling controls
+    const uint64_t w0 = prof::ticks();
     while (SDL_GetAudioStreamQueued(g_audio) > g_target_frames * 8 && !g_quit) {
         poll();
         SDL_DelayPrecise(250'000);   // 0.25 ms
     }
+    prof::g_wait_ticks += prof::ticks() - w0;
     poll();
     prof::reset();
     g_last_push_end = prof::now_ns();

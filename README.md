@@ -35,6 +35,8 @@ analyze/ghidra.sh bm3final                  # → build/bm3final/manifest.json
 analyze/prep.py bm3final                    # → build/bm3final/recomp.txt
 cmake -S . -B build/cmake -G Ninja && ninja -C build/cmake
 ctest --test-dir build/cmake                # instruction semantics vs QEMU
+tools/regress.py record; tools/regress.py check   # runs stay bit-identical (per-frame picture + sound hashes)
+tools/regress.py bench                      # share of a core, and host work per frame (mean / p99 / worst)
 build/cmake/hiraku                          # the launcher (Qt 6)
 build/cmake/hiraku-bm3final --window        # real time with sound; F2 test, 5 coin, 1 start, Z S X D C keys
 build/cmake/hiraku-bm3final --script oracle/scripts/bm3final-practice.his --wav out/practice.wav

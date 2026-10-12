@@ -628,8 +628,14 @@ void vblank_fire() {
             prof::Scope ps(prof::DRAW);
             for (int k = 0; k < 2; k++) {
                 (k ? g_gcu2 : g_gcu)->draw(half.data(), w, h);
-                for (int y = 0; y < h; y++)
-                    for (int x = 0; x < w; x++) g_fb[(size_t)(w - 1 - x) * ow + (size_t)k * h + y] = half[(size_t)y * w + x];
+                // in 32x32 tiles, so that neither the reads nor the column writes thrash the cache
+                constexpr int T = 32;
+                for (int y0 = 0; y0 < h; y0 += T)
+                    for (int x0 = 0; x0 < w; x0 += T)
+                        for (int x = x0; x < std::min(x0 + T, w); x++) {
+                            uint32_t *d = &g_fb[(size_t)(w - 1 - x) * ow + (size_t)k * h];
+                            for (int y = y0; y < std::min(y0 + T, h); y++) d[y] = half[(size_t)y * w + x];
+                        }
             }
         }
         g_frame_hook(g_frame, g_fb.data(), ow, w);

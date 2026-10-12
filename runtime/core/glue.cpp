@@ -20,8 +20,17 @@
 //      running guest code at the frame's SRR0.
 //
 // Only one fiber runs at a time and hk_ctx is "the CPU", shared by all.
+//
+// Fibers switch tens of thousands of times per second (every guest thread
+// switch). On x86-64 the switch is a few instructions of our own: libc's
+// swapcontext also saves and restores the signal mask, a system call each
+// time, which cost ~14 % of a whole run. Other hosts use ucontext.
 #include <sys/mman.h>
+#if defined(__x86_64__) && !defined(_WIN32)
+#define HK_FIBER_ASM 1
+#else
 #include <ucontext.h>
+#endif
 
 #include <cstdio>
 #include <unordered_map>
@@ -38,8 +47,49 @@ namespace {
 
 constexpr size_t FIBER_STACK = 1 << 20;
 
+#if HK_FIBER_ASM
+// hk_fiber_switch(&save_sp, load_sp): push the callee-saved registers and the
+// SSE/x87 control words on this stack, store the stack pointer in *save_sp,
+// load load_sp and pop the same from there. A new fiber's stack is prepared
+// by fiber_stack_init so that this "returns" into fiber_entry.
+extern "C" void hk_fiber_switch(void **save_sp, void *load_sp);
+asm(R"(
+    .text
+    .globl hk_fiber_switch
+    .hidden hk_fiber_switch
+    .type hk_fiber_switch, @function
+hk_fiber_switch:
+    pushq %rbp
+    pushq %rbx
+    pushq %r12
+    pushq %r13
+    pushq %r14
+    pushq %r15
+    subq $8, %rsp
+    stmxcsr (%rsp)
+    fnstcw 4(%rsp)
+    movq %rsp, (%rdi)
+    movq %rsi, %rsp
+    ldmxcsr (%rsp)
+    fldcw 4(%rsp)
+    addq $8, %rsp
+    popq %r15
+    popq %r14
+    popq %r13
+    popq %r12
+    popq %rbx
+    popq %rbp
+    ret
+    .size hk_fiber_switch, .-hk_fiber_switch
+)");
+#endif
+
 struct Fiber {
+#if HK_FIBER_ASM
+    void *sp = nullptr;        // saved stack pointer while not running
+#else
     ucontext_t uc{};
+#endif
     void *stack = nullptr;
     uint32_t frame = 0;        // guest frame it is parked under
     uint32_t resume_pc = 0;    // the SRR0 that frame must carry for it to be ours
@@ -73,16 +123,43 @@ void thread_main() {
     }
 }
 
+#if HK_FIBER_ASM
+[[noreturn]] void fiber_entry() {
+    thread_main();
+    __builtin_unreachable();
+}
+
+// The frame hk_fiber_switch pops, from the saved stack pointer up: control
+// words, r15 r14 r13 r12 rbx rbp, return address (fiber_entry), then a dummy
+// return address for fiber_entry itself, which keeps the ABI's alignment
+// (rsp + 8 a multiple of 16 on function entry).
+void *fiber_stack_init(void *stack) {
+    auto *top = reinterpret_cast<uint64_t *>(static_cast<char *>(stack) + FIBER_STACK);
+    uint64_t *sp = top - 9;
+    uint32_t csr[2] = {};
+    asm volatile("stmxcsr %0\n\tfnstcw %1" : "=m"(csr[0]), "=m"(csr[1]));
+    sp[0] = (uint64_t)csr[1] << 32 | csr[0];
+    for (int k = 1; k <= 6; k++) sp[k] = 0;
+    sp[7] = reinterpret_cast<uint64_t>(&fiber_entry);
+    sp[8] = 0;
+    return sp;
+}
+#endif
+
 Fiber *new_thread_fiber() {
     auto *f = new Fiber;
     f->id = g_next_id++;
     f->stack = mmap(nullptr, FIBER_STACK, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_STACK, -1, 0);
     if (f->stack == MAP_FAILED) fatal(g_c, "cannot allocate a fiber stack");
+#if HK_FIBER_ASM
+    f->sp = fiber_stack_init(f->stack);
+#else
     getcontext(&f->uc);
     f->uc.uc_stack.ss_sp = f->stack;
     f->uc.uc_stack.ss_size = FIBER_STACK;
     f->uc.uc_link = nullptr;
     makecontext(&f->uc, thread_main, 0);
+#endif
     return f;
 }
 
@@ -109,7 +186,11 @@ void switch_threads(hk_ctx *c, uint32_t my_frame, uint32_t my_resume, uint32_t t
     }
     g_stats.thread_switches++;
     g_cur = next;
+#if HK_FIBER_ASM
+    hk_fiber_switch(&me->sp, next->sp);
+#else
     swapcontext(&me->uc, &next->uc);
+#endif
     // resumed: the exit path that chose us has loaded our registers
     g_cur = me;
     for (Fiber *f : g_graveyard)

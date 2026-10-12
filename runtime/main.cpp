@@ -12,6 +12,8 @@
 //     --image FILE      program image (default dumps/<game>/program.bin)
 //     --script FILE     run an oracle input script (.his): same inputs, same frames as in MAME
 //     --wav FILE        record the sound output (16-bit stereo, 44.1 kHz)
+//     --digest FILE     write one line per frame: frame number, a hash of the picture and a running
+//                       hash of all sound so far (tools/regress.py checks runs are bit-identical with it)
 //     --bios-seconds S  time the skipped BIOS would have taken (default 21.65, as measured in
 //                       MAME for beatmania III); boards like the SPU boot during it
 //     --window [SCALE]  show the game in a window, in real time, with sound (SDL3 builds);
@@ -31,6 +33,7 @@
 // both written by tools/ingest.py from the user's own dumps.
 #include <sys/stat.h>
 
+#include <algorithm>
 #include <atomic>
 #include <csignal>
 
@@ -41,6 +44,7 @@
 #include <map>
 #include <string>
 
+#include "core/prof.h"
 #include "core/runtime.h"
 #include "core/sched.h"
 #include "firebeat/board.h"
@@ -90,6 +94,57 @@ void write_ppm(const std::string &path, const uint32_t *rgb, int w, int h) {
     fclose(f);
 }
 
+// Host work per video frame: the time between frames, minus deliberate waits
+// (audio pacing). This is what has to fit a frame on a slow PC; the worst
+// frames, not the mean, decide whether the sound crackles.
+struct FrameTimes {
+    static constexpr int BINS = 2000;   // 0.05 ms each, up to 100 ms
+    uint64_t hist[BINS + 1] = {};
+    uint64_t n = 0, last = 0, last_wait = 0, worst_frame = 0;
+    uint64_t last_cat[prof::NCAT] = {}, worst_cat[prof::NCAT] = {};
+    double sum_ms = 0, max_ms = 0;
+
+    void frame(uint64_t f) {
+        const uint64_t t = prof::ticks(), w = prof::g_wait_ticks;
+        if (last) {
+            double ms = (double)((t - last) - (w - last_wait)) * prof::ns_per_tick() / 1e6;
+            hist[std::min(BINS, (int)(ms / 0.05))]++;
+            n++;
+            sum_ms += ms;
+            if (ms > max_ms) {
+                max_ms = ms, worst_frame = f;
+                for (int c = 0; c < prof::NCAT; c++) worst_cat[c] = prof::g_total[c] - last_cat[c];
+            }
+        }
+        last = t;
+        last_wait = w;
+        for (int c = 0; c < prof::NCAT; c++) last_cat[c] = prof::g_total[c];
+    }
+    double percentile(double q) const {
+        uint64_t need = (uint64_t)(q * (double)n), acc = 0;
+        for (int k = 0; k <= BINS; k++)
+            if ((acc += hist[k]) > need) return (k + 1) * 0.05;
+        return max_ms;
+    }
+    void print() const {
+        if (!n) return;
+        printf("frametime: host work per frame over %llu frames: mean %.2f ms, p50 %.2f, p99 %.2f, p99.9 %.2f, "
+               "max %.2f (frame %llu:",
+               (unsigned long long)n, sum_ms / (double)n, percentile(0.5), percentile(0.99), percentile(0.999), max_ms,
+               (unsigned long long)worst_frame);
+        for (int c = 0; c < prof::NCAT; c++) printf(" %s %.2f", prof::NAMES[c], (double)worst_cat[c] * prof::ns_per_tick() / 1e6);
+        printf(")\n");
+    }
+};
+
+// 64-bit FNV-1a over 32-bit words: cheap enough to run on every frame
+uint64_t hash_words(uint64_t h, const void *p, size_t n_words) {
+    const uint32_t *w = static_cast<const uint32_t *>(p);
+    for (size_t k = 0; k < n_words; k++) h = (h ^ w[k]) * 0x100000001b3ull;
+    return h;
+}
+constexpr uint64_t HASH_SEED = 0xcbf29ce484222325ull;
+
 void mkdirs(const std::string &path) {
     for (size_t k = 1; k <= path.size(); k++)
         if (k == path.size() || path[k] == '/') mkdir(path.substr(0, k).c_str(), 0755);
@@ -104,7 +159,7 @@ int main(int argc, char **argv) {
     uint64_t frames = 0, snap_every = 0, debug_every = 0;
     bool trace = false, ata_log = false;
     int window_scale = 0;
-    std::string wav_path, script_path, bindings, nvram_dir, lights_file, lights_socket;
+    std::string wav_path, digest_path, script_path, bindings, nvram_dir, lights_file, lights_socket;
     bool fullscreen = false;
     bool nvram_given = false;
     int audio_ms = 8;
@@ -128,6 +183,7 @@ int main(int argc, char **argv) {
         else if (a == "--itrace") g_interp.trace = true;
         else if (a == "--debug-every") debug_every = std::stoull(val());
         else if (a == "--wav") wav_path = val();
+        else if (a == "--digest") digest_path = val();
         else if (a == "--script") script_path = val();
         else if (a == "--bindings") bindings = val();
         else if (a == "--lights") lights_file = val();
@@ -189,7 +245,11 @@ int main(int argc, char **argv) {
         uint8_t hdr[44] = {};
         if (wav) fwrite(hdr, 1, 44, wav);   // header written at shutdown
     }
+    FILE *digest = digest_path.empty() ? nullptr : fopen(digest_path.c_str(), "w");
+    if (!digest_path.empty() && !digest) { fprintf(stderr, "cannot write %s\n", digest_path.c_str()); return 1; }
+    uint64_t audio_hash = HASH_SEED;
     auto sink = [&](const float *lr, int n) {
+        if (digest) audio_hash = hash_words(audio_hash, lr, 2 * (size_t)n);
 #ifdef HK_WITH_SDL
         if (window_scale) host::audio_push(lr, n);
 #endif
@@ -246,7 +306,9 @@ int main(int argc, char **argv) {
     printf("hiraku %s: %u recompiled functions, %s\n", game.c_str(), hk_func_count,
            g_interp.lle ? "interpreter only" : "native");
 
+    static FrameTimes frame_times;
     auto report = [&]() {
+        frame_times.print();
         printf("frames %llu, virtual time %.3f s, %llu interpreted insns, %llu native calls, %llu exceptions "
                "(%llu vectors native), %llu threads, %llu thread switches\n",
                (unsigned long long)fb::frame_count(), (double)now() / CPU_HZ, (unsigned long long)g_stats.insns,
@@ -271,6 +333,7 @@ int main(int argc, char **argv) {
             }
         }
         close_wav();
+        if (digest) { fclose(digest); digest = nullptr; }
 #ifdef HK_WITH_SDL
         if (window_scale) printf("%s\n", host::audio_describe().c_str());
 #endif
@@ -297,6 +360,10 @@ int main(int argc, char **argv) {
     std::signal(SIGINT, [](int) { stop_requested = true; });
     std::signal(SIGTERM, [](int) { stop_requested = true; });
     fb::set_frame_hook([&](uint64_t f, const uint32_t *rgb, int w, int h) {
+        frame_times.frame(f);
+        if (digest)
+            fprintf(digest, "%llu %016llx %016llx\n", (unsigned long long)f,
+                    (unsigned long long)hash_words(HASH_SEED, rgb, (size_t)w * h), (unsigned long long)audio_hash);
         if (stop_requested) {
             script::close();
             fb::shutdown();

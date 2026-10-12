@@ -124,7 +124,7 @@ Languages:
 - **Memory.** Guest RAM stays **big-endian**, and every load/store byteswaps. This is trivially correct with DMA, VRAM uploads and DPRAM, and costs nothing at this code size. Addresses are masked (bit 31 mirror). RAM gets a fast path; everything in `0x7xxxxxxx` goes through the MMIO bus.
 - **Indirect calls.** `blrl` and computed `bctrl` look the target up in a sorted guest→host table. A miss falls into the runtime's PPC interpreter and is logged with a hint to add the address to the manifest.
 - **Safe points.** Loop back-edges and function prologues get a cheap `if (ctx->irq_pending)` check, so interrupts and context switches are delivered at deterministic points.
-- **Idle detection.** Known wait-for-VBlank and spin loops (e.g. the hot PC at `0x800C0000`) are marked in the manifest. The runtime then sleeps the host thread instead of burning a core.
+- **Idle detection.** Planned: mark known wait-for-VBlank and spin loops in the manifest, and sleep the host instead of burning a core. **Measured 2026-10-12, it doesn't apply as planned (§14):** the guest has no such loop. Its idle time is threads calling the kernel's `yield()` in wait loops, so a bit-exact skip would mean proving that the whole scheduler state repeats. Deferred.
 
 ### 3.3 Kernel: translate the C kernel, replace only the assembly glue (`runtime/kernel/`)
 
@@ -217,6 +217,10 @@ Durations are rough, assume one person, and are assisted. Each milestone has a c
 | **M8** | ParaParaParadise family | `!:EXE:00` loader, YMZ280B, CDDA, sensor input mapping. | 3–4 wk — started: `ppp1mp` runs native through its startup checks and test mode; YMZ280B ported (YMZ check passes, sound flash installs from the CD); **needs the `ppp1mp` ROM set** (dongle) |
 | **M9** | Native polish | Low-latency audio backends, display options, input remap UI, Windows build, per-game config UX. | ongoing — the `hiraku` launcher (game list, controls and lights mapping, settings) and cabinet lamps (HID LEDs, socket: docs/LIGHTS.md) are in |
 | **M10** | Keyboardmania (stretch) | Dual GCU / dual screen, MIDI-in, the XT446 synth card. | 4+ wk — started: kbm, kbh, kbm2nd, kbm3rd boot to attract (dual GCU, ROT270, MIDI keyboards, CD audio); XT446 emulated (MAME H8S/2655 + SWP30, in lockstep with MAME 0.289 for its first 84 s of attract-mode MIDI; ~1/3 core); SoundFont fallback |
+| **M11** | Efficiency for N100-class PCs | Every Firebeat game within its budget on an N100-class mini PC (§14): average under 25 % of one core, no frame over ~8 ms of host work. Bit-identical to the current runs (`tools/regress.py`). | started 2026-10-12: about 3.4× more efficient than MAME on bm3final, ~10 % of a desktop core; needs measuring on real N100 hardware |
+| **M12** | Cores: the shell split | The host layer (launcher, window, input, lights, scripts, oracle) talks to the machine through one core interface. Firebeat moves behind it unchanged (bit-identical digests). | 1–2 wk, not started (§15) |
+| **M13** | DJ Main core | beatmania 1st mix → THE FINAL, pop'n 1–3, pop'n stage: interpreted 68EC020 plus MAME's devices, checked against MAME. Analog turntable and lamps. | 3–5 wk, **blocked on dumps** (no DJ Main hard disk images on hand) |
+| **M14** | System 573 core | PS1 core (interpreted, then statically recompiled MIPS), analog-I/O games first (CD audio), then digital I/O (MP3 + FPGA). | months, **blocked on dumps**; most BEMANI sets are NOT_WORKING in MAME |
 
 Rough total to playable BM3 Final is about 4 months. Each later family should cost weeks, not months, if the SDK-signature bet in §3.3 holds.
 
@@ -303,6 +307,90 @@ The full write-up is in docs/M5.md; how to play is in docs/PLAY.md.
 - **Latency:** the game's own key-to-keysound latency is 2–20 ms, mean 9.5 ms (measured hands-on). The game scans its keys at 60 Hz, as on the cabinet. The rest is the host audio path.
 - **Saves:** NVRAM persists.
 - **Pending:** a hands-on test with real audio hardware and controllers.
+
+## 14. Efficiency on N100-class PCs (2026-10-12)
+
+**Goal (owner):** what HIRAKU should beat MAME on, besides accuracy:
+- **efficiency:** MAME's BEMANI drivers hiccup on small PCs;
+- **latency;**
+- **I/O:** analog turntables, lamps.
+
+The target machine is an **N100-class x86 mini PC**: 4 cores, roughly 60 % of a desktop core's speed, 6 MB L3 cache. Judge new work by its worst frames on that kind of machine, not by averages on a fast desktop. The 5700X3D used for these numbers has a 96 MB L3 cache, which flatters emulators.
+
+**Tools:**
+- `tools/regress.py record|check|bench` runs four cases (bm3final practice, popn7, ppp, kbm attract).
+  - `check` compares a hash of every frame's picture, a running hash of the sound, and the run statistics with a recorded baseline.
+  - Every change below is **bit-identical**. The GCU replay also stays pixel-identical to MAME on 28/28 frames.
+- `--digest FILE` writes those per-frame hashes.
+- Every run prints `frametime:`: host work per frame (pacing waits excluded) as mean/p50/p99/p99.9/max. For the worst frame it also gives the split into disk, draw, 68000 and glue time.
+- `HK_PROFILE=1` now also names samples inside shared libraries.
+
+**Results** (share of one desktop core, 5700X3D, headless):
+
+| Case | Before | After |
+|---|---|---|
+| bm3final practice (gameplay) | 17.0 % | 9.6 % |
+| popn7 attract | 7.0 % | 5.0 % |
+| ppp attract | 5.5 % | 3.0 % |
+| kbm attract | 43.8 % | 38.2 % |
+| bm3final 90 s attract vs MAME `-bench` | 7.7× real time (MAME 3.6×) | 12.3× real time, **about 3.4× MAME** |
+
+**What it took:**
+- **Fibers:** guest thread switches use a small x86-64 context switch instead of `swapcontext`. `swapcontext` made a system call (signal mask) on each of ~48,000 switches per second, which was 14 % of a run.
+- **GCU:** blits, fills and scanout run per row wherever a row neither wraps VRAM nor overlaps itself. Same-parity rows are plain array copies; opposite-parity rows use a fixed pair shuffle. Full-brightness scanout uses SSE2. Every other case keeps MAME's per-pixel loop.
+- **Spectrum analyser:** twiddle factors are computed once per sample rate instead of per sample (same values).
+- **Profiling scopes:** they read the TSC, not `clock_gettime`. The scopes run on every guest exception.
+- **Keyboardmania:** the two-screen rotation works in 32×32 tiles.
+
+**Not done, and why:**
+- **Idle skipping (§3.2).** bm3final's idle time is ~9.7 M `yield()` system calls in 200 s, from 96 wait-loop call sites (`f_800c787c` → kernel function `0x800c7830`). Skipping them changes kernel state unless the whole scheduler cycle is proven periodic. Deferred.
+- **A render thread.** Scanout now costs ~0.18 ms per frame on this PC. A thread would also need VRAM snapshots or write fences, and would move presentation off the vblank. It isn't worth that.
+
+**Where the time goes now:**
+- bm3final gameplay:
+  - GCU blits ~25 %, close to memory speed;
+  - recompiled game code and kernel ~20 %, much of it the yield churn;
+  - 68k SPU ~8 %;
+  - scanout ~8 %.
+- Keyboardmania: the SWP30's MEG effects DSP (MAME code) is ~40 % of its run, so kbm is the one family likely to struggle on an N100.
+
+**Next:**
+1. Measure on real N100 hardware, in `--window`, with `HK_LOG_STALLS=1`.
+2. Speed up the SWP30 MEG (kbm).
+3. Prefetch disc and disk image reads off the main thread. One run had a single 125 ms frame at a song load that never reproduced, most likely a cold host file cache; slower storage makes that likelier.
+
+## 15. Other BEMANI platforms as cores (discussed 2026-10-12)
+
+**Idea:** one shell (launcher, `host/`, scripts, the MAME oracle, lamps and controls mapping) and several machine **cores** behind a common interface. The interface covers:
+- start-up from the game config;
+- running to a time;
+- the framebuffer, and sound pulled by the host;
+- a per-cabinet description of controls and lamps;
+- NVRAM and flash.
+
+The coupling to remove is `runtime/host/{window,input,lights,script}.cpp` including `firebeat/board.h`.
+
+| | DJ Main | System 573 |
+|---|---|---|
+| Hardware | 68EC020 at 16 MHz, 1 MiB EPROM, 64 KiB RAM; K056832 + K055555 video; 2× K054539; ATA hard disk (password-locked from complete MIX on) | PS1 (R3000A + GTE, GPU, SPU) with an ATAPI CD, PCMCIA flash and security cassettes; digital I/O board (FPGA + MAS3507D MP3) |
+| Games | beatmania 1st mix → THE FINAL, complete MIX 1/2, Club MIX, CORE REMIX, DCT, hiphopmania/beatstage, pop'n music 1–3, pop'n stage/EX (~20) | DDR 1st → Extreme, GuitarFreaks 1st–11th, DrumMania 1st–10th, Dance Maniax, Mambo a GoGo, Martial Beat (~60) |
+| MAME | every set working, no flags | almost every BEMANI set NOT_WORKING, all with imperfect sound |
+| CPU plan | interpret (Musashi; trivially cheap) | interpret to bring it up, then statically recompile the MIPS (the N100 budget needs it) |
+| Main risk | MAME's tilemap/graphics framework is tangled into K056832 | the MP3/FPGA sync that DDR's timing depends on; the size of a PS1 core |
+
+**Reused from Firebeat:**
+- Musashi;
+- `ata.cpp`;
+- the CD-audio path;
+- the `third_party/mame` shim for MAME devices (BSD-3);
+- the analog turntable input and lamps;
+- the oracle tooling, which works on any MAME driver.
+
+**Licences:** DuckStation's licence (non-commercial, no-derivatives since 2024) is incompatible with HIRAKU. MAME's PS1 devices (BSD-3), Mednafen/Beetle PSX or pcsx-redux (GPL-2+) are compatible.
+
+**Bonus:** Twinkle (beatmania IIDX 1st–8th) is a PS1 board with a 68000 + RF5C400 sound board, so a 573 PS1 core covers most of it. MAME doesn't emulate its video board (the BGA DVD), as far as we know.
+
+**Blocker:** no DJ Main or 573 dumps on hand.
 
 ## M0 steps (all done)
 

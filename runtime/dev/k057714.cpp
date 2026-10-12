@@ -9,6 +9,9 @@
 
 #include <algorithm>
 #include <cstring>
+#if defined(__SSE2__)
+#include <emmintrin.h>
+#endif
 
 namespace hk {
 
@@ -22,6 +25,75 @@ static_assert(__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__, "the VRAM pixel view as
 #define VIDX(n) (((n) ^ 1u) & 0xffffffu)
 inline uint16_t K057714::pix(uint32_t n) const { return V16[VIDX(n)]; }
 inline void K057714::set_pix(uint32_t n, uint16_t v) { V16[VIDX(n)] = v; }
+
+// Row helpers for the hot paths. Each covers a run of pixels that neither wraps
+// around VRAM nor needs clipping (the callers check), and gives exactly the
+// result of the per-pixel loop it replaces.
+//
+// Pixel n lives at 16-bit index n ^ 1. For an even n and an even count, pixels
+// n..n+count-1 occupy indices n..n+count-1 in some order; two such runs with
+// the same parity therefore map index for index, and can be processed as
+// plain arrays (which the compiler vectorises).
+namespace {
+
+// Copy pixels s.. to d.. (n of them), skipping those whose bit 15 is not `want`
+// when `trans` is set.
+void blit_row(uint16_t *v, uint32_t s, uint32_t d, int n, bool trans, uint16_t want) {
+    auto one = [&](uint32_t si, uint32_t di) {
+        uint16_t p = v[si ^ 1u];
+        if (!trans || (p & 0x8000) == want) v[di ^ 1u] = p;
+    };
+    // Source and destination overlapping (the copy order matters): pixel by
+    // pixel, in the original order.
+    if (s <= d + n + 1 && d <= s + n + 1) {
+        for (int k = 0; k < n; k++) one(s + k, d + k);
+        return;
+    }
+    int k = 0;
+    if ((s ^ d) & 1) {
+        // Opposite parity. Align the destination: then destination pixels D, D+1
+        // (indices D+1, D) come from source pixels S, S+1 (indices S-1, S+2).
+        if (d & 1) one(s, d), k = 1;
+        const int m = (n - k) & ~1;
+        const uint16_t *__restrict src = v + s + k;
+        uint16_t *__restrict dst = v + d + k;
+        for (int i = 0; i < m; i += 2) {
+            uint16_t p0 = src[i - 1], p1 = src[i + 2];
+            if (!trans || (p0 & 0x8000) == want) dst[i + 1] = p0;
+            if (!trans || (p1 & 0x8000) == want) dst[i] = p1;
+        }
+        if (k + m < n) one(s + k + m, d + k + m);
+        return;
+    }
+    if (s & 1) one(s, d), k = 1;
+    const int m = (n - k) & ~1;
+    const uint16_t *__restrict src = v + s + k;
+    uint16_t *__restrict dst = v + d + k;
+    if (!trans) {
+        memcpy(dst, src, (size_t)m * 2);
+    } else {
+        for (int i = 0; i < m; i++) {
+            uint16_t p = src[i];
+            dst[i] = (p & 0x8000) == want ? p : dst[i];
+        }
+    }
+    if (k + m < n) one(s + k + m, d + k + m);
+}
+
+// Fill pixels d.. (n of them) with the 4-pixel pattern color[pixel & 3].
+void fill_row(uint16_t *v, uint32_t d, int n, const uint16_t color[4]) {
+    int k = 0;
+    if (d & 1) v[d ^ 1u] = color[d & 3], k = 1;
+    const int m = (n - k) & ~1;
+    // index i holds pixel i ^ 1
+    const uint16_t pat[4] = {color[1], color[0], color[3], color[2]};
+    uint16_t *dst = v + d + k;
+    const uint32_t i0 = d + k;
+    for (int i = 0; i < m; i++) dst[i] = pat[(i0 + i) & 3];
+    if (k + m < n) v[(d + k + m) ^ 1u] = color[(d + k + m) & 3];
+}
+
+}  // namespace
 
 void K057714::reset() {
     // beatmania III relies on the 640x480 default (it never programs the CRTC)
@@ -163,6 +235,46 @@ void K057714::draw_frame(int frame, uint16_t *bitmap, int bw, int bh, bool inver
         uint16_t *d = bitmap + y * bw + f.x;
         uint32_t base = f.base + (uint32_t)j * 1024;
         int iend = std::min(width, bw - 1 - f.x);
+        if (iend >= 0 && base + (uint32_t)iend < VRAM_SIZE_HALF - 1) {
+            // no wrap: read the pixels in pairs (pixel n is index n ^ 1)
+            const uint32_t b0 = base & ~1u;
+            const int off = (int)(base & 1), n = iend + 1;
+            const uint16_t *__restrict row = v + b0;
+            if (identity) {
+                int i = 0;
+#if defined(__SSE2__)
+                // From an even pixel on, 8 pixels at a time: swap each pair of
+                // 16-bit lanes back into pixel order, keep the opaque ones.
+                if (off && n > 0) {
+                    uint16_t p = row[0];   // pixel base (odd) is index base ^ 1 = b0
+                    if ((p & 0x8000) != trans_value) d[0] = (uint16_t)(p & 0x7fff);
+                    i = 1;
+                }
+                const __m128i low15 = _mm_set1_epi16(0x7fff);
+                for (; i + 8 <= n; i += 8) {
+                    // pixel base + i is even: pixels base+i .. base+i+7 are the 8 halfwords from there, pairs swapped
+                    __m128i x = _mm_loadu_si128(reinterpret_cast<const __m128i *>(row + off + i));
+                    x = _mm_shufflehi_epi16(_mm_shufflelo_epi16(x, 0xb1), 0xb1);
+                    __m128i opaque = _mm_srai_epi16(x, 15);   // bit 15 set
+                    if (trans_value) opaque = _mm_xor_si128(opaque, _mm_set1_epi16(-1));
+                    __m128i old = _mm_loadu_si128(reinterpret_cast<const __m128i *>(d + i));
+                    __m128i res = _mm_or_si128(_mm_and_si128(opaque, _mm_and_si128(x, low15)), _mm_andnot_si128(opaque, old));
+                    _mm_storeu_si128(reinterpret_cast<__m128i *>(d + i), res);
+                }
+#endif
+                for (; i < n; i++) {
+                    uint16_t p = row[(uint32_t)(i + off) ^ 1u];
+                    if ((p & 0x8000) != trans_value) d[i] = (uint16_t)(p & 0x7fff);
+                }
+            } else {
+                for (int i = 0; i < n; i++) {
+                    uint16_t p = row[(uint32_t)(i + off) ^ 1u];
+                    if ((p & 0x8000) != trans_value)
+                        d[i] = (uint16_t)(lut_r[(p >> 10) & 0x1f] | lut_g[(p >> 5) & 0x1f] | lut_b[p & 0x1f]);
+                }
+            }
+            continue;
+        }
         for (int i = 0; i <= iend; i++) {
             uint16_t p = v[VIDX(base + (uint32_t)i)];
             if ((p & 0x8000) == trans_value) continue;
@@ -183,16 +295,12 @@ void K057714::draw(uint32_t *out, int w, int h) {
     draw_frame((m_layer_select >> 10) & 3, bmp.get(), w, h, inverse_trans);
     draw_frame((m_layer_select >> 12) & 3, bmp.get(), w, h, inverse_trans);
     draw_frame((m_layer_select >> 14) & 3, bmp.get(), w, h, inverse_trans);
-    // RGB555 -> xRGB8888 through a 32K-entry table (same pal5bit expansion as MAME)
-    static const uint32_t *rgb = [] {
-        auto *t = new uint32_t[32768];
-        for (uint32_t p = 0; p < 32768; p++) {
-            uint32_t r = (p >> 10) & 0x1f, g = (p >> 5) & 0x1f, b = p & 0x1f;
-            t[p] = 0xff000000u | ((r << 3 | r >> 2) << 16) | ((g << 3 | g >> 2) << 8) | (b << 3 | b >> 2);
-        }
-        return t;
-    }();
-    for (int k = 0; k < w * h; k++) out[k] = rgb[bmp[k] & 0x7fff];
+    // RGB555 -> xRGB8888, the same pal5bit expansion as MAME (as arithmetic, which vectorises)
+    const uint16_t *src = bmp.get();
+    for (int k = 0; k < w * h; k++) {
+        uint32_t p = src[k], r = (p >> 10) & 0x1f, g = (p >> 5) & 0x1f, b = p & 0x1f;
+        out[k] = 0xff000000u | ((r << 3 | r >> 2) << 16) | ((g << 3 | g >> 2) << 8) | (b << 3 | b >> 2);
+    }
 }
 
 void K057714::draw_object(const uint32_t *cmd) {
@@ -225,6 +333,10 @@ void K057714::draw_object(const uint32_t *cmd) {
         uint16_t *v = V16;
         for (int j = 0; j < height; j++) {
             uint32_t src = address + (uint32_t)j * 1024, dst = (uint32_t)((j + y) * 1024 + x);
+            if (src + (uint32_t)width <= VRAM_SIZE_HALF && dst + (uint32_t)width <= VRAM_SIZE_HALF) {
+                blit_row(v, src, dst, width, trans_enable, trans_value);
+                continue;
+            }
             for (int i = 0; i < width; i++, src++, dst++) {
                 uint16_t p = v[VIDX(src)];
                 if (trans_enable && (p & 0x8000) != trans_value) continue;
@@ -234,10 +346,37 @@ void K057714::draw_object(const uint32_t *cmd) {
         return;
     }
     int v = 0, xinc = xflip ? -1 : 1;
+    uint16_t *vram = V16;
     for (int j = 0; j < height; j++) {
         uint32_t fbaddr = ((j + y) * 1024) + x;
         int index = yflip ? address + ((orig_height - 1 - (v >> 6)) * 1024) : address + ((v >> 6) * 1024);
         if (xflip) fbaddr += width - 1;
+        // A row that stays inside VRAM on both sides (scales are positive here)
+        // needs neither the wrap mask nor the bounds check: same loop without them.
+        const uint32_t lo = xflip ? fbaddr - (uint32_t)(width - 1) : fbaddr;
+        const int64_t last_src = (int64_t)index + (((int64_t)(width - 1) * xscale) >> 6);
+        if (index >= 0 && last_src <= 0xffffff && lo <= fbaddr && (uint64_t)lo + (uint64_t)width <= VRAM_SIZE_HALF) {
+            int u = 0;
+            for (int i = 0; i < width; i++, fbaddr += xinc, u += xscale) {
+                uint16_t p = vram[(uint32_t)(index + (u >> 6)) ^ 1u];
+                if (trans_enable && (p & 0x8000) != trans_value) continue;
+                if (blend_mode) {
+                    uint16_t s = vram[fbaddr ^ 1u];
+                    uint32_t sr = (s >> 10) & 0x1f, sg = (s >> 5) & 0x1f, sb = s & 0x1f;
+                    uint32_t r = (p >> 10) & 0x1f, g = (p >> 5) & 0x1f, b = p & 0x1f;
+                    const uint32_t a2 = blend_mode == 1 ? alpha2_2 : alpha2_1, a1 = blend_mode == 1 ? alpha1_2 : alpha1_1;
+                    if (blend_mode <= 2) {
+                        sr = std::min((sr * a2 + r * a1) >> 4, 0x1fu);
+                        sg = std::min((sg * a2 + g * a1) >> 4, 0x1fu);
+                        sb = std::min((sb * a2 + b * a1) >> 4, 0x1fu);
+                    }
+                    p = (uint16_t)((sr << 10) | (sg << 5) | sb | (p & 0x8000));
+                }
+                vram[fbaddr ^ 1u] = p;
+            }
+            v += yscale;
+            continue;
+        }
         int u = 0;
         for (int i = 0; i < width; i++) {
             uint16_t p = pix((index + (u >> 6)) & 0xffffff);
@@ -273,8 +412,14 @@ void K057714::fill_rect(const uint32_t *cmd) {
     int width = (cmd[0] & 0x3ff) + 1, height = ((cmd[0] >> 10) & 0x3ff) + 1;
     if (cmd[0] & 0x10000000) { x += m_fb_origin_x; y += m_fb_origin_y; }
     uint16_t color[4] = {(uint16_t)(cmd[2] >> 16), (uint16_t)cmd[2], (uint16_t)(cmd[3] >> 16), (uint16_t)cmd[3]};
-    for (int j = y; j < y + height; j++)
+    for (int j = y; j < y + height; j++) {
+        const uint32_t d = (uint32_t)(j * 1024 + x);
+        if (d + (uint32_t)width <= VRAM_SIZE_HALF) {
+            fill_row(V16, d, width, color);   // rows start at even pixels: d & 3 == x & 3
+            continue;
+        }
         for (int i = x; i < x + width; i++) set_pix((uint32_t)(j * 1024 + i), color[i & 3]);
+    }
 }
 
 void K057714::draw_character(const uint32_t *cmd) {

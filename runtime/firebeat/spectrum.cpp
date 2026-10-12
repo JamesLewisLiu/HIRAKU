@@ -26,17 +26,41 @@ int band_bin(int band, int sr) {
     return -1;
 }
 
+// Each band's bin and its twiddle factors, for the current sample rate. They
+// are the same values the per-sample std::cos/std::sin calls gave, computed
+// once instead of 2 x 6 x 512 times per block.
+struct Bands {
+    int sr = 0;
+    int bin[BARS];
+    double cos[BARS][N], sin[BARS][N];
+} g_bands;
+
+const Bands &bands(int sr) {
+    if (g_bands.sr != sr) {
+        g_bands.sr = sr;
+        for (int b = 0; b < BARS; b++) {
+            int k = g_bands.bin[b] = band_bin(b, sr);
+            for (int n = 0; n < N && k >= 0; n++) {
+                double ph = -2.0 * M_PI * k * n / N;
+                g_bands.cos[b][n] = std::cos(ph);
+                g_bands.sin[b][n] = std::sin(ph);
+            }
+        }
+    }
+    return g_bands;
+}
+
 void analyse(int sr) {
+    const Bands &t = bands(sr);
     for (int ch = 0; ch < 2; ch++)
         for (int b = 0; b < BARS; b++) {
-            int k = band_bin(b, sr);
+            int k = t.bin[b];
             double mag = 0;
             if (k >= 0) {
                 double re = 0, im = 0;
                 for (int n = 0; n < N; n++) {
-                    double ph = -2.0 * M_PI * k * n / N;
-                    re += g_buf[ch][n] * std::cos(ph);
-                    im += g_buf[ch][n] * std::sin(ph);
+                    re += g_buf[ch][n] * t.cos[b][n];
+                    im += g_buf[ch][n] * t.sin[b][n];
                 }
                 mag = std::sqrt(re * re + im * im) / N;
             }
