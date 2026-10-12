@@ -16,6 +16,7 @@
 #   WINDOW=1      show a window and play sound (otherwise headless, unthrottled)
 #   WAV=1         also record the mixed audio to <run>/audio.wav
 #   HIRAKU_LUA    one more Lua file to run with the script (a one-off probe)
+#   HIRAKU_NVRAM  a HIRAKU --nvram directory to start from (Firebeat), instead of blank
 #   EXACT_PC=1    run under -debug -debugger none: the PPC recompiler then
 #                 updates PC per instruction, so trace PCs are exact (slower)
 #
@@ -36,6 +37,13 @@ roms="$(realpath "${HIRAKU_ROMS:-$HOME/bm3mame/roms}")"
 out="$root/out/oracle/$game/$name"
 rm -rf "$out"
 mkdir -p "$out/nvram" "$out/snap" "$out/cfg"
+# HIRAKU_NVRAM=DIR: start from a HIRAKU NVRAM directory (Firebeat: rtc.nv and flashN.bin)
+if [[ -n "${HIRAKU_NVRAM:-}" ]]; then
+    mkdir -p "$out/nvram/$set_name"
+    for pair in rtc.nv:rtc flash0.bin:flash_main flash1.bin:flash_snd1 flash2.bin:flash_snd2; do
+        [[ -f "$HIRAKU_NVRAM/${pair%%:*}" ]] && cp "$HIRAKU_NVRAM/${pair%%:*}" "$out/nvram/$set_name/${pair##*:}"
+    done
+fi
 
 if ! flatpak info org.mamedev.MAME >/dev/null 2>&1; then
     echo "MAME is not installed:  flatpak install --user -y flathub org.mamedev.MAME" >&2

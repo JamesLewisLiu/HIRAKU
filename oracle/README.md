@@ -16,6 +16,8 @@ oracle/align.py   out/oracle/bm3final/bm3final-practice out/run/bm3final   # MAM
 
 The runtime writes the same `mmio.bin` format (`hiraku-<game> --trace`).
 
+`audiosync.py HIRAKU.wav MAME.wav` checks that music keeps time where the two can't run in lockstep (Firebeat): the overall offset, then the lag, correlation and level in 2 s windows (PLAN.md §18).
+
 `align.py` compares MAME with the runtime:
 - **Start point:** both streams are cut at the first UART access, because MAME's trace includes the BIOS and HIRAKU starts at the game's entry.
 - **Interrupt noise:** the status LEDs and the VBlank handler's accesses are dropped, since their position depends on interrupt timing.
@@ -41,6 +43,7 @@ Runs land in `out/oracle/<game>/<run>/` (gitignored). Each run starts with an em
 | `WAV=1` | also write `audio.wav` (48 kHz, 3 channels) |
 | `WINDOW=1` | window and sound instead of headless/unthrottled |
 | `HIRAKU_LUA=file.lua` | one more Lua file run with the script: a one-off probe (taps, `trace`, prints), without editing `hiraku.lua` |
+| `HIRAKU_NVRAM=dir` | start from a HIRAKU `--nvram` directory (Firebeat: `rtc.nv` → `rtc`, `flash0/1/2.bin` → `flash_main`/`flash_snd1`/`flash_snd2`), so both sides boot from the same state |
 
 ## Input scripts (`.his`)
 
