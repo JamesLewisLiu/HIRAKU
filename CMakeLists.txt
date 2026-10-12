@@ -31,6 +31,48 @@ target_include_directories(musashi PUBLIC third_party/musashi runtime/spu)
 target_compile_definitions(musashi PUBLIC MUSASHI_CNF="hk_m68kconf.h")
 target_compile_options(musashi PRIVATE -w)
 
+# --- Yamaha XT446 synth card (Keyboardmania): MAME's H8S/2655 and SWP30 (BSD-3) ----
+# on a small framework shim (third_party/mame/README.md). h8make.py generates the
+# H8 opcode dispatch (and disassembler tables) from h8.lst at build time.
+set(HK_MAME ${CMAKE_SOURCE_DIR}/third_party/mame)
+set(HK_MAME_GEN ${CMAKE_BINARY_DIR}/mame-gen)
+set(HK_H8_GEN)
+foreach(pair "o;h8" "h;h8h" "s20;h8s2000" "s26;h8s2600")
+  list(GET pair 0 t)
+  list(GET pair 1 n)
+  foreach(mode s d)
+    if(mode STREQUAL "s")
+      set(out ${HK_MAME_GEN}/cpu/h8/${n}.hxx)
+    else()
+      set(out ${HK_MAME_GEN}/cpu/h8/${n}d.hxx)
+    endif()
+    add_custom_command(
+      OUTPUT ${out}
+      COMMAND ${CMAKE_COMMAND} -E make_directory ${HK_MAME_GEN}/cpu/h8
+      COMMAND python3 ${HK_MAME}/src/devices/cpu/h8/h8make.py ${HK_MAME}/src/devices/cpu/h8/h8.lst ${mode} ${t} ${out}
+      DEPENDS ${HK_MAME}/src/devices/cpu/h8/h8make.py ${HK_MAME}/src/devices/cpu/h8/h8.lst
+      COMMENT "h8make.py ${mode} ${t}")
+    list(APPEND HK_H8_GEN ${out})
+  endforeach()
+endforeach()
+set(HK_H8_SRC h8 h8h h8s2000 h8s2600 h8s2655 h8d h8hd h8s2000d h8s2600d
+  h8_adc h8_dma h8_dtc h8_intc h8_port h8_sci h8_timer16 h8_timer8 h8_watchdog)
+list(TRANSFORM HK_H8_SRC PREPEND ${HK_MAME}/src/devices/cpu/h8/)
+list(TRANSFORM HK_H8_SRC APPEND .cpp)
+add_library(hiraku_xt446 STATIC
+  ${HK_MAME}/shim/emu.cpp
+  ${HK_H8_SRC}
+  ${HK_MAME}/src/devices/sound/swp30.cpp
+  runtime/dev/xt446.cpp
+  ${HK_H8_GEN})
+target_include_directories(hiraku_xt446 PRIVATE ${HK_MAME}/shim ${HK_MAME}/src/devices ${HK_MAME_GEN})
+target_include_directories(hiraku_xt446 PUBLIC runtime)
+# MAME sources: their own warning set; optimised even in debug builds (the card is real-time)
+target_compile_options(hiraku_xt446 PRIVATE -w -O3)
+
+add_executable(hiraku-xt446 tools/xt446/xt446_render.cpp runtime/core/sampler.cpp)
+target_link_libraries(hiraku-xt446 PRIVATE hiraku_xt446)
+
 # --- cabinet tables, lights file formats (shared with the launcher) -------------
 add_library(hiraku_cabinet STATIC runtime/firebeat/cabinet.cpp runtime/host/hiddesc.cpp)
 target_include_directories(hiraku_cabinet PUBLIC runtime)
@@ -56,7 +98,7 @@ add_library(hiraku_rt STATIC
   runtime/firebeat/spectrum.cpp
   runtime/firebeat/synth.cpp)
 target_include_directories(hiraku_rt PUBLIC runtime)
-target_link_libraries(hiraku_rt PUBLIC hiraku_ppc musashi hiraku_cabinet)
+target_link_libraries(hiraku_rt PUBLIC hiraku_ppc musashi hiraku_cabinet hiraku_xt446)
 
 # Keyboardmania's synth stand-in (optional: FluidSynth, LGPL, linked dynamically)
 find_package(PkgConfig QUIET)

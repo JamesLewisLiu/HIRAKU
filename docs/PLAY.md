@@ -173,10 +173,11 @@ Each asks three times. Answer "YES?" and "ARE YOU SURE?" with **1** (move to YES
 
 **Status:** all four boot to attract mode, fully native, with CD and YMZ280B sound.
 
-**Keyboard notes:** they come from the XT446 synth card (an embedded Yamaha MU100B), which is not emulated. HIRAKU plays the game's MIDI through FluidSynth with a General MIDI SoundFont instead. The notes and timing are the game's own, but the instruments are the SoundFont's. Install one:
+**Keyboard notes:** they come from the XT446 synth card, an embedded Yamaha MU100B. HIRAKU runs the card itself: the MU100 firmware on MAME's H8S/2655 and SWP30 emulation (`runtime/dev/xt446.cpp`, `third_party/mame`). It needs the card's ROMs from the MAME set in `dumps/<game>/rom/`, which `tools/ingest.py --romset` copies: `xu50710-m27c160.bin`, the six wave ROMs `sx518b0.ic34` … `xt463a0.ic38`, and `sin-table.bin`. It costs about a third of a CPU core.
 
-```bash
-sudo pacman -S soundfont-fluid
-```
-
-Or point at any `.sf2` with `--soundfont FILE` or `HK_SOUNDFONT`. `HK_SYNTH_GAIN` sets the synth's level (default 0.25, under the CD and YMZ mix). `HK_MIDI_LOG=1` prints the MIDI stream.
+- **No card ROMs, or `--synth-stand-in`:** the MIDI plays through FluidSynth with a General MIDI SoundFont instead. The notes and timing are the game's own, but the instruments are the SoundFont's.
+  - Install a SoundFont with `sudo pacman -S soundfont-fluid`, or point at any `.sf2` with `--soundfont FILE` or `HK_SOUNDFONT`.
+  - `HK_SYNTH_GAIN` sets the stand-in's level (default 0.25).
+- `HK_MIDI_LOG=1` prints the MIDI stream.
+- `build/cmake/hiraku-xt446 ROMDIR OUT.wav --midi LOG` runs the card on its own. LOG has one `<seconds> <hex byte>` per line.
+- **Known issue (MAME 0.289's SWP30):** some voices ring at 22 kHz. MAME's address map swaps the second IIR filter's a1 and b1, which makes that filter unstable. MAME master has fixed it.

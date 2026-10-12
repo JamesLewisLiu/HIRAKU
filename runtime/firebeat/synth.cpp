@@ -1,10 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "synth.h"
 
+#include <memory>
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
 #include <vector>
+
+#include "dev/xt446.h"
 
 #ifdef HK_WITH_FLUIDSYNTH
 #include <fluidsynth.h>
@@ -12,6 +15,11 @@
 
 namespace hk::synth {
 
+namespace {
+std::unique_ptr<Xt446> g_card;   // the real card, when its ROMs are there
+}
+
+namespace fluid {
 #ifdef HK_WITH_FLUIDSYNTH
 namespace {
 
@@ -155,5 +163,42 @@ void render(float *, int, float) {}
 std::string describe() { return "silent (no FluidSynth)"; }
 
 #endif
+}  // namespace fluid
+
+bool init(const std::string &rom_dir, const std::string &soundfont, bool stand_in) {
+    if (!stand_in) {
+        auto card = std::make_unique<Xt446>();
+        std::string err;
+        if (card->load(rom_dir, err)) {
+            g_card = std::move(card);
+            fprintf(stderr, "synth: XT446 (MU100B firmware on the H8S/2655 + SWP30)\n");
+            return true;
+        }
+        fprintf(stderr, "synth: no XT446 ROMs (%s in %s): using the SoundFont stand-in\n", err.c_str(), rom_dir.c_str());
+    }
+    return fluid::init(soundfont);
+}
+
+bool active() { return g_card || fluid::active(); }
+
+void midi(uint8_t b) {
+    if (g_card) g_card->midi(b);
+    else fluid::midi(b);
+}
+
+void render(float *lr, int frames, float gain) {
+    if (g_card) g_card->render(lr, frames, gain);
+    else fluid::render(lr, frames, gain);
+}
+
+std::string describe() {
+    if (g_card) {
+        char buf[128];
+        double emu = (double)g_card->samples() / 44100.0;
+        snprintf(buf, sizeof buf, "XT446, %.1f s in %.1f s of host time", emu, g_card->cpu_seconds());
+        return buf;
+    }
+    return fluid::describe();
+}
 
 }  // namespace hk::synth

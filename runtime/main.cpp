@@ -21,6 +21,8 @@
 //     --lights FILE     drive HID controller LEDs from the cabinet lamps (see runtime/host/lights.h)
 //     --lights-socket P publish the lamps on a UNIX socket at path P (docs/LIGHTS.md)
 //     --audio-ms N      initial audio queue target (default 8); grows by 1 ms per underrun, up to 30
+//     --synth-stand-in  Keyboardmania: play the MIDI through FluidSynth even when the XT446 ROMs are there
+//     --soundfont FILE  ... with this SoundFont (implies --synth-stand-in)
 //     --nvram DIR       keep the machine's NVRAM (RTC RAM, flash) in DIR: loaded at start, saved on exit.
 //                       Default with --window: ~/.local/share/hiraku/<game>; otherwise none (every
 //                       run starts from the ROM set's defaults, so scripted runs are reproducible)
@@ -108,6 +110,7 @@ int main(int argc, char **argv) {
     int audio_ms = 8;
     double bios_seconds = 21.65;
     std::string soundfont;   // Keyboardmania: the synth card's stand-in
+    bool synth_stand_in = false;   // ... used even when the XT446 ROMs are there
     for (int k = 1; k < argc; k++) {
         std::string a = argv[k];
         auto val = [&]() -> std::string {
@@ -133,7 +136,8 @@ int main(int argc, char **argv) {
         else if (a == "--nvram") { nvram_dir = val(); nvram_given = true; }
         else if (a == "--audio-ms") audio_ms = std::stoi(val());
         else if (a == "--bios-seconds") bios_seconds = std::stod(val());
-        else if (a == "--soundfont") soundfont = val();
+        else if (a == "--soundfont") soundfont = val(), synth_stand_in = true;
+        else if (a == "--synth-stand-in") synth_stand_in = true;
         else if (a == "--window") window_scale = (k + 1 < argc && argv[k + 1][0] != '-') ? std::stoi(val()) : 2;
         else { fprintf(stderr, "unknown option %s\n", a.c_str()); return 2; }
     }
@@ -170,7 +174,7 @@ int main(int argc, char **argv) {
     if (trace) cfg.trace_dir = out;
     cfg.ata_log = ata_log;
     fb::init(cfg);
-    if (cfg.family == "kbm") synth::init(soundfont);
+    if (cfg.family == "kbm") synth::init(cfg.rom_dir, soundfont, synth_stand_in);
 #ifdef HK_WITH_SDL
     if (!lights_file.empty() || !lights_socket.empty()) host::lights_init(game, cfg.family, lights_file, lights_socket);
 #else

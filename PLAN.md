@@ -60,7 +60,7 @@ The sound CPU is a 68000 with a 512 KB program per SPU revision. It is small eno
 | beatmania III (bm3, core, 6th, 7th, final) | SPU (68k + RF5C400). 3 SPU ROM revisions | Program CD + HDD on the SPU's ATA | Extend board: spectrum analyser, floppy, MIDI UART to the ST-224 effector; turntable/effect sensors at `7d000340` |
 | pop'n 4–8, Animelo 1/2, Mickey Tunes | SPU. BGM is streamed by 1 MB double-buffered DMA keyed on RF5C400 reg 09 | Program CD + DVD on the SPU's ATA | 9 buttons, lamps |
 | ParaParaParadise / Dancing / 1.1 / 1st Mix+ | YMZ280B (flash sample ROM) + CDDA from a second CD | 2 CDs | IR sensors at `7d000340`. `!:EXE:00` wrapper around the program |
-| Keyboardmania 1st–3rd / Keyboard Heaven | YMZ280B + CDDA + **XT446 (MU100-class) synth**, which no emulator implements | 2 CDs | 2 GCUs / 2 screens (ROT270), MIDI keyboards on the extend-board UARTs, mod wheels |
+| Keyboardmania 1st–3rd / Keyboard Heaven | YMZ280B + CDDA + **XT446 (embedded MU100B) synth**: H8S/2655 + SWP30, both in MAME | 2 CDs | 2 GCUs / 2 screens (ROT270), MIDI keyboards on the extend-board UARTs, mod wheels |
 
 Interrupts:
 - EXT0 is GCU VBlank (~59.94 Hz, 800×525 @ 25.175 MHz).
@@ -73,7 +73,7 @@ Known imprecision in MAME (these are hazards for us too):
 - The SPU 500 Hz tick and 350 ns DMA word rate are tuned by hand ("too fast cuts keysounds, too slow buzzes").
 - RF5C400 envelopes, reverb, chorus and filter are approximate or missing.
 - The GCU status register is constant, and the reg `0x6c` transparency hack and pop'n 8 flip fixups are workarounds.
-- The ST-224 and XT446 are not emulated.
+- The ST-224 is not emulated. The XT446 runs on MAME's H8S/2655 and SWP30 sources (`third_party/mame`).
 
 ---
 
@@ -180,7 +180,7 @@ Port the BSD-3 MAME devices as plain C++ classes (no MAME framework), so games s
   - IIDX-style controllers / turntable for BM3;
   - pop'n controller or keyboard;
   - **ParaPara:** 5 hand-sensor zones (keyboard or pads; camera or IR as a later extra);
-  - **Keyboardmania:** host MIDI-in for the keyboards, with XT446 sounds via a General MIDI SoundFont as an approximation.
+  - **Keyboardmania:** host MIDI-in for the keyboards. The XT446 card runs its own firmware, with a General MIDI SoundFont as the fallback when its ROMs are missing.
 - Audio: SDL3 at first, then PipeWire low-latency on Linux and WASAPI-exclusive/ASIO on Windows. The game loop is paced by the audio clock, and VBlank is derived from it.
 - NVRAM/RTC/flash are persisted per game. Linux is the primary target and Windows the second (MinGW/clang-cl).
 
@@ -216,7 +216,7 @@ Durations are rough, assume one person, and are assisted. Each milestone has a c
 | **M7** | pop'n music 4–8, Animelo 1/2, Mickey Tunes | Same SPU stack, plus DVD on the SPU's ATA and BGM streaming via RF5C400 reg 09 (the hardest audio-timing case). The redump bundle is needed. | 4–8 wk — started: programs recompile and run native to the dongle check; **needs the `popn4`–`popn7` MAME ROM sets** (dongle, SPU program) |
 | **M8** | ParaParaParadise family | `!:EXE:00` loader, YMZ280B, CDDA, sensor input mapping. | 3–4 wk — started: `ppp1mp` runs native through its startup checks and test mode; YMZ280B ported (YMZ check passes, sound flash installs from the CD); **needs the `ppp1mp` ROM set** (dongle) |
 | **M9** | Native polish | Low-latency audio backends, display options, input remap UI, Windows build, per-game config UX. | ongoing — the `hiraku` launcher (game list, controls and lights mapping, settings) and cabinet lamps (HID LEDs, socket: docs/LIGHTS.md) are in |
-| **M10** | Keyboardmania (stretch) | Dual GCU / dual screen, MIDI-in, SoundFont stand-in for the XT446. | 4+ wk — started: kbm, kbh, kbm2nd, kbm3rd boot to attract (dual GCU, ROT270, MIDI keyboards, CD audio); synth next (SoundFont first) |
+| **M10** | Keyboardmania (stretch) | Dual GCU / dual screen, MIDI-in, the XT446 synth card. | 4+ wk — started: kbm, kbh, kbm2nd, kbm3rd boot to attract (dual GCU, ROT270, MIDI keyboards, CD audio); XT446 emulated (MAME 0.289 H8S/2655 + SWP30, in lockstep with MAME for its first 84 s of attract-mode MIDI; ~1/3 core); SoundFont fallback |
 
 Rough total to playable BM3 Final is about 4 months. Each later family should cost weeks, not months, if the SDK-signature bet in §3.3 holds.
 
@@ -231,7 +231,7 @@ Rough total to playable BM3 Final is about 4 months. Each later family should co
 | SPU timing (keysound cutoffs, pop'n reg 09 streaming) | An audio-clock-driven scheduler is deterministic. Compare DPRAM/RF5C400 traffic against MAME. HLE the keysound path if needed. |
 | GCU unknowns (status bits, reg 6c, flips) | Start from MAME's behaviour and hacks. Fix per-game issues against real-hardware video where available (`BM3-videos/` has 270 reference recordings). |
 | Other games don't share the SDK | **Mostly retired for the kernel** (identical glue in 5/5 programs; C kernel matched in pop'n 5–7). Still open for the driver libraries. Where code isn't shared, it costs manual labelling, but the translator and devices carry over unchanged. |
-| XT446 synth (KBM) | Kept out of the core plan. SoundFont approximation only. |
+| XT446 synth (KBM) | Done with MAME's H8S/2655 + SWP30 on a framework shim. MAME 0.289's SWP30 has known bugs that later MAME fixes (e.g. the IIR2 a1/b1 swap). |
 | Legal | Ship only the tool and runtime. Users provide dumps. Generated C, assets and ROMs are never committed. The MAME-derived code is BSD-3 (firebeat.cpp, k057714.cpp, rf5c400.cpp), so keep attribution. Check each borrowed core's licence before use. The BGA tools zip is GPLv3, which matches HIRAKU's licence. |
 
 ---

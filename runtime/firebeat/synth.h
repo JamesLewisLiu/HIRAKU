@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Stand-in for Keyboardmania's XT446 synth card (an embedded Yamaha MU100B): the
-// game's MIDI stream played through FluidSynth with a General MIDI SoundFont.
-// Not the cabinet's sound - the instruments are whatever the SoundFont has - but
-// the notes, timing and controllers are the game's own. Built only when
-// FluidSynth is found; otherwise every call is a no-op.
+// Keyboardmania's XT446 synth card (an embedded Yamaha MU100B), fed the game's
+// MIDI stream in time order:
+// - the card itself (dev/xt446: MAME's H8S/2655 + SWP30 running the MU100
+//   firmware) when its ROMs are in the game's rom directory;
+// - otherwise a stand-in: FluidSynth with a General MIDI SoundFont (the notes,
+//   timing and controllers are the game's, the instruments whatever the font has).
+//   Built only when FluidSynth is found.
 #pragma once
 
 #include <cstdint>
@@ -11,9 +13,11 @@
 
 namespace hk::synth {
 
-// path: a .sf2 file, or "" to search $HK_SOUNDFONT, /usr/share/soundfonts and
-// ~/.local/share/hiraku. Returns false (and stays silent) without one.
-bool init(const std::string &path);
+// rom_dir: the MAME set's files (XT446 program, wave ROMs, sin table).
+// soundfont: for the stand-in, a .sf2 file, or "" to search $HK_SOUNDFONT,
+// /usr/share/soundfonts and ~/.local/share/hiraku. stand_in forces it.
+// Returns false (and stays silent) with neither.
+bool init(const std::string &rom_dir, const std::string &soundfont, bool stand_in);
 bool active();
 void midi(uint8_t byte);                       // one byte of the MIDI stream, in time order
 void render(float *lr, int frames, float gain);   // add 44.1 kHz stereo
