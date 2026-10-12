@@ -67,7 +67,7 @@ The machine boots like a cabinet. The skipped BIOS time passes instantly. Then t
 | F2 | test mode, 9 service |
 | Tab (hold) | fast-forward |
 | F11, Alt+Enter | fullscreen |
-| F10 | CRT picture / sharp pixels (with `--crt`); Shift+F10 reads the CRT settings file again |
+| F10 | picture: off, CRT light, CRT full |
 | Esc | quit |
 
 P2 uses M K Comma L Period, Up/Down and 2.
@@ -78,24 +78,40 @@ P2 uses M K Comma L Period, Up/Down and 2.
 
 **Persistence is unconfirmed.** In MAME and in HIRAKU alike, the scripted sessions so far never made the game write its NVRAM. It probably writes only when a setting or a ranking changes, and none of those sessions changed either. Check whether a test-mode change or a new high score survives a restart.
 
-## The CRT picture
+## The picture
 
-**Settings > Picture > CRT** (or `--crt [FILE]`) shows the game through guest(r)'s
-crt-guest-advanced-fast. That is the libretro shader, ported to OpenGL 3.3, in
-`shaders/crt-guest-advanced-fast/`, and it gives scanlines, a phosphor mask, glow and
-optional curvature. F10 switches between it and sharp pixels while playing.
+**Picture** in the toolbar picks how the game looks:
 
-Its settings are the shader's own, unless you give it a settings file (**CRT settings file**,
-or `--crt FILE`). A settings file is `name = value` lines; a RetroArch preset works as is.
-`shaders/crt-guest-advanced-fast/example.params` lists the useful ones. Shift+F10 reads the
-file again, so you can tune it while a game runs.
+| Mode | What it is | Cost |
+|---|---|---|
+| **Off** | sharp pixels (the default) | none |
+| **Light** | guest(r)'s crt-guest-advanced-fast: scanlines, a phosphor mask, glow | small |
+| **Full** | TroggleMonkey's crt-royale: beam shapes, real phosphor-mask textures, bloom, halation, optional curvature | the heaviest |
 
-What you will see depends on the game's resolution:
-- **Low-resolution games** (DJ Main, most System 573 screens) get scanlines.
-- **480-line games** (Firebeat) are taken as interlaced by the shader: no scanlines, as on a
-  15 kHz TV. For a 31 kHz VGA monitor's look (480 scanlines), set `interm = 0`.
+F10 cycles the three while you play, and the window's title says which one is on.
 
-If OpenGL 3.3 isn't available, the game says so and shows sharp pixels instead.
+**Settings for:** you can set the mode, and each shader's settings, for all games or for one.
+To do it for one game, select it first, or right-click it > **Picture for…**. A game's own
+settings only hold what differs from all games', and **↺** puts a slider back.
+
+**Live changes:** the sliders change a running game at once, and **Cancel** puts everything
+back.
+
+**480-line games:** HIRAKU draws Firebeat's 640×480 progressive, with a scanline on every
+line, like the cabinets' monitors. Both shaders would otherwise treat 480 lines as interlaced
+(480i, as on a TV). To get that look back, set guest's **Interlace Mode** to 1, or turn on
+royale's **Interlacing - Toggle**.
+
+**Files and options:**
+- The settings live in `~/.config/hiraku/picture/` (all games) and
+  `~/.config/hiraku/picture/games/<game>/`. Each holds `<shader>.params` files of
+  `name = value` lines, and a RetroArch preset's parameter lines work as is.
+- From a terminal: `--picture off|light|full` and `--picture-config DIR` (repeatable: later
+  folders win).
+- When a game exits, it prints each mode's GPU time per frame. That is the number to watch
+  on a small GPU.
+- If OpenGL 3.3 isn't available, the game says so and shows sharp pixels.
+- The shaders themselves: `shaders/README.md`.
 
 ## Controllers
 

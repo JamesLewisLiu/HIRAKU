@@ -12,7 +12,7 @@
 #include <thread>
 
 #include "../shell/core.h"
-#include "crt.h"
+#include "picture.h"
 #include "input.h"
 #include "../core/prof.h"
 
@@ -23,9 +23,10 @@ uint64_t g_settle_until = 0;   // window/renderer setup right after opening: not
 SDL_Window *g_win = nullptr;
 SDL_Renderer *g_ren = nullptr;
 SDL_Texture *g_tex = nullptr;
-SDL_GLContext g_gl = nullptr;     // the CRT picture: OpenGL instead of the SDL renderer
-std::string g_crt_dir, g_crt_params;
-bool g_crt_want = false, g_crt_on = true;
+SDL_GLContext g_gl = nullptr;     // OpenGL (the picture modes, runtime/host/picture.h), else the SDL renderer
+std::string g_shaders_dir, g_title;
+std::vector<std::string> g_picture_config;
+picture::Mode g_mode = picture::Mode::off, g_shown = picture::Mode::off;
 SDL_AudioStream *g_audio = nullptr;
 int g_tw = 0, g_th = 0;
 std::chrono::steady_clock::time_point g_t0;
@@ -52,10 +53,9 @@ void poll() {
             g_fast = e.type == SDL_EVENT_KEY_DOWN;
             if (g_fast && g_audio) SDL_ClearAudioStream(g_audio);
         }
-        if (e.type == SDL_EVENT_KEY_DOWN && !e.key.repeat && e.key.key == SDLK_F10 && g_gl) {
-            if (e.key.mod & SDL_KMOD_SHIFT) crt::reload_params();   // Shift+F10: the parameters file again
-            else g_crt_on = !g_crt_on;                               // F10: CRT / sharp pixels
-        }
+        if (e.type == SDL_EVENT_KEY_DOWN && !e.key.repeat && e.key.key == SDLK_F10 && g_gl)   // F10: off, light, full
+            g_mode = g_mode == picture::Mode::off ? picture::Mode::light
+                   : g_mode == picture::Mode::light ? picture::Mode::full : picture::Mode::off;
         if (e.type == SDL_EVENT_JOYSTICK_ADDED) input_joystick_added(e.jdevice.which);
         input_event(e);
     }
@@ -64,7 +64,7 @@ void poll() {
     g_last_poll = now;
 }
 
-// An OpenGL 3.3 window for the CRT picture; false (and nothing left open) if it can't run here.
+// An OpenGL 3.3 window; false (and nothing left open) if it can't run here.
 bool open_gl(const char *title, int scale) {
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
@@ -75,9 +75,9 @@ bool open_gl(const char *title, int scale) {
     g_win = SDL_CreateWindow(title, 640 * scale, 480 * scale, SDL_WINDOW_RESIZABLE | SDL_WINDOW_OPENGL);
     if (g_win) g_gl = SDL_GL_CreateContext(g_win);
     if (g_gl) SDL_GL_SetSwapInterval(0);   // as with the renderer: presenting never waits for the display
-    if (g_gl && crt::init(g_crt_dir, g_crt_params)) return true;
-    fprintf(stderr, "crt: no CRT picture (%s), sharp pixels instead\n", g_gl ? "the shaders" : SDL_GetError());
-    crt::shutdown();
+    if (g_gl && picture::init(g_shaders_dir, g_picture_config)) return true;
+    fprintf(stderr, "picture: no OpenGL 3.3 (%s): the SDL renderer, sharp pixels only\n", g_gl ? "see above" : SDL_GetError());
+    picture::shutdown();
     if (g_gl) SDL_GL_DestroyContext(g_gl);
     if (g_win) SDL_DestroyWindow(g_win);
     g_gl = nullptr;
@@ -86,10 +86,10 @@ bool open_gl(const char *title, int scale) {
 }
 }  // namespace
 
-void window_set_crt(const std::string &shader_dir, const std::string &params) {
-    g_crt_want = true;
-    g_crt_dir = shader_dir;
-    g_crt_params = params;
+void window_set_picture(const std::string &mode, const std::string &shaders_dir, const std::vector<std::string> &config_dirs) {
+    if (!picture::parse_mode(mode, g_mode)) fprintf(stderr, "picture: %s is not off, light or full\n", mode.c_str());
+    g_shaders_dir = shaders_dir;
+    g_picture_config = config_dirs;
 }
 
 bool window_open(const char *title, int scale, const std::string &bindings, int target_ms, bool fullscreen, int rate) {
@@ -110,7 +110,9 @@ bool window_open(const char *title, int scale, const std::string &bindings, int 
         SDL_ResumeAudioStreamDevice(g_audio);
         g_settle_until = prof::now_ns() + 250'000'000;
     }
-    if (g_crt_want && open_gl(title, scale)) {
+    g_title = title;
+    if (open_gl(title, scale)) {
+        picture::prepare(g_mode);
         if (fullscreen) SDL_SetWindowFullscreen(g_win, true);
         return true;
     }
@@ -129,8 +131,12 @@ bool window_frame(const uint32_t *rgb, int w, int h, double vsec) {
         // letterboxed at the picture's aspect, as SDL_LOGICAL_PRESENTATION_LETTERBOX does
         float s = std::min((float)ww / w, (float)wh / h);
         int vw = std::max(1, (int)std::lround(w * s)), vh = std::max(1, (int)std::lround(h * s));
-        crt::draw(rgb, w, h, (ww - vw) / 2, (wh - vh) / 2, vw, vh, ww, wh, g_crt_on);
+        picture::Mode shown = picture::draw(rgb, w, h, (ww - vw) / 2, (wh - vh) / 2, vw, vh, ww, wh, g_mode);
         SDL_GL_SwapWindow(g_win);
+        if (shown != g_shown) {
+            g_shown = shown;
+            SDL_SetWindowTitle(g_win, (g_title + (shown == picture::Mode::off ? "" : std::string(" - ") + picture::mode_label(shown))).c_str());
+        }
     } else if (!g_tex || w != g_tw || h != g_th) {
         if (g_tex) SDL_DestroyTexture(g_tex);
         g_tex = SDL_CreateTexture(g_ren, SDL_PIXELFORMAT_XRGB8888, SDL_TEXTUREACCESS_STREAMING, w, h);
@@ -258,7 +264,7 @@ void window_close() {
     if (g_tex) SDL_DestroyTexture(g_tex);
     if (g_ren) SDL_DestroyRenderer(g_ren);
     if (g_gl) {
-        crt::shutdown();
+        picture::shutdown();
         SDL_GL_DestroyContext(g_gl);
     }
     if (g_win) SDL_DestroyWindow(g_win);

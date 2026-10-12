@@ -1,0 +1,7 @@
+# HIRAKU's defaults for crt-guest-advanced-fast, over the shader's own (parameters.txt).
+# The launcher's Picture settings, and --picture-config folders, go over these.
+
+# Pictures of 375 lines or more (Firebeat's 640x480) are progressive here, not 480i:
+# scanlines on every line, as on the cabinets' 31 kHz monitors. Lower resolutions never
+# reach the shader's interlace mode, so this changes only 480-line games.
+interm = 0

@@ -5,13 +5,13 @@
 
 #include <cstdint>
 #include <string>
+#include <vector>
 
 namespace hk::host {
 
-// Before window_open: show the game through the CRT shader (runtime/host/crt.h), whose
-// .glsl files are in shader_dir; params is "" or a parameters file. F10 switches between
-// it and sharp pixels, Shift+F10 reads the parameters file again.
-void window_set_crt(const std::string &shader_dir, const std::string &params);
+// Before window_open: the picture (runtime/host/picture.h): mode off, light or full, the
+// presets in shaders_dir, settings layered from config_dirs. F10 cycles the modes.
+void window_set_picture(const std::string &mode, const std::string &shaders_dir, const std::vector<std::string> &config_dirs);
 bool window_open(const char *title, int scale, const std::string &bindings, int audio_target_ms, bool fullscreen = false,
                  int audio_rate = 44100);
 // Present one frame; then sleep so that `virtual_seconds` does not run ahead

@@ -36,6 +36,7 @@
 #include "config.h"
 #include "controlsdialog.h"
 #include "lightsdialog.h"
+#include "picturedialog.h"
 #include "settingsdialog.h"
 
 namespace {
@@ -77,6 +78,13 @@ MainWindow::MainWindow() {
     m_controls = new QAction(QIcon::fromTheme("input-gaming"), "Controls", this);
     m_lights = new QAction(QIcon::fromTheme("dialog-information", QIcon::fromTheme("weather-clear")), "Lights", this);
     auto *settings = new QAction(QIcon::fromTheme("preferences-system"), "Settings", this);
+    auto *pictureAct = new QAction(QIcon::fromTheme("video-display", QIcon::fromTheme("preferences-desktop-display")), "Picture", this);
+    pictureAct->setToolTip("Sharp pixels or a CRT (light, full), and the CRT's settings: for all games, or the selected one");
+    connect(pictureAct, &QAction::triggered, this, [this] {
+        auto *g = selected();
+        PictureDialog d(g ? g->id : QString(), g ? g->title : QString(), false, this);
+        if (d.exec() == QDialog::Accepted) showDetails();
+    });
     auto *addFiles = new QAction(QIcon::fromTheme("list-add"), "Add game files…", this);
     addFiles->setToolTip("Add a game from its files: the MAME ROM set (.zip/.7z), CHDs or disc images.\n"
                          "You can also drop them on this window.");
@@ -131,6 +139,7 @@ MainWindow::MainWindow() {
     tb->addSeparator();
     tb->addAction(m_controls);
     tb->addAction(m_lights);
+    tb->addAction(pictureAct);
     tb->addAction(settings);
     tb->addSeparator();
     tb->addAction(refreshAct);
@@ -216,6 +225,7 @@ MainWindow::MainWindow() {
     auto *opts = menuBar()->addMenu("&Options");
     opts->addAction(m_controls);
     opts->addAction(m_lights);
+    opts->addAction(pictureAct);
     opts->addAction(settings);
     auto *view = menuBar()->addMenu("&View");
     view->addAction(m_showAll);
@@ -394,6 +404,11 @@ void MainWindow::showDetails() {
         if (fresh && !g->firstBoot.isEmpty())
             h += "<p><b>First boot:</b> " + g->firstBoot.toHtmlEscaped() + "</p>";
         h += "<p>Saves: <tt>" + cfg::nvramDir(g->id).toHtmlEscaped() + "</tt>" + (fresh ? " (none yet)" : "") + "</p>";
+        QString m = picture::mode(g->id);
+        bool own = cfg::settings().contains("picture/" + g->id) || QFileInfo::exists(picture::configDir(g->id));
+        h += QString("<p>Picture: %1%2</p>")
+                 .arg(m == "full" ? "CRT full (crt-royale)" : m == "light" ? "CRT light (crt-guest-advanced-fast)" : "sharp pixels",
+                      own ? ", with its own settings" : "");
     }
     m_details->setText(h);
 }
@@ -402,11 +417,9 @@ QStringList MainWindow::arguments(const Game &g) const {
     auto &s = cfg::settings();
     QStringList a = {"--window", QString::number(s.value("video/scale", 2).toInt())};
     if (s.value("video/fullscreen", false).toBool()) a << "--fullscreen";
-    if (s.value("video/crt", false).toBool()) {
-        a << "--crt";
-        QString p = s.value("video/crtParams").toString();
-        if (!p.isEmpty()) a << p;
-    }
+    // the picture mode, and its settings: all games', then the game's (picturedialog.h)
+    a << "--picture" << picture::mode(g.id) << "--picture-config" << picture::configDir() << "--picture-config"
+      << picture::configDir(g.id);
     a << "--audio-ms" << QString::number(s.value("audio/ms", 8).toInt());
     QString controls = cfg::controlsFile(g.family), lights = cfg::lightsFile(g.family);
     if (QFileInfo::exists(controls)) a << "--bindings" << controls;
@@ -479,6 +492,10 @@ void MainWindow::contextMenu(const QPoint &pos) {
     menu.addAction("Lights for " + cfg::familyName(family) + "…", this, [this, family] {
         LightsDialog d(family, this);
         d.exec();
+    });
+    menu.addAction(QIcon::fromTheme("video-display"), "Picture for " + title + "…", this, [this, id, title] {
+        PictureDialog d(id, title, true, this);
+        if (d.exec() == QDialog::Accepted) showDetails();
     });
     menu.addSeparator();
     QString nv = cfg::nvramDir(id);

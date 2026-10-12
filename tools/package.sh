@@ -50,7 +50,7 @@ Game data, either way:
 
 Run a game:
     bin/hiraku-popn8 --window          (--window 3 for 3x, --fullscreen)
-    bin/hiraku-popn8 --window --crt    (the CRT picture: F10 switches it off and on)
+    bin/hiraku-popn8 --window --picture light   (a CRT: light or full; F10 cycles off/light/full)
     bin/hiraku-popn8 --help            (all options)
 Each run prints its frame times when it ends ("frametime:": host work per frame,
 mean, percentiles and the worst frame). A repeatable test, no window:

@@ -15,12 +15,12 @@
 #include <QVBoxLayout>
 
 #include "config.h"
+#include "picturedialog.h"
 
 namespace {
 
 // A line edit with a "Browse…" button
-QWidget *withBrowse(QLineEdit *e, bool directory, QWidget *parent,
-                    const QString &title = "Choose a SoundFont", const QString &filter = "SoundFonts (*.sf2 *.sf3);;All files (*)") {
+QWidget *withBrowse(QLineEdit *e, bool directory, QWidget *parent) {
     auto *w = new QWidget(parent);
     auto *h = new QHBoxLayout(w);
     h->setContentsMargins(0, 0, 0, 0);
@@ -28,9 +28,9 @@ QWidget *withBrowse(QLineEdit *e, bool directory, QWidget *parent,
     auto *b = new QPushButton("Browse…");
     b->setAutoDefault(false);
     h->addWidget(b);
-    QObject::connect(b, &QPushButton::clicked, w, [e, directory, parent, title, filter] {
+    QObject::connect(b, &QPushButton::clicked, w, [e, directory, parent] {
         QString p = directory ? QFileDialog::getExistingDirectory(parent, "Choose a folder", e->text())
-                              : QFileDialog::getOpenFileName(parent, title, e->text(), filter);
+                              : QFileDialog::getOpenFileName(parent, "Choose a SoundFont", e->text(), "SoundFonts (*.sf2 *.sf3);;All files (*)");
         if (!p.isEmpty()) e->setText(p);
     });
     return w;
@@ -55,17 +55,24 @@ SettingsDialog::SettingsDialog(QWidget *parent) : QDialog(parent) {
     m_fullscreen->setChecked(s.value("video/fullscreen", false).toBool());
     fv->addRow("", m_fullscreen);
     m_picture = new QComboBox;
-    m_picture->addItem("Sharp pixels", "sharp");
-    m_picture->addItem("CRT (crt-guest-advanced-fast)", "crt");
-    m_picture->setCurrentIndex(s.value("video/crt", false).toBool() ? 1 : 0);
-    m_picture->setToolTip("CRT: scanlines, mask and glow, through OpenGL 3.3. In the game, F10 switches between the two.");
-    fv->addRow("Picture:", m_picture);
-    m_crtParams = new QLineEdit(s.value("video/crtParams").toString());
-    m_crtParams->setPlaceholderText("default: the shader's own settings");
-    m_crtParams->setToolTip("name = value lines; a RetroArch preset works as is. Shift+F10 in the game reads it again.\n"
-                            "shaders/crt-guest-advanced-fast/example.params lists the useful ones.");
-    fv->addRow("CRT settings file:", withBrowse(m_crtParams, false, this, "Choose CRT settings",
-                                                 "Shader parameters (*.params *.slangp *.txt);;All files (*)"));
+    m_picture->addItem("Off: sharp pixels", "off");
+    m_picture->addItem("CRT light: crt-guest-advanced-fast", "light");
+    m_picture->addItem("CRT full: crt-royale", "full");
+    m_picture->setCurrentIndex(std::max(0, m_picture->findData(picture::globalMode())));
+    m_picture->setToolTip("For all games; a game can have its own (Picture, in the game's menu). In the game, F10 cycles them.");
+    auto *pic = new QWidget;
+    auto *ph = new QHBoxLayout(pic);
+    ph->setContentsMargins(0, 0, 0, 0);
+    ph->addWidget(m_picture, 1);
+    auto *adjust = new QPushButton("Adjust…");
+    adjust->setAutoDefault(false);
+    ph->addWidget(adjust);
+    connect(adjust, &QPushButton::clicked, this, [this] {
+        cfg::settings().setValue("video/picture", m_picture->currentData().toString());
+        PictureDialog d(QString(), QString(), false, this);
+        if (d.exec() == QDialog::Accepted) m_picture->setCurrentIndex(std::max(0, m_picture->findData(picture::globalMode())));
+    });
+    fv->addRow("Picture:", pic);
     v->addWidget(video);
 
     auto *audio = new QGroupBox("Audio");
@@ -124,8 +131,7 @@ void SettingsDialog::accept() {
     auto &s = cfg::settings();
     s.setValue("video/scale", m_scale->value());
     s.setValue("video/fullscreen", m_fullscreen->isChecked());
-    s.setValue("video/crt", m_picture->currentData().toString() == "crt");
-    s.setValue("video/crtParams", m_crtParams->text().trimmed());
+    s.setValue("video/picture", m_picture->currentData().toString());
     s.setValue("audio/ms", m_audioMs->value());
     s.setValue("audio/soundfont", m_soundfont->text().trimmed());
     s.setValue("lights/socket", m_socket->isChecked());

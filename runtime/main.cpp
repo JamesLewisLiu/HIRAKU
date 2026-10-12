@@ -18,9 +18,10 @@
 //     --window [SCALE]  show the game in a window, in real time, with sound (SDL3 builds);
 //                       F2 test, 9 service, 5 coin, 1 start, Esc quits; controls per cabinet
 //     --fullscreen      start the window fullscreen (F11 toggles)
-//     --crt [FILE]      show the picture through crt-guest-advanced-fast (shaders/, OpenGL 3.3);
-//                       FILE: its parameters, `name = value` lines (a RetroArch preset works).
-//                       F10 switches to sharp pixels and back, Shift+F10 reads FILE again
+//     --picture MODE    off (sharp pixels, the default), light (CRT: crt-guest-advanced-fast) or
+//                       full (CRT: crt-royale); F10 cycles them. --crt is --picture light
+//     --picture-config DIR  read DIR/<shader>.params over the shader's settings (repeatable,
+//                       later ones win; `name = value` lines; read again when they change)
 //     --bindings FILE   controls (see runtime/host/input.h)
 //     --lights FILE     drive HID controller LEDs from the cabinet lamps (see runtime/host/lights.h)
 //     --lights-socket P publish the lamps on a UNIX socket at path P (docs/LIGHTS.md)
@@ -166,8 +167,9 @@ int main(int argc, char **argv) {
     uint64_t frames = 0, snap_every = 0, debug_every = 0;
     int window_scale = 0;
     std::string wav_path, digest_path, script_path, bindings, nvram_dir, lights_file, lights_socket;
-    bool fullscreen = false, crt = false;
-    std::string crt_params;
+    bool fullscreen = false;
+    std::string picture_mode = "off";
+    std::vector<std::string> picture_config;
     bool nvram_given = false;
     int audio_ms = 8;
     for (int k = 1; k < argc; k++) {
@@ -189,10 +191,9 @@ int main(int argc, char **argv) {
         else if (a == "--lights") lights_file = val();
         else if (a == "--lights-socket") lights_socket = val();
         else if (a == "--fullscreen") fullscreen = true;
-        else if (a == "--crt") {
-            crt = true;
-            if (k + 1 < argc && argv[k + 1][0] != '-') crt_params = val();
-        }
+        else if (a == "--crt") picture_mode = "light";
+        else if (a == "--picture") picture_mode = val();
+        else if (a == "--picture-config") picture_config.push_back(val());
         else if (a == "--nvram") { nvram_dir = val(); nvram_given = true; }
         else if (a == "--audio-ms") audio_ms = std::stoi(val());
         else if (a == "--window") window_scale = (k + 1 < argc && argv[k + 1][0] != '-') ? std::stoi(val()) : 2;
@@ -286,7 +287,7 @@ int main(int argc, char **argv) {
     machine.set_on_fatal(finish);
 
 #ifdef HK_WITH_SDL
-    if (crt) host::window_set_crt(opt.root + "/shaders/crt-guest-advanced-fast", crt_params);
+    host::window_set_picture(picture_mode, opt.root + "/shaders", picture_config);
     if (window_scale && !host::window_open(("HIRAKU - " + game).c_str(), window_scale, bindings, audio_ms, fullscreen, machine.audio_rate())) {
         fprintf(stderr, "cannot open a window\n");
         return 1;

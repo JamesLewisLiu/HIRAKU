@@ -1,0 +1,6 @@
+# HIRAKU's defaults for crt-royale, over the shader's own (parameters.txt).
+# The launcher's Picture settings, and --picture-config folders, go over these.
+
+# Royale takes 480-line pictures (Firebeat's 640x480) as interlaced and shows one field per
+# frame. HIRAKU's games draw them progressive: every line, every frame.
+interlace_detect_toggle = 0
