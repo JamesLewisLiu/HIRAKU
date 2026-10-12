@@ -1,0 +1,109 @@
+# pop'n music 6: the operator codes (RemyWiki, AC_pnm_6), typed in test mode as buttons 1-9
+# (left to right), then the four new switches set to YES and saved (games/popn6/unlocks.toml).
+#   hiraku-popn6 --nvram DIR --script oracle/scripts/popn6-operator.his
+# 38281838 on the main menu adds OPERATOR COMMAND OPTIONS; in it, the game compares the last
+# 12 presses of buttons 1-4 and 6-9 with its five codes (FUN_80071810, table at 0x800721f8)
+# and adds the matching item. Hold red + press blue switches an item; EXIT asks to save (NO
+# by default).
+game popn6
+at 3000 press "Test" 6
+at 3300 press "P1 Button 3" 4
+at 3316 press "P1 Button 8" 4
+at 3332 press "P1 Button 2" 4
+at 3348 press "P1 Button 8" 4
+at 3364 press "P1 Button 1" 4
+at 3380 press "P1 Button 8" 4
+at 3396 press "P1 Button 3" 4
+at 3412 press "P1 Button 8" 4
+at 3488 press "P1 Button 6" 4
+at 3508 press "P1 Button 6" 4
+at 3528 press "P1 Button 6" 4
+at 3548 press "P1 Button 6" 4
+at 3568 press "P1 Button 5" 4
+at 3688 press "P1 Button 1" 4
+at 3704 press "P1 Button 4" 4
+at 3720 press "P1 Button 7" 4
+at 3736 press "P1 Button 9" 4
+at 3752 press "P1 Button 8" 4
+at 3768 press "P1 Button 4" 4
+at 3784 press "P1 Button 3" 4
+at 3800 press "P1 Button 7" 4
+at 3816 press "P1 Button 9" 4
+at 3832 press "P1 Button 8" 4
+at 3848 press "P1 Button 1" 4
+at 3864 press "P1 Button 4" 4
+at 3940 press "P1 Button 2" 4
+at 3956 press "P1 Button 8" 4
+at 3972 press "P1 Button 2" 4
+at 3988 press "P1 Button 1" 4
+at 4004 press "P1 Button 4" 4
+at 4020 press "P1 Button 3" 4
+at 4036 press "P1 Button 7" 4
+at 4052 press "P1 Button 9" 4
+at 4068 press "P1 Button 2" 4
+at 4084 press "P1 Button 1" 4
+at 4100 press "P1 Button 3" 4
+at 4116 press "P1 Button 6" 4
+at 4132 press "P1 Button 9" 4
+at 4208 press "P1 Button 4" 4
+at 4224 press "P1 Button 3" 4
+at 4240 press "P1 Button 8" 4
+at 4256 press "P1 Button 4" 4
+at 4272 press "P1 Button 3" 4
+at 4288 press "P1 Button 7" 4
+at 4304 press "P1 Button 9" 4
+at 4320 press "P1 Button 2" 4
+at 4336 press "P1 Button 1" 4
+at 4352 press "P1 Button 4" 4
+at 4368 press "P1 Button 3" 4
+at 4384 press "P1 Button 7" 4
+at 4460 press "P1 Button 4" 4
+at 4476 press "P1 Button 3" 4
+at 4492 press "P1 Button 7" 4
+at 4508 press "P1 Button 6" 4
+at 4524 press "P1 Button 9" 4
+at 4540 press "P1 Button 1" 4
+at 4556 press "P1 Button 4" 4
+at 4572 press "P1 Button 3" 4
+at 4588 press "P1 Button 7" 4
+at 4604 press "P1 Button 6" 4
+at 4620 press "P1 Button 9" 4
+at 4636 press "P1 Button 8" 4
+at 4712 press "P1 Button 4" 4
+at 4728 press "P1 Button 7" 4
+at 4744 press "P1 Button 6" 4
+at 4760 press "P1 Button 9" 4
+at 4776 press "P1 Button 8" 4
+at 4792 press "P1 Button 1" 4
+at 4808 press "P1 Button 4" 4
+at 4824 press "P1 Button 3" 4
+at 4840 press "P1 Button 7" 4
+at 4856 press "P1 Button 4" 4
+at 4872 press "P1 Button 3" 4
+at 4888 press "P1 Button 6" 4
+at 4964 snap   # the five items
+at 4974 press "P1 Button 6" 4
+at 4994 press "P1 Button 6" 4
+at 5014 hold "P1 Button 5"
+at 5024 press "P1 Button 6" 4
+at 5038 release "P1 Button 5"
+at 5064 press "P1 Button 6" 4
+at 5084 hold "P1 Button 5"
+at 5094 press "P1 Button 6" 4
+at 5108 release "P1 Button 5"
+at 5134 press "P1 Button 6" 4
+at 5154 hold "P1 Button 5"
+at 5164 press "P1 Button 6" 4
+at 5178 release "P1 Button 5"
+at 5204 press "P1 Button 6" 4
+at 5224 press "P1 Button 6" 4
+at 5244 hold "P1 Button 5"
+at 5254 press "P1 Button 6" 4
+at 5268 release "P1 Button 5"
+at 5294 snap   # all YES
+at 5304 press "P1 Button 6" 4
+at 5324 press "P1 Button 5" 4
+at 5384 press "P1 Button 4" 4
+at 5414 press "P1 Button 5" 4
+at 5564 snap
+at 5594 quit

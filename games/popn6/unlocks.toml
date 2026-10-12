@@ -1,0 +1,57 @@
+# pop'n music 6: what the operator can unlock (tools/unlock.py; launcher: right-click > Unlocks).
+#
+# Operator codes (remywiki.com/AC_pnm_6), typed in test mode as buttons 1-9 (left to right):
+# 38281838 on the main menu adds OPERATOR COMMAND OPTIONS; in it, each code below adds its item
+# (the game compares the last 12 presses of buttons 1-4 and 6-9 with a table in the program,
+# FUN_80071810). An item is NO until the operator switches it (hold red, press blue) and saves
+# on EXIT. The save keeps one byte per flag in its battery RAM block (0x5c on), under a 16-bit
+# byte sum at 0x56. Found by doing it in HIRAKU (oracle/scripts/popn6-operator.his) and reading
+# the program; with SECRET MUSIC RELEASE on, the music select has the SECRET songs.
+
+[[unlock]]
+id = "operator"
+title = "Operator command options"
+kind = "switches"
+nvram = "rtc.nv"
+checksum = { at = 0x56, from = 0x5c, to = 0xec8 }
+menu = { at = 0x8c, code = "38281838" }
+how = "In the game: test mode, 38281838 on the main menu, then OPERATOR COMMAND OPTIONS: each code, then hold red + press blue on its item, EXIT and save."
+
+[[unlock.switch]]
+id = "secret_music"
+name = "SECRET MUSIC RELEASE"
+code = "437691437698"
+code_at = 0x8d
+on_at = 0x92
+text = "The secret songs, in the music select (marked SECRET)."
+
+[[unlock.switch]]
+id = "secret_course"
+name = "SECRET COURSE RELEASE"
+code = "438437921437"
+code_at = 0x90
+on_at = 0x95
+text = "The secret EXPERT courses: on a course, the yellow buttons switch to its secret one (Parquets to Sana, and so on; RemyWiki)."
+
+[[unlock.switch]]
+id = "all_data"
+name = "ALL DATA RELEASE"
+code = "476981437436"
+code_at = 0x8e
+on_at = 0x93
+text = "The EX charts and RGB mode (RemyWiki)."
+
+[[unlock.switch]]
+id = "step_up"
+name = "STEP UP CHALLENGE"
+code = "147984379814"
+code_at = 0x8f
+on_at = 0x94
+text = "The STEP UP CHALLENGE (RemyWiki)."
+
+[[unlock.switch]]
+id = "step_up_2"
+name = "STEP UP CHALLENGE 2"
+code = "2821437921369"
+code_at = 0x91
+text = "RemyWiki: \"the STEP UP CHALLENGE code will now be on the title screen\". An item without a YES/NO; the game only reads the last 12 presses (821437921369)."

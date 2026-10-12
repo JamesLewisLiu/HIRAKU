@@ -202,6 +202,17 @@ unlock event, which HIRAKU plays unchanged:
 - **Skipping it:** the phase codes were the operators' way to skip the event, and phase 3 or
   MAX releases everything at once.
 
+**pop'n 6 unlocks:** right-click pop'n music 6 > **Unlocks**. Each of the operator's five
+switches is a checkbox:
+- SECRET MUSIC RELEASE;
+- SECRET COURSE RELEASE;
+- ALL DATA RELEASE (EX charts, RGB mode);
+- STEP UP CHALLENGE and STEP UP CHALLENGE 2.
+
+**Apply** writes what the game writes when they are typed in test mode and switched on
+(`tools/unlock.py popn6 operator=all` for all of them). With SECRET MUSIC on, the music select
+has the SECRET songs.
+
 **pop'n 7 unlocks:** right-click pop'n music 7 > **Unlocks**:
 - **How pop'n 7 differs:** its operator codes don't unlock anything by themselves. Each code adds
   a switch to EVENT OPTIONS, and the switch must be YES. The dialog's levels do both, in the

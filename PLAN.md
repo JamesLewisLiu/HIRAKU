@@ -886,6 +886,24 @@ The order of work:
 - **In the Unlocks dialog:** the level, the open squares, the lines done or one square away,
   and every closed square's condition.
 
+### pop'n music 6 (done, 2026-10-12)
+
+- **The codes:** `38281838` on test mode's main menu adds OPERATOR COMMAND OPTIONS. There, the
+  last 12 presses of buttons 1-4 and 6-9 are compared with five codes in the program
+  (`FUN_80071810`, table at 0x800721f8: 12 button masks per code, newest first). Each match
+  adds an item, NO until switched on and saved on EXIT.
+- **In the save:** one byte per flag in the RTC block (0x5c on).
+  - `0x8c` is the menu.
+  - Code bytes: `0x8d` SECRET MUSIC, `0x8e` ALL DATA, `0x8f` STEP UP, `0x90` SECRET COURSE,
+    `0x91` STEP UP 2.
+  - Switch bytes: `0x92`-`0x95`, in that order, without STEP UP 2.
+  - The 16-bit byte sum covers 0x5c-0xec8, at 0x56.
+- **The tool:** `games/popn6/unlocks.toml` kind = "switches"; `tools/unlock.py` and the
+  Unlocks dialog (checkboxes) set them. Its everything-on save is byte-identical to the game's
+  (`oracle/scripts/popn6-operator.his`).
+- **Checked in play:** with SECRET MUSIC on, the music select has the SECRET songs.
+- **Not checked:** the other switches' effects, which are RemyWiki's.
+
 ## M0 steps (all done)
 
 1. ~~`git init` HIRAKU and add `.gitignore` for `dumps/` and `build/`~~ Done.

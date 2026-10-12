@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "unlocksdialog.h"
 
+#include <QCheckBox>
 #include <QComboBox>
 #include <QDialogButtonBox>
 #include <QFileInfo>
@@ -77,6 +78,46 @@ void UnlocksDialog::rebuild() {
     }
     for (const QJsonValue &uv : st["unlocks"].toArray()) {
         QJsonObject u = uv.toObject();
+        if (u["kind"].toString() == "switches") {   // independent switches (pop'n 6): one checkbox each
+            auto *box = new QGroupBox(u["title"].toString());
+            auto *bv = new QVBoxLayout(box);
+            QJsonObject cur = u["current"].toObject();
+            QList<QPair<QString, QCheckBox *>> checks;
+            for (const QJsonValue &sv : u["switch"].toArray()) {
+                QJsonObject sw = sv.toObject();
+                QString id = sw["id"].toString();
+                auto *c = new QCheckBox(sw["name"].toString() + "   (code " + sw["code"].toString() + ")");
+                c->setChecked(cur[id].toObject()["on"].toBool());
+                c->setEnabled(!u["current"].isNull());
+                bv->addWidget(c);
+                auto *t = new QLabel(sw["text"].toString());
+                t->setWordWrap(true);
+                t->setContentsMargins(24, 0, 0, 6);
+                bv->addWidget(t);
+                checks.push_back({id, c});
+            }
+            if (u["current"].isNull()) {
+                auto *none = new QLabel("No save yet: start the game once (with its first-boot setup), quit, then come back.");
+                none->setWordWrap(true);
+                bv->addWidget(none);
+            }
+            auto *how = new QLabel("<i>" + u["how"].toString().toHtmlEscaped() + " Apply writes what the game writes then.</i>");
+            how->setWordWrap(true);
+            bv->addWidget(how);
+            auto *apply = new QPushButton("Apply");
+            apply->setEnabled(!m_running && !u["current"].isNull());
+            bv->addWidget(apply, 0, Qt::AlignRight);
+            connect(apply, &QPushButton::clicked, this, [this, checks] {
+                QStringList args;
+                for (const auto &[id, c] : checks) args << id + "=" + (c->isChecked() ? "1" : "0");
+                QString e;
+                run(args, &e);
+                if (!e.isEmpty()) QMessageBox::warning(this, m_title, e);
+                rebuild();
+            });
+            v->addWidget(box);
+            continue;
+        }
         auto *box = new QGroupBox(u["title"].toString());
         auto *bv = new QVBoxLayout(box);
         QJsonValue cur = u["current"];

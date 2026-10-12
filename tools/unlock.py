@@ -4,6 +4,8 @@
 
     tools/unlock.py GAME                     what can be unlocked, and what the save has
     tools/unlock.py GAME ID=VALUE...         set it (e.g. popn8 phase=4); the save is backed up first
+                                             switches: SWITCH=1/0 (e.g. popn6 secret_music=1),
+                                             or ID=all / ID=none for all of them
     tools/unlock.py GAME --json              the same, for the launcher
 
   --nvram DIR   the save (default: ~/.local/share/hiraku/GAME, as the game window uses)
@@ -46,6 +48,50 @@ def checksum_ok(u: dict, data: bytes) -> bool:
     if not c:
         return True
     return sum(data[c["from"]:c["to"]]) & 0xffff == int.from_bytes(data[c["at"]:c["at"] + 2], "big")
+
+
+def switches(u: dict, nvram: str):
+    """kind = "switches": {switch id: {"code": entered, "on": switched on}}, or None (no save)."""
+    path = os.path.join(nvram, u["nvram"])
+    if not os.path.exists(path):
+        return None
+    data = open(path, "rb").read()
+    if not checksum_ok(u, data):
+        raise Error(f"{path}: its checksum doesn't match: not a save this tool knows")
+    return {sw["id"]: {"code": bool(data[sw["code_at"]]) and bool(data[u["menu"]["at"]]),
+                       "on": bool(data[sw["on_at"]]) if "on_at" in sw else bool(data[sw["code_at"]])}
+            for sw in u["switch"]}
+
+
+def apply_switches(game: str, u: dict, nvram: str, changes: dict) -> str:
+    """Set switches on (their menu, code and switch bytes, as the game does) or off."""
+    path = os.path.join(nvram, u["nvram"])
+    if not os.path.exists(path):
+        raise Error(f"{path}: no save yet. Start {game} once (with its first-boot setup), quit it, then unlock.")
+    switches(u, nvram)   # refuses a save it doesn't understand
+    data = bytearray(open(path, "rb").read())
+    backup = f"{path}.{time.strftime('%Y%m%d-%H%M%S')}.bak"
+    shutil.copy2(path, backup)
+    for sw in u["switch"]:
+        if sw["id"] not in changes:
+            continue
+        if changes[sw["id"]]:
+            data[u["menu"]["at"]] = 1
+            data[sw["code_at"]] = 1
+            if "on_at" in sw:
+                data[sw["on_at"]] = 1
+        elif "on_at" in sw:
+            data[sw["on_at"]] = 0     # switched off; the code stays entered, as in the game
+        else:
+            data[sw["code_at"]] = 0
+    c = u.get("checksum")
+    if c:
+        data[c["at"]:c["at"] + 2] = (sum(data[c["from"]:c["to"]]) & 0xffff).to_bytes(2, "big")
+    tmp = path + ".tmp"
+    with open(tmp, "wb") as f:
+        f.write(data)
+    os.replace(tmp, path)
+    return backup
 
 
 def current(u: dict, nvram: str):
@@ -178,18 +224,33 @@ def main() -> int:
     try:
         spec = load(a.game)
         unlocks = {u["id"]: u for u in spec.get("unlock", [])}
+        owner = {sw["id"]: u for u in unlocks.values() for sw in u.get("switch", [])}
+        pending: dict[str, dict] = {}
         for s in a.set:
             uid, _, v = s.partition("=")
-            if uid not in unlocks or not v:
-                raise Error(f"{s}: expected ID=VALUE with ID one of {list(unlocks)}")
-            u = unlocks[uid]
-            before = current(u, nvram)
-            backup = apply(a.game, u, nvram, int(v, 0))
+            if uid in owner and v in ("0", "1"):
+                pending.setdefault(owner[uid]["id"], {})[uid] = v == "1"
+            elif uid in unlocks and unlocks[uid].get("kind") == "switches" and v in ("all", "none"):
+                pending.setdefault(uid, {}).update({sw["id"]: v == "all" for sw in unlocks[uid]["switch"]})
+            elif uid in unlocks and v and unlocks[uid].get("kind", "level") == "level":
+                u = unlocks[uid]
+                before = current(u, nvram)
+                backup = apply(a.game, u, nvram, int(v, 0))
+                if not a.json:
+                    print(f"{uid}: {level_name(u, before)} -> {level_name(u, int(v, 0))} (the old save: {backup})")
+            else:
+                raise Error(f"{s}: expected ID=VALUE, ID one of {list(unlocks) + list(owner)}")
+        for uid, changes in pending.items():
+            backup = apply_switches(a.game, unlocks[uid], nvram, changes)
             if not a.json:
-                print(f"{uid}: {level_name(u, before)} -> {level_name(u, int(v, 0))} (the old save: {backup})")
+                print(f"{uid}: " + ", ".join(f"{k} {'on' if v else 'off'}" for k, v in changes.items()) +
+                      f" (the old save: {backup})")
         state = []
         for u in spec.get("unlock", []):
-            state.append({**u, "current": current(u, nvram)})
+            if u.get("kind") == "switches":
+                state.append({**u, "current": switches(u, nvram)})
+            else:
+                state.append({**u, "current": current(u, nvram)})
         prog = []
         for p in spec.get("progress", []):
             s = progress(p, nvram, unlocks)
@@ -200,6 +261,14 @@ def main() -> int:
         elif not a.set:
             print(f"{a.game}, save {nvram}")
             for u in state:
+                if u.get("kind") == "switches":
+                    cur = u["current"] or {}
+                    print(f"\n{u['title']} ({u['id']}={{all,none}}; menu code {u['menu']['code']})")
+                    for sw in u["switch"]:
+                        st = cur.get(sw["id"], {})
+                        mark = "*" if st.get("on") else " "
+                        print(f" {mark} {sw['id']}=1  {sw['name']}  code {sw['code']}\n      {sw['text']}")
+                    continue
                 print(f"\n{u['title']} ({u['id']}): now {level_name(u, u['current'])}")
                 for lv in u.get("level", []):
                     mark = "*" if lv["value"] == u["current"] else " "
