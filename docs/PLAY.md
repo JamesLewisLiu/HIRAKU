@@ -460,6 +460,8 @@ Later boots check the flash (about 80 s, as the real board does) and go to attra
 | 5 | coin |
 | F2 / 9 | test / service |
 
+A dance pad is bound in the launcher's Controls (Dance Dance Revolution page): click a panel, then step on it. Pads that send their arrows as buttons, a hat or axes all work. The panel buttons 1–3 are unbound by default.
+
 **Lamps:** the analog I/O board's outputs as MAME names them (foot panels, start lamps, the four body lamps, the speaker neon), through the lights socket and HID lamps (docs/LIGHTS.md).
 
 **Sound:** the SPU and the CD's music, mixed as MAME's speaker does (the CD at the volume the game sets with MODE SELECT).

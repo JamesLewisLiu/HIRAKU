@@ -70,6 +70,6 @@ QString familyName(const QString &family) {
     return family;
 }
 
-QStringList families() { return {"bm3", "popn", "ppp", "kbm", "djbm", "djpopn", "djpstage"}; }
+QStringList families() { return {"bm3", "popn", "ppp", "kbm", "djbm", "djpopn", "djpstage", "ddr"}; }
 
 }  // namespace cfg
