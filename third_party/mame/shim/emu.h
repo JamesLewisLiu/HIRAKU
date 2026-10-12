@@ -881,6 +881,7 @@ public:
     offs_t pc() const { return m_pc_for_log ? m_pc_for_log() : 0; }
 
     template <typename T> device_state_entry_stub state_add(int, const char *, T &) { return {}; }
+    template <typename T> device_state_entry_stub state_add(int, const std::string &, T &) { return {}; }
     template <typename T, typename G, typename S> device_state_entry_stub state_add(int, const char *, G &&, S &&) { return {}; }
     virtual void state_import(const device_state_entry &) {}
     virtual void state_export(const device_state_entry &) {}

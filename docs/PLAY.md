@@ -180,4 +180,4 @@ Each asks three times. Answer "YES?" and "ARE YOU SURE?" with **1** (move to YES
   - `HK_SYNTH_GAIN` sets the stand-in's level (default 0.25).
 - `HK_MIDI_LOG=1` prints the MIDI stream.
 - `build/cmake/hiraku-xt446 ROMDIR OUT.wav --midi LOG` runs the card on its own. LOG has one `<seconds> <hex byte>` per line.
-- **Known issue (MAME 0.289's SWP30):** some voices ring at 22 kHz. MAME's address map swaps the second IIR filter's a1 and b1, which makes that filter unstable. MAME master has fixed it.
+- The card is MAME's emulation from a later master commit than the 0.289 oracle, for the SWP30's accuracy fixes (third_party/mame/README.md).

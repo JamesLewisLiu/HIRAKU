@@ -79,7 +79,7 @@ private:
 		s32 m_pos_dec;
 		s16 m_dpcm_s0, m_dpcm_s1, m_dpcm_s2, m_dpcm_s3;
 		u32 m_dpcm_pos;
-		s32 m_dpcm_delta;
+		s32 m_dpcm_delta, m_dpcm_rem;
 
 		bool m_first, m_finetune_active, m_done;
 		s16 m_last;
@@ -309,30 +309,29 @@ private:
 		void lfo_step();
 		u32 get_lfo(int lfo);
 		u32 resolve_address(u16 pc, s32 offset);
+		int map_bank(u16 pc) const;
 
 		static u16 revram_encode(u32 v);
 		static u32 revram_decode(u16 v);
 		static s16 m1_expand(s16 v);
+		static s32 pack24(s64 p);
 
 		static void call_rand(void *ms);
 		static void call_revram_encode(void *ms);
 		static void call_revram_decode(void *ms);
 
 		void step();
-		void reset();
-
-		// HIRAKU: the program pre-decoded. step() extracts every field of every
-		// instruction on every sample (17 M times a second); step_decoded() does the
-		// same work from fields extracted when a program word changes.
+		// HIRAKU: the program pre-decoded (see step_decoded() in swp30.cpp)
 		struct decoded {
 			u8 sm, sr, dm, dr, t;
-			u8 mmode, m1_from_t, m1_expand, m2_from_m, amode, op, shift, sat;
-			u8 dsrc, add_rand, r_from_r, memw, idx, twr, t_from_value, memop, use_index;
+			u8 mmode, alu, m1_from_t, m1_expand, m2_from_m, amode, op, shift, sat;
+			u8 dsrc, add_rand, r_from_r, memw, idx, twr, t_from_value, memop, use_index, absolute;
 		};
 		std::array<decoded, 0x180> m_dec;
 		bool m_dec_dirty = true;
 		void decode();
 		void step_decoded();
+		void reset();
 	};
 
 	address_space_config m_program_config, m_wave_config, m_reverb_config;
@@ -458,6 +457,7 @@ private:
 	u16 wave_busy_r();
 	template<int Sel> u16 wave_val_r();
 	template<int Sel> void wave_val_w(u16 data);
+	u16 revram_enable_r();
 	void revram_enable_w(u16 data);
 	void revram_clear_w(u16 data);
 	u16 revram_status_r();
