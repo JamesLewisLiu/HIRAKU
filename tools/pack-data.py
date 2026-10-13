@@ -5,7 +5,7 @@
     tools/pack-data.py DEST GAME...       copy dumps/<GAME>/ and its discs to DEST/dumps/<GAME>/
     tools/pack-data.py --list [GAME...]   sizes only (all ingested games when none are named)
 
-machine.txt names disc images by absolute path on this PC (cd_master, cd_slave,
+machine.txt names disc images by absolute path on this PC (cd_master, cd_slave, cd,
 spu_hdd, spu_dvd, hdd). The copy puts each disc beside machine.txt (a .cue
 with its tracks) and rewrites the path as a relative one, which the runtime
 resolves against dumps/<GAME>/. Files already in DEST with the same size are
@@ -16,7 +16,7 @@ import shutil
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DISC_KEYS = ("cd_master", "cd_slave", "spu_hdd", "spu_dvd", "hdd")
+DISC_KEYS = ("cd_master", "cd_slave", "spu_hdd", "spu_dvd", "hdd", "cd")   # cd: System 573
 
 
 def read_kv(path):
