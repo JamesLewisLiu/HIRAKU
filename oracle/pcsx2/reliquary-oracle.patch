@@ -1,0 +1,166 @@
+--- a/pcsx2/VMManager.cpp
++++ b/pcsx2/VMManager.cpp
+@@ -32,6 +32,9 @@
+ #include "Recording/InputRecording.h"
+ #include "Recording/InputRecordingControls.h"
+ #include "SIO/Memcard/MemoryCardFile.h"
++#include "Memory.h"
++#include "IopMem.h"
++#include "HirakuHooks.h"
+ #include "SIO/Pad/Pad.h"
+ #include "SIO/Sio.h"
+ #include "SIO/Sio0.h"
+@@ -3069,8 +3072,57 @@
+ 	R5900SymbolImporter.OnElfLoadedInMemory();
+ }
+ 
++// HIRAKU oracle hook (local patch, not upstream): HK_FRAMEHASH=<file> appends
++// "frame ee_hash iop_hash" every HK_FRAMEHASH_EVERY vsyncs (default 60);
++// HK_STOP_FRAME=<n> ends the process at vsync n. Used to check that runs repeat.
++static void HirakuOracleVsync()
++{
++	static u64 s_hk_frame = 0;
++	static std::FILE* s_hk_file = nullptr;
++	static u64 s_hk_every = 0, s_hk_stop = 0;
++	static bool s_hk_init = false;
++	if (!s_hk_init)
++	{
++		s_hk_init = true;
++		if (const char* f = std::getenv("HK_FRAMEHASH"))
++			s_hk_file = std::fopen(f, "w");
++		const char* e = std::getenv("HK_FRAMEHASH_EVERY");
++		s_hk_every = e ? std::strtoull(e, nullptr, 10) : 60;
++		if (const char* st = std::getenv("HK_STOP_FRAME"))
++			s_hk_stop = std::strtoull(st, nullptr, 10);
++	}
++	s_hk_frame++;
++	auto fnv = [](const u8* p, size_t n) {
++		u64 h = 0xcbf29ce484222325ull;
++		const u64* q = reinterpret_cast<const u64*>(p);
++		for (size_t i = 0; i < n / 8; i++)
++			h = (h ^ q[i]) * 0x100000001b3ull;
++		return h;
++	};
++	if (s_hk_file && s_hk_every && (s_hk_frame % s_hk_every) == 0)
++	{
++		std::fprintf(s_hk_file, "%llu %016llx %016llx\n", (unsigned long long)s_hk_frame,
++			(unsigned long long)fnv(eeMem->Main, Ps2MemSize::MainRam),
++			(unsigned long long)fnv(iopMem->Main, Ps2MemSize::IopRam));
++		std::fflush(s_hk_file);
++	}
++	if (s_hk_stop && s_hk_frame >= s_hk_stop)
++	{
++		if (s_hk_file)
++			std::fclose(s_hk_file);
++		std::_Exit(0);
++	}
++}
++
++void (*Hiraku::vsync_cpu)() = nullptr;
++void (*Hiraku::audio_sample)(float, float) = nullptr;
++void (*Hiraku::gs_frame)(const u32*, u32, u32) = nullptr;
++
+ void VMManager::Internal::VSyncOnCPUThread()
+ {
++	HirakuOracleVsync();
++	if (Hiraku::vsync_cpu)
++		Hiraku::vsync_cpu();
+ 	Pad::UpdateMacroButtons();
+ 
+ 	Patch::ApplyVsyncPatches();
+--- a/pcsx2/SPU2/spu2.cpp
++++ b/pcsx2/SPU2/spu2.cpp
+@@ -6,6 +6,7 @@
+ #include "SPU2/Debug.h"
+ #include "SPU2/Dma.h"
+ #include "Host/AudioStream.h"
++#include "HirakuHooks.h"
+ #include "Host.h"
+ #include "GS/GSCapture.h"
+ #include "MTGS.h"
+@@ -530,6 +531,9 @@
+      * significant DC offset, so we filter it out (e.x. SSX 3)*/
+ 	DCFilter(conv);
+ 
++	if (Hiraku::audio_sample) [[unlikely]]
++		Hiraku::audio_sample(conv[0], conv[1]);
++
+ 	s_current_chunk[s_current_chunk_pos++] = conv[0];
+ 	s_current_chunk[s_current_chunk_pos++] = conv[1];
+ 	if (s_current_chunk_pos == s_current_chunk.size())
+--- a/pcsx2/GS/Renderers/Common/GSRenderer.cpp
++++ b/pcsx2/GS/Renderers/Common/GSRenderer.cpp
+@@ -1,6 +1,7 @@
+ // SPDX-FileCopyrightText: 2002-2026 PCSX2 Dev Team
+ // SPDX-License-Identifier: GPL-3.0+
+ 
++#include "HirakuHooks.h"
+ #include "ImGui/FullscreenUI.h"
+ #include "ImGui/ImGuiManager.h"
+ #include "GS/Renderers/Common/GSRenderer.h"
+@@ -632,6 +633,16 @@
+ 		PerformanceMetrics::Update(registers_written, fb_sprite_frame, false);
+ 	}
+ 
++	// HIRAKU: hand the displayed picture to the host core (HirakuHooks.h)
++	if (Hiraku::gs_frame) [[unlikely]]
++	{
++		static std::vector<u32> s_hk_pixels;
++		u32 w = 0, h = 0;
++		if (blank_frame || !g_gs_device->GetCurrent() || !SaveSnapshotToMemory(0, 0, false, true, &w, &h, &s_hk_pixels))
++			w = h = 0;
++		Hiraku::gs_frame(w ? s_hk_pixels.data() : nullptr, w, h);
++	}
++
+ 	// snapshot
+ 	if (!m_snapshot.empty())
+ 	{
+--- a/pcsx2/CDVD/CDVD.cpp
++++ b/pcsx2/CDVD/CDVD.cpp
+@@ -1242,6 +1242,9 @@
+ 	memcpy(&cdvd.icvps2Key[8], icvps2HiSeed, 8);
+ 
+ 	// Print Calculated Keystore
++	// HIRAKU: only on request; these are secrets and stdout ends up in logs
++	if (!std::getenv("PCSX2_PRINT_KEYSTORE"))
++		return;
+ 	printf("===== KEYSTORE =====\n\n");
+ 	printf("MG_CARDKEY_0="); printChunk(g_keyStore.CardKeyLow[0], 8); printChunk(g_keyStore.CardKeyHi[0], 8); printf("\n");
+ 	printf("MG_CARDIV_0="); printChunk(g_keyStore.CardIV[0], 8); printf("\n");
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -96,6 +96,12 @@
+ endif()
+ 
+ # gsrunner
++# HIRAKU: its Konami Python core, built against this tree (HIRAKU runtime/python/)
++set(HIRAKU_DIR "" CACHE PATH "a HIRAKU checkout: build its Python core binaries too")
++if(HIRAKU_DIR)
++	add_subdirectory(${HIRAKU_DIR}/runtime/python hiraku-python)
++endif()
++
+ if(ENABLE_GSRUNNER)
+ 	add_subdirectory(pcsx2-gsrunner)
+ else()
+--- a/pcsx2/HirakuHooks.h
++++ b/pcsx2/HirakuHooks.h
+@@ -0,0 +1,19 @@
++// SPDX-License-Identifier: GPL-3.0+
++// HIRAKU (local patch, not upstream): taps for running this emulator as a HIRAKU
++// machine core (runtime/python/ in HIRAKU). All are null unless a host sets them.
++#pragma once
++
++#include "common/Pcsx2Types.h"
++
++namespace Hiraku
++{
++	// CPU thread, at every vsync, before the frame limiter and before the vsync is
++	// posted to the GS thread (VMManager::Internal::VSyncOnCPUThread).
++	extern void (*vsync_cpu)();
++	// EE thread, every output sample (48 kHz), after the Python 1 interface board's
++	// ADPCM is mixed in and after the DC filter: what the audio device would get.
++	extern void (*audio_sample)(float left, float right);
++	// GS thread, after each vsync's present: the displayed picture at the internal
++	// resolution, unscaled, RGBA8 (R in the low byte). nullptr/0x0 for a blank frame.
++	extern void (*gs_frame)(const u32* rgba, u32 width, u32 height);
++} // namespace Hiraku

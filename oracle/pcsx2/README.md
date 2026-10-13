@@ -1,0 +1,40 @@
+# PCSX2 Reliquary oracle (Konami Python)
+
+MAME's Python drivers are skeletons, so the reference for a Python core is PCSX2 Reliquary, a GPL-3.0+ PCSX2 fork that runs Python 1 and 2 games (PLAN.md §21, docs/PYTHON.md). This directory builds it with HIRAKU's patch, and runs a set from pristine media in its stock front end, `pcsx2-qt`.
+
+The same build also compiles HIRAKU's Python core (`runtime/python/`, `hiraku-<game>`, linked into `build/cmake/`): Reliquary's emulator hosted by HIRAKU's shell. The core is checked against `pcsx2-qt` from power-on (identical EE/IOP RAM hashes); scripted inputs then run in the core, with HIRAKU's script runner.
+
+```bash
+oracle/pcsx2/build-reliquary.sh all                    # deps, oracle patch, configure, build (capped, -j8)
+oracle/pcsx2/run.py popn9 --seconds 150 --snap-every 25                  # attract, screenshots + EE RAM
+oracle/pcsx2/run.py popn9 --frames 3000 --snap-every 0 --unlimited       # RAM hashes every 60 frames, then stop
+oracle/pcsx2/run.py popn9 --frames 3000 --snap-every 0 --interp          # the same with every CPU interpreted
+```
+
+**Files:**
+- `build-reliquary.sh`: builds `pcsx2-qt` from the release zip unpacked to `$HK_PYTHON_WORK/pcsx2-reliquary` (default `/run/media/roganis/DATA/Python-work`).
+  - Six dependencies (KDDockWidgets, plutovg, plutosvg, rapidyaml, libbacktrace, ECM) are built into `$HK_PYTHON_WORK/deps` at the versions and SHA-256s of Reliquary's CI. The rest are Arch packages.
+  - Each heavy step runs under `systemd-run` with 10 GB and -j8. The main build peaks at 1.3 GB and takes ~1.5 min.
+  - The zip lacks the paraLLEl-GS submodule, so that renderer and Wayland pointer locking are left out.
+- `reliquary-oracle.patch` (six files):
+  - a per-vsync hook in `VMManager.cpp`: `HK_FRAMEHASH=<file>` appends `frame ee_hash iop_hash` (FNV-1a over the 32 MiB EE and 2 MiB IOP RAM) every `HK_FRAMEHASH_EVERY` vsyncs; `HK_STOP_FRAME=<n>` exits at vsync n. Works in `pcsx2-qt` and in `hiraku-<game>` alike;
+  - `pcsx2/HirakuHooks.h`: the vsync, audio and picture taps the core uses (null otherwise);
+  - the derived MagicGate keystore is printed only with `PCSX2_PRINT_KEYSTORE` set (stock Reliquary always prints it to stdout);
+  - `-DHIRAKU_DIR=<checkout>` in the top `CMakeLists.txt` adds `runtime/python/`.
+- `run.py`: one run of a `.py1` set from the collection (`HK_PYTHON_SETS`, default `~/Downloads/konami-python-1-collection`).
+  - **Pristine media:** the set's small files (BBSRAM, dongles, boot ROM, memory-card dongle) are copied fresh, the CHD is linked, and the CHD write overlay starts empty. Reliquary writes all of these back.
+  - **Pinned settings:** RTC 2003-06-01 12:00, MTVU off, game patches off, no audio device, memory-card slot 2 off (as on the cabinet, and as in the core), software GS (`--renderer 14` for Vulkan).
+  - **Capped:** 6 GB of memory, and a timeout.
+  - **Snapshots:** with `--snap-every S`, a savestate is saved over PINE every S seconds of wall time, and its `Screenshot.png` and EE RAM are kept. These are wall-clock, so not frame-aligned; use the frame hashes to compare runs.
+  - **Cost:** host CPU from 30 s on is printed at the end.
+  - **Output:** in `$HK_PYTHON_WORK/oracle/out-<set>/`, outside the repo.
+
+**Known so far** (2026-10-13, pop'n 9):
+- Runs repeat exactly for a fixed CPU mode, at any host speed: identical EE/IOP hashes at all 50 checkpoints over 3,000 frames.
+- JIT and interpreter runs differ from frame 60 on.
+- The interpreters run at ~0.75× real time here.
+
+**Caveats:**
+- **It needs a window.** Qt's `offscreen` platform gives the GS no surface, so a window opens on the desktop (XWayland, `HK_QPA` to change).
+- **Stock Reliquary prints the derived MagicGate keystore.** The patch stops that; `run.py` also strips it from the logs it keeps. Never commit or share raw logs of an unpatched build.
+- **Inputs:** `pcsx2-qt` takes no scripted inputs. Scripts run in the core (`build/cmake/hiraku-popn9 --script oracle/scripts/popn9-play.his`).

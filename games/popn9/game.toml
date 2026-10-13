@@ -1,0 +1,12 @@
+# pop'n music 9 (GQC00 JAB), Konami 2002/2003: Konami Python 1
+id = "popn9"
+title = "pop'n music 9"
+family = "popn"         # pop'n cabinet: 9 buttons
+mame = "popn9"          # MAME's set name (a NOT_WORKING skeleton; the reference is Reliquary)
+core = "python"         # PCSX2 Reliquary hosted by HIRAKU (runtime/python/, PLAN.md section 21)
+
+[python]
+io_mode = "POPN"        # the interface board's input profile (Reliquary's IoMode)
+# SHA-1 of the EE program: boot record C on the disk, Konami-LZ-decoded (tools/pythonfs.py)
+ee_sha1 = "df756acf3bc30184945b995f4daf51726d765bb3"
+hdd = "c00_jab"         # the disk (CHD; MAME's c00jab is flagged BAD_DUMP and has another SHA-1)

@@ -1,5 +1,7 @@
 # MAME oracle
 
+(Konami Python has no MAME driver that runs; its oracle is PCSX2 Reliquary, in `oracle/pcsx2/`.)
+
 MAME (0.289, flatpak `org.mamedev.MAME`) runs the real game from a
 deterministic input script. A Lua script records every access the game makes
 to the hardware. The HIRAKU runtime will record the same stream in the same

@@ -476,3 +476,31 @@ A dance pad is bound in the launcher's Controls (Dance Dance Revolution page): c
 **Checked against MAME, clock for clock** (`oracle/scripts/ddr2m-boot.his`, `ddr2m-play.his`): the first boot and flash install, attract mode, and a game. That game is coins, mode and song select, and a song stepped through to CLEARED. Main RAM is identical on every frame, every snapshot is pixel-identical, and the sound matches MAME's recording (with `--mame-mix`). Both are regress cases.
 
 **Not yet:** a hands-on test with a pad.
+
+## Konami Python 1: pop'n music 9 (in progress, M16)
+
+pop'n music 9 (`popn9`) runs on HIRAKU's Python core: PCSX2 Reliquary's emulator hosted by HIRAKU's shell (PLAN.md §21, docs/PYTHON.md). It is built inside Reliquary's own build. You need:
+- Reliquary's source, `pcsx2-reliquary-1.9.4-reliquary.zip`, unpacked to `$HK_PYTHON_WORK/pcsx2-reliquary` (default `/run/media/roganis/DATA/Python-work`);
+- the set as Reliquary takes it: `popn9.py1` and its folder (the disk CHD, the interface board's ROMs, BBSRAM, dongle, the KN00002 memory card), plus the arcade BIOS (`COH-H31000.BIN`, `.NVM`, `.MEC`) and the MagicGate key files. The ingester finds `bios/` and `keys/` next to the sets' folder, or takes `--bios DIR --keys DIR`.
+
+```bash
+oracle/pcsx2/build-reliquary.sh all     # once: Reliquary with HIRAKU's patch, and hiraku-popn9 (~3 min, memory-capped)
+tools/build-libchdr.sh                  # once: the CHD reader the ingester uses
+tools/ingest.py ~/Downloads/konami-python-1-collection/kpython1/popn9.py1
+build/cmake/hiraku-popn9 --window --renderer vk
+```
+
+- `--renderer vk` draws with Vulkan: less CPU. The default, `sw` (software), is what the reference runs and what `tools/regress.py` checks.
+- The CHD stays where it is (linked, not unpacked). The game's writes (BBSRAM, dongle, the disk's own writes as an overlay) go to the NVRAM folder, `~/.local/share/hiraku/popn9`.
+- The keys and the BIOS are copied into `dumps/popn9/`, which is never committed. Reliquary's habit of printing the derived keys is off in HIRAKU's build.
+- Boot takes about 50 s (BIOS, card, disk), as on the real cabinet.
+
+| Key | pop'n music |
+|---|---|
+| Z S X D C F V G B | buttons 1–9, left to right (white, yellow, green, blue, red, blue, green, yellow, white) |
+| 5 | coin (two coins make a credit) |
+| F2 / 9 | test / service |
+
+In test mode, blue (buttons 4/6) moves and red (5) selects; I/O CHECK > INPUT CHECK shows SW1–SW9 lighting for buttons 1–9.
+
+**Not yet:** lamps (the interface board's outputs aren't decoded), the board's own CPU (Reliquary answers its FireWire commands directly), other Python games (they need their own `games/<id>/game.toml`; the ingester tells you the program's SHA-1).

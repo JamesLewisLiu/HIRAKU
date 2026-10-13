@@ -1,0 +1,13 @@
+# pop'n music 9 (Konami Python 1): boot -> title -> 2 coins (one credit) -> the red
+# button starts. Checks the interface board's inputs through the HIRAKU core.
+game popn9
+
+at 3200 press "Coin 1" 8
+at 3240 press "Coin 1" 8
+at 3300 snap
+at 3400 press "P1 Button 5" 8
+at 3500 snap
+at 3800 snap
+at 4100 snap
+at 4400 snap
+at 4500 quit

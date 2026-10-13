@@ -1041,6 +1041,127 @@ queue at its target). The emulated machine is unchanged.
 - Tested with the window on DP-1 (240 Hz) and DP-2 (144 Hz, with `HK_DISPLAY_SYNC_SKEW` to force a
   fit); 60 Hz still to test on a real 60 Hz display (the N100 cabinet).
 
+## 21. Konami Python 1/2 (M16, started 2026-10-13)
+
+The owner asked for the groundwork for a Python core. The facts behind this section are in docs/PYTHON.md. The work files (sources, the Reliquary build, oracle outputs, survey notes, decoded boot records) live in `/run/media/roganis/DATA/Python-work/`, outside the repo; the oracle build and runner are in `oracle/pcsx2/`.
+
+### What is different from every core so far
+
+- **Python is a PlayStation 2.** EE (R5900 + VU0/VU1), GS, IOP (R3000A), SPU2, IPU, DMAC/VIF/GIF. PCSX2's core is ~365,000 lines; MAME's whole 573 port was ~16,000. Porting a PS2 into HIRAKU device by device, as was done for DJ Main and the 573, is not a few-week job.
+- **There is no MAME oracle.** Every Python 1 and Python 2 set in MAME is a NOT_WORKING skeleton. The only emulator that runs these games is **PCSX2 Reliquary**, a GPL-3.0+ PCSX2 fork. "Match MAME first" becomes "match Reliquary first", with two caveats:
+  - PCSX2 is not cycle-exact hardware; its timing model is its own. Lockstep against it means matching *its* model, as HIRAKU matched MAME's.
+  - Reliquary emulates the Python 1 interface board (a TX39 MIPS with its own firmware) at the FireWire command level; the board's CPU never runs. So below that layer the reference is an HLE, not hardware truth.
+- **The game program is easy to get at.** Each disk carries the EE program as plain MIPS, only LZ-compressed (docs/PYTHON.md §4). The offline decode of pop'n 9's equals Reliquary's EE RAM byte for byte in its code. So a static recompiler has its input without any decryption; only the memory-card boot loader is a KELF.
+
+### Measured (2026-10-13, Ryzen 5700X3D, pop'n 9 attract, Reliquary built here)
+
+- **Reliquary builds on Linux** with system packages plus six small local dependencies: 83 s, 1.3 GB peak (`oracle/pcsx2/build-reliquary.sh`).
+- **pop'n 9 boots to attract in it:** device checks, warning, title, How To Play, looping every ~100 s.
+- **Host cost at real-time speed**, whole process, from 30 s to 150 s of attract:
+
+  | CPU mode | GS renderer | Host CPU |
+  |---|---|---|
+  | JITs (default) | software | 44 % of one core |
+  | JITs | Vulkan | 34 % of one core (plus the GPU) |
+  | interpreters | software | 78 %, and still **below real time**: ~0.75× (3,000 frames in ~66 s unlimited) |
+
+  - Unlimited, the JITs run 3,000 frames in ~7 s including start-up: 7× real time or more.
+  - For comparison, HIRAKU's bm3final takes 10–13 % of a core and ddr2m ~10 %. pop'n 9 in Reliquary is 3–4× that, before any N100 discount (×2 or worse per core).
+- **Runs repeat exactly.** Same settings and CPU mode: EE and IOP RAM identical at all 50 checkpoints over 3,000 frames, frame-limited or not (the `HK_FRAMEHASH` hook). JIT and interpreter runs differ from frame 60 on, so the oracle pins its CPU mode.
+- **PCSX2's EE timing is a static table:** each opcode has a cost in 1/8 cycles (`R5900OpcodeTables.cpp`; 9 by default, 2×8 for MULT, 14×8 for DIV), summed per block and scaled at the block's end (`Interpreter.cpp:31-52, 214`). A recompiled block can carry its cost as a constant, as on the 573.
+- **pop'n 9's EE program** decoded offline equals Reliquary's EE RAM in all its code; 1.4 MB, ~13,000 `jal`.
+
+### Options for the core
+
+1. **Host Reliquary's emulation core inside HIRAKU** (`runtime/python/`, `core = "python"`). Link PCSX2's `pcsx2` core library, which doesn't need Qt (checked: `pcsx2-gsrunner` builds against it with no Qt library linked), and implement its `Host::` interface on HIRAKU's shell: window, audio, input scripts, cabinet controls, lamps, NVRAM.
+   - Playable soonest. Identical to the oracle by construction.
+   - HIRAKU then owns a fork of a ~365,000-line emulator that its upstream re-syncs monthly; efficiency is PCSX2's, not better.
+2. **Port the PS2 into HIRAKU piece by piece**, the 573 way.
+   - Matches the codebase's style. Months of work before anything boots, against a reference that isn't cycle-exact anyway.
+3. **Both, in order (recommended).** Start from (1), then replace parts behind the same seams only where a measurement says it pays:
+   - **the EE game program by static recompilation**, the Firebeat pipeline on MIPS: Ghidra manifest (Ghidra has no R5900 language; it needs an extension or HIRAKU's own decoder), one C function per guest function, PCSX2's EE interpreter as the fallback and as the shadow-mode reference in the same process;
+   - the interface board's I/O replaced by HIRAKU's cabinet layer (pop'n buttons, lamps, latency);
+   - the GS: Reliquary's software renderer for the oracle, its Vulkan renderer for play, unless the N100 numbers say otherwise.
+   - Each replacement is checked in lockstep against the unmodified Reliquary path, as the 573 is against MAME.
+
+The efficiency case is weaker than on the 573. There the baseline was an interpreter; here it is PCSX2's mature x86-64 JITs. HIRAKU's gains on Python would come mostly from latency, I/O and the shell, plus whatever the EE recompile and an idle-skip give over the JIT. PY-0 measures this before anything is decided.
+
+### Phases
+
+**PY-0. The oracle** (a few days)
+- A local Reliquary patch, kept in the repo as `oracle/pcsx2/` (a patch file plus the runner):
+  - **done:** a per-vsync hook writing EE/IOP RAM hashes every N frames, and a stop frame (`HK_FRAMEHASH`, `HK_STOP_FRAME`; `oracle/pcsx2/reliquary-oracle.patch`). Boot-to-attract already repeats exactly;
+  - P1IO input from HIRAKU's `.his` scripts at vsync (Reliquary's input recording covers SIO2 pads only);
+  - `FW_VERBOSE_LOGS` for a FireWire command trace (the "MMIO trace" of this board);
+  - GS VRAM and SPU2 output taps; a WAV that includes the board's ADPCM.
+- Pinned settings: RTC fixed, MTVU off, game patches off, the CPU modes chosen for lockstep. Pristine media per run (`oracle/pcsx2/run.py` does this already).
+- **Exit:** two runs from the same script give identical hashes on every frame, for pop'n 9 boot-to-attract (done for 3,000 frames at 60-frame spacing) and a scripted song.
+
+**PY-1. Reliquary as a HIRAKU core** (1–2 weeks)
+- `runtime/python/`: PCSX2's core library built by HIRAKU's CMake (or prebuilt by `build-reliquary.sh` and linked), `Host::` on the shell. `games/popn9/game.toml`, an ingester for `.py1` sets (`tools/ingest.py`: the boot header, the CHD, the dongles, the BBSRAM).
+- pop'n 9 controls and lamps in `cabinet.cpp` (9 buttons, as on Firebeat pop'n).
+- **Exit:** pop'n 9 plays in `hiraku-popn9`, bit-identical to the oracle (same code); the owner tests it hands-on.
+
+**PY-2. The EE recompiled** (weeks; the main work)
+- R5900 to C from record C: a decoder and generator (128-bit registers, MMI, branch-likely, COP1 with PS2 float rules as PCSX2 implements them, COP2 macro mode), cross-checked against PS2Recomp's tables and PCSX2's interpreter.
+- Cycle accounting that matches PCSX2's EE interpreter, so the devices see the same timing.
+- Shadow mode against the interpreter in the same process.
+- **Exit:** pop'n 9's script in lockstep with the interpreter-mode oracle; host cost measured on N100-class hardware against Reliquary's JIT.
+
+**PY-3. The rest of Python 1** (ongoing): pop'n 10–14 and Dancing Stage Fusion as media arrive. dstagef needs a clean dump, or a documented repair (boot ROM padding, record A).
+
+**PY-4. Python 2** (needs media): DDR SuperNOVA 1/2, GuitarFreaks/DrumMania V–V3. P2IO is USB and the disk is DNAS-bound; Reliquary emulates both.
+
+### Progress (2026-10-13): PY-0 and PY-1
+
+**The oracle, `oracle/pcsx2/`:**
+- **The patch** (`reliquary-oracle.patch`, six files):
+  - the RAM-hash hook;
+  - `pcsx2/HirakuHooks.h`: taps for the vsync, the audio output after the interface board's ADPCM, and the displayed picture;
+  - the keystore printout made opt-in (`PCSX2_PRINT_KEYSTORE`);
+  - a CMake entry point (`-DHIRAKU_DIR`) that builds HIRAKU's Python core inside Reliquary's tree. Reliquary's CMake assumes it is top-level in ~50 places, so it can't go inside HIRAKU's.
+- **Memory-card slot 2 is off** in the oracle as in the core: a Python cabinet has only the dongle, in slot 1. With slot 2 on, the BIOS probes it and the runs part at frame ~180.
+- **Dropped from PY-0:** scripted P1IO input in `pcsx2-qt`. The core runs Reliquary's own code, and HIRAKU's script runner drives its inputs, so the oracle only has to confirm that the core matches it from power-on. It does, below.
+
+**The core, `runtime/python/` (`core = "python"`, `hiraku-popn9`):**
+- **Built by** `oracle/pcsx2/build-reliquary.sh` against Reliquary's `PCSX2` library. The binary sits next to Reliquary's resources and is linked into `build/cmake/`.
+  - HIRAKU's shell sources are compiled there too, with `-fexceptions`: PCSX2 builds without exceptions.
+- **`Host::`:** implemented after `pcsx2-gsrunner`. The GS runs surfaceless.
+- **Pictures:** the GS thread hands each presented frame over (native size: 512×448 on pop'n 9). At vsync N the CPU thread waits for frame N−1, so pictures are deterministic and the GS still overlaps the EE.
+- **Sound:** 48 kHz, gathered per vsync.
+- **The run's files:** the BBSRAM, dongles, boot ROM and memory card are copied into the NVRAM folder (or a fresh folder per scripted run); the CHD gets Reliquary's write overlay there.
+- **Exit:** the shell's `exit()` ends through glibc `on_exit` → `_exit`. PCSX2's static destructors assert while the VM is still mapped.
+- **Settings stay out of `~/.config/PCSX2`.** `EmuFolders::SetDataDirectory()` would create it, so the core sets the folders itself.
+- **`tools/ingest.py <set>.py1`:**
+  - identifies the game by the SHA-1 of its decoded EE program (`games/popn9/game.toml [python] ee_sha1`);
+  - copies the board's files, the BIOS and the keys into `dumps/popn9/`, and links the CHD.
+
+**Results (pop'n 9):**
+- **Matches the oracle:** EE and IOP RAM hashes identical to `pcsx2-qt`'s at all 50 checkpoints up to frame 3,000 (JITs, software GS).
+- **Repeatable:** picture and sound digests identical over 6,000 frames.
+- **Plays:** `oracle/scripts/popn9-play.his` goes from power-on through coins, NORMAL and song select to "Requiem", scored, and CLEARED. It is the regress case `popn9-play` (14,000 frames, ~850 MB peak).
+- **Buttons checked in test mode:** I/O CHECK > INPUT CHECK lights SW1–SW9 for buttons 1–9; Service lights SERVICE. Coins count.
+- **The window works:** the shell's OpenGL picture beside PCSX2's surfaceless Vulkan device. The Vulkan GS (`--renderer vk`) gives the same game, with the same scores.
+- **Host cost** (headless, 100 s of game, this desktop, noisy):
+  - software GS ~30 % of a core; Vulkan ~18–27 %;
+  - the CPU thread's own work 1.9–2.3 ms a frame on average;
+  - one 175 ms frame at boot (frame 326);
+  - to be measured properly (A/B, median) and on N100-class hardware.
+
+**Next:**
+- the owner's hands-on test;
+- the interface board's lamp outputs;
+- launcher entries;
+- then PY-2 (the EE recompiled), starting from a measured profile of where the time goes.
+
+### Decisions (owner, 2026-10-13)
+
+1. **Option 3:** host Reliquary's core in HIRAKU first (PY-1), then replace parts (the EE by static recompilation, the I/O by HIRAKU's cabinet layer) where a measurement says it pays.
+2. **Reliquary is the reference** for Python, in place of MAME, whose Python drivers are skeletons. The oracle pins its CPU mode.
+3. **The first set is `popn9`.** The owner gets the other games later for testing.
+- Still open: Python 2 media; a clean `dstagef`.
+- Licence: linking Reliquary makes the Python binaries GPL-3.0 as a whole (its Python 2 files carry only the repo's GPL-3). HIRAKU's own code stays GPL-3.0-or-later.
+
 ## M0 steps (all done)
 
 1. ~~`git init` HIRAKU and add `.gitignore` for `dumps/` and `build/`~~ Done.

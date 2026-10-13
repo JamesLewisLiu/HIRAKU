@@ -42,6 +42,9 @@ CASES = {
     "ddr2m-boot": ("ddr2m", 24000, ["--rtc", "1791828936", "--script", "oracle/scripts/ddr2m-boot.his"]),
     # ... and a game: coins, mode and song select, a song stepped through to CLEARED, stage 2
     "ddr2m-play": ("ddr2m", 21000, ["--rtc", "1791837575", "--script", "oracle/scripts/ddr2m-play.his"]),
+    # Konami Python 1 (PLAN.md section 21): Reliquary hosted; BIOS, card boot, disk boot,
+    # attract, coins, NORMAL mode, a song played through to CLEARED. Software GS.
+    "popn9-play": ("popn9", 14000, ["--script", "oracle/scripts/popn9-play.his"]),
 }
 
 # report lines that describe the host, not the machine
