@@ -136,8 +136,8 @@
   {
    "name": "package.intend",
    "encrypted": false,
-   "captured": false,
-   "body": "<call srcid=\"01401401000100045FEF\" model=\"C00:J:A:A\"><package method=\"intend\" url=\"http://services/\" model=\"C00:J:A:A\"/></call>"
+   "captured": true,
+   "body": "<call srcid=\"01401401000100045FEF\" model=\"C00:J:A:A\"><package method=\"intend\" url=\"http://services.PYTHON1-00000001/message\" model=\"C00:J:A:A\"/></call>"
   },
   {
    "name": "p_friend.ask",

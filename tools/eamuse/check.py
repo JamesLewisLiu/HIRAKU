@@ -183,6 +183,12 @@ def check_method(what: str, e, status: int):
         items = e.findall("item")
         need(len(items) == 1, f"{what}: wants one <item> (the player's place)")
         ints(items[0], "entry", "rank", "update")
+    elif what == "package.list":
+        for i in e:   # the game downloads only an item named "message" (its title screen's ticker)
+            need(i.tag == "item", f"package.list: <{i.tag}> (the game reads <item>)")
+            need(i.attrib.get("url", "").startswith("http://"), f"package.list: url {i.attrib.get('url')!r} isn't http://")
+            ints(i, "size")
+            need(int(i.attrib["size"]) >= 1, "package.list: size (the game reads size - 1 bytes)")
     elif what == "eemall.i_get":
         for i in e:
             need(i.tag == "item", f"eemall.i_get: <{i.tag}>")

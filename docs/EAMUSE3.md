@@ -51,7 +51,10 @@ a line, tab-separated `key=value` fields:
 - `users`: KONAMI IDs (user, pass, cards, active);
 - `rank-score`, `rank-hitasura`, `rank-gamblerz`: each entrant's best;
 - `eemall-CARD`: optional, ee'MALL item numbers for a card, one a line (the server owner writes these;
-  pop'n 9 itself never asks, see `eemall.i_get`).
+  pop'n 9 itself never asks, see `eemall.i_get`);
+- `message`: optional, written by the server owner: one line (up to 255 bytes, ASCII or
+  Shift-JIS) that every cabinet downloads at start-up and scrolls across its title screen (see
+  `package`). Delete it to stop.
 
 ## What the cabinet does on the network
 
@@ -171,9 +174,21 @@ means that method is never sent. `expire` is seconds.
   stamps its times "+9". So send the cabinet's local time, Japan time for a Japanese cabinet,
   not UTC.
 
-**package.list / package.intend** [game / code] (`0x197960`): downloads. An empty answer
-`<package status="0"/>` means none. A list would be `<item url= name= desc= size= pkgtype= sumtype= sum= from= till=/>`;
-offering packages isn't explored.
+**package.list / package.intend** [game] (`0x197960`; the flow `0x184410`): downloads. pop'n 9
+takes one package, **`message`**: a line of text it scrolls across the top of its title screen
+(`0x1237c0`). At start-up, from the title:
+1. `<package method="list" pkgtype="all" model=/>`. An empty answer `<package status="0"/>` means
+   nothing to download. An offer is an item:
+   `<item url="http://host/message" name="message" desc="" size="N" pkgtype="all" sumtype="" sum="" from="" till=""/>`
+   (the game keeps url, name, desc, size, pkgtype, sumtype and sum; it looks only for the name
+   `message`).
+2. `<package method="intend" url="(the item's url)" model=/>`, answered `<package status="0"/>`.
+3. A plain HTTP/1.0 `GET` of the url (no e-AMUSE envelope, no encryption); the game keeps at most
+   `size` - 1 bytes of the body. ASCII and Shift-JIS (kana and kanji) both show.
+
+Checked in HIRAKU, offline and online through hiraku-eamuse: "HELLO FROM THE SERVER" and
+"ひらくへようこそ！ HIRAKU e-AMUSEMENT 稼動中" scrolled across the title. A server should give a url
+the cabinet reaches like its services (hiraku-eamuse uses the Host the call came with).
 
 **numbering.assign** [game] (`0x197530`): a new card's number.
 
@@ -413,6 +428,6 @@ The card holds no player data, only an identity.
 
 ## Not known yet
 
-- `package.intend`; what `alter` and `aflag` are for; what the pop'n friends statuses 600 and 601
+- What `alter` and `aflag` are for; what the pop'n friends statuses 600 and 601
   mean to a player.
 - What 700/701 mean exactly.

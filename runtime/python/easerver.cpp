@@ -460,12 +460,37 @@ std::string EamuseServer::answer(const Call &c, const Request &r, const std::str
     }
     if (m == "posevent" && (f == "sale" || f == "sales"))   // approve is required (0x18af68)
         return "<posevent status=\"0\" approve=\"1\" margin=\"0\"/>";
-    // services this server keeps nothing for: pcbtracker alive, posevent income, package list
-    // (no downloads), p_friend get/state/ask
+    if (m == "package" && f == "list") {   // (0x197960) the one package pop'n 9 takes: "message"
+        const std::string text = message();
+        if (text.empty()) return "<package status=\"0\"/>";
+        // the game downloads url, at most size - 1 bytes, and scrolls it on its title (0x1237c0)
+        return "<package status=\"0\"><item url=\"http://" + esc(host) + "/message\" name=\"message\" desc=\"\" size=\"" +
+               std::to_string(text.size() + 1) + "\" pkgtype=\"all\" sumtype=\"\" sum=\"\" from=\"\" till=\"\"/></package>";
+    }
+    // services this server keeps nothing for: pcbtracker alive, posevent income, package intend,
+    // p_friend get/state/ask
     return "<" + m + " status=\"0\"/>";
 }
 
+// The owner's message for the cabinets' title screens (the file "message"), at most 255 bytes,
+// one line; Shift-JIS or ASCII as the owner writes it.
+std::string EamuseServer::message() const {
+    std::string t = read_file("message");
+    if (const size_t nl = t.find_first_of("\r\n"); nl != std::string::npos) t.erase(nl);
+    if (t.size() > 255) t.resize(255);
+    return t;
+}
+
 std::string EamuseServer::handle(const std::string &req) {
+    if (req.compare(0, 4, "GET ") == 0) {   // a package's download: the message
+        const size_t sp = req.find(' ', 4);
+        const std::string path = req.substr(4, sp == std::string::npos ? std::string::npos : sp - 4);
+        const std::string text = message();
+        const bool ok = !text.empty() && path.size() >= 8 && path.compare(path.size() - 8, 8, "/message") == 0;
+        if (log) log("GET " + path + (ok ? " -> the message, " + std::to_string(text.size()) + " bytes" : " -> 404"));
+        if (!ok) return "HTTP/1.0 404 Not Found\r\nContent-Length: 0\r\n\r\n";
+        return "HTTP/1.0 200 OK\r\nContent-Type: text/plain\r\nContent-Length: " + std::to_string(text.size()) + "\r\n\r\n" + text;
+    }
     const size_t head_end = req.find("\r\n\r\n");
     const std::string head = req.substr(0, head_end), info = header(head, "X-Eamuse-Info");
     std::string body = head_end == std::string::npos ? "" : req.substr(head_end + 4);

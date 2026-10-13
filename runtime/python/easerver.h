@@ -56,6 +56,7 @@ private:
     };
     static bool parse(const std::string &xml, Call &c);
     std::string answer(const Call &c, const Request &r, const std::string &host);
+    std::string message() const;   // the owner's title-screen message (package "message"), or ""
 
     std::string rank_register(const Board &b, const Request &r);
     std::string rank_get(const Board &b, const Request &r);
