@@ -627,6 +627,8 @@ Effect is E and VEFX is W. Coin is 5; Test and Service are F2 and 9. A USB IIDX 
 
 **The background video** plays in the middle of the play field during a stage, from the Video CD (`gc992-jaa04`), as the game drives the DVD player; MAME shows none. `--video off` gives MAME's picture. The video needs FFmpeg's libraries (libavformat, libavcodec) when HIRAKU is built; without them the build goes ahead without it. Which clip goes with which song, and the exact keying and placement, still need checking against a real cabinet (PLAN.md section 21, TW-3).
 
+**Speed** (desktop, with the game's R3000 code recompiled: `tools/mipsrec.py bmiidx3`, then `ninja`): a stage 1.5 ms a frame with the video, 1.3 without. When the game reads its program CD (between screens) frames take up to about 40 ms: MAME's SCSI model, which HIRAKU runs as it is.
+
 **Not there yet:**
 - **1st style (`bmiidx`)** stops at E600 DVD INIT ERROR, as in MAME (TW-5).
 

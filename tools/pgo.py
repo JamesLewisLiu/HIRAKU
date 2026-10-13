@@ -10,7 +10,7 @@ branches are taken (PLAN.md sections 14 and 19). This script:
 1. builds instrumented, in build/pgo-gen (clang, HK_PGO_GENERATE);
 2. runs every tools/regress.py case whose game is ingested, headless, from a blank NVRAM
    (the cases are short, and they are what the games do: boot, attract, a song);
-3. merges the counts per core into build/pgo/<core>.profdata (firebeat, sys573; DJ Main runs
+3. merges the counts per core into build/pgo/<core>.profdata (firebeat, sys573, twinkle; DJ Main runs
    slower with a profile, so it gets none): the cores compile some sources into separate
    copies, whose hot paths must not be blended;
 4. sets HK_PGO_DIR in DIR's CMake cache, and rebuilds there.
@@ -28,7 +28,7 @@ import sys
 import tomllib
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-PROFILED = ("firebeat", "sys573")   # the cores CMakeLists.txt's hk_pgo() calls use a profile for
+PROFILED = ("firebeat", "sys573", "twinkle")   # the cores CMakeLists.txt's hk_pgo() calls use a profile for
 GEN = os.path.join(ROOT, "build", "pgo-gen")
 OUT = os.path.join(ROOT, "build", "pgo")
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))

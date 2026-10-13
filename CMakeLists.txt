@@ -379,7 +379,8 @@ add_library(hiraku_mametw STATIC ${HK_TW_MAME})
 target_link_libraries(hiraku_mametw PUBLIC hiraku_mame573)
 target_compile_options(hiraku_mametw PRIVATE -w -O2)
 
-add_library(hiraku_twinkle STATIC runtime/twinkle/board.cpp runtime/twinkle/core.cpp)
+# the PS1's R3000 recompiled as on the 573 (runtime/sys573/mips.h: the same code, built in here too)
+add_library(hiraku_twinkle STATIC runtime/twinkle/board.cpp runtime/twinkle/core.cpp runtime/sys573/mips.cpp)
 target_include_directories(hiraku_twinkle PUBLIC runtime)
 # the background video (runtime/twinkle/video.h): the Video CD decoded with FFmpeg's libraries,
 # when there are any (without them, Twinkle runs with MAME's picture)
@@ -396,16 +397,36 @@ else()
 endif()
 target_link_libraries(hiraku_twinkle PUBLIC hiraku_mametw hiraku_cabinet)
 target_compile_options(hiraku_twinkle PRIVATE -O2 -Wno-unused-parameter)
+# Twinkle's own MAME devices (the 68000, SCSI, the RF5C400...) with Twinkle's profile; the PS1 parts
+# it shares with the 573 (hiraku_mame573) keep the 573's
+hk_pgo(twinkle hiraku_mametw hiraku_twinkle)
 
-# hiraku_twinkle_game(<id>): a Twinkle game. MAME's devices, both CPUs interpreted (TW-1); the
-# data comes from dumps/<id>/ at run time
+# hiraku_twinkle_game(<id>): a Twinkle game. MAME's devices; the game's R3000 blocks recompiled from
+# a recording, build/<id>/mips573.txt, as hiraku_sys573_game does (tools/mipsrec.py); the 68000
+# interpreted. The data comes from dumps/<id>/ at run time
 function(hiraku_twinkle_game id)
+  set(rec ${CMAKE_SOURCE_DIR}/build/${id}/mips573.txt)
+  set(gen ${CMAKE_BINARY_DIR}/gen573/${id})
+  set(outs ${gen}/table.cpp)
+  math(EXPR last "${HK_573_BLOCK_FILES} - 1")
+  foreach(k RANGE ${last})
+    list(APPEND outs ${gen}/blocks_${k}.cpp)
+  endforeach()
+  add_custom_target(hiraku_${id}_mipsgen
+    COMMAND python3 ${CMAKE_SOURCE_DIR}/tools/mipsgen.py ${rec} ${gen} --files ${HK_573_BLOCK_FILES} --min-runs ${HK_573_MIN_RUNS}
+    BYPRODUCTS ${outs}
+    COMMENT "Recompiling ${id}'s R3000 blocks, if its recording changed")
+  add_library(hiraku_${id}_blocks STATIC ${outs})
+  add_dependencies(hiraku_${id}_blocks hiraku_${id}_mipsgen)
+  target_link_libraries(hiraku_${id}_blocks PRIVATE hiraku_mame573)
+  target_include_directories(hiraku_${id}_blocks PRIVATE ${CMAKE_SOURCE_DIR}/runtime)
+  target_compile_options(hiraku_${id}_blocks PRIVATE -w -O2 -fwrapv)
   add_executable(hiraku-${id} runtime/main.cpp runtime/core/sampler.cpp)
   target_compile_definitions(hiraku-${id} PRIVATE HK_GAME_ID="${id}" HK_ROOT="${CMAKE_SOURCE_DIR}")
   if(TARGET hiraku_host)
     target_link_libraries(hiraku-${id} PRIVATE hiraku_host)
   endif()
-  target_link_libraries(hiraku-${id} PRIVATE hiraku_shell hiraku_twinkle)
+  target_link_libraries(hiraku-${id} PRIVATE hiraku_shell hiraku_twinkle hiraku_${id}_blocks)
 endfunction()
 
 # hiraku_djmain_game(<id>): a DJ Main game. No generated code: the program is

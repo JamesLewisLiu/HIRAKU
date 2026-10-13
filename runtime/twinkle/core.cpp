@@ -10,6 +10,7 @@
 #include <string>
 
 #include "shell/core.h"
+#include "sys573/mips.h"
 #include "twinkle/board.h"
 
 namespace hk {
@@ -78,7 +79,7 @@ public:
         if (mame_mix_) cfg.mix_gain = 1.0f;
         cfg.video = video_;
         if (!twinkle::init(cfg)) return false;
-        printf("hiraku %s: Twinkle, MAME's PS1 and 68000 interpreted\n", o.game.c_str());
+        printf("hiraku %s: Twinkle, MAME's PS1 (its recompiled blocks) and 68000\n", o.game.c_str());
         return true;
     }
 
@@ -94,6 +95,7 @@ public:
                (unsigned long long)twinkle::lamp_changes(), twinkle::display_text().c_str());
         if (std::string s = twinkle::sound_report(); !s.empty()) printf("%s\n", s.c_str());
         if (std::string s = twinkle::video_report(); !s.empty()) printf("%s\n", s.c_str());
+        if (std::string s = k573::mips::report(); !s.empty()) printf("%s\n", s.c_str());
     }
     void debug_line(uint64_t f) override {
         printf("f%llu pc %08x 68000 %06x\n", (unsigned long long)f, twinkle::pc(), twinkle::audio_pc());

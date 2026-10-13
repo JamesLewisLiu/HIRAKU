@@ -32,6 +32,7 @@ protected:
 private:
     int m_fd = -1;
     u64 m_sectors = 0;
+    u64 m_readahead = ~u64(0);   // the 8 MiB stretch last read ahead
     hard_disk_file::info m_info;
     std::unordered_map<u32, std::vector<u8>> m_written;
 };

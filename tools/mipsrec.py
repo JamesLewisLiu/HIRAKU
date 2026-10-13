@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Record the R3000 blocks System 573 games run, for the recompiler (runtime/sys573/mips.h).
+"""Record the R3000 blocks System 573 and Twinkle games run, for the recompiler (runtime/sys573/mips.h).
 
-    tools/mipsrec.py [GAME...]     every 573 game with regress cases, or these
+    tools/mipsrec.py [GAME...]     every 573 and Twinkle game with regress cases, or these
 
 Runs each game's tools/regress.py cases interpreted, with HK_573_RECORD, and adds what they ran
 to build/<game>/mips573.txt (counts add up over runs). The next build recompiles the blocks
@@ -25,7 +25,7 @@ import regress   # noqa: E402
 def is_573(game):
     try:
         with open(os.path.join(ROOT, "games", game, "game.toml"), "rb") as fh:
-            return tomllib.load(fh).get("core") == "sys573"
+            return tomllib.load(fh).get("core") in ("sys573", "twinkle")   # the same PS1
     except FileNotFoundError:
         return False
 
@@ -36,7 +36,7 @@ def main():
     games = sys.argv[1:] or sorted({g for g, *_ in regress.CASES.values() if is_573(g)})
     for game in games:
         if not is_573(game):
-            sys.exit(f"{game} is not a System 573 game")
+            sys.exit(f"{game} is not a System 573 or Twinkle game")
         cases = [c for c, (g, *_) in regress.CASES.items() if g == game]
         if not cases:
             print(f"{game}: no regress cases; record a run of your own (see --help)")

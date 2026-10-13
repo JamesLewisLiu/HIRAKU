@@ -8,6 +8,7 @@
 #endif
 
 #include "shell/cabinet.h"
+#include "sys573/mips.h"
 
 #include "emu.h"
 #include "screen.h"
@@ -656,6 +657,9 @@ bool init(const Config &cfg) {
     m.start();
     m.reset();
 
+    // the game's R3000 blocks, recompiled as on the 573 (HK_573_RECORD, HK_573_BLOCKS: sys573/mips.h)
+    k573::mips::init(*st.m_maincpu);
+
 #if HK_TWINKLE_VIDEO
     // the background video: the player's state from MAME's xvd701 (a HIRAKU edit), at machine time
     if (cfg.video && !cfg.video_cd.empty()) {
@@ -740,6 +744,7 @@ void set_audio_sink(AudioSink s) { g.audio_sink = std::move(s); }
 void save_nvram() {
     if (g_trace.f) { g_trace.emit(); fclose(g_trace.f); g_trace.f = nullptr; }
     if (g.machine) g.machine->nvram_save();
+    k573::mips::finish();
 }
 
 double seconds() { return g.machine ? g.machine->m_basetime.as_double() : 0.0; }

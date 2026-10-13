@@ -13,9 +13,13 @@
 // None of this feeds back into the machine: it only changes the picture the host sees.
 #pragma once
 
+#include <condition_variable>
 #include <cstdint>
 #include <cstdio>
+#include <deque>
+#include <mutex>
 #include <string>
+#include <thread>
 #include <vector>
 
 struct AVFormatContext;
@@ -50,16 +54,23 @@ public:
     // the whole frame. Nothing when the player shows no picture.
     void composite(double t, uint32_t *rgb, int w, int h, const Picture &pic);
 
-    // for the exit report: commands taken, frames decoded
+    // for the exit report: commands taken, frames shown (the worker may have decoded a few more)
     uint64_t commands() const { return m_commands; }
     uint64_t frames_decoded() const { return m_decoded; }
 
 private:
+    struct Frame {
+        unsigned w = 0, h = 0, cw = 0;   // display size; chroma plane width
+        std::vector<uint8_t> y, cb, cr;
+    };
     static int read(void *self, uint8_t *buf, int size);   // the disc's MPEG data, sector by sector
+    bool open_decoder(uint32_t sector);   // on the worker
     void close_decoder();
     void start_chapter(int chapter);
-    bool decode_next();          // the next frame into m_y/m_cb/m_cr; false at the end
-    bool advance_to(double v);   // decode up to video time v (seconds into the chapter)
+    void stop_worker();
+    void worker(uint32_t sector);     // decodes the chapter in order, a few frames ahead
+    bool decode_next(Frame &f);       // the next frame; false at the end
+    bool advance_to(double v);   // the frame for video time v (seconds into the chapter)
 
     FILE *m_bin = nullptr;
     uint32_t m_sectors = 0;
@@ -76,10 +87,21 @@ private:
     size_t m_part_pos = 0;
     uint32_t m_next_sector = 0;
     double m_period = 1.0 / 29.97;     // the stream's frame period
-    int64_t m_index = -1;              // the frame held in m_y/m_cb/m_cr (-1: none yet)
-    bool m_ended = false;
-    unsigned m_w = 0, m_h = 0, m_cw = 0;   // display size; chroma plane width
-    std::vector<uint8_t> m_y, m_cb, m_cr;
+    int64_t m_index = -1;              // the frame on screen, m_cur (-1: none yet)
+    Frame m_cur;
+    // m_cur in RGB through the Bt812's settings, made once per frame or settings change
+    std::vector<uint32_t> m_rgb;
+    int64_t m_rgb_index = -1;
+    Picture m_rgb_pic;
+    std::vector<uint32_t> m_col;       // each screen column's source column (for the last width)
+
+    // The worker decodes into m_queue; the emulation takes frames from it in order, waiting for
+    // the one it needs if the worker hasn't got there, so the picture is the same on every run.
+    std::thread m_thread;
+    std::mutex m_mu;
+    std::condition_variable m_cv;
+    std::deque<Frame> m_queue;
+    bool m_opened = false, m_ended = false, m_stop = false;
 
     int m_chapter = 0, m_status = 0;
     bool m_powered = false;

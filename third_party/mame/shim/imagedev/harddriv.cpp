@@ -45,6 +45,13 @@ bool harddisk_image_device::read(u32 lba, void *buffer) {
         return true;
     }
     if (lba >= m_sectors) return false;
+    // read-ahead: entering a new 8 MiB stretch, ask the kernel for the next one too, so a cold page
+    // cache doesn't stall the machine a sector at a time (the image is read the same either way)
+    const uint64_t stretch = (uint64_t)lba * 512 >> 23;
+    if (stretch != m_readahead) {
+        m_readahead = stretch;
+        posix_fadvise(m_fd, (off_t)(stretch << 23), 2 << 23, POSIX_FADV_WILLNEED);
+    }
     return pread(m_fd, buffer, 512, (off_t)lba * 512) == 512;
 }
 
