@@ -166,6 +166,8 @@ def progress(p: dict, nvram: str, unlocks: dict) -> dict | None:
     active = p.get("active") is None or matches(p.get("active"))
     if p.get("kind") == "bingo":
         return bingo(p, data, active, matches(p.get("released")))
+    if p.get("kind") == "gamblerz":
+        return gamblerz(p, data, active, matches(p.get("released")))
     stage, unl, missed, pos, lap = (field(p[k]) for k in ("stage", "unlocked", "missed", "position", "lap"))
     st = p["stages"][min(stage, len(p["stages"]) - 1)]
     goal = st["goal"]
@@ -200,9 +202,45 @@ def bingo(p: dict, data: bytes, active: bool, released: bool) -> dict:
             "closed": [{"shown": c["shown"], "condition": c["condition"]} for c in closed]}
 
 
+def gamblerz(p: dict, data: bytes, active: bool, released: bool) -> dict:
+    """pop'n 9's Gambler Z labyrinth: the items won (a little-endian word in the settings record,
+    kept in two copies), the position, floor and a boss fight under way."""
+    def field(off, n, signed=False):
+        vals = {int.from_bytes(data[c + off:c + off + n], "little", signed=signed) for c in p["copies"]}
+        if len(vals) != 1:
+            raise Error(f"the copies of {p['id']} disagree: not a save this tool knows")
+        return vals.pop()
+    flags = field(p["flags"], 4)
+    return {"active": active, "released": released, "flags": flags,
+            "prog": bin(flags & 0x1ffffff).count("1"), "cleared": bool(flags & p["cleared"]),
+            "items": [i["name"] for i in p["items"] if flags >> i["bit"] & 1],
+            "items_missing": [i["name"] for i in p["items"] if not flags >> i["bit"] & 1],
+            "item_count": len(p["items"]),
+            "bosses": [b["name"] for b in p["bosses"] if flags & b["mask"] == b["mask"]],
+            "bosses_missing": [b["name"] for b in p["bosses"] if flags & b["mask"] != b["mask"]],
+            "boss_count": len(p["bosses"]),
+            "position": [field(p["position"], 2, True), field(p["position"] + 2, 2, True)],
+            "floor": field(p["floor"], 1), "boss_hp": field(p["boss_hp"], 2)}
+
+
 def describe_progress(p: dict, s: dict) -> str:
     if s is None:
         return "no save yet"
+    if p.get("kind") == "gamblerz":
+        lines = [] if s["active"] else ["the event is not running (it runs at phase 1 or 2)"]
+        if s["released"]:
+            lines.append("DATA RELEASE (phase 3 or MAX): its songs are unlocked anyway")
+        if s["cleared"]:
+            lines.append("the labyrinth is cleared")
+        lines.append(f"songs won: {len(s['items'])} of {s['item_count']}; bosses beaten: {len(s['bosses'])} of "
+                     f"{s['boss_count']} (the e-AMUSEMENT ranking's prog {s['prog']}, parts {s['flags']:08x})")
+        lines.append(f"floor index {s['floor']}, position {s['position'][0]}, {s['position'][1]}"
+                     + (f"; a boss fight under way, {s['boss_hp']} HP left" if s["boss_hp"] else ""))
+        if s["items_missing"]:
+            lines.append("songs still to win: " + ", ".join(s["items_missing"]))
+        if s["bosses_missing"]:
+            lines.append("bosses still to beat (an EX chart and a course each): " + "; ".join(s["bosses_missing"]))
+        return "\n".join(lines)
     if p.get("kind") == "bingo":
         lines = [] if s["active"] else ["the event is not running (BINGO de 7: NO)"]
         if s["released"]:

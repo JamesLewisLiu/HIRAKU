@@ -34,6 +34,8 @@ STATUSES = {
     "userid.ctou": {0, 112},              # 112 no KONAMI ID for the card
     "userid.adduser": {0, 113, 114},      # 113 the user exists, 114 the card is someone's
     "userid.addcard": {0, 114, 115, 116}, # 115 no such user, 116 wrong password
+    "p_friend.get": {0, 600},             # 600 no (not retried)
+    "p_friend.ask": {0, 601},             # 601 no (not retried; the next credit sends get)
 }
 
 

@@ -50,7 +50,8 @@ a line, tab-separated `key=value` fields:
 - `userdata-CARD`: a card's player data, as the game wrote it;
 - `users`: KONAMI IDs (user, pass, cards, active);
 - `rank-score`, `rank-hitasura`, `rank-gamblerz`: each entrant's best;
-- `eemall-CARD`: optional, ee'MALL item numbers for a card, one a line (the server owner writes these).
+- `eemall-CARD`: optional, ee'MALL item numbers for a card, one a line (the server owner writes these;
+  pop'n 9 itself never asks, see `eemall.i_get`).
 
 ## What the cabinet does on the network
 
@@ -92,7 +93,7 @@ a line, tab-separated `key=value` fields:
 
 | Encrypted (with `X-Eamuse-Info`) | In the clear (no `X-Eamuse-Info`) |
 |---|---|
-| services, pcbtracker, posevent, userid | ntp, numbering, package, userdata, rank, p_friend (eemall: not seen yet) |
+| services, pcbtracker, posevent, userid | ntp, numbering, package, userdata, rank, p_friend (eemall: never sent, below) |
 
 - **The cipher:** RC4, with key = MD5(the 6 bytes of `X-Eamuse-Info: 1-xxxxxxxx-xxxx`, as hex,
   then the 26-byte shared secret `69d74627d985ee2187161570d08d93b12455035b6df0d8205df5`). This
@@ -244,10 +245,18 @@ rank_offset rank_num`; `get_gz` has no courses.
 - **`get_gz`** (Gambler Z, by shop): `<item entry="N"/>`, then items with rank, prog, parts (hex),
   shop_name, area and id.
 - **Fields:**
-  - `name` and `shop_name` are hex of the Shift-JIS bytes;
+  - `name` and `shop_name` are uppercase hex of the Shift-JIS bytes (a plain-text `shop_name`
+    shows blank) [game];
   - `id` is at most 36 characters;
-  - `area` is the prefecture number;
+  - `area` is the prefecture: 0–46 in JIS order from 0 (0 北海道, 12 東京都, 13 神奈川県, 46 沖縄県),
+    255 none [game];
   - up to 20 courses, 100 entries each.
+- **Where they show** [game] (only while the cabinet's network check passed, `0x2571f8`):
+  - attract mode, after each demo song: "popper's ranking", one page per course (course name,
+    entries as "N poppers", then 順位, なまえ, 県名, SCORE, COOL数);
+  - attract mode in event phases 1 and 2, after the labyrinth: "たたかえ！ギャンブラーZ お店対抗
+    RANKING" (順位, お店のなまえ, 県名, and `parts` drawn as one picture per item);
+  - after a course played with a card: INTERNET RANKING, from the `register` answer.
 
 **`register`**, **`register_h`** and **`register_gz`** [game] (parse `0x1992e8`, `0x1997f0`, `0x199c60`; statuses `0x184f68`): a result.
 
@@ -262,7 +271,10 @@ rank_offset rank_num`; `get_gz` has no courses.
   `course="0" music="3" combo="365"` for the first course (3 songs) cleared. A run that clears no
   song sends none.
 - **`register_gz`** sends `gpcb_id prog parts shop_name area_num`, at the end of a credit in
-  event phases 1–3, e.g. `prog="0" parts="00000000"` (parts: 8 hex digits).
+  event phases 1–3 [game], before that credit's labyrinth walk:
+  - `parts` is the labyrinth's items word (below) in 8 hex digits, `prog` the number of its bits set
+    (0–25; `0x188248`). A save with two songs and the first boss sent `prog="4" parts="00084003"`.
+  - Rank shops by `prog` (then `parts`): hiraku-eamuse does.
   - **Gambler Z progress is the shop's, per cabinet.** The labyrinth itself lives in the cabinet's
     own settings; the server only ranks the shops (see below).
 - **`get_h`** and **`get_gz`** come at start-up in phases MAX and 1–3.
@@ -299,14 +311,36 @@ is the cabinet's, not the server's. In event phases 1 and 2 (`0x143c98`), after 
   | `0x20` | floor, u8 |
   | `0x22` | the boss's HP left, u16 (0 = no fight under way) |
 
-  The same record holds what every `rank.register*` sends as `area_num` (`0x35`, u8, 255 = not
-  set) and `shop_name` (`0x37`, 25 bytes).
+  - **The bits:** 0–13 a song each, the treasures of floors 1–14 (ジャジー, ポジティブ (CS3);
+    モーター5, ボッサ, プログレ (CS4); オイパンク (CS6); メランコリー, テラピー, スムース, モダン80,
+    インダストリアル (CS7); ポップス・アンコール, ロックギター, ソフトロック from IIDX (REMIX)); bits
+    14+k and 19+k the five bosses (an EX chart and an EXPERT course each: テクノポップ and すわ,
+    ターバン and サナ, ピラミッド and パーキッツ, スカ and Des-ROW, オイパンク0 and クラシック);
+    bit 24 the last boss, cleared. Read from the item list a save with every bit shows;
+    `tools/unlock.py popn9` decodes a save.
 
-**p_friend.get / state / ask** [game, game, code] (`0x19b070`…): pop'n friends. The game sends
-`card_id gpcb_id p_friend shop_name area_num`; status only, `<p_friend status="0"/>`.
+  The same record holds the cabinet's shop: `area_num` (`0x35`, u8, 255 = not set) and the shop
+  name (`0x37`, Shift-JIS, up to 12 characters), set in test mode > e-AMUSEMENT OPTIONS >
+  e-AMUSEMENT SETTINGS (SHOP NAME SETTING, PREFECTURE). Every call that carries `shop_name` sends
+  it as hex: "ひらく" and 東京都 went out as `shop_name="82D082E782AD" area_num="12"` [game].
+
+**p_friend.get / ask / state** [game] (`0x19b070`…; the card flow `0x16da30`): pop'n friends.
+`p_friend` is the player's character's place in the game's character table (`0x19ecf8`, 0–181).
+The answers are status only, `<p_friend status="0"/>`.
+
+| Call | When | Statuses |
+|---|---|---|
+| `get card_id gpcb_id p_friend shop_name area_num` | after the PIN, while the player data's friend flag (`+0x414`) is 0 | 0 sets the flag; 600: no, without retrying |
+| `ask card_id p_friend` | after the PIN, once the flag is set | 0 keeps it; 601: no, without retrying, and the flag is cleared (the next credit sends `get` again) |
+| `state card_id p_friend status` | at the end of the credit, before `userdata.write` | `status` is the game's own result (1 after a `get` or `ask` that passed, 0 otherwise) |
+
+Anything else is retried, three times in all. The flag travels in the player data, so it is the
+server's `userdata` that decides which of `get` and `ask` a card's next credit sends.
 
 **eemall.i_get** [code] (`0x19b558`): the card's ee'MALL items (bought on Konami's ee'MALL site,
 delivered to the game): `<eemall status="0"><item num="N"/>...</eemall>`, up to 99.
+**pop'n 9 never sends it:** its only caller (`0x186ef8`) is called from nowhere, neither directly
+nor through a pointer. A server may leave it out.
 
 ## A card's life (as checked in HIRAKU)
 
@@ -327,7 +361,7 @@ delivered to the game): `<eemall status="0"><item num="N"/>...</eemall>`, up to 
 
 ```
 userdata.read (status 0) -> the PIN -> "name, character, options" ->
-p_friend.get, userid.ctou -> play -> ... userdata.write
+p_friend.get (or .ask, once a get passed), userid.ctou -> play -> ... p_friend.state, userdata.write
 ```
 
 **A wrong PIN:** "パスワードが違います", and play without the card.
@@ -369,7 +403,7 @@ The card holds no player data, only an identity.
 
 ## Not known yet
 
-- `eemall`, `package.intend`, `p_friend.ask`; what `alter` and `aflag` are for.
+- `package.intend`; what `alter` and `aflag` are for; what the pop'n friends statuses 600 and 601
+  mean to a player.
 - What 700/701 mean exactly.
-- **The Gambler Z labyrinth:** how `prog` and `parts` grow (both stayed 0 over a credit on floor 1),
-  the items, and what phase 3 does.
+- **The Gambler Z labyrinth:** what phase 3 does with it, and a boss fought in play.

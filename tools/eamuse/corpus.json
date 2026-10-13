@@ -142,7 +142,7 @@
   {
    "name": "p_friend.ask",
    "encrypted": false,
-   "captured": false,
+   "captured": true,
    "body": "<call srcid=\"01401401000100045FEF\" model=\"C00:J:A:A\"><p_friend method=\"ask\" card_id=\"2003010000000010\" p_friend=\"0\"/></call>"
   }
  ]

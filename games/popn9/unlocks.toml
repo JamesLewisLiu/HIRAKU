@@ -47,3 +47,49 @@ value = 4
 name = "MAX. HITASURA MODE RELEASE"
 code = "2K4VM7CHQ3"
 text = "Everything: also HITASURA mode, after EXPERT in the mode select (seen in HIRAKU)."
+
+# The Gambler Z labyrinth (TATAKAE! GAMBLER Z, event phases 1 and 2): what the cabinet has won,
+# kept in the same settings record as the phase (both copies, data at +0x10; little-endian).
+# Found in the program (the labyrinth 0x19e188, its item tables 0x226d60/0x226d78/0x226da0) and
+# checked in HIRAKU with --autoplay (oracle/scripts/popn9-gamblerz.his) and a save with every item
+# set, whose item list the attract mode shows. Each credit walks one step per cleared stage; a
+# floor's treasure gives a song, and from floor index 10 a boss, beaten with a song (its score
+# deals 1-5 damage), gives an EX chart and an EXPERT course. rank.register_gz reports prog (the
+# bits set) and parts (the word) to the e-AMUSEMENT server (docs/EAMUSE3.md).
+[[progress]]
+id = "gamblerz"
+title = "TATAKAE! GAMBLER Z"
+kind = "gamblerz"
+nvram = "m48t58y.u48"
+copies = [0x10, 0x120]
+active = { unlock = "phase", values = [1, 2] }
+released = { unlock = "phase", values = [3, 4] }
+flags = 0x18
+position = 0x1c
+floor = 0x20
+boss_hp = 0x22
+cleared = 0x1000000
+items = [
+  { bit = 0, name = "ジャジー (CS3)" },
+  { bit = 1, name = "ポジティブ (CS3)" },
+  { bit = 2, name = "モーター5 (CS4)" },
+  { bit = 3, name = "ボッサ (CS4)" },
+  { bit = 4, name = "プログレ (CS4)" },
+  { bit = 5, name = "オイパンク (CS6)" },
+  { bit = 6, name = "メランコリー (CS7)" },
+  { bit = 7, name = "テラピー (CS7)" },
+  { bit = 8, name = "スムース (CS7)" },
+  { bit = 9, name = "モダン80 (CS7)" },
+  { bit = 10, name = "インダストリアル (CS7)" },
+  { bit = 11, name = "ポップス・アンコール (REMIX)" },
+  { bit = 12, name = "ロックギター (REMIX)" },
+  { bit = 13, name = "ソフトロック from IIDX (REMIX)" },
+]
+# each boss sets two bits: 14+k and 19+k
+bosses = [
+  { mask = 0x84000, floor = 10, name = "テクノポップ (EX), すわ・コース (EXPERT)" },
+  { mask = 0x108000, floor = 11, name = "ターバン (EX), サナ・コース (EXPERT)" },
+  { mask = 0x210000, floor = 12, name = "ピラミッド (EX), パーキッツ・コース (EXPERT)" },
+  { mask = 0x420000, floor = 13, name = "スカ (EX), Des-ROW・コース (EXPERT)" },
+  { mask = 0x840000, floor = 14, name = "オイパンク0 (EX), クラシック・コース (EXPERT)" },
+]
