@@ -11,7 +11,10 @@ This page is for two kinds of readers:
   your own. Everything the game asks and accepts is below, found from the game's own code (the
   EE program's addresses are given) and checked in HIRAKU where marked.
 
-`tools/eamuse/check.py` checks a server against all of it.
+`tools/eamuse/check.py` checks a server against all of it. For bemaniutils there is a ready
+patch, `tools/eamuse/bemaniutils/popn9-python.patch`, checked against the game (its README says
+how it maps the game onto bemaniutils). It was written with an AI model, so it is for server
+owners' own installs only: bemaniutils accepts no AI-written contributions.
 
 ## Running it
 
@@ -128,8 +131,12 @@ a line, tab-separated `key=value` fields:
 - **One module element per call, in order.**
 - **Failure:** `status` other than 0, or a `fault` attribute, fails that call; `fault` on
   `<response>` fails them all. Each module's own status codes are listed below.
-- **XML details:** no XML declaration is needed; double quotes, elements written out or empty
-  (`<x/>`) both parse. A text payload goes in a child element (`userdata`'s `<b>`).
+- **XML details:** no XML declaration is needed, and **one with an `encoding` is refused**: with
+  `<?xml version="1.0" encoding="shift-jis"?>` (or `SHIFT_JIS`) in front, the game asks for
+  `services.get` again and again; `<?xml version="1.0"?>` or none is fine [game]. Double quotes,
+  elements written out or empty (`<x/>`) both parse, attributes in any order, and extra ones
+  (`dstid` on `<response>`, `__type` on `<b>`) are ignored [game]. A text payload goes in a child
+  element (`userdata`'s `<b>`).
 - **The game's parser** (`0x1910e0`) calls a start handler per element, a text handler, and an
   end handler. A call is done when its module element closes.
 
@@ -302,6 +309,11 @@ rank_offset rank_num`; `get_gz` has no courses.
   unconfirmed).
 - **When it's sent:** a course result is registered when a card is in use (`0x1359e8`, from the
   result flow `0x129c68`), even for a failed course.
+- **With a KONAMI ID** [game]: once `ctou` gives the card an ID, the game sends it as `konami_id`,
+  and the INTERNET RANKING screen after a course shows "? 位 ? 人中" instead of the place the
+  answer gives. The same with HIRAKU's server and with bemaniutils, whatever `id` and attribute
+  order the answer has; without an ID the place shows. The rule wasn't found (the screen's tasks
+  around `0x133900`).
 - **Seen from the game:**
 
   ```xml
@@ -431,3 +443,4 @@ The card holds no player data, only an identity.
 - What `alter` and `aflag` are for; what the pop'n friends statuses 600 and 601
   mean to a player.
 - What 700/701 mean exactly.
+- Why INTERNET RANKING shows no place for a card with a KONAMI ID (above).
