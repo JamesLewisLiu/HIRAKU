@@ -239,7 +239,7 @@ rank_offset rank_num`; `get_gz` has no courses.
   - `area` is the prefecture number;
   - up to 20 courses, 100 entries each.
 
-**`register`** and **`register_gz`** [game], **`register_h`** [code] (parse `0x1992e8`, `0x1997f0`, `0x199c60`; statuses `0x184f68`): a result.
+**`register`**, **`register_h`** and **`register_gz`** [game] (parse `0x1992e8`, `0x1997f0`, `0x199c60`; statuses `0x184f68`): a result.
 
 ```xml
 <rank method="register" card_id= konami_id= gpcb_id= name= course= option= score= cool= great= good= bad= combo= shop_name= area_num=/>
@@ -248,14 +248,14 @@ rank_offset rank_num`; `get_gz` has no courses.
 
 - **The answer:** the player's place in the course, the number of entries, and whether the
   result is a new best.
-- **`register_h`** sends `music combo`.
+- **`register_h`** sends `music combo`: the songs cleared in the HITASURA run and its combo, e.g.
+  `course="0" music="3" combo="365"` for the first course (3 songs) cleared. A run that clears no
+  song sends none.
 - **`register_gz`** sends `gpcb_id prog parts shop_name area_num`, at the end of a credit in
   event phases 1–3, e.g. `prog="0" parts="00000000"` (parts: 8 hex digits).
   - **Gambler Z progress is the shop's, per cabinet.** The labyrinth itself lives in the cabinet's
-    own settings (battery RAM, settings record 0x18–0x23: `0x1aa7f0`…, with 0x1000000 in the flags
-    word meaning cleared); the server only ranks the shops.
-- **`get_h`** and **`get_gz`** come at start-up in phases MAX and 1–3. A HITASURA run that clears no
-  song sends no `register_h`.
+    own settings; the server only ranks the shops (see below).
+- **`get_h`** and **`get_gz`** come at start-up in phases MAX and 1–3.
 - **Other statuses:** 700 and 701 make the game show "not ranked"-style results (meaning
   unconfirmed).
 - **When it's sent:** a course result is registered when a card is in use (`0x1359e8`, from the
@@ -269,6 +269,28 @@ rank_offset rank_num`; `get_gz` has no courses.
   ```
 
   The name is hex of its Shift-JIS bytes ("あああ"); `area_num` 255 is no prefecture set.
+
+**The Gambler Z labyrinth** [game] ("ギャンブラーZ", pop'n music internet event), for reference: it
+is the cabinet's, not the server's. In event phases 1 and 2 (`0x143c98`), after a credit's results
+(and its staff roll when all stages were cleared), the game runs the labyrinth (`0x19e188`):
+- **Steps:** one per cleared stage, two for a stage whose song counts double (`0x1088c8`, "Walk %d").
+  Three cleared stages walked "1階 Aフロア" three cells.
+- **The walk** follows direction bits in the map's cells. At a junction the player chooses (buttons
+  4 and 6, red to confirm, a 180-frame timer); a treasure cell gives an item; stairs change floor.
+- **Bosses:** from floor index 10, a door cell starts a fight: a song from the floor's table (`0x19e628`),
+  whose score deals 1–5 damage (70,000 / 80,000 / 90,000 / 95,000, `0x19e720`) to the boss's 25 HP
+  (50 on floor index 15). Then the walk goes on.
+- **Saved** in the settings record (battery RAM, mirrored like the rest of it; the file at +0x10):
+
+  | Offset | Field |
+  |---|---|
+  | `0x18` | items (low 24 bits; 0xffffff = all) and 0x1000000 = cleared, u32 |
+  | `0x1c`, `0x1e` | position, s16 pair (cells; three steps took `0x1c` from -1 to -4) |
+  | `0x20` | floor, u8 |
+  | `0x22` | the boss's HP left, u16 (0 = no fight under way) |
+
+  The same record holds what every `rank.register*` sends as `area_num` (`0x35`, u8, 255 = not
+  set) and `shop_name` (`0x37`, 25 bytes).
 
 **p_friend.get / state / ask** [game, game, code] (`0x19b070`…): pop'n friends. The game sends
 `card_id gpcb_id p_friend shop_name area_num`; status only, `<p_friend status="0"/>`.
@@ -323,7 +345,7 @@ The card holds no player data, only an identity.
 
 ## Not known yet
 
-- `register_h` (a HITASURA run with songs cleared), the labyrinth's moves (stages cleared in phases 1–3), KONAMI ID registration on the cabinet,
-  `eemall`, `package.intend`, `p_friend.ask`.
+- KONAMI ID registration on the cabinet, `eemall`, `package.intend`, `p_friend.ask`.
 - What 700/701 mean exactly.
-- **The Gambler Z labyrinth:** event phases 1–3, its parts and progress per shop.
+- **The Gambler Z labyrinth:** how `prog` and `parts` grow (both stayed 0 over a credit on floor 1),
+  the items, and what phase 3 does.

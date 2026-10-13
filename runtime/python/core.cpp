@@ -265,6 +265,7 @@ public:
         if (name == "--pcsx2-log") { pcsx2_log_ = true; return true; }
         if (name == "--no-picture") { no_picture_ = true; return true; }
         if (name == "--picture-overlap") { picture_now_ = false; return true; }
+        if (name == "--autoplay") { autoplay_ = true; return true; }
         if (name == "--eamuse") {   // local (the server in the core) or http://host[:port][/path]
             eamuse_ = value();
             return eamuse_ == "local" || hk::py::EamuseRemote(eamuse_).ok();
@@ -286,6 +287,8 @@ public:
                "  --picture-overlap    hand over the previous vsync's picture, so the GS overlaps the EE: less\n"
                "                       time per frame, a frame (16.7 ms) more latency. The default waits for each\n"
                "                       vsync's own picture\n"
+               "  --autoplay           the game plays every song itself, as in its attract demo: every note GREAT\n"
+               "                       (a mod for testing what clears unlock; pop'n music 9)\n"
                "  --pcsx2-set S/K=V    set one of the emulator's settings (its ini's section S, key K), for experiments\n"
                "  --eamuse local|URL   e-AMUSEMENT (when the game has it on): the server in the core (default, offline,\n"
                "                       reproducible), or a real one at http://host[:port][/path] (docs/EAMUSE3.md)\n";
@@ -616,6 +619,7 @@ private:
                 }
         }
         if (net_) net_->poll();   // online answers that arrived
+        if (autoplay_) apply_autoplay();
         for (auto &[addr, last] : watch_) {
             uint32_t v;
             memcpy(&v, eeMem->Main + (addr & 0x1fffffc), 4);
@@ -654,6 +658,26 @@ private:
         if (frame_hook_) frame_hook_(frame_, pic_.data(), pic_w_, pic_h_);
     }
 
+    // --autoplay: the game's own demo play. At each song's start pop'n music 9 sets its autoplay
+    // flag (0x257084) to "mode == attract demo" (FUN_0010e570); while it is set, every note that
+    // reaches the line is judged GREAT (FUN_0010cbe8). The play screen's button reader
+    // (FUN_0010dd80) gives nothing in the demo, by its own test of the mode. The mod makes both
+    // behave as in the demo, outside it too. Written as PCSX2's patches are, at a vsync on the CPU
+    // thread through the TLB, so the recompiler drops the blocks; checked each vsync, because the
+    // program is loaded from the disk after boot.
+    struct CodePatch { const char *game; uint32_t addr, was, now; };
+    static constexpr CodePatch AUTOPLAY[] = {
+        {"popn9", 0x10e644, 0x54430003, 0x00000000},   // bnel v0,v1 (mode != 2: flag = 0) -> nop
+        {"popn9", 0x10dd9c, 0x10430036, 0x10000036},   // beq v0,v1 (mode == 2: no buttons) -> b
+    };
+    void apply_autoplay() {
+        for (const CodePatch &p : AUTOPLAY)
+            if (opt_.game == p.game && memRead32(p.addr) == p.was) {
+                memWrite32(p.addr, p.now);
+                printf("autoplay: %08x patched (frame %llu)\n", p.addr, (unsigned long long)frame_);
+            }
+    }
+
     [[noreturn]] void fatal(const std::string &why) {
         fprintf(stderr, "python: %s\n", why.c_str());
         if (on_fatal_) on_fatal_();
@@ -681,7 +705,7 @@ private:
         fflush(stdout);
     }
     GSRendererType renderer_ = GSRendererType::SW;
-    bool interp_ = false, pcsx2_log_ = false, no_picture_ = false, picture_now_ = true;
+    bool interp_ = false, pcsx2_log_ = false, no_picture_ = false, picture_now_ = true, autoplay_ = false;
     std::span<const u8> font_data_;   // mapped for the process's life
     std::map<std::string, u32> binds_;
     struct Setting { std::string section, key, value; };

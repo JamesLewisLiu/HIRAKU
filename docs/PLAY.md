@@ -491,6 +491,7 @@ build/cmake/hiraku-popn9 --window --renderer vk
 ```
 
 - `--renderer vk` draws with Vulkan: less CPU. The default, `sw` (software), is what the reference runs. `tools/regress.py` checks both.
+- `--autoplay` (pop'n music 9) makes the game play every song itself, as in its attract demo: every note GREAT, the buttons ignored during songs. It's a mod for testing what clears unlock (events, HITASURA, Gambler Z); scores and e-AMUSEMENT rankings count it like any play.
 - Each frame's picture is shown at the end of that frame: 4 frames from a button to the picture, the game's own. `--picture-overlap` shows the previous frame's instead, so the GS works alongside the CPU: a little less time per frame on a slow PC, for a frame (16.7 ms) more latency.
 - `oracle/pcsx2/build-reliquary.sh pgo` (once, ~5 min) rebuilds with profile-guided optimisation: about 3 % less CPU, same results.
 - The CHD stays where it is (linked, not unpacked). The game's writes (BBSRAM, dongle, the disk's own writes as an overlay) go to the NVRAM folder, `~/.local/share/hiraku/popn9`.

@@ -1,0 +1,105 @@
+# pop'n music 9, HITASURA (event phase MAX), with --autoplay: the registered card of
+# popn9-card-new.his (PIN 1234), the mode select's HITASURA (blue 6 x5), the first course;
+# the game plays its three songs (life x50 left), "クリア済の曲数 003", and sends
+# rank.register_h music="3" combo="365", answered with the player's place. Set the phase with
+# tools/unlock.py popn9 --nvram DIR phase=MAX on the save popn9-card-new.his left. About
+# 30,000 frames.
+#   hiraku-popn9 --autoplay --nvram DIR --script oracle/scripts/popn9-hitasura.his
+game popn9
+watch mode u32 0x25a0d8
+at 4500 press "Coin 1" 8
+at 4540 press "Coin 1" 8
+at 4700 press "P1 Button 5" 8
+at 5050 press "Card" 8
+at 5400 press "Keypad 1" 8
+at 5430 press "Keypad 2" 8
+at 5460 press "Keypad 3" 8
+at 5490 press "Keypad 4" 8
+at 5520 press "Keypad Enter" 8
+at 6800 press "P1 Button 6" 8
+at 6840 press "P1 Button 6" 8
+at 6880 press "P1 Button 6" 8
+at 6920 press "P1 Button 6" 8
+at 6960 press "P1 Button 6" 8
+at 7100 press "P1 Button 5" 8
+at 7600 press "P1 Button 5" 8
+at 7900 press "P1 Button 5" 8
+at 8300 press "P1 Button 5" 8
+at 8540 press "P1 Button 5" 8
+at 8780 press "P1 Button 5" 8
+at 9020 press "P1 Button 5" 8
+at 9260 press "P1 Button 5" 8
+at 9500 press "P1 Button 5" 8
+at 9740 press "P1 Button 5" 8
+at 9980 press "P1 Button 5" 8
+at 10220 press "P1 Button 5" 8
+at 10460 press "P1 Button 5" 8
+at 10700 press "P1 Button 5" 8
+at 10940 press "P1 Button 5" 8
+at 11180 press "P1 Button 5" 8
+at 11420 press "P1 Button 5" 8
+at 11660 press "P1 Button 5" 8
+at 11900 press "P1 Button 5" 8
+at 12140 press "P1 Button 5" 8
+at 12380 press "P1 Button 5" 8
+at 12620 press "P1 Button 5" 8
+at 12860 press "P1 Button 5" 8
+at 13100 press "P1 Button 5" 8
+at 13340 press "P1 Button 5" 8
+at 13580 press "P1 Button 5" 8
+at 13820 press "P1 Button 5" 8
+at 14060 press "P1 Button 5" 8
+at 14300 press "P1 Button 5" 8
+at 14540 press "P1 Button 5" 8
+at 14780 press "P1 Button 5" 8
+at 15020 press "P1 Button 5" 8
+at 15260 press "P1 Button 5" 8
+at 15500 press "P1 Button 5" 8
+at 15740 press "P1 Button 5" 8
+at 15980 press "P1 Button 5" 8
+at 16220 press "P1 Button 5" 8
+at 16460 press "P1 Button 5" 8
+at 16700 press "P1 Button 5" 8
+at 16940 press "P1 Button 5" 8
+at 17180 press "P1 Button 5" 8
+at 17420 press "P1 Button 5" 8
+at 17660 press "P1 Button 5" 8
+at 17900 press "P1 Button 5" 8
+at 18140 press "P1 Button 5" 8
+at 18380 press "P1 Button 5" 8
+at 18620 press "P1 Button 5" 8
+at 18860 press "P1 Button 5" 8
+at 19100 press "P1 Button 5" 8
+at 19340 press "P1 Button 5" 8
+at 19580 press "P1 Button 5" 8
+at 19820 press "P1 Button 5" 8
+at 20060 press "P1 Button 5" 8
+at 20300 press "P1 Button 5" 8
+at 20540 press "P1 Button 5" 8
+at 20780 press "P1 Button 5" 8
+at 21020 press "P1 Button 5" 8
+at 21260 press "P1 Button 5" 8
+at 21500 press "P1 Button 5" 8
+at 21740 press "P1 Button 5" 8
+at 21980 press "P1 Button 5" 8
+at 22220 press "P1 Button 5" 8
+at 22460 press "P1 Button 5" 8
+at 22700 press "P1 Button 5" 8
+at 22940 press "P1 Button 5" 8
+at 23180 press "P1 Button 5" 8
+at 23420 press "P1 Button 5" 8
+at 23660 press "P1 Button 5" 8
+at 23900 press "P1 Button 5" 8
+at 24140 press "P1 Button 5" 8
+at 24380 press "P1 Button 5" 8
+at 24620 press "P1 Button 5" 8
+at 24860 press "P1 Button 5" 8
+at 25100 press "P1 Button 5" 8
+at 25340 press "P1 Button 5" 8
+at 25580 press "P1 Button 5" 8
+at 25820 press "P1 Button 5" 8
+at 8000 snap
+at 15000 snap
+at 26000 snap
+at 27200 snap
+at 30000 quit
