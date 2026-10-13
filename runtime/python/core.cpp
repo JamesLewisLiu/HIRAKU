@@ -14,9 +14,10 @@
 // start from the dumps' state and repeat exactly.
 //
 // Threads: run() is PCSX2's CPU thread (EE, IOP, SPU2, the interface board). The GS
-// runs on PCSX2's own thread. At each vsync the CPU thread hands the shell the picture
-// the GS finished for the previous vsync (it waits for it): the GS keeps overlapping
-// the EE, and pictures, digests and scripts stay deterministic.
+// runs on PCSX2's own thread. At each vsync, once it is posted to the GS, the CPU thread
+// waits for that vsync's picture and hands it to the shell: pictures, digests and
+// scripts stay deterministic. --picture-overlap hands over the previous vsync's picture
+// instead (taken before the post), so the GS overlaps the EE, at a frame more latency.
 //
 // Linking Reliquary (GPL-3.0) makes the hiraku-<python game> binaries GPL-3.0 as a
 // whole; this file is GPL-3.0-or-later like the rest of HIRAKU. The Host:: glue below
@@ -76,6 +77,9 @@
 
 #include "shell/cabinet.h"
 #include "shell/core.h"
+
+// clang's profile runtime, present only in an instrumented build (oracle/pcsx2/build-reliquary.sh pgo)
+extern "C" int __llvm_profile_write_file(void) __attribute__((weak));
 
 namespace {
 
@@ -246,13 +250,25 @@ public:
         if (name == "--interp") { interp_ = true; return true; }
         if (name == "--pcsx2-log") { pcsx2_log_ = true; return true; }
         if (name == "--no-picture") { no_picture_ = true; return true; }
+        if (name == "--picture-overlap") { picture_now_ = false; return true; }
+        if (name == "--pcsx2-set") {   // Section/Key=value, after the core's own settings
+            const std::string v = value();
+            const size_t slash = v.rfind('/', v.find('=')), eq = v.find('=');
+            if (slash == std::string::npos || eq == std::string::npos || slash > eq) return false;
+            extra_settings_.push_back({v.substr(0, slash), v.substr(slash + 1, eq - slash - 1), v.substr(eq + 1)});
+            return true;
+        }
         return false;
     }
     std::string options_help() const override {
         return "  --renderer sw|vk|gl  the GS renderer: software (default: what the oracle runs), Vulkan or OpenGL\n"
                "  --interp             every CPU interpreted (EE, IOP, VU0, VU1), as the oracle's --interp\n"
                "  --pcsx2-log          the emulator's own log on stderr\n"
-               "  --no-picture         don't read the GS's pictures back (black frames; for measuring)\n";
+               "  --no-picture         don't read the GS's pictures back (black frames; for measuring)\n"
+               "  --picture-overlap    hand over the previous vsync's picture, so the GS overlaps the EE: less\n"
+               "                       time per frame, a frame (16.7 ms) more latency. The default waits for each\n"
+               "                       vsync's own picture\n"
+               "  --pcsx2-set S/K=V    set one of the emulator's settings (its ini's section S, key K), for experiments\n";
     }
 
     bool init(const Options &o) override {
@@ -309,7 +325,8 @@ public:
     void set_on_fatal(std::function<void()> f) override { on_fatal_ = std::move(f); }
 
     [[noreturn]] void run() override {
-        Hiraku::vsync_cpu = [] { self_->on_vsync(); };
+        if (picture_now_) Hiraku::vsync_posted = [] { self_->on_vsync(); };
+        else Hiraku::vsync_cpu = [] { self_->on_vsync(); };
         Hiraku::audio_sample = [](float l, float r) {
             self_->audio_.push_back(l);
             self_->audio_.push_back(r);
@@ -430,12 +447,14 @@ private:
         si.SetBoolValue("Logging", "EnableEEConsole", pcsx2_log_);
         si.SetBoolValue("Logging", "EnableIOPConsole", pcsx2_log_);
 
+        for (const auto &[section, key, v] : extra_settings_) si.SetStringValue(section.c_str(), key.c_str(), v.c_str());
         VMManager::Internal::LoadStartupSettings();
         // The shell ends a run with exit() from inside a vsync. PCSX2's static destructors
         // then assert (the VM is still mapped), so leave before them with the same status;
         // the shell has already saved and reported everything by then.
         on_exit([](int status, void *) {
             if (getenv("HK_PY_PROFILE")) prof::report();
+            if (__llvm_profile_write_file) __llvm_profile_write_file();   // a PGO training build: _exit skips its atexit
             fflush(nullptr);
             _exit(status);
         }, nullptr);
@@ -480,14 +499,14 @@ private:
         std::lock_guard lock(gs_mutex_);
         if (rgba && w && h) {
             gs_pic_.resize((size_t)w * h);
-            for (size_t k = 0; k < gs_pic_.size(); k++) {
-                const u32 p = rgba[k];
-                gs_pic_[k] = ((p & 0xff) << 16) | (p & 0xff00) | ((p >> 16) & 0xff);
-            }
+            uint32_t *out = gs_pic_.data();
+            const size_t n = gs_pic_.size();
+            for (size_t k = 0; k < n; k++) out[k] = __builtin_bswap32(rgba[k]) >> 8;   // R G B A bytes -> 0x00RRGGBB
             gs_w_ = (int)w, gs_h_ = (int)h;
         } else {
-            std::fill(gs_pic_.begin(), gs_pic_.end(), 0u);   // a blank frame: black, the last size
+            gs_pic_.assign((size_t)gs_w_ * gs_h_, 0u);   // a blank frame: black, the last size
         }
+        gs_fresh_ = true;
         gs_done_++;
         gs_cv_.notify_all();
     }
@@ -505,16 +524,24 @@ private:
         audio_.clear();
         {
             std::unique_lock lock(gs_mutex_);
-            if (!no_picture_ && frame_ >= 2 && gs_done_ < frame_ - 1) {
+            // the picture wanted: this vsync's (just posted to the GS) or the previous one's
+            const uint64_t want = picture_now_ ? frame_ : frame_ - 1;
+            if (!no_picture_ && want >= 1 && gs_done_ < want) {
                 const auto t0 = std::chrono::steady_clock::now();
-                if (!gs_cv_.wait_for(lock, std::chrono::seconds(10), [&] { return gs_done_ >= frame_ - 1; }))
+                if (!gs_cv_.wait_for(lock, std::chrono::seconds(10), [&] { return gs_done_ >= want; }))
                     fprintf(stderr, "python: frame %llu: no picture from the GS after 10 s\n", (unsigned long long)frame_);
                 gs_waits_++;
                 gs_wait_ms_ += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
             }
-            if (gs_pic_.empty()) gs_pic_.assign((size_t)gs_w_ * gs_h_, 0u);
-            pic_ = gs_pic_;
-            pic_w_ = gs_w_, pic_h_ = gs_h_;
+            // take the GS's picture by swapping buffers: it writes the whole of its next one
+            if (gs_fresh_) {
+                std::swap(pic_, gs_pic_);
+                pic_w_ = gs_w_, pic_h_ = gs_h_;
+                gs_fresh_ = false;
+            } else if (pic_.empty()) {
+                pic_.assign((size_t)gs_w_ * gs_h_, 0u);   // before the first picture: black
+                pic_w_ = gs_w_, pic_h_ = gs_h_;
+            }
         }
         if (frame_hook_) frame_hook_(frame_, pic_.data(), pic_w_, pic_h_);
     }
@@ -528,9 +555,11 @@ private:
     Options opt_;
     std::string family_, run_dir_, py1_path_;
     GSRendererType renderer_ = GSRendererType::SW;
-    bool interp_ = false, pcsx2_log_ = false, no_picture_ = false;
+    bool interp_ = false, pcsx2_log_ = false, no_picture_ = false, picture_now_ = true;
     std::span<const u8> font_data_;   // mapped for the process's life
     std::map<std::string, u32> binds_;
+    struct Setting { std::string section, key, value; };
+    std::vector<Setting> extra_settings_;
     std::vector<uint8_t> lamps_;
     uint64_t lamp_changes_ = 0;
     FrameHook frame_hook_;
@@ -545,6 +574,7 @@ private:
     std::mutex gs_mutex_;
     std::condition_variable gs_cv_;
     uint64_t gs_done_ = 0;                    // GS vsyncs presented
+    bool gs_fresh_ = false;                   // gs_pic_ holds a picture the CPU thread hasn't taken
     std::vector<uint32_t> gs_pic_, pic_;
     int gs_w_ = 640, gs_h_ = 448, pic_w_ = 640, pic_h_ = 448;
     uint64_t gs_waits_ = 0;

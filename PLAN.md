@@ -1203,7 +1203,30 @@ Each phase ends with `tools/regress.py check popn9-play` bit-identical, unless i
   - `tools/package.sh` adds `resources/`, the libraries built for Reliquary and the CHD reader. The packaged binary runs with the build's `deps/` moved away.
 - **Reliquary pinned:** 1.9.4, the zip's SHA-256 and the update procedure are in `oracle/pcsx2/README.md`. The patch: 7 files, 190 lines.
 
-**Next:** the owner's test; then PY-2 (measurements on low-end hardware). The profile behind it was measured with the core's `HK_PY_PROFILE=1` sampler and its `--no-picture` option (both added after PY-1).
+**PY-3 and PY-4, first steps (2026-10-13).** Measured with `tools/ab.py`: alternating runs, 5 each, medians of total process CPU. Vulkan, 6,000 frames unless noted. Every change is bit-identical (`popn9-play`, and the new `popn9-play-vk` case) unless noted.
+
+| Change | CPU | Notes |
+|---|---|---|
+| **Picture handoff:** `bswap32(p) >> 8` instead of per-pixel masks; buffers swapped, not copied | **−7.3 %** | `on_gs_frame`: 8.9 → 1.0 % of GS samples |
+| **PGO** (`build-reliquary.sh pgo`, trained on `popn9-play`, both renderers) | **−3.2 %** (software GS −1.9 %) | far from the 573's 1.44×: the hot paths are JIT code and vectorised texture code; kept as an optional step |
+| Texture preloading Partial instead of Full | **+11.4 %**: dropped | the picture is identical; None differs in 17 frames |
+| **Each vsync's own picture** (`vsync_posted` hook; `--picture-overlap` for the old way) | +1.4 % (wall +9 % unthrottled) | **one frame less latency**; EE/IOP hashes identical in both modes; now the default |
+
+- The Vulkan GS is deterministic on this GPU and driver: identical digests over 14,000 frames. That makes `popn9-play-vk` possible; its baseline must be recorded per PC.
+- **Latency** (`oracle/scripts/popn9-latency.his`, `tools/pylatency.py`: test mode's INPUT CHECK, button 1 every 60 frames):
+  - 4 frames from a press or release to the changed picture, every time; 5 before the picture change;
+  - the game polls once per frame, and in windowed play the frame runs within ~2 ms of the shell reading the controls, so later input reading would gain little;
+  - sound goes to the shell once per vsync, but a frame's emulation is a ~2 ms burst, so finer delivery would gain ~2 ms at most;
+  - the 4 frames are pop'n 9's own pipeline. Gameplay (key to keysound) is still to measure.
+- **Tools:**
+  - `tools/ab.py`: A/B of two binaries, or of two settings with `--a-args`/`--b-args`;
+  - `--pcsx2-set Section/Key=value`: any emulator setting, for experiments;
+  - `--no-picture`, `HK_PY_PROFILE`.
+
+**Next:**
+- the owner's test;
+- PY-2 on low-end hardware, which decides whether PY-3 goes into PCSX2's GS texture path or SPU2 (both mean patching emulator logic, not just taps);
+- gameplay latency (key to keysound). The profile behind it was measured with the core's `HK_PY_PROFILE=1` sampler and its `--no-picture` option (both added after PY-1).
 
 ### Decisions (owner, 2026-10-13)
 

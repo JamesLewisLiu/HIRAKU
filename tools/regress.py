@@ -45,6 +45,9 @@ CASES = {
     # Konami Python 1 (PLAN.md section 21): Reliquary hosted; BIOS, card boot, disk boot,
     # attract, coins, NORMAL mode, a song played through to CLEARED. Software GS.
     "popn9-play": ("popn9", 14000, ["--script", "oracle/scripts/popn9-play.his"]),
+    # the same with the Vulkan GS, the one played with: deterministic on a given GPU and
+    # driver (re-record on another PC); keeps GS settings honest (PLAN.md section 21, PY-3)
+    "popn9-play-vk": ("popn9", 14000, ["--renderer", "vk", "--script", "oracle/scripts/popn9-play.his"]),
 }
 
 # report lines that describe the host, not the machine

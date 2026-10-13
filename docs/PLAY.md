@@ -490,7 +490,9 @@ tools/ingest.py ~/Downloads/konami-python-1-collection/kpython1/popn9.py1
 build/cmake/hiraku-popn9 --window --renderer vk
 ```
 
-- `--renderer vk` draws with Vulkan: less CPU. The default, `sw` (software), is what the reference runs and what `tools/regress.py` checks.
+- `--renderer vk` draws with Vulkan: less CPU. The default, `sw` (software), is what the reference runs. `tools/regress.py` checks both.
+- Each frame's picture is shown at the end of that frame: 4 frames from a button to the picture, the game's own. `--picture-overlap` shows the previous frame's instead, so the GS works alongside the CPU: a little less time per frame on a slow PC, for a frame (16.7 ms) more latency.
+- `oracle/pcsx2/build-reliquary.sh pgo` (once, ~5 min) rebuilds with profile-guided optimisation: about 3 % less CPU, same results.
 - The CHD stays where it is (linked, not unpacked). The game's writes (BBSRAM, dongle, the disk's own writes as an overlay) go to the NVRAM folder, `~/.local/share/hiraku/popn9`.
 - The keys and the BIOS are copied into `dumps/popn9/`, which is never committed. Reliquary's habit of printing the derived keys is off in HIRAKU's build.
 - Boot takes about 50 s (BIOS, card, disk), as on the real cabinet.

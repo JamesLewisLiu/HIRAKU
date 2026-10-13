@@ -14,7 +14,8 @@
 # this build compiles too, as build/bin/hiraku-<game>. The source is the release zip
 # pcsx2-reliquary-1.9.4-reliquary.zip unpacked to $ROOT/pcsx2-reliquary.
 #
-# Usage: build-reliquary.sh [deps|patch|configure|build|all]   (default: all)
+# Usage: build-reliquary.sh [deps|patch|configure|build|pgo|all]   (default: all; pgo after a build:
+#        ~5 min, about 3 % less CPU for pop'n 9, results bit-identical)
 set -euo pipefail
 
 ROOT=${HK_PYTHON_WORK:-/run/media/roganis/DATA/Python-work}
@@ -83,11 +84,30 @@ patch_src() {
 	fi
 }
 
+# Profile-guided optimisation (PLAN.md section 21, PY-3): `pgo` builds the Python games
+# instrumented in build-pgogen/, plays each game's oracle/scripts/<game>-play.his with both
+# GS renderers, and merges the counts into $PGO_PROF; `configure` uses the profile whenever
+# it exists (HK_PY_PGO=0: not). Derived from the games, so it stays out of the repo.
+PGO_PROF=$ROOT/pgo/python.profdata
+PGO_USE=(-Wno-profile-instr-unprofiled -Wno-profile-instr-out-of-date -Wno-profile-instr-missing)
+
 configure() {
+	local flags=()
+	if [ -f "$PGO_PROF" ] && [ "${HK_PY_PGO:-1}" != 0 ]; then
+		flags=("-DCMAKE_C_FLAGS=-fprofile-instr-use=$PGO_PROF ${PGO_USE[*]}" "-DCMAKE_CXX_FLAGS=-fprofile-instr-use=$PGO_PROF ${PGO_USE[*]}")
+		echo "profile-guided: $PGO_PROF"
+	else
+		flags=("-DCMAKE_C_FLAGS=" "-DCMAKE_CXX_FLAGS=")
+	fi
+	configure_dir "$BUILD" "${flags[@]}"
+}
+
+configure_dir() {
+	local dir=$1; shift
 	# The source tarball has an empty pcsx2/GS/parallel-gs (uninitialised git submodule);
 	# CMake only checks IS_DIRECTORY, so drop the empty dir to build without the optional paraLLEl-GS renderer.
 	rmdir "$SRC/pcsx2/GS/parallel-gs" 2>/dev/null || true
-	cmake -S "$SRC" -B "$BUILD" -G Ninja \
+	cmake -S "$SRC" -B "$dir" -G Ninja "$@" \
 		-DCMAKE_BUILD_TYPE=Release \
 		-DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ \
 		-DCMAKE_EXE_LINKER_FLAGS_INIT=$LDF -DCMAKE_MODULE_LINKER_FLAGS_INIT=$LDF -DCMAKE_SHARED_LINKER_FLAGS_INIT=$LDF \
@@ -103,10 +123,36 @@ configure() {
 	#   hiding wayland-scanner skips only that optional relative-pointer feature.
 }
 
+python_games() {
+	sed -n 's/^hiraku_python_game(\(.*\))$/hiraku-\1/p' "$HIRAKU/runtime/python/CMakeLists.txt"
+}
+
+pgo() {
+	local gen=$SRC/build-pgogen raw=$ROOT/pgo/raw g id script
+	rm -rf "$raw" && mkdir -p "$raw"
+	configure_dir "$gen" -DCMAKE_C_FLAGS=-fprofile-instr-generate -DCMAKE_CXX_FLAGS=-fprofile-instr-generate \
+		-DCMAKE_EXE_LINKER_FLAGS=-fprofile-instr-generate
+	"${CAP[@]}" ninja -C "$gen" -j$JOBS $(python_games)
+	ln -sfn "$BUILD/bin/resources" "$gen/bin/resources"   # the main build's (pcsx2-qt puts them there)
+	for g in $(python_games); do
+		id=${g#hiraku-}
+		script=$HIRAKU/oracle/scripts/$id-play.his
+		[ -f "$script" ] || { echo "pgo: no $script, $id not trained"; continue; }
+		for r in sw vk; do
+			echo "pgo: training $id ($r)"
+			LLVM_PROFILE_FILE="$raw/$id-$r-%p.profraw" "${CAP[@]}" "$gen/bin/$g" --renderer $r --script "$script" \
+				--out "$raw/out-$id-$r" > "$raw/$id-$r.log" 2>&1
+		done
+	done
+	llvm-profdata merge -o "$PGO_PROF" "$raw"/*.profraw
+	echo "pgo: $PGO_PROF ($(du -h "$PGO_PROF" | cut -f1)); rebuilding with it"
+	configure && build
+}
+
 build() {
 	# pcsx2-qt is the oracle; hiraku-<game> are HIRAKU's Python core binaries (runtime/python/)
 	local games
-	games=$(sed -n 's/^hiraku_python_game(\(.*\))$/hiraku-\1/p' "$HIRAKU/runtime/python/CMakeLists.txt")
+	games=$(python_games)
 	"${CAP[@]}" ninja -C "$BUILD" -j$JOBS pcsx2-qt $games
 	# where the launcher and tools/regress.py look for game binaries (the link keeps them
 	# next to Reliquary's resources/, which they find through /proc/self/exe)
@@ -117,8 +163,9 @@ build() {
 case "${1:-all}" in
 	deps) deps ;;
 	patch) patch_src ;;
+	pgo) pgo ;;
 	configure) configure ;;
 	build) build ;;
 	all) deps && patch_src && configure && build ;;
-	*) echo "usage: $0 [deps|patch|configure|build|all]"; exit 1 ;;
+	*) echo "usage: $0 [deps|patch|configure|build|pgo|all]"; exit 1 ;;
 esac

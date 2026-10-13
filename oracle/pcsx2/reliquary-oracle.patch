@@ -10,7 +10,7 @@
  #include "SIO/Pad/Pad.h"
  #include "SIO/Sio.h"
  #include "SIO/Sio0.h"
-@@ -3069,8 +3072,58 @@
+@@ -3069,8 +3072,59 @@
  	R5900SymbolImporter.OnElfLoadedInMemory();
  }
  
@@ -57,6 +57,7 @@
 +}
 +
 +void (*Hiraku::vsync_cpu)() = nullptr;
++void (*Hiraku::vsync_posted)() = nullptr;
 +void (*Hiraku::audio_sample)(float, float) = nullptr;
 +void (*Hiraku::gs_frame)(const u32*, u32, u32) = nullptr;
 +void (*Hiraku::p1io_output)(const u32*, u32) = nullptr;
@@ -69,6 +70,26 @@
  	Pad::UpdateMacroButtons();
  
  	Patch::ApplyVsyncPatches();
+--- a/pcsx2/Counters.cpp
++++ b/pcsx2/Counters.cpp
+@@ -1,6 +1,7 @@
+ // SPDX-FileCopyrightText: 2002-2026 PCSX2 Dev Team
+ // SPDX-License-Identifier: GPL-3.0+
+ 
++#include "HirakuHooks.h"
+ #include <time.h>
+ #include <cmath>
+ 
+@@ -504,6 +505,9 @@
+ 		gsPostVsyncStart(); // MUST be after framelimit; doing so before causes funk with frame times!
+ 	}
+ 
++	if (Hiraku::vsync_posted) [[unlikely]]
++		Hiraku::vsync_posted();
++
+ 	// Poll input after MTGS frame push, just in case it has to stall to catch up.
+ 	VMManager::Internal::PollInputOnCPUThread();
+ 
 --- a/pcsx2/SPU2/spu2.cpp
 +++ b/pcsx2/SPU2/spu2.cpp
 @@ -6,6 +6,7 @@
@@ -164,7 +185,7 @@
  else()
 --- a/pcsx2/HirakuHooks.h
 +++ b/pcsx2/HirakuHooks.h
-@@ -0,0 +1,23 @@
+@@ -0,0 +1,26 @@
 +// SPDX-License-Identifier: GPL-3.0+
 +// HIRAKU (local patch, not upstream): taps for running this emulator as a HIRAKU
 +// machine core (runtime/python/ in HIRAKU). All are null unless a host sets them.
@@ -177,6 +198,9 @@
 +	// CPU thread, at every vsync, before the frame limiter and before the vsync is
 +	// posted to the GS thread (VMManager::Internal::VSyncOnCPUThread).
 +	extern void (*vsync_cpu)();
++	// CPU thread, at every vsync, just after it is posted to the GS thread (and before
++	// input polling): the GS can now present this vsync's picture.
++	extern void (*vsync_posted)();
 +	// EE thread, every output sample (48 kHz), after the Python 1 interface board's
 +	// ADPCM is mixed in and after the DC filter: what the audio device would get.
 +	extern void (*audio_sample)(float left, float right);
