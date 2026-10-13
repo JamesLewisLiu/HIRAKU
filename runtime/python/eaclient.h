@@ -24,8 +24,11 @@ public:
     // One request to the server it belongs to, and its whole answer (HTTP/1.0: up to the
     // close), or "" with *error set. Blocking: run it off the emulator's thread.
     std::string exchange(const VirtualNet::Target &t, const std::string &request, std::string *error) const;
+    // Whether the cabinet's own server takes a connection within 3 s (-smartea); *error says why not.
+    bool reachable(std::string *error) const;
 
 private:
+    static int connect_to(const std::string &host, uint16_t port, int seconds, std::string *error);
     std::string host_, path_;   // path_: "" or "/x" (no trailing slash)
     uint16_t port_ = 80;
 };

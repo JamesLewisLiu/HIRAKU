@@ -39,6 +39,15 @@ public:
     // An HTTP message (request or answer) as text: its first line and its body in clear.
     static std::string clear(const std::string &message);
 
+    // For what HIRAKU changes in a cabinet's calls (spice2x's -p and -card0, shell/eaoptions.h):
+    // an HTTP message's body handed to `fn` in clear, then put back as it came (encrypted again
+    // under its own X-Eamuse-Info) with its Content-Length.
+    static void edit(std::string &message, const std::function<void(std::string &body)> &fn);
+    // Every name="..." in xml set to value.
+    static void set_attr(std::string &xml, const std::string &name, const std::string &value);
+    // An answer to `request` with this XML (<response>...</response>), in kind as handle()'s.
+    std::string reply(const std::string &request, std::string xml);
+
 public:
     struct Board;   // a ranking (easerver.cpp)
 

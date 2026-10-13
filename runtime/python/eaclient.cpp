@@ -30,6 +30,37 @@ EamuseRemote::EamuseRemote(const std::string &url) {
     host_ = hostport;
 }
 
+bool EamuseRemote::reachable(std::string *error) const {
+    const int fd = connect_to(host_, port_, 3, error);
+    if (fd < 0) return false;
+    close(fd);
+    return true;
+}
+
+int EamuseRemote::connect_to(const std::string &host, uint16_t port, int seconds, std::string *error) {
+    const std::string where = port == 80 ? host : host + ":" + std::to_string(port);
+    addrinfo hints{}, *res = nullptr;
+    hints.ai_socktype = SOCK_STREAM;
+    if (int e = getaddrinfo(host.c_str(), std::to_string(port).c_str(), &hints, &res); e != 0) {
+        *error = host + ": " + gai_strerror(e);
+        return -1;
+    }
+    int fd = -1;
+    for (addrinfo *a = res; a; a = a->ai_next) {
+        fd = socket(a->ai_family, a->ai_socktype, a->ai_protocol);
+        if (fd < 0) continue;
+        timeval tv{seconds, 0};   // also connect's limit, on Linux
+        setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof tv);
+        setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof tv);
+        if (connect(fd, a->ai_addr, a->ai_addrlen) == 0) break;
+        close(fd);
+        fd = -1;
+    }
+    freeaddrinfo(res);
+    if (fd < 0) *error = where + ": " + std::strerror(errno);
+    return fd;
+}
+
 std::string EamuseRemote::exchange(const VirtualNet::Target &t, const std::string &request, std::string *error) const {
     const std::string host = t.services ? host_ : t.host;
     const uint16_t port = t.services ? port_ : t.port;
@@ -51,25 +82,8 @@ std::string EamuseRemote::exchange(const VirtualNet::Target &t, const std::strin
         break;
     }
 
-    addrinfo hints{}, *res = nullptr;
-    hints.ai_socktype = SOCK_STREAM;
-    if (int e = getaddrinfo(host.c_str(), std::to_string(port).c_str(), &hints, &res); e != 0) {
-        *error = host + ": " + gai_strerror(e);
-        return "";
-    }
-    int fd = -1;
-    for (addrinfo *a = res; a; a = a->ai_next) {
-        fd = socket(a->ai_family, a->ai_socktype, a->ai_protocol);
-        if (fd < 0) continue;
-        timeval tv{15, 0};   // the game gives up after about as long
-        setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof tv);
-        setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof tv);
-        if (connect(fd, a->ai_addr, a->ai_addrlen) == 0) break;
-        close(fd);
-        fd = -1;
-    }
-    freeaddrinfo(res);
-    if (fd < 0) { *error = host_header + ": " + std::strerror(errno); return ""; }
+    const int fd = connect_to(host, port, 15, error);   // the game gives up after about as long
+    if (fd < 0) return "";
 
     for (size_t sent = 0; sent < req.size();) {
         const ssize_t n = send(fd, req.data() + sent, req.size() - sent, MSG_NOSIGNAL);

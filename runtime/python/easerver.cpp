@@ -740,7 +740,11 @@ std::string EamuseServer::handle(const std::string &req) {
     }
     if (log) log(std::string("e-AMUSE3 call") + (info.empty() ? " (plain): " : ": ") + body + "\ne-AMUSE3 answer: " + (xml.empty() ? "(not understood)" : xml));
     if (xml.empty()) return "HTTP/1.0 400 Bad Request\r\nContent-Length: 0\r\n\r\n";
+    return reply(req, xml);
+}
 
+std::string EamuseServer::reply(const std::string &req, std::string xml) {
+    const std::string info = header(req.substr(0, req.find("\r\n\r\n")), "X-Eamuse-Info");
     // Answer in kind: an encrypted call gets an encrypted answer; a plain one (ntp, rank, ...: their
     // packets have no cipher) a plain answer with no X-Eamuse-Info, which the game insists on (0x190290).
     std::string info_line;
@@ -752,6 +756,34 @@ std::string EamuseServer::handle(const std::string &req) {
     }
     return "HTTP/1.0 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: " + std::to_string(xml.size()) +
            "\r\n" + info_line + "\r\n" + xml;
+}
+
+void EamuseServer::edit(std::string &m, const std::function<void(std::string &)> &fn) {
+    const size_t he = m.find("\r\n\r\n");
+    if (he == std::string::npos) return;
+    std::string head = m.substr(0, he);
+    const std::string info = header(head, "X-Eamuse-Info");
+    std::string body = m.substr(he + 4);
+    if (!info.empty()) rc4(key(info), body);
+    fn(body);
+    if (!info.empty()) rc4(key(info), body);
+    for (size_t at = head.find("\r\n"); at != std::string::npos; at = head.find("\r\n", at + 2)) {
+        if (strncasecmp(head.c_str() + at + 2, "Content-Length:", 15) != 0) continue;
+        const size_t e = head.find("\r\n", at + 2);
+        head.replace(at + 2, (e == std::string::npos ? head.size() : e) - at - 2, "Content-Length: " + std::to_string(body.size()));
+        break;
+    }
+    m = head + "\r\n\r\n" + body;
+}
+
+void EamuseServer::set_attr(std::string &xml, const std::string &name, const std::string &value) {
+    const std::string key = name + "=\"";
+    for (size_t at = xml.find(key); at != std::string::npos; at = xml.find(key, at + 1)) {
+        if (at == 0 || !std::isspace((unsigned char)xml[at - 1])) continue;   // srcid, not xsrcid
+        const size_t b = at + key.size(), e = xml.find('"', b);
+        if (e == std::string::npos) return;
+        xml.replace(b, e - b, value);
+    }
 }
 
 }  // namespace hk::py

@@ -55,9 +55,13 @@ the extra packages they need.
 - `server.address` and `server.port` must be what the cabinet reaches. The game speaks plain
   HTTP, and `services.get` always hands out `http://` whatever `server.https` says.
 - With `enforce_pcbid`, add the cabinet's PCBID (its `srcid`, 20 hex digits; HIRAKU's is
-  `01401401000100045FEF`) as a machine first.
-- In HIRAKU: the launcher's Settings > e-AMUSEMENT > Server, `http://your-server:port/` (or
-  `--eamuse URL`). The game's test mode must have e-AMUSEMENT on.
+  `01401401000100045FEF`, or the one given with `-p`) as a machine first.
+- In HIRAKU: the launcher's Settings > e-AMUSEMENT, as spice2x's: EA Service URL
+  `your-server:port`, and PCBID if wanted (or `-url your-server:port -p PCBID`). The game's test
+  mode must have e-AMUSEMENT on.
+- **A player's own card number:** with Player 1 Card (`-card0 E004...`), a new card takes that
+  number instead of one from `numbering.assign`, so an e-AMUSEMENT PASS already on an account
+  (from other games) saves pop'n 9 to that account.
 
 ## Checked
 

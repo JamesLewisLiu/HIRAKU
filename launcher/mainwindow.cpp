@@ -432,8 +432,15 @@ QStringList MainWindow::arguments(const Game &g) const {
     QString sf = s.value("audio/soundfont").toString();
     if (g.family == "kbm" && !sf.isEmpty()) a << "--soundfont" << sf;
     if (g.core == "python") a << "--renderer" << "vk";   // Vulkan GS: less CPU than the software one (PLAN.md section 21)
-    if (g.core == "python" && !s.value("eamuse/server").toString().isEmpty())   // e-AMUSEMENT online (docs/EAMUSE3.md)
-        a << "--eamuse" << s.value("eamuse/server").toString();
+    if (g.core == "python") {   // e-AMUSEMENT, as spice2x's options (runtime/shell/eaoptions.h, docs/EAMUSE3.md)
+        const QString url = s.value("eamuse/url", s.value("eamuse/server")).toString();
+        if (!url.isEmpty()) a << "-url" << url;
+        if (!url.isEmpty() && s.value("eamuse/smartea", false).toBool()) a << "-smartea";
+        if (QString p = s.value("eamuse/pcbid").toString(); !p.isEmpty()) a << "-p" << p;
+        for (int n = 0; n < 2; n++)
+            if (QString c = s.value(QString("eamuse/card%1").arg(n)).toString(); !c.isEmpty()) a << QString("-card%1").arg(n) << c;
+        if (QString ac = s.value("eamuse/autocard", "off").toString(); ac != "off") a << "-autocard" << ac;
+    }
     if (!cfg::nvramBase().isEmpty()) a << "--nvram" << cfg::nvramDir(g.id);
     a << UnlocksDialog::macroArguments(g.id);   // codes typed at every start
     a << QProcess::splitCommand(s.value("game/extraArgs").toString());

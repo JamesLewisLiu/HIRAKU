@@ -82,6 +82,7 @@
 #include "python/easerver.h"
 #include "shell/cabinet.h"
 #include "shell/core.h"
+#include "shell/eaoptions.h"
 
 // clang's profile runtime, present only in an instrumented build (oracle/pcsx2/build-reliquary.sh pgo)
 extern "C" int __llvm_profile_write_file(void) __attribute__((weak));
@@ -271,9 +272,18 @@ public:
             if (!has_autoplay(HK_GAME_ID)) fprintf(stderr, "autoplay: not available for %s yet (pop'n music 9 only)\n", HK_GAME_ID);
             return true;
         }
-        if (name == "--eamuse") {   // local (the server in the core) or http://host[:port][/path]
-            eamuse_ = value();
-            return eamuse_ == "local" || hk::py::EamuseRemote(eamuse_).ok();
+        if (name == "--eamuse") {   // the older name: local (the server in the core) or -url's URL
+            const std::string v = value();
+            ea_.url = v == "local" ? "" : v;
+            if (ea_.online() && !hk::py::EamuseRemote(ea_.http_url()).ok()) return false;
+            return true;
+        }
+        std::string error;
+        if (ea_.option(name, value, &error)) {   // spice2x's -ea, -url, -p, -card0, ... (shell/eaoptions.h)
+            if (error.empty() && name == "--url" && !hk::py::EamuseRemote(ea_.http_url()).ok())
+                error = "-url: " + ea_.url + " is not host:port[/path] or http://host[:port][/path] (the game speaks plain HTTP)";
+            if (!error.empty()) { fprintf(stderr, "%s\n", error.c_str()); exit(2); }
+            return true;
         }
         if (name == "--pcsx2-set") {   // Section/Key=value, after the core's own settings
             const std::string v = value();
@@ -297,8 +307,10 @@ public:
                "  --autoplay           the game plays every song itself, as in its attract demo: every note GREAT\n"
                "                       (a mod for testing what clears unlock; pop'n music 9)\n"
                "  --pcsx2-set S/K=V    set one of the emulator's settings (its ini's section S, key K), for experiments\n"
-               "  --eamuse local|URL   e-AMUSEMENT (when the game has it on): the server in the core (default, offline,\n"
-               "                       reproducible), or a real one at http://host[:port][/path] (docs/EAMUSE3.md)\n";
+               "  --eamuse local|URL   the older -ea / -url (below)\n" +
+               std::string(hk::EaOptions::help()) +
+               "  (e-AMUSEMENT when the game has it on in test mode; the server inside HIRAKU is offline and\n"
+               "  reproducible. pop'n has one card reader: player 1's. docs/EAMUSE3.md)\n";
     }
 
     bool init(const Options &o) override {
@@ -343,14 +355,27 @@ public:
         }
         py1_path_ = run_dir_ + "/" + o.game + ".py1";
         if (family_ == "pypopn" && !bare_board_) {
-            // a fresh card is one of this game (cardunit.h)
-            card_ = std::make_unique<hk::py::CardUnit>(run_dir_ + "/card.bin", hk::py::CardUnit::fresh_header(o.game));
+            std::string error;
+            ea_.read_card_files(run_dir_, &error);
+            if (!error.empty()) { fprintf(stderr, "%s\n", error.c_str()); return false; }
+            if (!ea_.card[1].empty() || ea_.autocard[1]) printf("e-AMUSEMENT: pop'n has one card reader, player 1's (player 2's card not used)\n");
+            // A card with a number (-card0, card0.txt) is its own file, cards/NUMBER.bin; without one,
+            // card.bin. A fresh card is one of this game (cardunit.h), and gets its number when the
+            // game asks the server for one (on_call).
+            std::string card_file = run_dir_ + "/card.bin";
+            if (!ea_.card[0].empty()) {
+                mkdirs(run_dir_ + "/cards");
+                card_file = run_dir_ + "/cards/" + ea_.card[0] + ".bin";
+                printf("e-AMUSEMENT: card %s%s\n", ea_.card[0].c_str(), ea_.autocard[0] ? ", presented by itself" : "");
+            }
+            card_ = std::make_unique<hk::py::CardUnit>(card_file, hk::py::CardUnit::fresh_header(o.game));
             hk::py::VirtualNet::Io io;
             io.write = [](uint32_t addr, const uint8_t *d, uint32_t n) { Hiraku::net_write(addr, d, n); };
             io.respond = [](uint32_t ch, const uint32_t w[8]) { Hiraku::net_respond(ch, w); };
             io.read = [](uint32_t addr, uint8_t *d, uint32_t n) { return Hiraku::iop_read(addr, d, n); };
-            net_ = std::make_unique<hk::py::VirtualNet>(io, [this](const hk::py::VirtualNet::Target &t, const std::string &req,
+            net_ = std::make_unique<hk::py::VirtualNet>(io, [this](const hk::py::VirtualNet::Target &t, std::string req,
                                                                    std::function<void(std::string)> done) {
+                if (std::string answer = on_call(req); !answer.empty()) { done(std::move(answer)); return; }
                 if (!remote_) { done(server_->handle(req)); return; }
                 // online: off the emulator's thread; the recv waits for the answer
                 std::thread([this, t, req, done = std::move(done)] {
@@ -367,10 +392,17 @@ public:
                     done(std::move(answer));
                 }).detach();
             });
-            if (eamuse_ != "local") {
-                remote_ = std::make_unique<hk::py::EamuseRemote>(eamuse_);
-                printf("e-AMUSEMENT: online, %s\n", eamuse_.c_str());
+            if (ea_.online()) {   // -url (-ea is ignored with it, as in spice2x)
+                remote_ = std::make_unique<hk::py::EamuseRemote>(ea_.http_url());
+                std::string why;
+                if (ea_.smartea && !remote_->reachable(&why)) {
+                    printf("e-AMUSEMENT: %s doesn't answer (%s): the server inside HIRAKU (-smartea)\n", ea_.url.c_str(), why.c_str());
+                    remote_.reset();
+                } else {
+                    printf("e-AMUSEMENT: online, %s\n", ea_.http_url().c_str());
+                }
             }
+            if (!ea_.pcbid.empty()) printf("e-AMUSEMENT: PCBID %s\n", ea_.pcbid.c_str());
             server_ = std::make_unique<hk::py::EamuseServer>(run_dir_ + "/eamuse");
             // the emulated RTC's start (init_emulator: 2003-06-01 12:00) plus the machine's own time
             server_->now = [this] { return (int64_t)1054468800 + (int64_t)seconds(); };
@@ -631,6 +663,7 @@ private:
         }
         if (net_) net_->poll();   // online answers that arrived
         if (autoplay_) apply_autoplay();
+        if (card_ && ea_.autocard[0]) autocard();
         for (auto &[addr, last] : watch_) {
             uint32_t v;
             memcpy(&v, eeMem->Main + (addr & 0x1fffffc), 4);
@@ -708,8 +741,37 @@ private:
     FILE *net_log_ = nullptr;
     std::unique_ptr<hk::py::EamuseServer> server_;
     std::vector<std::pair<uint32_t, uint32_t>> watch_;   // HK_PY_WATCH: address, last value
-    std::unique_ptr<hk::py::EamuseRemote> remote_;   // --eamuse URL: online
-    std::string eamuse_ = "local";
+    std::unique_ptr<hk::py::EamuseRemote> remote_;   // -url: online
+    hk::EaOptions ea_;   // spice2x's e-AMUSEMENT options
+    uint64_t autocard_wait_ = 0;
+    // A call from the game, as it goes out: the PCBID put in (-p). The answer, when the core
+    // gives it itself: a new card's number (-card0), so the server never numbers a card that
+    // won't carry its number. "": the server answers.
+    std::string on_call(std::string &req) {
+        bool numbering = false;
+        hk::py::EamuseServer::edit(req, [&](std::string &xml) {
+            if (!ea_.pcbid.empty()) {
+                hk::py::EamuseServer::set_attr(xml, "srcid", ea_.pcbid);
+                hk::py::EamuseServer::set_attr(xml, "gpcb_id", ea_.pcbid);
+            }
+            numbering = xml.find("<numbering") != std::string::npos && xml.find("method=\"assign\"") != std::string::npos;
+        });
+        if (!numbering || ea_.card[0].empty()) return "";
+        if (net_log_) {
+            std::lock_guard<std::mutex> l(net_log_mutex_);
+            fprintf(net_log_, "%llu numbering.assign: the card's own number, %s (-card0)\n", (unsigned long long)frame_, ea_.card[0].c_str());
+            fflush(net_log_);
+        }
+        return server_->reply(req, "<response><numbering status=\"0\" number=\"" + ea_.card[0] + "\"></numbering></response>");
+    }
+    // -autocard: the card in the slot from the start, and again a while after the reader gives it
+    // back (spice2x waits 8 s too), so the game takes it whenever it opens the slot.
+    void autocard() {
+        if (card_->card_offered()) { autocard_wait_ = 8 * 60; return; }
+        if (autocard_wait_ && --autocard_wait_) return;
+        card_->card_button();
+        card_changed();
+    }
     std::mutex net_log_mutex_;
     std::map<std::string, int> held_;   // the card button's and 10-key's last values
     std::string card_state_;

@@ -49,6 +49,7 @@ public:
     void key(uint8_t scan, bool down);
 
     bool card_inside() const { return inside_; }
+    bool card_offered() const { return offered_; }   // in the slot, or in the reader
     // A line for the window title ("card in", "card ready", ...), "" when nothing to say.
     std::string state() const;
 

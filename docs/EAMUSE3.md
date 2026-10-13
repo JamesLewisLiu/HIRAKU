@@ -26,19 +26,41 @@ It is OFF by default, and the game plays the same without it.
 - **The numeric keypad:** the 10-key (0–9, Enter, `.`; Backspace is Clear).
 
 **The card** is `card.bin` in the save folder (`~/.local/share/hiraku/popn9`): 128 bytes, a fresh
-pop'n 9 card until the game writes it.
+pop'n 9 card until the game writes it. With a card number (`-card0`, below) it is
+`cards/NUMBER.bin` instead, one file per number.
 
 **Three ways to run the server:**
 
 | | How | What for |
 |---|---|---|
 | **Offline** (default) | nothing to do: `hiraku-popn9 --window` | one cabinet; data in the save folder's `eamuse/`; runs are reproducible |
-| **Online, HIRAKU's server** | on the server machine, `hiraku-eamuse --port 8080 --data DIR`; on each cabinet, `hiraku-popn9 --window --eamuse http://server:8080/` | several cabinets sharing cards, players and rankings |
-| **Online, another server** | `hiraku-popn9 --window --eamuse http://host[:port][/path]` | a server that implements this page |
+| **Online, HIRAKU's server** | on the server machine, `hiraku-eamuse --port 8080 --data DIR`; on each cabinet, `hiraku-popn9 --window -url server:8080` | several cabinets sharing cards, players and rankings |
+| **Online, another server** | `hiraku-popn9 --window -url host[:port][/path]` | a server that implements this page |
 
-- **In online mode** the game's requests go out unchanged: encrypted as the game encrypts them,
-  with the URL's path in front of the request path and the Host header set to the server. Your
-  network sees plain HTTP. HIRAKU does no DNS for the game except for its own lookups (below).
+**spice2x's options:** the e-AMUSEMENT options have spice2x's names and meanings
+(`runtime/shell/eaoptions.h`), so a setup made for spice2x carries over. Each takes one dash or two,
+and the launcher's Settings > e-AMUSEMENT writes them, laid out like spicecfg's Network page.
+
+| Option | spice2x's name | In HIRAKU |
+|---|---|---|
+| `-ea` | Basic Local EA Emulation | the server inside HIRAKU. It is also what runs without `-url`, and it is ignored with `-url`, as in spice2x. Unlike spice2x's, it is the whole server: cards and data are kept |
+| `-url URL` | EA Service URL | the cabinet's server: `host:port[/path]` (spice2x's form) or `http://host[:port][/path]`. `--eamuse URL` is the older name |
+| `-smartea` | Smart EA | with `-url`: if that server doesn't take a connection at start (3 s), the server inside HIRAKU |
+| `-p PCBID` | PCBID | 20 hex digits, sent in place of the game's own (pop'n 9's is `01401401000100045FEF`) as `srcid` and `gpcb_id`, for a server that only takes the machines it knows |
+| `-card0 NUMBER` | Player 1 Card | the card's number, 16 hex digits (`E004...`). Without it, `card0.txt` (the working directory's, then the save folder's), as spice2x reads it. `-card1` and `card1.txt` are player 2's; pop'n has one reader |
+| `-autocard off\|p1\|p2\|both` | Auto Card Insert | the card goes in by itself: it is in the slot from the start, and back in it 8 s after the reader gives it out, so the game takes it whenever it opens the slot |
+
+- **A card with a number:** these games number their cards themselves: a new card asks the server
+  (`numbering.assign`), and the game writes the number into the card. With `-card0`, HIRAKU gives
+  the game the card's number itself, without asking the server, so the card carries the number
+  set. Then every call about the card (`userdata`, `rank`, `playerdata`, ...) uses it. A server
+  that knows the number from other games (the player's e-AMUSEMENT PASS in spice2x) can then link
+  the pop'n card to the same player. The bemaniutils patch does: a number already on an account
+  (as an e-AMUSEMENT PASS played in spice2x) saves to that account.
+- **In online mode** the game's requests go out as the game sends them: encrypted as the game
+  encrypts them, with the URL's path in front of the request path and the Host header set to the
+  server. `-p` and `-card0` change the calls' contents, as above. Your network sees plain HTTP.
+  HIRAKU does no DNS for the game except for its own lookups (below).
 - **`HK_PY_NET_LOG=FILE`** logs every socket command, and every call and answer decrypted.
 - **`hiraku-eamuse` options:**
   - `--bind ADDR` (default 0.0.0.0);

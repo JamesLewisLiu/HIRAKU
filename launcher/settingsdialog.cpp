@@ -4,13 +4,20 @@
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDialogButtonBox>
+#include <QDir>
 #include <QFileDialog>
+#include <QFileInfo>
 #include <QFormLayout>
 #include <QGroupBox>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
+#include <QMenu>
+#include <QMessageBox>
 #include <QPushButton>
+#include <QRandomGenerator>
+#include <QRegularExpression>
+#include <QRegularExpressionValidator>
 #include <QSpinBox>
 #include <QVBoxLayout>
 
@@ -32,6 +39,39 @@ QWidget *withBrowse(QLineEdit *e, bool directory, QWidget *parent) {
         QString p = directory ? QFileDialog::getExistingDirectory(parent, "Choose a folder", e->text())
                               : QFileDialog::getOpenFileName(parent, "Choose a SoundFont", e->text(), "SoundFonts (*.sf2 *.sf3);;All files (*)");
         if (!p.isEmpty()) e->setText(p);
+    });
+    return w;
+}
+
+// A card number line with a "Pick" button, as spicecfg's: the cards HIRAKU already has (each
+// game's save folder keeps them as cards/NUMBER.bin), or a new number.
+QWidget *withPick(QLineEdit *e, QWidget *parent) {
+    auto *w = new QWidget(parent);
+    auto *h = new QHBoxLayout(w);
+    h->setContentsMargins(0, 0, 0, 0);
+    h->addWidget(e, 1);
+    auto *b = new QPushButton("Pick");
+    b->setAutoDefault(false);
+    h->addWidget(b);
+    QObject::connect(b, &QPushButton::clicked, w, [e, b] {
+        QMenu menu;
+        QDir base(QFileInfo(cfg::nvramDir("x")).path());
+        QStringList seen;
+        for (const QString &game : base.entryList(QDir::Dirs | QDir::NoDotAndDotDot, QDir::Name))
+            for (const QFileInfo &f : QDir(base.filePath(game) + "/cards").entryInfoList({"*.bin"}, QDir::Files, QDir::Name)) {
+                const QString n = f.completeBaseName();
+                if (seen.contains(n)) continue;
+                seen << n;
+                menu.addAction(n + "  (" + game + ")", [e, n] { e->setText(n); });
+            }
+        if (!seen.isEmpty()) menu.addSeparator();
+        menu.addAction("New card number", [e] {
+            QString n = "E004";   // as an e-AMUSEMENT PASS: E004 and 12 hex digits
+            for (int i = 0; i < 12; i++) n += QString::number(QRandomGenerator::global()->bounded(16), 16).toUpper();
+            e->setText(n);
+        });
+        menu.addAction("None", [e] { e->clear(); });
+        menu.exec(b->mapToGlobal(QPoint(0, b->height())));
     });
     return w;
 }
@@ -105,13 +145,40 @@ SettingsDialog::SettingsDialog(QWidget *parent) : QDialog(parent) {
     fl->addWidget(path);
     v->addWidget(lights);
 
-    auto *ea = new QGroupBox("e-AMUSEMENT (Konami Python: pop'n music 9)");
+    // as spicecfg's Network page, with its option names, so a spice2x setup carries over
+    auto *ea = new QGroupBox("e-AMUSEMENT (Konami Python: pop'n music 9-12)");
     auto *fe = new QFormLayout(ea);
-    m_eamuse = new QLineEdit(s.value("eamuse/server").toString());
-    m_eamuse->setPlaceholderText("offline: HIRAKU's own server (or http://host:port/ to play online)");
-    m_eamuse->setToolTip("Empty: the server inside HIRAKU, saves in the game's save folder. A URL: a server on the network, "
-                         "such as hiraku-eamuse on another PC (docs/EAMUSE3.md). The game's e-AMUSEMENT must be ON in test mode.");
-    fe->addRow("Server:", m_eamuse);
+    m_eaUrl = new QLineEdit(s.value("eamuse/url", s.value("eamuse/server")).toString());
+    m_eaUrl->setPlaceholderText("empty: the server inside HIRAKU (-ea)");
+    m_eaUrl->setToolTip("-url. Empty: the server inside HIRAKU, which keeps its data in the game's save folder. "
+                        "host:port or http://host:port/path: a server on the network, such as hiraku-eamuse on another "
+                        "PC (docs/EAMUSE3.md). The game's e-AMUSEMENT must be ON in test mode.");
+    fe->addRow("EA Service URL:", m_eaUrl);
+    m_smartea = new QCheckBox("The server inside HIRAKU when that one doesn't answer (-smartea)");
+    m_smartea->setChecked(s.value("eamuse/smartea", false).toBool());
+    fe->addRow("", m_smartea);
+    const QRegularExpression hex20("[0-9A-Fa-f]{0,20}"), hex16("[0-9A-Fa-f]{0,16}");
+    m_pcbid = new QLineEdit(s.value("eamuse/pcbid").toString());
+    m_pcbid->setValidator(new QRegularExpressionValidator(hex20, m_pcbid));
+    m_pcbid->setPlaceholderText("the game's own (pop'n 9: 01401401000100045FEF)");
+    m_pcbid->setToolTip("-p: the cabinet's PCBID, 20 hex digits, for a server that only takes the machines it knows.");
+    fe->addRow("PCBID:", m_pcbid);
+    for (int n = 0; n < 2; n++) {
+        m_card[n] = new QLineEdit(s.value(QString("eamuse/card%1").arg(n)).toString());
+        m_card[n]->setValidator(new QRegularExpressionValidator(hex16, m_card[n]));
+        m_card[n]->setPlaceholderText(n ? "card1.txt (pop'n has one reader: not used)" : "card0.txt, or the save folder's card.bin");
+        m_card[n]->setToolTip(QString("-card%1: the card's number, 16 hex digits (E004...), the same as in spice2x, so a "
+                                      "server knows the player. Empty: card%1.txt in the save folder, if there is one; "
+                                      "else the save folder's card.bin, numbered by the server.%2")
+                                  .arg(n)
+                                  .arg(n ? " pop'n has one card reader, player 1's." : ""));
+        fe->addRow(QString("Player %1 Card:").arg(n + 1), withPick(m_card[n], this));
+    }
+    m_autocard = new QComboBox;
+    for (const char *v : {"off", "p1", "p2", "both"}) m_autocard->addItem(v, v);
+    m_autocard->setCurrentIndex(std::max(0, m_autocard->findData(s.value("eamuse/autocard", "off").toString())));
+    m_autocard->setToolTip("-autocard: the card is put in whenever the reader waits for one, so Insert needn't be pressed.");
+    fe->addRow("Auto Card Insert:", m_autocard);
     v->addWidget(ea);
 
     auto *paths = new QGroupBox("Folders");
@@ -145,6 +212,11 @@ SettingsDialog::SettingsDialog(QWidget *parent) : QDialog(parent) {
 
 void SettingsDialog::accept() {
     auto &s = cfg::settings();
+    const QString pcbid = m_pcbid->text().trimmed(), c0 = m_card[0]->text().trimmed(), c1 = m_card[1]->text().trimmed();
+    if ((!pcbid.isEmpty() && pcbid.size() != 20) || (!c0.isEmpty() && c0.size() != 16) || (!c1.isEmpty() && c1.size() != 16)) {
+        QMessageBox::warning(this, "e-AMUSEMENT", "A PCBID is 20 hex digits, and a card number 16 (E004...).");
+        return;
+    }
     s.setValue("video/scale", m_scale->value());
     s.setValue("video/fullscreen", m_fullscreen->isChecked());
     s.setValue("video/displaySync", m_displaySync->isChecked());
@@ -157,7 +229,12 @@ void SettingsDialog::accept() {
     s.setValue("paths/nvram", m_nvram->text().trimmed());
     s.setValue("ui/hideWhileRunning", m_hideLauncher->isChecked());
     s.setValue("game/extraArgs", m_extra->text().trimmed());
-    s.setValue("eamuse/server", m_eamuse->text().trimmed());
+    s.remove("eamuse/server");   // now eamuse/url
+    s.setValue("eamuse/url", m_eaUrl->text().trimmed());
+    s.setValue("eamuse/smartea", m_smartea->isChecked());
+    s.setValue("eamuse/pcbid", m_pcbid->text().trimmed().toUpper());
+    for (int n = 0; n < 2; n++) s.setValue(QString("eamuse/card%1").arg(n), m_card[n]->text().trimmed().toUpper());
+    s.setValue("eamuse/autocard", m_autocard->currentData().toString());
     s.sync();
     QDialog::accept();
 }
