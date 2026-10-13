@@ -475,14 +475,35 @@ back with its PIN; `oracle/scripts/popn10-eamuse-on.his`, `popn10-card-new.his`,
 - **ntp.get:** one attribute, `<ntp status="0" time="2003-06-01 12:00:00+9"/>` (`0x19da48`: six
   numbers, then an optional zone in hours).
 
-**pop'n music 11** (`D11`): game features move into a module named after the game, with a `type`:
-`<D11 type="rank" method="get"/>`, `D11.game_get`, and in the program `D11.rank_exp`, `rank_shop`,
-`pf_get`, `pf_ask`, `game_select`, `player_get`, `player_set`, `renewc_reg`, `renewc_ask`, plus
-`eemall.check` and `portfw.get`. A new card is `28 24 45 11` ("D11 NEW CARD"). Start-up passes with
-plain answers; the rest is being worked out.
+**pop'n music 11** (`D11`; checked in HIRAKU: a new card registered, a credit saved with its
+mileage, the card read back with its PIN; `oracle/scripts/popn11-eamuse-on.his`, `popn11-card-new.his`,
+`popn11-card-again.his`). Game features move into a module named after the game, with a `type`;
+answers are that element again (pop'n 11's parsers `0x18c858`-`0x18ddf8`), and its calls go to
+the `local` service.
+- **The card:** a new pop'n 11 card is `28 24 45 11` ("D11 NEW CARD"). After the card, red, the
+  name (a kana grid: blue moves, red enters, the white buttons switch kana/letters; 決定 is one
+  blue-left from あ), the PIN twice.
+- **`D11 rank exp`:** pop'n 10's `rank.exp` (plus `chara_num`), answered on `<D11 update entry rank
+  hi_score hi_cool/>`. **`rank get`:** a `<b>` table as pop'n 10's (empty: `<D11/>`). **`rank shop`**
+  (`item extra shop_name area_num`), **`pf ask`**, **`game select`** (play counts: `<music num play
+  cnt/>` children), **`renewc reg`/`ask`** (a card's renewal: `old_card_id`, `new_card_id`): `<D11/>`.
+- **`D11 pf get`:** `<D11 pf_num mobile/>`. **`D11 game get`:** `<D11 phase message expire_days/>`;
+  `phase` as pop'n 10's `message.get` (-1 leaves the cabinet's own; HIRAKU's file `phase-D11`).
+- **`D11 player set`** sends `card_id mileage ticket="t0,...,t8,"`; **`player get`** reads them back,
+  with `course="c0,c1,c2,c3"`: `<D11 mileage ticket course/>`. HIRAKU keeps `player-D11-CARD`.
+- **`eemall.check`:** `<eemall/>`. **`portfw.get`** (`privateip`): `<portfw globalip port/>`; none is fine.
 
-**pop'n music 12** (`E12`): the same `E12 type=...` calls at start-up; no card types by name in its
-program (its card system changed). **pop'n music 13** (`E13`): stops after `services.get` with
+**pop'n music 12** (`E12`): the same game-named calls at start-up (and `eemall.check`).
+- **The card:** a new pop'n 12 card is `28 25 45 21` (type 0xf, `0x1ad4e4`), and pop'n 12 reads a card
+  only with both CRCs right, the data's too (`0x1acbb0`): a fresh card needs the CRC-16 of its blank
+  bytes 5-0x3e at 0x3f. Test mode > CARD R/W CHECK > CARD CHECK says NEW CARD for it.
+- **New cards need the network up:** the game takes them only while its pings come back
+  (`0x19803c`). It pings 10.2.1.10, or what the `keepalive` service names: `<item name="keepalive"
+  url="ping://ADDRESS?t1=interval&amp;t2=wait&amp;rt=retries&amp;pa=router&amp;ga=center"/>`
+  (`0x1981b8`; pop'n 10–14 all look `keepalive` up). It sends each ping on a socket it closes at
+  once and reads the replies on another.
+- **Not done yet:** after the card's OK and red, the screen stays blank (no card or network call
+  pending). **pop'n music 13** (`E13`): stops after `services.get` with
 "センターサーバーと通信できません" (5-2007-0000): its services answer needs more. **pop'n music 14**
 (`F14`): uses an IC card reader ("IC CARD R/W UNIT ERROR", 5-1508-000, without one), which HIRAKU
 doesn't play yet.

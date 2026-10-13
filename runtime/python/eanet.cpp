@@ -225,8 +225,14 @@ bool VirtualNet::command(uint32_t ch, const uint32_t *p, uint32_t quads) {
         auto it = sockets_.find(fd);
         if (it == sockets_.end()) { respond(ch, -1); note(fmt("fd %d: no such socket", fd)); return true; }
         Socket &s = it->second;
-        if (s.type == 3) {   // raw ICMP: the ping check (0x1885b8) wants the echo back with its IP header
-            if (n >= 8 && d[0] == 8) s.datagrams.push_back(echo_reply(d, arg(5)));
+        if (s.type == 3) {   // raw ICMP: the ping check (0x1885b8) wants the echo back with its IP header.
+            // Every raw socket gets a copy, as from a real stack: pop'n 12 sends each ping on a
+            // socket it closes at once and reads the replies on another (its ping thread, 0x197ab8).
+            if (n >= 8 && d[0] == 8) {
+                const std::vector<uint8_t> reply = echo_reply(d, arg(5));
+                for (auto &[other_fd, other] : sockets_)
+                    if (other.type == 3) other.datagrams.push_back(reply);
+            }
             note(fmt("ping(%d, %u bytes) %u.%u.%u.%u", fd, n, arg(5) >> 24, (arg(5) >> 16) & 255, (arg(5) >> 8) & 255, arg(5) & 255));
         } else if (s.type == 2) {
             std::string name;

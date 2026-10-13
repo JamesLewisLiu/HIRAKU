@@ -22,6 +22,16 @@ uint8_t crc8(const uint8_t *p, size_t n) {
     return ~c;
 }
 
+// The card data's CRC-16 (0x1a30c0): reflected 0x1021 (0x8408), initial 0xffff, inverted
+uint16_t crc16(const uint8_t *p, size_t n) {
+    uint16_t c = 0xffff;
+    for (size_t i = 0; i < n; i++) {
+        c ^= p[i];
+        for (int b = 0; b < 8; b++) c = (c & 1) ? (c >> 1) ^ 0x8408 : c >> 1;
+    }
+    return (uint16_t)~c;
+}
+
 uint8_t sum8(const uint8_t *p, size_t n) {
     uint8_t s = 0;
     for (size_t i = 0; i < n; i++) s += p[i];
@@ -35,6 +45,7 @@ CardUnit::CardUnit(std::string card_file, Header fresh) : file_(std::move(card_f
 CardUnit::Header CardUnit::fresh_header(const std::string &game) {
     if (game == "popn10") return {0x28, 0x23, 0x49, 0x01};
     if (game == "popn11") return {0x28, 0x24, 0x45, 0x11};
+    if (game == "popn12") return {0x28, 0x25, 0x45, 0x21};
     return {0x28, 0x23, 0x41, 0x01};   // pop'n 9
 }
 
@@ -42,6 +53,11 @@ std::vector<uint8_t> CardUnit::new_card(const Header &h) {
     std::vector<uint8_t> c(CARD_BYTES, 0);
     for (int i = 0; i < 4; i++) c[i] = h[i];
     c[4] = crc8(c.data(), 4);
+    // the data (5-0x3e, blank) and its CRC at 0x3f: pop'n 12 reads a card only with both right
+    // (0x1acbb0); pop'n 9-11 never look at a new card's
+    const uint16_t d = crc16(c.data() + 5, 0x3a);
+    c[0x3f] = (uint8_t)d;
+    c[0x40] = (uint8_t)(d >> 8);
     return c;
 }
 

@@ -553,7 +553,48 @@ std::string EamuseServer::answer_later(const std::string &game, const Request &r
         return "<eemall status=\"0\" now_point=\"0\" add_point=\"0\">" + items + "</eemall>";
     }
     if (m == "shopinf" && f == "getsservip") return "<shopinf status=\"0\"/>";   // no shop servers (0x19f2a8)
+    if (m == "eemall" && f == "check") return "<eemall status=\"0\"/>";   // pop'n 11 (0x18c098)
+    if (m == "portfw" && f == "get") return "<portfw status=\"0\"/>";     // pop'n 11: no port forward (0x18c4c8)
+    if (m == game) return answer_game(game, r);   // pop'n 11 on: <D11 type=.. method=..>
     return "";
+}
+
+// pop'n 11 on: the module named after the game, a type and a method (pop'n 11's parsers
+// 0x18c858-0x18ddf8). The answer is that element again.
+std::string EamuseServer::answer_game(const std::string &game, const Request &r) {
+    const std::string type = attr(r.attrs, "type"), &f = r.method;
+    const std::string open = "<" + game + " status=\"0\"";
+    if (type == "rank" && f == "exp") {   // as pop'n 10's rank.exp, on the game's element
+        const std::string file = game + "-rank-exp";
+        Board b{file.c_str(), "card_id", EXP_KEEP, "score", "cool", 10};
+        const Entered e = enter(b, r);
+        return open + " update=\"" + std::string(e.update ? "1" : "0") + "\" entry=\"" + std::to_string(e.entries) + "\" rank=\"" +
+               std::to_string(e.place) + "\" hi_score=\"" + esc(attr(e.kept, "score")) + "\" hi_cool=\"" + esc(attr(e.kept, "cool")) + "\"/>";
+    }
+    if (type == "game" && f == "get") {   // phase: as pop'n 10's message.get (-1: the cabinet's own)
+        const std::string ph = read_file("phase-" + game);
+        const long phase = ph.empty() ? -1 : std::strtol(ph.c_str(), nullptr, 10);
+        return open + " phase=\"" + std::to_string(phase) + "\" message=\"" + esc(message()) + "\"/>";
+    }
+    if (type == "player") {   // mileage and 9 tickets per card (player_set sends them); course: 4 numbers
+        const std::string card = attr(r.attrs, "card_id");
+        if (!safe_name(card)) return "<" + game + " status=\"1\"/>";
+        const std::string file = "player-" + game + "-" + card;
+        if (f == "set") {
+            write_file(file, to_line({{"mileage", attr(r.attrs, "mileage")}, {"ticket", attr(r.attrs, "ticket")}}));
+            return open + "/>";
+        }
+        if (f == "get") {
+            const std::vector<Record> p = from_lines(read_file(file));
+            std::string ticket = p.empty() ? "" : attr(p[0], "ticket");
+            while (!ticket.empty() && ticket.back() == ',') ticket.pop_back();
+            if (ticket.empty()) ticket = "0,0,0,0,0,0,0,0,0";
+            return open + " mileage=\"" + esc(p.empty() || attr(p[0], "mileage").empty() ? "0" : attr(p[0], "mileage")) +
+                   "\" ticket=\"" + esc(ticket) + "\" course=\"0,0,0,0\"/>";
+        }
+    }
+    // rank get (an empty table), rank shop, pf get/ask, game select, renewc reg/ask: nothing kept
+    return open + "/>";
 }
 
 // The owner's message for the cabinets' title screens (the file "message"), at most 255 bytes,

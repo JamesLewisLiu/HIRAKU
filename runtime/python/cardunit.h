@@ -35,7 +35,8 @@ public:
     explicit CardUnit(std::string card_file, Header fresh = fresh_header("popn9"));
     // A game's new-card header ({} if not known): pop'n 9 "C00 NEW CARD" 28 23 41 01 (0x1a2728
     // type 2), pop'n 10 "C20 NEW CARD" 28 23 49 01 (0x1ad3c8 type 7), pop'n 11 "D11 NEW CARD"
-    // 28 24 45 11 (0x1a6200). A used card has 0x40 more in the first byte.
+    // 28 24 45 11 (0x1a6200), pop'n 12 28 25 45 21 (0x1ad4e8). A used card has 0x40 more in the
+    // first byte.
     static Header fresh_header(const std::string &game);
 
     // A write from the game to the serial port: false if it isn't this bus's (left to the
