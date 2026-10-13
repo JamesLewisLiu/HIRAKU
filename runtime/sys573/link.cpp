@@ -2,6 +2,7 @@
 // The session cable between two System 573 processes (link.h).
 #include "sys573/link.h"
 
+#include <algorithm>
 #include <cerrno>
 #include <cstdlib>
 #include <cstdio>
@@ -18,7 +19,7 @@ namespace hk::k573 {
 namespace {
 
 constexpr uint32_t MAGIC = 0x48'4b'35'37;   // "HK57"
-constexpr uint32_t VERSION = 1;
+constexpr uint32_t VERSION = 2;   // 2: sound with the steps
 
 struct Hello {
     uint32_t magic, version;
@@ -27,7 +28,8 @@ struct Hello {
 
 struct StepHeader {
     uint64_t step;
-    uint32_t count, pad;
+    uint32_t count;          // line events
+    uint32_t audio_frames;   // then 44.1 kHz stereo floats
 };
 
 // "host:port" (TCP) unless it looks like a path
@@ -152,13 +154,25 @@ void SessionLink::sync(s32) {
         else m_out[keep++] = e;   // after T (the CPU ran a little past it): next time
     }
     m_out.resize(keep);
-    StepHeader h{m_step, (uint32_t)send.size(), 0};
-    if (!send_all(&h, sizeof h) || (!send.empty() && !send_all(send.data(), send.size() * sizeof(Event)))) return lost("send");
+    StepHeader h{m_step, (uint32_t)send.size(), (uint32_t)(m_audio_out.size() / 2)};
+    if (!send_all(&h, sizeof h) || (!send.empty() && !send_all(send.data(), send.size() * sizeof(Event))) ||
+        (!m_audio_out.empty() && !send_all(m_audio_out.data(), m_audio_out.size() * sizeof(float))))
+        return lost("send");
+    m_audio_out.clear();
     StepHeader th{};
     if (!recv_all(&th, sizeof th)) return lost("closed");
     if (th.step != m_step) return lost("out of step");
     std::vector<Event> got(th.count);
     if (th.count && !recv_all(got.data(), got.size() * sizeof(Event))) return lost("closed");
+    if (th.audio_frames) {
+        if (m_audio_next) {
+            m_audio_in.erase(m_audio_in.begin(), m_audio_in.begin() + (ptrdiff_t)m_audio_next);
+            m_audio_next = 0;
+        }
+        const size_t at = m_audio_in.size();
+        m_audio_in.resize(at + (size_t)th.audio_frames * 2);
+        if (!recv_all(m_audio_in.data() + at, (size_t)th.audio_frames * 2 * sizeof(float))) return lost("closed");
+    }
     if (m_in_next) {
         m_in.erase(m_in.begin(), m_in.begin() + (ptrdiff_t)m_in_next);
         m_in_next = 0;
@@ -188,6 +202,18 @@ void SessionLink::deliver(s32) {
         if (in) in((Line)e.line, e.state);
     }
     arm_delivery();
+}
+
+void SessionLink::send_audio(const float *lr, size_t frames) {
+    if (m_fd >= 0) m_audio_out.insert(m_audio_out.end(), lr, lr + frames * 2);
+}
+
+size_t SessionLink::mix_audio(float *lr, size_t frames) {
+    const size_t n = std::min(frames, (m_audio_in.size() - m_audio_next) / 2);
+    const float *src = m_audio_in.data() + m_audio_next;
+    for (size_t i = 0; i < n * 2; i++) lr[i] += src[i];
+    m_audio_next += n * 2;
+    return n;
 }
 
 bool SessionLink::send_all(const void *p, size_t n) {

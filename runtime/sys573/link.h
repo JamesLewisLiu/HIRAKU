@@ -12,6 +12,10 @@
 // quantum after it happened (a cable one quantum long). So a session replays the same on any host, however its processes are
 // scheduled, and either side may run faster than real time.
 //
+// It also carries sound: the host's multi-session unit plays the session's music, and a real
+// unit sends it to each cabinet's amplifier (a sub board per port, with its own DAC), so the
+// host sends the unit's mix along with its steps and the other cabinet plays it too.
+//
 // Transport: a Unix socket (a path) or TCP (host:port). The host (the side with the unit)
 // listens and waits; the other connects. If the far side quits, the cable goes idle.
 #pragma once
@@ -42,6 +46,16 @@ public:
     // a line of the far side's, at its time plus a quantum
     std::function<void(Line line, int state)> in;
 
+    // sound for the far side (44.1 kHz stereo, interleaved), sent with the next step
+    void send_audio(const float *lr, size_t frames);
+    // the far side's sound: up to `frames` of it added into lr; how many there were
+    size_t mix_audio(float *lr, size_t frames);
+    // how much of it is waiting. While the cable is up a mixer waits for it from the start, as
+    // the host's waits for its unit's decoders, so the unit's sample for a moment lands with
+    // this cabinet's own for the same moment (the host always sends: its sound output is set
+    // before the machine starts)
+    size_t audio_available() const { return (m_audio_in.size() - m_audio_next) / 2; }
+
 private:
     struct Event {
         int64_t seconds, attoseconds;   // the sender's emulated time
@@ -64,6 +78,9 @@ private:
     std::vector<Event> m_out;   // ours, not sent yet
     std::vector<Event> m_in;    // theirs, to deliver (in time order)
     size_t m_in_next = 0;
+    std::vector<float> m_audio_out;   // ours, not sent yet
+    std::vector<float> m_audio_in;    // theirs, not played yet
+    size_t m_audio_next = 0;
 };
 
 }  // namespace hk::k573

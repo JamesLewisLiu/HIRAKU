@@ -828,10 +828,10 @@ Each phase has an exit test. Sizes are assisted-effort guesses; DJ Main went fas
     - GuitarFreaks' SESSION NETWORK CHECK says PORT 2, OK; DrumMania's, PORT 1.
     - Coins and Start on the DrumMania side open WELCOME and its joining period (SESSION PLAY SETTINGS: 15 s), and the GuitarFreaks cabinet enters (PLAYER 1 ENTRY) with coins and Start there.
     - Both then show CAUTION, the mode and music select, and the first stage of 花火 together, SESSION on the guitar's screen.
-    - The music is the unit's first MP3 decoder (peak 0.93, the first time it plays), on the DrumMania process's output.
-  - **Regress:** `gtfrk11m-install`, `gtfrk11m-boot`, and the pair `drmn10m-session` + `gtfrk11m-session` (a case may name a partner; the two run at once; `bench` skips them).
+    - The music is the unit's first MP3 decoder (peak 0.93, the first time it plays). It plays on both cabinets: the host sends its unit's mix (its decoders at 0.65) with each step, and the joining side mixes it in. That side waits for it from the start, as the host waits for its decoders, so the music lands with its own sounds of the same moment. The two recordings correlate 0.96 at 0 ms lag through the stage.
+  - **Regress:** `gtfrk11m-install`, `gtfrk11m-boot`, and the pair `drmn10m-session` + `gtfrk11m-session` (a case may name a partner; the two run at once; `bench` skips them). The session sound on the GuitarFreaks side changed its digest's sound column only.
+  - **Which decoder goes to which cabinet isn't known.** Each port has a sub board with its own DAC (GXA25-PWB(B)), but the fork routes all four decoders to one output, and only decoder 0 played with both cabinets in. So both cabinets get the unit's whole mix.
   - **Not yet:**
-    - The session music on the GuitarFreaks side's output (a real cabinet takes it from the unit).
     - Hands-on play.
     - Two machines over TCP, not tried.
     - Sessions with the network unit fitted (its open issue above).

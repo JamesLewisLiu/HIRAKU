@@ -891,6 +891,8 @@ void set_audio_sink(AudioSink s) { g.audio_sink = std::move(s); }
                 size_t n = std::min(l.size(), r.size());
                 if (cd) n = std::min({n, cd->m_out[0].size(), cd->m_out[1].size()});
                 for (const Board::Decoder &d : g.decoders) n = std::min(n, d.q[0].size());
+                // joined to another cabinet's unit: its music too (link.h), as the host waits for it
+                if (!g.cfg.session_join.empty() && g_link.is_open()) n = std::min(n, g_link.audio_available());
                 if (n) {
                     std::vector<float> lr(n * 2);
                     for (size_t i = 0; i < n; i++) { lr[2 * i] = l[i]; lr[2 * i + 1] = r[i]; }
@@ -905,12 +907,20 @@ void set_audio_sink(AudioSink s) { g.audio_sink = std::move(s); }
                             c.erase(c.begin(), c.begin() + n);
                         }
                     }
+                    // the multi-session unit's share, which the other cabinet in a session plays
+                    // too (link.h); and theirs, when this cabinet joined another's unit
+                    const bool host = g_link.is_open() && g.cfg.msu;
+                    std::vector<float> unit(host ? n * 2 : 0);
                     for (Board::Decoder &d : g.decoders)
                         for (int ch = 0; ch < 2; ch++) {
                             auto &q = d.q[ch];
                             for (size_t i = 0; i < n; i++) lr[2 * i + ch] += q[i] * d.gain;
+                            if (host && d.msu)
+                                for (size_t i = 0; i < n; i++) unit[2 * i + ch] += q[i] * d.gain;
                             q.erase(q.begin(), q.begin() + n);
                         }
+                    if (host) g_link.send_audio(unit.data(), n);
+                    else if (!g.cfg.session_join.empty()) g_link.mix_audio(lr.data(), n);
                     for (float &v : lr) {
                         v *= g.cfg.mix_gain;
                         const float a = std::fabs(v);

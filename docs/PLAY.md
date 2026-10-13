@@ -612,6 +612,6 @@ hiraku-gtfrk11m --session-join /tmp/gfdm.sock
 - **The two run in lockstep,** at the slower one's pace: about 4.1 ms a frame together on the desktop.
 - **To play a session:** credits and Start on one cabinet open the **WELCOME** screen, with 15 s for the other to join (credits and Start there). Then both choose the mode and the music together and play the same song.
 - **Check the cable** in test mode: SESSION NETWORK CHECK says PORT 1 (DrumMania) and PORT 2 (GuitarFreaks), OK.
-- **The session music** comes from the unit, so it plays on the DrumMania window's sound only, for now.
+- **The session music** comes from the unit, in the DrumMania process. It goes over the cable to the GuitarFreaks side too, so both windows play it, in time with their own sounds.
 
 The regress cases are `gtfrk11m-install`, `gtfrk11m-boot`, and `drmn10m-session` + `gtfrk11m-session` (a session game: both cabinets play the first stage of 花火).
