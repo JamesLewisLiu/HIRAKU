@@ -89,7 +89,7 @@ to them, and the changes are listed here.
   - the FIFO timer as a plain emu_timer, the RAM's mirrors mapped in `device_start`, MAME's current `ATAPI_CDROM`, the DIP switches read as all off;
   - HIRAKU's traces: `HK_MSU_TRACE=1` prints the UART, CD drive, FPGA and LED accesses.
 - `tc9446f.*`: the fork's decoder on MAME's bundled minimp3, its functions renamed so they don't clash with `mp3_audio`'s; the current stream interface.
-- `sio_uart.*`: the fork's `psxsio1_device` changes, as a separate device type, so SIO1 stays MAME's without the unit.
+- `sio_uart.*`: the fork's `psxsio1_device` changes, as a separate device type, so SIO1 stays MAME's without the unit. HIRAKU gives it the PS1's 8-byte receive FIFO: the fork kept one byte, and with the network PCB unit fitted the 573 read SIO1 late enough to lose the unit's bytes.
 - `mips1.cpp` / `.h`: MAME's file at the commit above, with the fork's TX3927 patch applied and moved to the current device interfaces (line callbacks, timers). The TX3927 runs without cache emulation: with MAME's caches and the fork ignoring `CACHE`, the unit ran stale instructions after its OS copied itself into RAM. `HK_MSU_CONSOLE=1` prints the firmware's console.
   - **Speed, the same results** (the unit's RAM, PC and cycle count every 60 frames identical, `HK_MSU_HASH`):
     - `fetch()` takes its instruction as a template, as `load()` does, instead of a `std::function` per instruction;

@@ -511,18 +511,6 @@ Controls, coins and lamps are DDR's, as for 2ndMIX above. The lamps come from th
 
 **Speed** (desktop, recompiled R3000 code): attract 0.48 ms a frame, a song 0.62 ms.
 
-**The network PCB unit (e-AMUSEMENT), started:** the e-AMUSEMENT cabinet's network unit, with its hard disk as the save folder's `npu_hdd/` folder (runtime/sys573/npu.h). Ingest the unit's installer CD as well:
-
-```bash
-tools/ingest.py drmn10m.7z d40jaa02.chd d40jba02.chd d40jca02.chd
-```
-
-1. **Install its data:** `hiraku-drmn10m --cd hdd`. The game formats the disk and installs about 400 MB, about 20 minutes of game time, until **INSTALLATION COMPLETED**. Then quit.
-2. **Play with it:** `hiraku-drmn10m --npu`. The boot reads the disk's songs.
-3. **e-AMUSEMENT** is OFF by default (test mode > NETWORK OPTIONS > e-AMUSEMENT OPTIONS; hold Start and press Left/Right to change it). With it ON the game tries the network, finds none (センターサーバーと通信できません) and goes on in standby with Service (9).
-
-Not working yet: with the unit and e-AMUSEMENT OFF, the boot ends at "Please call attendant", the multi-session unit not recognised (PLAN.md section 19). Without `--npu` the game is as before. `HK_573_NPU_LOG=1` prints the unit's calls (2: their words, 3: every register access).
-
 **Not yet:** a hands-on test. MAME flags this set NOT_WORKING without saying why; so far it plays as MAME does.
 
 ## System 573: DrumMania 10th Mix (M14, further than MAME)
@@ -559,7 +547,7 @@ The unit is a box of its own: a second CPU (a TX3927), a CD drive, four MP3 deco
 
 From there on the unit answers, which MAME's can't.
 
-The regress cases are `drmn10m-install`, `drmn10m-boot` (now on to attract), `drmn10m-play` (a game: the first stage of 花火) and `drmn10m-hdd` (the network unit's install, its first 9000 frames).
+The regress cases are `drmn10m-install`, `drmn10m-boot` (now on to attract), `drmn10m-play` (a game: the first stage of 花火), `drmn10m-hdd` (the network unit's whole install) and `drmn10m-npu` (a boot with the unit and its disk, to attract).
 
 **The network PCB unit (e-AMUSEMENT), started:** the e-AMUSEMENT cabinet's network unit, with its hard disk as the save folder's `npu_hdd/` folder (runtime/sys573/npu.h). Ingest the unit's installer CD as well:
 
@@ -571,7 +559,7 @@ tools/ingest.py drmn10m.7z d40jaa02.chd d40jba02.chd d40jca02.chd
 2. **Play with it:** `hiraku-drmn10m --npu`. The boot reads the disk's songs.
 3. **e-AMUSEMENT** is OFF by default (test mode > NETWORK OPTIONS > e-AMUSEMENT OPTIONS; hold Start and press Left/Right to change it). With it ON the game tries the network, finds none (センターサーバーと通信できません) and goes on in standby with Service (9).
 
-Not working yet: with the unit and e-AMUSEMENT OFF, the boot ends at "Please call attendant", the multi-session unit not recognised (PLAN.md section 19). Without `--npu` the game is as before. `HK_573_NPU_LOG=1` prints the unit's calls (2: their words, 3: every register access).
+With the unit fitted the 573 has more to do, and the multi-session unit's link once lost bytes ("Please call attendant") until SIO1 got the PS1's 8-byte receive FIFO. It now boots to attract, and sessions with GuitarFreaks work with it fitted. Without `--npu` the game is as before. `HK_573_NPU_LOG=1` prints the unit's calls (2: their words, 3: every register access).
 
 **Not yet:** a hands-on test.
 

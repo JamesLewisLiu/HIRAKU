@@ -1,9 +1,9 @@
 # DrumMania 10th Mix: the network PCB unit's data installer (--cd hdd, d40jca02), from what
 # drmn10m-boot left. The game finds the unit's disk unformatted, formats it and copies the
-# e-AMUSEMENT song data to it (DATA INSTALLATION MODE); 9000 frames is about 13 %, the whole
-# install about 69000. The disk is the save folder's npu_hdd/ (runtime/sys573/npu.h).
+# e-AMUSEMENT song data to it (DATA INSTALLATION MODE, 78 songs, 407 MB) until INSTALLATION
+# COMPLETED (frame ~69000). The disk is the save folder's npu_hdd/ (runtime/sys573/npu.h).
 # Beyond MAME, which has no network unit.
 game drmn10m
 
-from 0 every 600 snap
-at 9000 quit
+from 0 every 3000 snap
+at 70200 quit

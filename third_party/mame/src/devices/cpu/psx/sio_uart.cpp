@@ -6,6 +6,9 @@
  */
 
 #include "emu.h"
+
+#include <algorithm>
+#include <iterator>
 #include "sio_uart.h"
 
 // the fork's register bits (its sio.h)
@@ -112,6 +115,9 @@ void psxsio1_uart_device::device_start()
 	save_item(NAME(m_rxd));
 	save_item(NAME(m_br_factor));
 	save_item(NAME(m_rx_data));
+	save_item(NAME(m_rx_fifo));
+	save_item(NAME(m_rx_head));
+	save_item(NAME(m_rx_count));
 	save_item(NAME(m_tx_data));
 	save_item(NAME(m_rxd_bits));
 	save_item(NAME(m_txc_count));
@@ -236,6 +242,8 @@ void psxsio1_uart_device::device_reset()
 	m_mode = 0;
 	m_control = 0;
 	m_rx_data = 0;
+	std::fill(std::begin(m_rx_fifo), std::end(m_rx_fifo), 0);
+	m_rx_head = m_rx_count = 0;
 	m_tx_data = 0;
 	m_br_factor = 1;
 	m_txc_count = 0;
@@ -414,15 +422,20 @@ void psxsio1_uart_device::receive_character(uint8_t ch)
 	if (hk_trace) fprintf(stderr, "sio1 rx %02x at %.6f\n", ch, machine().time().as_double());
 	LOGBITS("RX receive_character %02x\n", ch);
 
-	m_rx_data = ch;
-
 	LOGSTAT("status RX READY test %02x\n", m_status);
-	/* char has not been read and another has arrived! */
-	if (m_status & SIO_STATUS_RX_RDY)
+	/* HIRAKU: into the FIFO; full, and another has arrived: an overrun, and it is lost */
+	if (m_rx_count == std::size(m_rx_fifo))
 	{
+		if (hk_trace) fprintf(stderr, "sio1 overrun: %02x lost at %.6f\n", ch, machine().time().as_double());
 		m_status |= SIO_STATUS_OVERRUN_ERROR;
 		LOGSTAT("status overrun set\n");
 	}
+	else
+	{
+		m_rx_fifo[(m_rx_head + m_rx_count++) % std::size(m_rx_fifo)] = ch;
+		if (hk_trace && m_rx_count > 1) fprintf(stderr, "sio1 fifo %u bytes at %.6f\n", m_rx_count, machine().time().as_double());
+	}
+	m_rx_data = m_rx_fifo[m_rx_head];
 
 	LOGSTAT("status pre RX READY set %02x\n", m_status);
 	m_status |= SIO_STATUS_RX_RDY;
@@ -438,13 +451,21 @@ void psxsio1_uart_device::receive_character(uint8_t ch)
 uint8_t psxsio1_uart_device::data_r()
 {
 	LOGGENERAL("read data: %02x, STATUS=%02x\n", m_rx_data, m_status);
-	/* reading clears */
-	if (!machine().side_effects_disabled())
+	/* HIRAKU: the FIFO's oldest; RX_RDY stays while more are waiting */
+	const uint8_t data = m_rx_count ? m_rx_fifo[m_rx_head] : m_rx_data;
+	if (!machine().side_effects_disabled() && m_rx_count)
+	{
+		m_rx_head = (m_rx_head + 1) % std::size(m_rx_fifo);
+		m_rx_count--;
+		if (m_rx_count)
+			m_rx_data = m_rx_fifo[m_rx_head];
+	}
+	if (!machine().side_effects_disabled() && !m_rx_count)
 	{
 		m_status &= ~SIO_STATUS_RX_RDY;
 		LOGSTAT("status RX_READY cleared\n");
 	}
-	return m_rx_data;
+	return data;
 }
 
 

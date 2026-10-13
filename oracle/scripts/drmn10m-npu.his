@@ -1,0 +1,9 @@
+# DrumMania 10th Mix with the network PCB unit (--npu) and its disk installed (from
+# drmn10m-hdd), e-AMUSEMENT OFF (the default): the boot reads the disk's songs (DATA 3, DATA 4
+# LOADING), then the multi-session unit's link and attract. The link is busier on the 573 with
+# the unit's polling; it once lost bytes to SIO1's one-byte buffer ("Please call attendant")
+# before SIO1 had the PS1's 8-byte receive FIFO.
+game drmn10m
+
+from 0 every 600 snap
+at 14400 quit

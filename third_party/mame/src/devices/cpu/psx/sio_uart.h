@@ -87,6 +87,10 @@ private:
 
 	/* data being received */
 	uint8_t m_rx_data;
+	// HIRAKU: the PS1 SIO's 8-byte receive FIFO (its RX interrupt mode counts 1, 2, 4 or 8 bytes);
+	// the fork kept one byte, and a busy 573 then lost the unit's bytes (an overrun)
+	uint8_t m_rx_fifo[8];
+	uint8_t m_rx_head, m_rx_count;
 	/* tx buffer */
 	uint8_t m_tx_data;
 	// count of rxd bits
