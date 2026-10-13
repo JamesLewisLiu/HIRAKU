@@ -3,7 +3,9 @@
 // framework shim, with MAME's own devices. The driver class below follows twinkle_state; where it
 // differs, a comment says so.
 #include "twinkle/board.h"
+#if HK_TWINKLE_VIDEO
 #include "twinkle/video.h"
+#endif
 
 #include "shell/cabinet.h"
 
@@ -575,7 +577,9 @@ u8 trace_group_audio(u32 a) {
 
 // ---- the machine --------------------------------------------------------------------------
 struct Board {
+#if HK_TWINKLE_VIDEO
     VideoCD video;
+#endif
     std::unique_ptr<running_machine> machine;
     twinkle_state *state = nullptr;
     Config cfg;
@@ -628,6 +632,7 @@ bool init(const Config &cfg) {
             dst += w;
         }
         // the sub board's overlay: the player's picture where the PlayStation draws black
+#if HK_TWINKLE_VIDEO
         twinkle_state &st = *g.state;
         if (g.video.is_open() && (st.m_mixer & 2)) {
             VideoCD::Picture pic;
@@ -636,7 +641,11 @@ bool init(const Config &cfg) {
             pic.saturation = st.m_bt812[0x0a];
             pic.hue = (s8)st.m_bt812[0x0b];
             g.video.composite(screen.machine().time().as_double(), g.frame_rgb.data(), w, h, pic);
+            if (getenv("HK_TW_VIDEO_AT") && g.frames == (u64)atoll(getenv("HK_TW_VIDEO_AT")))
+                fprintf(stderr, "frame %llu t %.6f %dx%d bri %d con %d sat %d hue %d\n", (unsigned long long)g.frames,
+                        screen.machine().time().as_double(), w, h, pic.brightness, pic.contrast, pic.saturation, pic.hue);
         }
+#endif
         g.frame_hook(g.frames, g.frame_rgb.data(), w, h);
     };
     m.m_after_nvram_load = [&m] {
@@ -647,6 +656,7 @@ bool init(const Config &cfg) {
     m.start();
     m.reset();
 
+#if HK_TWINKLE_VIDEO
     // the background video: the player's state from MAME's xvd701 (a HIRAKU edit), at machine time
     if (cfg.video && !cfg.video_cd.empty()) {
         auto *player = st.subdevice<jvc_xvd701_device>("rs232_dvd:xvd701");
@@ -659,6 +669,7 @@ bool init(const Config &cfg) {
             fprintf(stderr, "video: no DVD player in the machine\n");
         }
     }
+#endif
 
     if (!cfg.trace_dir.empty()) {
         g_trace.f = fopen((cfg.trace_dir + "/mmio.bin").c_str(), "wb");
@@ -795,11 +806,15 @@ const uint8_t *mem(uint32_t addr, uint32_t len) {
 }
 
 std::string video_report() {
+#if !HK_TWINKLE_VIDEO
+    return "video: not built (no FFmpeg libraries)";
+#else
     if (!g.video.is_open()) return {};
     char b[160];
     snprintf(b, sizeof b, "video: %d chapters on the disc, %llu player commands, %llu frames decoded", g.video.chapters(),
              (unsigned long long)g.video.commands(), (unsigned long long)g.video.frames_decoded());
     return b;
+#endif
 }
 
 uint32_t pc() { return g.state ? static_cast<cpu_device &>(*g.state->m_maincpu).pc() : 0; }

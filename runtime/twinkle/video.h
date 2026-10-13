@@ -3,8 +3,9 @@
 //
 // The game drives an external JVC DVD/Video CD player over a serial line; MAME's xvd701 models
 // that protocol, and tells HIRAKU the player's state after each command (a HIRAKU edit). This
-// plays the Video CD to match: chapter N is the disc's entry N (ENTRIES.VCD; chapter 1 is the
-// attract intro, AVSEQ01), playback runs from the machine time of the command that started it,
+// plays the Video CD to match, decoded with FFmpeg (libavformat/libavcodec): chapter N is the
+// disc's entry N (ENTRIES.VCD; chapter 1 is the attract intro, AVSEQ01), and playback runs from
+// the machine time of the command that started it,
 // so the picture at a given machine time is always the same. The sub board then shows the video
 // where the PlayStation's picture is black, while its overlay bit is on, through the Bt812's
 // brightness, contrast, saturation and hue (composite()).
@@ -17,8 +18,11 @@
 #include <string>
 #include <vector>
 
-struct plm_t;
-struct plm_buffer_t;
+struct AVFormatContext;
+struct AVIOContext;
+struct AVCodecContext;
+struct AVPacket;
+struct AVFrame;
 
 namespace hk::twinkle {
 
@@ -51,17 +55,27 @@ public:
     uint64_t frames_decoded() const { return m_decoded; }
 
 private:
-    static void load(plm_buffer_t *buf, void *self);
+    static int read(void *self, uint8_t *buf, int size);   // the disc's MPEG data, sector by sector
+    void close_decoder();
     void start_chapter(int chapter);
+    bool decode_next();          // the next frame into m_y/m_cb/m_cr; false at the end
     bool advance_to(double v);   // decode up to video time v (seconds into the chapter)
 
     FILE *m_bin = nullptr;
     uint32_t m_sectors = 0;
     std::vector<uint32_t> m_entries;   // each chapter's first sector
 
-    plm_t *m_plm = nullptr;
+    AVFormatContext *m_fmt = nullptr;
+    AVIOContext *m_io = nullptr;
+    AVCodecContext *m_dec = nullptr;
+    AVPacket *m_pkt = nullptr;
+    AVFrame *m_frame = nullptr;
+    int m_stream = -1;
+    bool m_flushing = false;
+    std::vector<uint8_t> m_part;       // a sector's data not yet handed to the demuxer
+    size_t m_part_pos = 0;
     uint32_t m_next_sector = 0;
-    double m_period = 1.0 / 29.97;     // the stream's frame period, from its sequence header
+    double m_period = 1.0 / 29.97;     // the stream's frame period
     int64_t m_index = -1;              // the frame held in m_y/m_cb/m_cr (-1: none yet)
     bool m_ended = false;
     unsigned m_w = 0, m_h = 0, m_cw = 0;   // display size; chroma plane width

@@ -625,7 +625,7 @@ Effect is E and VEFX is W. Coin is 5; Test and Service are F2 and 9. A USB IIDX 
 
 **Lamps:** the key lamps, Start, VEFX, Effect and credit lamps, eight spotlights, the neon and the board's LEDs, by name for HID LEDs and the lights socket (docs/LIGHTS.md). The 16-segment display above the screen shows in the window title.
 
-**The background video** plays in the middle of the play field during a stage, from the Video CD (`gc992-jaa04`), as the game drives the DVD player; MAME shows none. `--video off` gives MAME's picture. Which clip goes with which song, and the exact keying and placement, still need checking against a real cabinet (PLAN.md section 21, TW-3).
+**The background video** plays in the middle of the play field during a stage, from the Video CD (`gc992-jaa04`), as the game drives the DVD player; MAME shows none. `--video off` gives MAME's picture. The video needs FFmpeg's libraries (libavformat, libavcodec) when HIRAKU is built; without them the build goes ahead without it. Which clip goes with which song, and the exact keying and placement, still need checking against a real cabinet (PLAN.md section 21, TW-3).
 
 **Not there yet:**
 - **1st style (`bmiidx`)** stops at E600 DVD INIT ERROR, as in MAME (TW-5).

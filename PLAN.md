@@ -1388,9 +1388,9 @@ The game already tells the player what to play. HIRAKU adds the picture. The mac
 
 **What HIRAKU does** (`runtime/twinkle/video.*`, `--video on|off`, default on):
 - MAME's `xvd701` reports the player's state after each command (a HIRAKU edit: chapter, stop/play/pause, power, whether the chapter restarts); playback runs from the machine time of the command, so the picture at a given machine time is always the same, and the machine is untouched;
-- the clip is read from the Video CD's raw sectors (Mode 2 Form 2) and decoded with pl_mpeg (third_party/pl_mpeg, MIT), on through the following entries as a player plays on;
+- the clip is read from the Video CD's raw sectors (Mode 2 Form 2) and decoded with FFmpeg's libavformat/libavcodec (the system's, through pkg-config; optional: without them Twinkle builds with MAME's picture), on through the following entries as a player plays on. pl_mpeg came first and was dropped: on this disc a fifth of some frames came out wrong (blocks), against FFmpeg's clean decode, and it can't do the MPEG-2 of 6th–8th style's DVDs anyway;
 - **while mixer bit 1 is on, the video replaces every pure-black pixel of the PlayStation's picture**, scaled to the whole frame, through the Bt812's brightness, contrast, saturation and hue. The clip's window then fits the gap between the 1P and 2P lanes exactly, with the game's particles on top.
-- Checked: the frames HIRAKU decodes are the same as FFmpeg's (checksums at every 60th frame of a stage); regress case `bmiidx3-video` (the scripted game with the video on, identical run after run); `bmiidx3-boot` and `bmiidx3-play` run with `--video off`, MAME's picture.
+- Checked: the picture HIRAKU composites from a frame is the same as a stand-alone compositor's output from FFmpeg's decode of that frame; regress case `bmiidx3-video` (the scripted game with the video on, identical run after run); `bmiidx3-boot` and `bmiidx3-play` run with `--video off`, MAME's picture.
 - Cost: decoding on the emulation thread, a few ms in some frames (p99 18.7 ms against ~12 without, desktop, a loaded machine); TW-4 moves it to a worker thread.
 
 **Not known, and what the choices rest on** (decision 2 of §19):
