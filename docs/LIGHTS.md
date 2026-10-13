@@ -46,20 +46,16 @@ The launcher lists a device only if its outputs look like lamps: LED usages othe
 
 ### Linux permissions
 
-Writing to a controller needs read/write access to its `/dev/hidraw*` node, which is root-only by default. If the launcher says it has no access, add a udev rule. The **How to allow access…** button writes one for the devices it found.
-
-```
-# /etc/udev/rules.d/70-hiraku-lights.rules
-KERNEL=="hidraw*", ATTRS{idVendor}=="1ccf", ATTRS{idProduct}=="8048", TAG+="uaccess"
-```
-
-Then:
+Writing to a controller needs read/write access to its `/dev/hidraw*` node, which is root-only by default. If the launcher finds a controller it cannot open, it says so and shows **How to allow access…**. That button gives the commands that install a udev rule for it, keeping the controllers already in the rule file. They work in sh, bash, zsh and fish:
 
 ```bash
-sudo udevadm control --reload && sudo udevadm trigger
+printf '%s\n' \
+  'KERNEL=="hidraw*", ATTRS{idVendor}=="1ccf", ATTRS{idProduct}=="8048", TAG+="uaccess"' \
+  | sudo tee /etc/udev/rules.d/70-hiraku-lights.rules >/dev/null
+sudo udevadm control --reload && sudo udevadm trigger --subsystem-match=hidraw
 ```
 
-Then replug the controller. `TAG+="uaccess"` gives the logged-in user access, and only while they are logged in.
+Then press **Rescan**. If the controller is still refused, replug it. `TAG+="uaccess"` gives the logged-in user access, and only while they are logged in.
 
 ## Socket protocol
 

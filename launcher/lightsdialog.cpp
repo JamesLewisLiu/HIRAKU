@@ -135,32 +135,44 @@ LightsDialog::LightsDialog(const QString &family, QWidget *parent) : QDialog(par
     perm->addWidget(m_permButton);
     v->addLayout(perm);
     connect(m_permButton, &QPushButton::clicked, this, [this] {
-        // a udev rule giving the logged-in user access to the devices that refused us
-        QString rules = "# /etc/udev/rules.d/70-hiraku-lights.rules\n";
-        for (auto &d : m_devices)
-            if (!d.error.empty())
-                rules += QString("KERNEL==\"hidraw*\", ATTRS{idVendor}==\"%1\", ATTRS{idProduct}==\"%2\", TAG+=\"uaccess\"\n")
-                             .arg(d.vid, 4, 16, QChar('0'))
-                             .arg(d.pid, 4, 16, QChar('0'));
+        // a udev rule giving the logged-in user access to the devices that refused us, added to the
+        // rules already in the file, and the commands that install it (sh, bash, zsh and fish alike)
+        const QString path = "/etc/udev/rules.d/70-hiraku-lights.rules";
+        QStringList rules;
+        QFile old(path);
+        if (old.open(QIODevice::ReadOnly))
+            for (const QString &line : QString::fromUtf8(old.readAll()).split('\n'))
+                if (line.startsWith("KERNEL==") && !rules.contains(line)) rules << line;
+        for (auto &d : m_devices) {
+            if (d.error.empty()) continue;
+            QString rule = QString("KERNEL==\"hidraw*\", ATTRS{idVendor}==\"%1\", ATTRS{idProduct}==\"%2\", TAG+=\"uaccess\"")
+                               .arg(d.vid, 4, 16, QChar('0'))
+                               .arg(d.pid, 4, 16, QChar('0'));
+            if (!rules.contains(rule)) rules << rule;
+        }
+        QString commands = "printf '%s\\n' \\\n";
+        for (const QString &r : rules) commands += "  '" + r + "' \\\n";
+        commands += "  | sudo tee " + path + " >/dev/null\n";
+        commands += "sudo udevadm control --reload && sudo udevadm trigger --subsystem-match=hidraw\n";
         QDialog d(this);
         d.setWindowTitle("Allow access to controller LEDs");
         auto *l = new QVBoxLayout(&d);
         auto *t = new QLabel("Linux only lets programs write to a controller's LEDs (its /dev/hidraw node) when a udev "
-                             "rule allows it. Save these lines as the file named in the first line (as root), then run "
-                             "<tt>sudo udevadm control --reload &amp;&amp; sudo udevadm trigger</tt> and replug the "
-                             "controller. See docs/LIGHTS.md.");
+                             "rule allows it. Run these commands in a terminal: they write the rule to <tt>" + path +
+                             "</tt> (keeping the controllers already in it) and apply it. They ask for your password. "
+                             "Then press <b>Rescan</b>; if the controller is still refused, replug it. See docs/LIGHTS.md.");
         t->setWordWrap(true);
         l->addWidget(t);
-        auto *e = new QPlainTextEdit(rules);
+        auto *e = new QPlainTextEdit(commands);
         e->setReadOnly(true);
         e->setFont(QFont("monospace"));
         l->addWidget(e);
         auto *bb = new QDialogButtonBox(QDialogButtonBox::Close);
         auto *copy = bb->addButton("Copy", QDialogButtonBox::ActionRole);
-        connect(copy, &QPushButton::clicked, &d, [rules] { QApplication::clipboard()->setText(rules); });
+        connect(copy, &QPushButton::clicked, &d, [commands] { QApplication::clipboard()->setText(commands); });
         connect(bb, &QDialogButtonBox::rejected, &d, &QDialog::reject);
         l->addWidget(bb);
-        d.resize(620, 300);
+        d.resize(820, 300);
         d.exec();
     });
 
@@ -224,8 +236,9 @@ void LightsDialog::refreshDevices() {
     m_devices = hk::hidout::enumerate();
     QStringList ok, refused;
     for (auto &d : m_devices) (d.error.empty() ? ok : refused) << qs(d.name);
-    m_devLabel->setText(ok.isEmpty() ? "No controller with LEDs found."
-                                     : "Controllers with LEDs: " + ok.join(" · "));
+    m_devLabel->setText(!ok.isEmpty()      ? "Controllers with LEDs: " + ok.join(" · ")
+                        : refused.isEmpty() ? "No controller with LEDs found."
+                                            : "Found controllers with LEDs, but cannot open them (see below).");
     m_permLabel->setText(refused.isEmpty() ? QString()
                                            : "No access to: " + refused.join(" · ") + ". Without it their LEDs cannot be set.");
     m_permLabel->setVisible(!refused.isEmpty());
