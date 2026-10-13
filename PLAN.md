@@ -1222,6 +1222,17 @@ Each phase ends with `tools/regress.py check popn9-play` bit-identical, unless i
   - **Picture:** 5 frames after the press.
   - **Keysound (button 5): ~2 ms after the vsync at which the press is applied.** The game polls just after the vsync and starts the voice at once. Button 1 made no sound difference at that point of the song.
   - What the host adds on top: up to a frame until the press is read (the game polls once a frame, as on the cabinet), the audio queue (8 ms by default), the display.
+- **Against stock Reliquary (`pcsx2-qt`, same build, same settings, same pop'n 9 attract from power-on), 2026-10-13:**
+
+  | | pcsx2-qt | hiraku-popn9 | |
+  |---|---|---|---|
+  | Playing at real time, windowed, CPU from 30 s to 150 s, Vulkan | 34 % of a core | 20 % | **−40 %** |
+  | The same, software GS | 44 % | 29 % | **−34 %** |
+  | Flat out, CPU for 6,000 frames, Vulkan (pcsx2-qt still presenting; the core headless) | 16.8 s | 16.3 s | −3 % |
+  | The same, software GS | 22.9 s | 23.0 s | 0 % |
+
+  - Medians of 2 real-time and 3 flat-out runs, alternated. Audio was null in both, and the display ran at 144 Hz, so the core's display sync was off.
+  - **The emulation costs the same:** it is the same code. The saving appears only at real-time speed, so it is in how each paces and presents a frame. The split between pcsx2-qt's frame limiter, its presentation and its Qt UI is **not measured**.
 - **Tools:**
   - `tools/ab.py`: A/B of two binaries, or of two settings with `--a-args`/`--b-args`;
   - `--pcsx2-set Section/Key=value`: any emulator setting, for experiments;
