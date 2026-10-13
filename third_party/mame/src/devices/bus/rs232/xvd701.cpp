@@ -124,6 +124,7 @@ bool jvc_xvd701_device::seek_chapter(int chapter)
 	}
 
 	m_chapter = chapter;
+	m_hk_seek = true; // HIRAKU
 
 	if (m_playback_status != STATUS_PAUSE)
 		m_playback_status = STATUS_PLAYING;
@@ -144,6 +145,7 @@ void jvc_xvd701_device::rcv_complete()
 		m_command[1] == 0xff &&
 		m_command[10] == sum(m_command, sizeof(m_command) - 1))
 	{
+		m_hk_seek = false; // HIRAKU
 		if (m_command[3] == 0x0c && m_command[4] == 0x43 && m_command[5] == 0x6d)
 		{
 			// FF FF 21 0C 43 6D 00 00 00 00 25 PAUSE
@@ -298,6 +300,8 @@ void jvc_xvd701_device::rcv_complete()
 			const unsigned char response[6] = { 0x01, 0x00, 0x00, 0x00, 0x00, 0x00 };
 			create_packet(STATUS_OK, response);
 		}
+
+		if (m_hk_state) m_hk_state(m_chapter, m_playback_status, m_is_powered, m_hk_seek); // HIRAKU
 	}
 }
 

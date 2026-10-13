@@ -323,7 +323,8 @@ target_include_directories(hiraku_mame573 PUBLIC ${HK_573_INC})
 target_compile_options(hiraku_mame573 PRIVATE -w ${HK_573_OPT_LIST})
 target_link_libraries(hiraku_mame573 PUBLIC hk_softfloat3)
 
-add_library(hiraku_sys573 STATIC runtime/sys573/board.cpp runtime/sys573/core.cpp runtime/sys573/mips.cpp runtime/sys573/npu.cpp runtime/sys573/link.cpp)
+add_library(hiraku_sys573 STATIC runtime/sys573/board.cpp runtime/sys573/core.cpp runtime/sys573/mips.cpp runtime/sys573/npu.cpp runtime/sys573/link.cpp
+  runtime/sys573/eagfdm.cpp runtime/eamuse/protocol.cpp runtime/eamuse/lan.cpp runtime/eamuse/server.cpp runtime/eamuse/remote.cpp)
 target_include_directories(hiraku_sys573 PUBLIC runtime)
 target_link_libraries(hiraku_sys573 PUBLIC hiraku_mame573 hiraku_cabinet)
 target_compile_options(hiraku_sys573 PRIVATE -O2 -Wno-unused-parameter)
@@ -378,8 +379,11 @@ add_library(hiraku_mametw STATIC ${HK_TW_MAME})
 target_link_libraries(hiraku_mametw PUBLIC hiraku_mame573)
 target_compile_options(hiraku_mametw PRIVATE -w -O2)
 
-add_library(hiraku_twinkle STATIC runtime/twinkle/board.cpp runtime/twinkle/core.cpp)
+add_library(hiraku_twinkle STATIC runtime/twinkle/board.cpp runtime/twinkle/core.cpp runtime/twinkle/video.cpp
+  runtime/twinkle/plm.c)
 target_include_directories(hiraku_twinkle PUBLIC runtime)
+target_include_directories(hiraku_twinkle PRIVATE third_party/pl_mpeg)   # the Video CD decoder (MIT)
+set_source_files_properties(runtime/twinkle/plm.c PROPERTIES COMPILE_OPTIONS "-w;-O2")
 target_link_libraries(hiraku_twinkle PUBLIC hiraku_mametw hiraku_cabinet)
 target_compile_options(hiraku_twinkle PRIVATE -O2 -Wno-unused-parameter)
 

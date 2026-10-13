@@ -73,6 +73,7 @@ with a port of `twinkle.cpp`'s driver class.
 - `machine/ins8250.cpp` / `.h`: the 16550's TX FIFO counts its bytes. By head and tail alone, 16 bytes queued (a THRE handler filling the FIFO while the last byte still shifts out) looked like none and were all lost: the multi-session unit's replies to the 573 stopped after 16 bytes. This is also the bug behind Keyboardmania's silent XT446 in MAME.
 - `psx.cpp` / `psx.h`: `hk_psx_sio1_uart` (set by the board for the multi-session unit) makes SIO1 a `psxsio1_uart_device`, as the fork's `psx.cpp` does for every PS1.
 - `3rdparty/minimp3/minimp3.h`: on AArch64 the NEON path converts the decoded samples to 16 bits as the SSE path does (clamp, then round to nearest even). Upstream's NEON code rounds halves away from zero, so ddr3mj's and DrumMania's MP3 music came out different on ARM hosts (regress, 2026-10-13).
+- `bus/rs232/xvd701.cpp` / `.h`: `m_hk_state` reports the player's state after each command it takes (the chapter, stop/play/pause, the power, whether the chapter starts again), for HIRAKU's background video (`runtime/twinkle/video.h`). What the game sees is unchanged.
 - `bus/rs232/rs232.cpp`: no devices in `default_rs232_devices` (MAME lists ~20 terminals, printers, a pty...), and without MAME's explicit instantiations of its two-parameter `device_finder`. Twinkle's ports hold the DVD player or nothing.
 - The H8 files are unchanged.
 

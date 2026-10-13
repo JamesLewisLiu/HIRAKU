@@ -3,6 +3,7 @@
 // comes from dumps/<game>/machine.txt (tools/ingest.py): the ROM files of MAME's set (BIOS, SPU
 // program, dongle), the program CD, the Video CD and the SPU board's hard disk.
 #include <cstdio>
+#include <cstdlib>
 #include <ctime>
 #include <fstream>
 #include <map>
@@ -29,11 +30,18 @@ public:
     bool option(const std::string &name, const std::function<std::string()> &value) override {
         if (name == "--rtc") { rtc_ = std::stoll(value()); return true; }
         if (name == "--mame-mix") { mame_mix_ = true; return true; }
+        if (name == "--video") {
+            const std::string v = value();
+            if (v != "on" && v != "off") { fprintf(stderr, "--video: on or off\n"); exit(2); }
+            video_ = v == "on";
+            return true;
+        }
         return false;
     }
     std::string options_help() const override {
         return "  --rtc SECONDS     the RTC's time at power-on (default: now), seconds since 1970\n"
-               "  --mame-mix        sound at MAME's level (it can clip on loud stretches; default: 0.8 of it)\n";
+               "  --mame-mix        sound at MAME's level (it can clip on loud stretches; default: 0.8 of it)\n"
+               "  --video on|off    the background video from the Video CD (default on; MAME shows none)\n";
     }
 
     bool init(const Options &o) override {
@@ -68,6 +76,7 @@ public:
         cfg.rtc_time = rtc_ >= 0 ? rtc_ : (int64_t)time(nullptr);
         if (o.trace) cfg.trace_dir = o.out;
         if (mame_mix_) cfg.mix_gain = 1.0f;
+        cfg.video = video_;
         if (!twinkle::init(cfg)) return false;
         printf("hiraku %s: Twinkle, MAME's PS1 and 68000 interpreted\n", o.game.c_str());
         return true;
@@ -84,6 +93,7 @@ public:
                (unsigned long long)twinkle::frame_count(), twinkle::seconds(), twinkle::pc(), twinkle::audio_pc(),
                (unsigned long long)twinkle::lamp_changes(), twinkle::display_text().c_str());
         if (std::string s = twinkle::sound_report(); !s.empty()) printf("%s\n", s.c_str());
+        if (std::string s = twinkle::video_report(); !s.empty()) printf("%s\n", s.c_str());
     }
     void debug_line(uint64_t f) override {
         printf("f%llu pc %08x 68000 %06x\n", (unsigned long long)f, twinkle::pc(), twinkle::audio_pc());
@@ -103,6 +113,7 @@ private:
     std::function<void()> on_fatal_;
     long long rtc_ = -1;
     bool mame_mix_ = false;
+    bool video_ = true;
 };
 
 }  // namespace

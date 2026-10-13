@@ -27,7 +27,10 @@ struct Config {
     std::string dongle_type = "m24c02";    // x76f041 (1st style, Substream, Club 2) | m24c02 (2nd style on)
     std::string dvd_port = "uart";         // sio1 (1st style, MAME twinkle_dvd_type1) | uart (type2)
     std::string cd;                        // the program CD (.cue)
-    std::string video_cd;                  // the Video CD in the player (not read yet: MAME models no picture)
+    std::string video_cd;                  // the Video CD in the player
+    // the background video (video.h; MAME shows none): the picture changes, the machine doesn't.
+    // Off gives MAME's picture, for comparing with it.
+    bool video = true;
     std::string hdd;                       // the SPU board's hard disk, raw
     uint32_t hdd_cylinders = 0, hdd_heads = 16, hdd_sectors = 63;   // its geometry (the CHD's GDDD)
     // The output's gain. MAME's mix (the SPU at 0.75, the RF5C400 and CD audio at 1.0) peaks past
@@ -57,6 +60,7 @@ std::string display_text();                // the 16-segment display's 9 charact
 void turntable_add(int player, int delta);  // host turntable counts (1024 a turn)
 uint64_t lamp_changes();
 std::string sound_report();
+std::string video_report();                // the player's commands and the frames decoded ("" without video)
 const uint8_t *mem(uint32_t addr, uint32_t len);
 uint32_t pc();
 uint32_t audio_pc();

@@ -14,6 +14,10 @@ public:
 	jvc_xvd701_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock);
 
 	virtual void input_txd(int state) override { device_serial_interface::rx_w(state); }
+
+	// HIRAKU: the player's state after each command it takes: the chapter, STOP/PLAYING/PAUSE
+	// (0/1/2), the power, and whether playback starts again at the chapter's beginning
+	std::function<void(int chapter, int status, bool powered, bool from_start)> m_hk_state;
 protected:
 	virtual ioport_constructor device_input_ports() const override ATTR_COLD;
 	virtual void device_start() override ATTR_COLD;
@@ -57,6 +61,7 @@ private:
 	bool m_is_powered;
 
 	int m_chapter;
+	bool m_hk_seek = false; // HIRAKU: this command (re)started the chapter
 
 	enum : unsigned char {
 		STATUS_UNKNOWN_COMMAND = 1,

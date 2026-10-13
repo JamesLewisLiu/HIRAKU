@@ -663,6 +663,33 @@ def rs232_cpp(s):
     return s
 
 
+def xvd701_h(s):
+    # Twinkle's DVD player: its state after each command, for HIRAKU's picture (PLAN.md section 21,
+    # TW-3). MAME models the serial protocol and shows nothing.
+    s = edit(s, '\tvirtual void input_txd(int state) override { device_serial_interface::rx_w(state); }\n',
+             '\tvirtual void input_txd(int state) override { device_serial_interface::rx_w(state); }\n'
+             '\n'
+             '\t// HIRAKU: the player\'s state after each command it takes: the chapter, STOP/PLAYING/PAUSE\n'
+             '\t// (0/1/2), the power, and whether playback starts again at the chapter\'s beginning\n'
+             '\tstd::function<void(int chapter, int status, bool powered, bool from_start)> m_hk_state;\n',
+             'xvd701.h hook')
+    s = edit(s, '\tint m_chapter;\n',
+             '\tint m_chapter;\n\tbool m_hk_seek = false; // HIRAKU: this command (re)started the chapter\n', 'xvd701.h seek flag')
+    return s
+
+
+def xvd701_cpp(s):
+    s = edit(s, '\tm_chapter = chapter;\n', '\tm_chapter = chapter;\n\tm_hk_seek = true; // HIRAKU\n', 'xvd701.cpp seek')
+    s = edit(s, '\t\tm_command[10] == sum(m_command, sizeof(m_command) - 1))\n\t{\n',
+             '\t\tm_command[10] == sum(m_command, sizeof(m_command) - 1))\n\t{\n\t\tm_hk_seek = false; // HIRAKU\n',
+             'xvd701.cpp command start')
+    s = edit(s, '\t\t\tcreate_packet(STATUS_OK, response);\n\t\t}\n\t}\n}\n\nDEFINE_DEVICE_TYPE(JVC_XVD701',
+             '\t\t\tcreate_packet(STATUS_OK, response);\n\t\t}\n\n'
+             '\t\tif (m_hk_state) m_hk_state(m_chapter, m_playback_status, m_is_powered, m_hk_seek); // HIRAKU\n'
+             '\t}\n}\n\nDEFINE_DEVICE_TYPE(JVC_XVD701', 'xvd701.cpp command end')
+    return s
+
+
 def main():
     if len(sys.argv) != 2:
         sys.exit(__doc__)
@@ -673,7 +700,8 @@ def main():
                     ('video/psx.cpp', video_psx_cpp), ('bus/ata/atapihle.cpp', atapihle_cpp),
                     ('machine/ins8250.cpp', ins8250_cpp), ('machine/ins8250.h', ins8250_h),
                     ('../3rdparty/minimp3/minimp3.h', minimp3_h),
-                    ('bus/rs232/rs232.cpp', rs232_cpp)]:
+                    ('bus/rs232/rs232.cpp', rs232_cpp),
+                    ('bus/rs232/xvd701.h', xvd701_h), ('bus/rs232/xvd701.cpp', xvd701_cpp)]:
         p = root / rel
         text = p.read_text()
         if 'HIRAKU' in text:

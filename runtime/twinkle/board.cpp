@@ -3,6 +3,7 @@
 // framework shim, with MAME's own devices. The driver class below follows twinkle_state; where it
 // differs, a comment says so.
 #include "twinkle/board.h"
+#include "twinkle/video.h"
 
 #include "shell/cabinet.h"
 
@@ -118,6 +119,11 @@ public:
     int m_output_last[0x100] = {};
     int m_serial_shift = 0, m_serial_bits = 0, m_serial_cs = 0, m_serial_clock = 0;
     int m_output_shift = 0, m_output_bits = 0, m_output_cs = 0, m_output_clock = 0;
+    // the sub board, as the game sets it (MAME ignores it): the Bt812's registers through its address
+    // register, and the mixer's control register (bit 1: show the video under the PlayStation's black)
+    u8 m_bt812_index = 0;
+    u8 m_bt812[0x20] = {};
+    u16 m_mixer = 0;
 
     // inputs (MAME's ports as they read)
     u8 m_in0 = 0xff;                // IN0: starts, VEFX, Effect, Test, Service 1, active low
@@ -398,6 +404,9 @@ void twinkle_state::set_lamp_reg(int reg, u32 v) {
 
 // The sub board's Bt812 and overlay: MAME keeps only the bit-banged serial line's shifting
 void twinkle_state::twinkle_videomixer_w(offs_t offset, u16 data) {
+    if (offset == 0x00) { m_bt812_index = (u8)data; return; }
+    if (offset == 0x04) { if (m_bt812_index < sizeof(m_bt812)) m_bt812[m_bt812_index] = (u8)data; return; }
+    if (offset == 0x08) { m_mixer = data; return; }
     if (offset != 0x10) return;
     const int clock = data & 1, _do = (data >> 1) & 1, cs = (data >> 2) & 1;
     if (!cs && m_output_cs) { m_output_shift = 0; m_output_bits = 0; }
@@ -566,6 +575,7 @@ u8 trace_group_audio(u32 a) {
 
 // ---- the machine --------------------------------------------------------------------------
 struct Board {
+    VideoCD video;
     std::unique_ptr<running_machine> machine;
     twinkle_state *state = nullptr;
     Config cfg;
@@ -617,6 +627,16 @@ bool init(const Config &cfg) {
             for (int x = 0; x < w; x++) dst[x] = src[x] | 0xff000000u;
             dst += w;
         }
+        // the sub board's overlay: the player's picture where the PlayStation draws black
+        twinkle_state &st = *g.state;
+        if (g.video.is_open() && (st.m_mixer & 2)) {
+            VideoCD::Picture pic;
+            pic.brightness = (s8)st.m_bt812[0x08];
+            pic.contrast = st.m_bt812[0x09];
+            pic.saturation = st.m_bt812[0x0a];
+            pic.hue = (s8)st.m_bt812[0x0b];
+            g.video.composite(screen.machine().time().as_double(), g.frame_rgb.data(), w, h, pic);
+        }
         g.frame_hook(g.frames, g.frame_rgb.data(), w, h);
     };
     m.m_after_nvram_load = [&m] {
@@ -626,6 +646,19 @@ bool init(const Config &cfg) {
     };
     m.start();
     m.reset();
+
+    // the background video: the player's state from MAME's xvd701 (a HIRAKU edit), at machine time
+    if (cfg.video && !cfg.video_cd.empty()) {
+        auto *player = st.subdevice<jvc_xvd701_device>("rs232_dvd:xvd701");
+        if (player && g.video.open(cfg.video_cd)) {
+            running_machine *mp = g.machine.get();
+            player->m_hk_state = [mp](int chapter, int status, bool powered, bool from_start) {
+                g.video.command(mp->time().as_double(), chapter, status, powered, from_start);
+            };
+        } else if (!player) {
+            fprintf(stderr, "video: no DVD player in the machine\n");
+        }
+    }
 
     if (!cfg.trace_dir.empty()) {
         g_trace.f = fopen((cfg.trace_dir + "/mmio.bin").c_str(), "wb");
@@ -759,6 +792,14 @@ const uint8_t *mem(uint32_t addr, uint32_t len) {
     ram_device &ram = *g.state->m_ram;
     if (phys + len > ram.size()) return nullptr;
     return ram.pointer() + phys;
+}
+
+std::string video_report() {
+    if (!g.video.is_open()) return {};
+    char b[160];
+    snprintf(b, sizeof b, "video: %d chapters on the disc, %llu player commands, %llu frames decoded", g.video.chapters(),
+             (unsigned long long)g.video.commands(), (unsigned long long)g.video.frames_decoded());
+    return b;
 }
 
 uint32_t pc() { return g.state ? static_cast<cpu_device &>(*g.state->m_maincpu).pc() : 0; }
