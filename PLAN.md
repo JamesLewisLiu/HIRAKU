@@ -1217,7 +1217,11 @@ Each phase ends with `tools/regress.py check popn9-play` bit-identical, unless i
   - 4 frames from a press or release to the changed picture, every time; 5 before the picture change;
   - the game polls once per frame, and in windowed play the frame runs within ~2 ms of the shell reading the controls, so later input reading would gain little;
   - sound goes to the shell once per vsync, but a frame's emulation is a ~2 ms burst, so finer delivery would gain ~2 ms at most;
-  - the 4 frames are pop'n 9's own pipeline. Gameplay (key to keysound) is still to measure.
+  - the 4 frames are pop'n 9's own pipeline.
+- **Gameplay latency.** Runs are deterministic, so the method is two runs of the same song, identical but for one press (frame 6003); the first differing audio sample and picture are the press's effects.
+  - **Picture:** 5 frames after the press.
+  - **Keysound (button 5): ~2 ms after the vsync at which the press is applied.** The game polls just after the vsync and starts the voice at once. Button 1 made no sound difference at that point of the song.
+  - What the host adds on top: up to a frame until the press is read (the game polls once a frame, as on the cabinet), the audio queue (8 ms by default), the display.
 - **Tools:**
   - `tools/ab.py`: A/B of two binaries, or of two settings with `--a-args`/`--b-args`;
   - `--pcsx2-set Section/Key=value`: any emulator setting, for experiments;
@@ -1226,7 +1230,7 @@ Each phase ends with `tools/regress.py check popn9-play` bit-identical, unless i
 **Next:**
 - the owner's test;
 - PY-2 on low-end hardware, which decides whether PY-3 goes into PCSX2's GS texture path or SPU2 (both mean patching emulator logic, not just taps);
-- gameplay latency (key to keysound). The profile behind it was measured with the core's `HK_PY_PROFILE=1` sampler and its `--no-picture` option (both added after PY-1).
+- hands-on latency with real controls and audio (the owner). The profile behind it was measured with the core's `HK_PY_PROFILE=1` sampler and its `--no-picture` option (both added after PY-1).
 
 ### Decisions (owner, 2026-10-13)
 
