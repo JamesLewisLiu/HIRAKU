@@ -1,5 +1,5 @@
 {
- "about": "pop'n music 9 (Konami Python 1, C00:J:A:A) e-AMUSE3 calls, decrypted. captured: sent by the game in HIRAKU (2026-10-13); otherwise built from the game's own request format strings (not seen yet; encryption guessed from the module's other calls). See docs/EAMUSE3.md.",
+ "about": "pop'n music 9 (Konami Python 1, C00:J:A:A) e-AMUSE3 calls, decrypted. captured: sent by the game in HIRAKU (2026-10-13); otherwise built from the game's own request format strings (not seen yet; encryption guessed from the module's other calls). See docs/EAMUSE3.md. In the captured userid.adduser and addcard, the card numbers are replaced by test numbers (20030199999999xx), so replaying the corpus doesn't give KONAMI IDs to numbers a server hands out.",
  "calls": [
   {
    "name": "services.get",
@@ -118,14 +118,14 @@
   {
    "name": "userid.adduser",
    "encrypted": true,
-   "captured": false,
-   "body": "<call srcid=\"01401401000100045FEF\" model=\"C00:J:A:A\"><userid method=\"adduser\" model=\"C00:J:A:A\" user=\"HIRAKU\" pass=\"1234\" card=\"2003019999999981\" aflag=\"1\"/></call>"
+   "captured": true,
+   "body": "<call srcid=\"01401401000100045FEF\" model=\"C00:J:A:A\"><userid method=\"adduser\" model=\"C00:J:A:A\" user=\"hiraku09\" pass=\"5678\" card=\"2003019999999981\"/></call>"
   },
   {
    "name": "userid.addcard",
    "encrypted": true,
-   "captured": false,
-   "body": "<call srcid=\"01401401000100045FEF\" model=\"C00:J:A:A\"><userid method=\"addcard\" user=\"HIRAKU\" pass=\"1234\" card=\"2003019999999999\" model=\"C00:J:A:A\"/></call>"
+   "captured": true,
+   "body": "<call srcid=\"01401401000100045FEF\" model=\"C00:J:A:A\"><userid method=\"addcard\" user=\"hiraku09\" pass=\"5678\" card=\"2003019999999999\" model=\"C00:J:A:A\"/></call>"
   },
   {
    "name": "eemall.i_get",

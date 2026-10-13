@@ -232,7 +232,7 @@ def run_scenario(server: Server) -> int:
         e = step("no KONAMI ID", f'<userid method="ctou" card="{number}" model="C00:J:A:A"/>', True)
         need(e.attrib.get("status") == "112", f"userid.ctou, no KONAMI ID: status {e.attrib.get('status')}, the game wants 112")
         user = "CHECK%04d" % random.randrange(10000)
-        step("adduser", f'<userid method="adduser" model="C00:J:A:A" user="{user}" pass="1234" card="{number}" aflag="1"/>', True)
+        step("adduser", f'<userid method="adduser" model="C00:J:A:A" user="{user}" pass="1234" card="{number}"/>', True)
         e = step("ctou", f'<userid method="ctou" card="{number}" model="C00:J:A:A"/>', True)
         need(e.attrib.get("status", "0") == "0" and e.attrib.get("user") == user, f"userid.ctou after adduser: {e.attrib}")
         e = step("wrong password", f'<userid method="addcard" user="{user}" pass="9999" card="9999999999999999" model="C00:J:A:A"/>', True)

@@ -212,8 +212,18 @@ offering packages isn't explored.
 | Call | Answer | Statuses |
 |---|---|---|
 | `ctou card=` [game] | `<userid status="0" user="NAME" active="1"/>` | 112: no KONAMI ID for the card; active 0 = provisional |
-| `adduser model= user= pass= card= aflag=` [code] | `<userid status="0" alter=""/>` | 113: the user exists; 114: the card is someone's |
-| `addcard user= pass= card= model=` [code] | `<userid status="0"/>` | 115: no such user; 116: wrong password; 114: the card is someone's |
+| `adduser model= user= pass= card=` [game] | `<userid status="0" alter=""/>` | 113: the user exists; 114: the card is someone's |
+| `addcard user= pass= card= model=` [game] | `<userid status="0"/>` | 115: no such user; 116: wrong password; 114: the card is someone's |
+
+- **`user`** is what the player typed: 8 to 32 characters from `a-z 0-9 . - _` (the screen adds
+  "@konami"). **`pass`** is 4 digits from the 10-key.
+- **`aflag="%d"`** is in the request builder (`0x1984f8`) but only sent when nonzero; the cabinet's
+  flows never set it. **`alter`** (up to 40 characters) is read from a status-0 answer and kept;
+  nothing seen shows it. Answering `alter=""` is enough.
+- **What the game does with the status:** `adduser` 0: "「KONAMI ID」と「PASSWORD」が登録されました";
+  113: back to the menu to try another ID; anything else: an error page, and the credit ends.
+  `addcard` 0: "ポップンミュージックカードの登録が完了しました！"; 115 or 116: try again (three times
+  in all); anything else: an error page. A failed call is retried three times first.
 
 **rank** (all six: `local`, in the clear):
 
@@ -322,7 +332,21 @@ p_friend.get, userid.ctou -> play -> ... userdata.write
 
 **A wrong PIN:** "パスワードが違います", and play without the card.
 
-Scripts: `oracle/scripts/popn9-eamuse-on.his`, `popn9-card-new.his`, `popn9-card-again.his`.
+**A KONAMI ID, on the cabinet:** at the end of a credit played with a card that has none
+(`ctou` 112), the game shows INFORMATION, "KONAMI IDのご案内" (`0x1a8678`), for two minutes:
+
+| Item | Does |
+|---|---|
+| KONAMI IDとは？ | explains it |
+| 新規発行 | a new ID: the ID on a character wheel (buttons 4/6 turn it, red picks; its last items are cursor left and right, delete, 決定 and back), the password twice on the 10-key -> `userid.adduser` |
+| カードへ登録 | this card to an existing ID: the ID, the password once -> `userid.addcard` |
+| 登録を中止する | (selected at first) leave |
+
+Checked: a new ID `hiraku09` with the first card; then a second card, registered as new, added
+to it. The server's `users` then lists both cards, and `ctou` gives the ID for either.
+
+Scripts: `oracle/scripts/popn9-eamuse-on.his`, `popn9-card-new.his`, `popn9-card-again.his`,
+`popn9-konamiid-new.his`, `popn9-konamiid-addcard.his`.
 
 ## The card
 
@@ -345,7 +369,7 @@ The card holds no player data, only an identity.
 
 ## Not known yet
 
-- KONAMI ID registration on the cabinet, `eemall`, `package.intend`, `p_friend.ask`.
+- `eemall`, `package.intend`, `p_friend.ask`; what `alter` and `aflag` are for.
 - What 700/701 mean exactly.
 - **The Gambler Z labyrinth:** how `prog` and `parts` grow (both stayed 0 over a credit on floor 1),
   the items, and what phase 3 does.
