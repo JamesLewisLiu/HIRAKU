@@ -54,6 +54,33 @@ std::vector<uint8_t> dns_answer(const uint8_t *q, size_t n, std::string *name) {
     return r;
 }
 
+uint16_t checksum(const uint8_t *p, size_t n) {
+    uint32_t sum = 0;
+    for (size_t i = 0; i + 1 < n; i += 2) sum += (uint32_t)p[i] << 8 | p[i + 1];
+    if (n & 1) sum += (uint32_t)p[n - 1] << 8;
+    while (sum >> 16) sum = (sum & 0xffff) + (sum >> 16);
+    return (uint16_t)~sum;
+}
+
+// An ICMP echo request to `to` (big-endian address) answered: IPv4 header, then the echo as a reply
+std::vector<uint8_t> echo_reply(const std::vector<uint8_t> &icmp, uint32_t to) {
+    std::vector<uint8_t> r(20, 0);
+    const size_t total = 20 + icmp.size();
+    r[0] = 0x45; r[2] = (uint8_t)(total >> 8); r[3] = (uint8_t)total;
+    r[8] = 64; r[9] = 1;   // TTL, ICMP
+    r[12] = (uint8_t)(to >> 24); r[13] = (uint8_t)(to >> 16); r[14] = (uint8_t)(to >> 8); r[15] = (uint8_t)to;
+    for (int i = 0; i < 4; i++) r[16 + i] = BOARD_IP[i];
+    const uint16_t hc = checksum(r.data(), 20);
+    r[10] = (uint8_t)(hc >> 8); r[11] = (uint8_t)hc;
+    std::vector<uint8_t> e = icmp;
+    e[0] = 0;   // echo reply
+    e[2] = e[3] = 0;
+    const uint16_t ec = checksum(e.data(), e.size());
+    e[2] = (uint8_t)(ec >> 8); e[3] = (uint8_t)ec;
+    r.insert(r.end(), e.begin(), e.end());
+    return r;
+}
+
 }  // namespace
 
 void VirtualNet::respond(uint32_t channel, int32_t ret, uint32_t w2, uint32_t w3) {
@@ -135,7 +162,10 @@ bool VirtualNet::command(uint32_t ch, const uint32_t *p, uint32_t quads) {
         auto it = sockets_.find(fd);
         if (it == sockets_.end()) { respond(ch, -1); note(fmt("fd %d: no such socket", fd)); return true; }
         Socket &s = it->second;
-        if (s.type == 2) {
+        if (s.type == 3) {   // raw ICMP: the ping check (0x1885b8) wants the echo back with its IP header
+            if (n >= 8 && d[0] == 8) s.datagrams.push_back(echo_reply(d, arg(5)));
+            note(fmt("ping(%d, %u bytes) %u.%u.%u.%u", fd, n, arg(5) >> 24, (arg(5) >> 16) & 255, (arg(5) >> 8) & 255, arg(5) & 255));
+        } else if (s.type == 2) {
             std::string name;
             const uint16_t port = (uint16_t)arg(4);
             if (port == 53) {
@@ -156,7 +186,7 @@ bool VirtualNet::command(uint32_t ch, const uint32_t *p, uint32_t quads) {
         auto it = sockets_.find(fd);
         if (it == sockets_.end()) { respond(ch, -1); note(fmt("fd %d: no such socket", fd)); return true; }
         Socket &s = it->second;
-        if (s.type == 2) {
+        if (s.type == 2 || s.type == 3) {
             if (s.datagrams.empty()) { respond(ch, 0); note(fmt("recvfrom(%d) nothing", fd)); return true; }
             std::vector<uint8_t> d = std::move(s.datagrams.front());
             s.datagrams.erase(s.datagrams.begin());
@@ -166,7 +196,8 @@ bool VirtualNet::command(uint32_t ch, const uint32_t *p, uint32_t quads) {
             io_.read(arg(5), from, 4);
             uint32_t from_word;
             std::memcpy(&from_word, from, 4);
-            respond(ch, (int32_t)d.size(), SERVER_IP_RAW, (from_word & 0xffff0000) | 53);
+            const uint32_t src = s.type == 3 && d.size() >= 16 ? (uint32_t)d[12] | d[13] << 8 | d[14] << 16 | (uint32_t)d[15] << 24 : SERVER_IP_RAW;
+            respond(ch, (int32_t)d.size(), src, (from_word & 0xffff0000) | (s.type == 3 ? 0 : 53));
             note(fmt("recvfrom(%d) = %zu", fd, d.size()));
             return true;
         }

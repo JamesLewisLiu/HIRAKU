@@ -78,6 +78,7 @@
 
 #include "python/cardunit.h"
 #include "python/eanet.h"
+#include "python/easerver.h"
 #include "shell/cabinet.h"
 #include "shell/core.h"
 
@@ -330,6 +331,9 @@ public:
             io.respond = [](uint32_t ch, const uint32_t w[8]) { Hiraku::net_respond(ch, w); };
             io.read = [](uint32_t addr, uint8_t *d, uint32_t n) { return Hiraku::iop_read(addr, d, n); };
             net_ = std::make_unique<hk::py::VirtualNet>(io, [this](const std::string &req) { return http(req); });
+            server_ = std::make_unique<hk::py::EamuseServer>(run_dir_ + "/eamuse");
+            // the emulated RTC's start (init_emulator: 2003-06-01 12:00) plus the machine's own time
+            server_->now = [this] { return (int64_t)1054468800 + (int64_t)seconds(); };
         }
         if (!FileSystem::WriteStringToFile(py1_path_.c_str(), py1)) { fprintf(stderr, "python: cannot write %s\n", py1_path_.c_str()); return false; }
 
@@ -357,7 +361,7 @@ public:
         if (const char *f = getenv("HK_PY_CARD_LOG")) card_log_ = fopen(f, "w");
         if (const char *f = getenv("HK_PY_NET_LOG")) net_log_ = fopen(f, "w");
         if (net_) {
-            if (net_log_) net_->log = [this](const std::string &s) {
+            if (net_log_) net_->log = server_->log = [this](const std::string &s) {
                 fprintf(net_log_, "%llu %s\n", (unsigned long long)frame_, s.c_str());
                 fflush(net_log_);
             };
@@ -572,7 +576,22 @@ private:
 
     // CPU thread, at each vsync: sound so far, the previous vsync's picture, the shell
     void on_vsync() {
-        if (!frame_) prof::g_cpu_tid = (pid_t)syscall(SYS_gettid);
+        if (!frame_) {
+            prof::g_cpu_tid = (pid_t)syscall(SYS_gettid);
+            // HK_PY_WATCH=addr,addr,...: EE RAM words, printed when they change (for reading the game)
+            if (const char *w = getenv("HK_PY_WATCH"))
+                for (const char *p = w; *p;) {
+                    char *e;
+                    watch_.push_back({(uint32_t)strtoul(p, &e, 16), 0xdeadbeef});
+                    p = *e ? e + 1 : e;
+                }
+        }
+        for (auto &[addr, last] : watch_) {
+            uint32_t v;
+            memcpy(&v, eeMem->Main + (addr & 0x1fffffc), 4);
+            if (v != last) printf("watch: frame %llu %08x = %08x\n", (unsigned long long)frame_, addr, v);
+            last = v;
+        }
         if (p1io_log_ && p1io_polls_ != p1io_polls_logged_) {
             fprintf(p1io_log_, "%llu polls %llu\n", (unsigned long long)frame_, (unsigned long long)(p1io_polls_ - p1io_polls_logged_));
             p1io_polls_logged_ = p1io_polls_;
@@ -617,21 +636,9 @@ private:
     FILE *card_log_ = nullptr;
     std::unique_ptr<hk::py::VirtualNet> net_;
     FILE *net_log_ = nullptr;
-    // The e-AMUSE3 server: for now it records what the game asks (HK_PY_NET_LOG) and says no.
-    std::string http(const std::string &req) {
-        if (net_log_) {
-            fprintf(net_log_, "%llu HTTP request, %zu bytes:\n", (unsigned long long)frame_, req.size());
-            for (size_t i = 0; i < req.size(); i++) {
-                const unsigned char c = (unsigned char)req[i];
-                fprintf(net_log_, "%02x%s", c, (i % 32 == 31) ? "\n" : " ");
-            }
-            fprintf(net_log_, "\ntext: ");
-            for (unsigned char c : req) fputc(c >= 32 && c < 127 ? c : c == '\n' ? '\n' : '.', net_log_);
-            fprintf(net_log_, "\n");
-            fflush(net_log_);
-        }
-        return "HTTP/1.0 404 Not Found\r\nContent-Length: 0\r\n\r\n";
-    }
+    std::unique_ptr<hk::py::EamuseServer> server_;
+    std::vector<std::pair<uint32_t, uint32_t>> watch_;   // HK_PY_WATCH: address, last value
+    std::string http(const std::string &req) { return server_->handle(req); }
     std::map<std::string, int> held_;   // the card button's and 10-key's last values
     std::string card_state_;
     void card_changed() {

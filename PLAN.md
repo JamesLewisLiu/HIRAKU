@@ -1265,7 +1265,32 @@ Each phase ends with `tools/regress.py check popn9-play` bit-identical, unless i
     - **The game's start-up** (state machine `0x182c58`): net init, DHCP, the addresses, then e-AMUSE3 starts (`0x18ec30`: DNS, domain, port 0x7e90). It resolves `services.PYTHON1-00000001`, connects to port 80 and POSTs `/` with `X-Eamuse-Info: 1-xxxxxxxx-xxxx` and an RC4-encrypted body.
     - **The crypto is the modern e-AMUSEMENT one** (as in bemaniutils): key = MD5(the header's 6 bytes + the 26-byte shared secret), RC4, plain XML with no compression. The first request decrypts to `<call srcid="01401401000100045FEF" model="C00:J:A:A"><services method="get"/></call>`.
     - **Checked:** popn9-play(-vk) unchanged. With e-AMUSEMENT OFF the game sends the board no socket commands (4,000 frames, `HK_PY_NET_LOG`).
-  - **Next:** step 3, the e-AMUSE3 server in the core: `services.get` first, then the rest from the game's own requests and its response parser.
+  - **Step 3, the server (in progress):** `runtime/python/easerver.{h,cpp}`: the protocol's MD5/RC4, a small XML reader, and answers built from the game's response parsers. State is kept in the save folder's `eamuse/`.
+    - **Modules and methods** (the method entries at `0x1e81e8`…, each {name, `services` item, -, handlers: init, build, parse, end}):
+      - services get;
+      - posevent income/sales/sale (sale and sales need `approve`);
+      - pcbtracker alive;
+      - numbering assign (`number`);
+      - package list/intend;
+      - userdata read (109 = not registered, 110 = expired; `time`, `<b>`) and write;
+      - userid ctou (`user`, `active`), adduser (`alter`), addcard;
+      - rank get/register (+ `_h` HITASURA, `_gz` Gambler Z);
+      - p_friend get/state/ask;
+      - eemall i_get;
+      - ntp get (`<time year month day hour min sec>`).
+      - `services` must list the items `posevent`, `pcbtracker`, `numbering`, `package`, `userdata`, `userid` and **`local`** (rank, p_friend, eemall and ntp look up `local`).
+    - **The envelope:** `<response><MODULE status="0" …>…</MODULE>…</response>`, one element per call, in order. `fault` or a non-zero `status` fails the call.
+    - **Encryption follows the call's packet type.** Some calls go out unencrypted (numbering, ntp), and their answer must also be unencrypted, **without** `X-Eamuse-Info` (`0x190290` compares the header's crypto version with the packet type's). Answering them encrypted failed them before any XML was read. That was found with a temporary EE-interpreter PC trace, kept outside the patch (`$HK_PYTHON_WORK/scratch/Interpreter.cpp.eetrace`, `HK_EE_TRACE=pc,…`, run with `--interp`).
+    - **The start-up** (`0x182c58`): services.get → pcbtracker.alive → posevent → ntp.get → status 0. The title then says "e-AMUSEMENT 接続中!" and "カードが使用できます!!". A ping check (raw ICMP, `0x1885b8`) runs every so often; the LAN answers the echo with an IP header.
+    - **Checked, a new card** (`oracle/scripts`-style runs from the e-AMUSEMENT-on save):
+      - credits and Start, then the INFORMATION screen asks for the pop'n card;
+      - Insert: the reader takes it and reads "NEW CARD"; then name entry, then the PIN twice on the 10-key;
+      - `numbering.assign` gets `2003010000000010` (16 digits, Luhn check);
+      - the game formats, writes and reads back the card: `68 23 41 01` + CRC-8, the ID at 6–13 (byte-reversed), CRC-16 at 0x3f;
+      - "カードセーブ完了", then `userid.ctou` (no KONAMI ID), and mode select with the card.
+    - **Not done yet:** a credit played with the card (userdata.write at the end, then userdata.read on the next insert), rank registration, KONAMI ID (userid adduser/addcard), p_friend, eemall.
+    - **Seen once:** one `popn9-play` check differed right after a rebuild, then was identical three times running. Where it differed was not captured; watch for it.
+  - **Debugging aids:** `HK_PY_WATCH=addr,…` prints EE RAM words when they change. Ghidra headless decompiles (`$HK_PYTHON_WORK/ghidra`: `Decomp.java OUT addr|range:A-B…`, `Refs.java addr…`).
 - **Tools:**
   - `tools/ab.py`: A/B of two binaries, or of two settings with `--a-args`/`--b-args`;
   - `--pcsx2-set Section/Key=value`: any emulator setting, for experiments;

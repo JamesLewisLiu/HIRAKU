@@ -1,0 +1,282 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// A local e-AMUSE3 server for Python 1 pop'n (easerver.h).
+#include "python/easerver.h"
+
+#include <sys/stat.h>
+
+#include <cctype>
+#include <cstdlib>
+#include <cstdio>
+#include <cstring>
+#include <ctime>
+#include <fstream>
+#include <iterator>
+
+namespace hk::py {
+
+namespace {
+
+// The protocol's shared secret (as in bemaniutils' protocol code)
+constexpr uint8_t SECRET[26] = {0x69, 0xd7, 0x46, 0x27, 0xd9, 0x85, 0xee, 0x21, 0x87, 0x16, 0x15, 0x70, 0xd0,
+                                0x8d, 0x93, 0xb1, 0x24, 0x55, 0x03, 0x5b, 0x6d, 0xf0, 0xd8, 0x20, 0x5d, 0xf5};
+
+// MD5 (RFC 1321)
+std::vector<uint8_t> md5(const std::vector<uint8_t> &msg) {
+    static const uint32_t K[64] = {
+        0xd76aa478, 0xe8c7b756, 0x242070db, 0xc1bdceee, 0xf57c0faf, 0x4787c62a, 0xa8304613, 0xfd469501,
+        0x698098d8, 0x8b44f7af, 0xffff5bb1, 0x895cd7be, 0x6b901122, 0xfd987193, 0xa679438e, 0x49b40821,
+        0xf61e2562, 0xc040b340, 0x265e5a51, 0xe9b6c7aa, 0xd62f105d, 0x02441453, 0xd8a1e681, 0xe7d3fbc8,
+        0x21e1cde6, 0xc33707d6, 0xf4d50d87, 0x455a14ed, 0xa9e3e905, 0xfcefa3f8, 0x676f02d9, 0x8d2a4c8a,
+        0xfffa3942, 0x8771f681, 0x6d9d6122, 0xfde5380c, 0xa4beea44, 0x4bdecfa9, 0xf6bb4b60, 0xbebfbc70,
+        0x289b7ec6, 0xeaa127fa, 0xd4ef3085, 0x04881d05, 0xd9d4d039, 0xe6db99e5, 0x1fa27cf8, 0xc4ac5665,
+        0xf4292244, 0x432aff97, 0xab9423a7, 0xfc93a039, 0x655b59c3, 0x8f0ccc92, 0xffeff47d, 0x85845dd1,
+        0x6fa87e4f, 0xfe2ce6e0, 0xa3014314, 0x4e0811a1, 0xf7537e82, 0xbd3af235, 0x2ad7d2bb, 0xeb86d391};
+    static const int R[64] = {7, 12, 17, 22, 7, 12, 17, 22, 7, 12, 17, 22, 7, 12, 17, 22, 5, 9,  14, 20, 5, 9,
+                              14, 20, 5, 9,  14, 20, 5, 9,  14, 20, 4, 11, 16, 23, 4, 11, 16, 23, 4, 11, 16, 23,
+                              4, 11, 16, 23, 6, 10, 15, 21, 6, 10, 15, 21, 6, 10, 15, 21, 6, 10, 15, 21};
+    std::vector<uint8_t> m = msg;
+    const uint64_t bits = (uint64_t)msg.size() * 8;
+    m.push_back(0x80);
+    while (m.size() % 64 != 56) m.push_back(0);
+    for (int i = 0; i < 8; i++) m.push_back((uint8_t)(bits >> (8 * i)));
+    uint32_t h[4] = {0x67452301, 0xefcdab89, 0x98badcfe, 0x10325476};
+    for (size_t off = 0; off < m.size(); off += 64) {
+        uint32_t w[16];
+        for (int i = 0; i < 16; i++)
+            w[i] = (uint32_t)m[off + 4 * i] | (uint32_t)m[off + 4 * i + 1] << 8 | (uint32_t)m[off + 4 * i + 2] << 16 |
+                   (uint32_t)m[off + 4 * i + 3] << 24;
+        uint32_t a = h[0], b = h[1], c = h[2], d = h[3];
+        for (int i = 0; i < 64; i++) {
+            uint32_t f;
+            int g;
+            if (i < 16) { f = (b & c) | (~b & d); g = i; }
+            else if (i < 32) { f = (d & b) | (~d & c); g = (5 * i + 1) % 16; }
+            else if (i < 48) { f = b ^ c ^ d; g = (3 * i + 5) % 16; }
+            else { f = c ^ (b | ~d); g = (7 * i) % 16; }
+            const uint32_t t = d;
+            d = c;
+            c = b;
+            const uint32_t x = a + f + K[i] + w[g];
+            b = b + ((x << R[i]) | (x >> (32 - R[i])));
+            a = t;
+        }
+        h[0] += a; h[1] += b; h[2] += c; h[3] += d;
+    }
+    std::vector<uint8_t> out;
+    for (uint32_t v : h)
+        for (int i = 0; i < 4; i++) out.push_back((uint8_t)(v >> (8 * i)));
+    return out;
+}
+
+std::string header(const std::string &head, const char *name) {
+    const size_t n = std::strlen(name);
+    for (size_t at = head.find("\r\n"); at != std::string::npos; at = head.find("\r\n", at + 2)) {
+        if (head.size() - at - 2 < n + 1 || strncasecmp(head.c_str() + at + 2, name, n) != 0 || head[at + 2 + n] != ':') continue;
+        size_t b = at + 3 + n;
+        while (b < head.size() && head[b] == ' ') b++;
+        const size_t e = head.find("\r\n", b);
+        return head.substr(b, e == std::string::npos ? std::string::npos : e - b);
+    }
+    return "";
+}
+
+// name="value" pairs from the start of an element (after its name), to its '>'
+size_t read_attrs(const std::string &x, size_t at, std::map<std::string, std::string> &out, bool *self_closing) {
+    while (at < x.size()) {
+        while (at < x.size() && std::isspace((unsigned char)x[at])) at++;
+        if (at >= x.size()) break;
+        if (x[at] == '/' || x[at] == '>') {
+            *self_closing = x[at] == '/';
+            const size_t e = x.find('>', at);
+            return e == std::string::npos ? x.size() : e + 1;
+        }
+        const size_t eq = x.find('=', at);
+        if (eq == std::string::npos || eq + 1 >= x.size()) break;
+        const char q = x[eq + 1];
+        const size_t end = x.find(q, eq + 2);
+        if (end == std::string::npos) break;
+        std::string name = x.substr(at, eq - at);
+        while (!name.empty() && std::isspace((unsigned char)name.back())) name.pop_back();
+        out[name] = x.substr(eq + 2, end - eq - 2);
+        at = end + 1;
+    }
+    return x.size();
+}
+
+std::string fmt(const char *f, unsigned a, unsigned b) {
+    char s[64];
+    snprintf(s, sizeof s, f, a, b);
+    return s;
+}
+
+}  // namespace
+
+std::vector<uint8_t> EamuseServer::key(const std::string &info) {
+    // "1-xxxxxxxx-xxxx": the 6 bytes, then the secret
+    std::vector<uint8_t> m;
+    std::string hex;
+    for (char c : info.substr(info.find('-') + 1))
+        if (std::isxdigit((unsigned char)c)) hex += c;
+    for (size_t i = 0; i + 1 < hex.size(); i += 2) m.push_back((uint8_t)std::stoul(hex.substr(i, 2), nullptr, 16));
+    m.insert(m.end(), SECRET, SECRET + sizeof SECRET);
+    return md5(m);
+}
+
+void EamuseServer::rc4(const std::vector<uint8_t> &k, std::string &d) {
+    uint8_t s[256];
+    for (int i = 0; i < 256; i++) s[i] = (uint8_t)i;
+    for (int i = 0, j = 0; i < 256; i++) {
+        j = (j + s[i] + k[i % k.size()]) & 255;
+        std::swap(s[i], s[j]);
+    }
+    int i = 0, j = 0;
+    for (char &c : d) {
+        i = (i + 1) & 255;
+        j = (j + s[i]) & 255;
+        std::swap(s[i], s[j]);
+        c = (char)((uint8_t)c ^ s[(s[i] + s[j]) & 255]);
+    }
+}
+
+bool EamuseServer::parse(const std::string &x, Call &c) {
+    size_t at = x.find("<call");
+    if (at == std::string::npos) return false;
+    std::map<std::string, std::string> a;
+    bool sc = false;
+    at = read_attrs(x, at + 5, a, &sc);
+    c.srcid = a["srcid"];
+    c.model = a["model"];
+    for (at = x.find('<', at); at != std::string::npos && at + 1 < x.size() && x[at + 1] != '/'; at = x.find('<', at)) {
+        size_t e = at + 1;
+        while (e < x.size() && !std::isspace((unsigned char)x[e]) && x[e] != '/' && x[e] != '>') e++;
+        Request r;
+        r.module = x.substr(at + 1, e - at - 1);
+        sc = false;
+        at = read_attrs(x, e, r.attrs, &sc);
+        r.method = r.attrs["method"];
+        if (!sc) {
+            const size_t close = x.find("</" + r.module, at);
+            r.inner = x.substr(at, close == std::string::npos ? std::string::npos : close - at);
+            at = close == std::string::npos ? x.size() : x.find('>', close) + 1;
+        }
+        c.requests.push_back(std::move(r));
+    }
+    return !c.requests.empty();
+}
+
+std::string EamuseServer::read_file(const std::string &name) const {
+    if (dir_.empty()) return "";
+    std::ifstream f(dir_ + "/" + name, std::ios::binary);
+    return std::string(std::istreambuf_iterator<char>(f), std::istreambuf_iterator<char>());
+}
+
+void EamuseServer::write_file(const std::string &name, const std::string &data) const {
+    if (dir_.empty()) return;
+    mkdir(dir_.c_str(), 0755);
+    const std::string path = dir_ + "/" + name, tmp = path + ".tmp";
+    {
+        std::ofstream f(tmp, std::ios::binary | std::ios::trunc);
+        f << data;
+        if (!f) return;
+    }
+    std::rename(tmp.c_str(), path.c_str());
+}
+
+namespace {
+bool safe_name(const std::string &s) {   // a card number used as a file name
+    if (s.empty() || s.size() > 32) return false;
+    for (char ch : s)
+        if (!std::isalnum((unsigned char)ch)) return false;
+    return true;
+}
+}  // namespace
+
+std::string EamuseServer::answer(const Call &c, const Request &r, const std::string &host) {
+    (void)c;
+    if (r.module == "numbering" && r.method == "assign") {   // a new card's number (0x197530): 16 digits
+        uint64_t next = 1;
+        if (std::string n = read_file("numbering"); !n.empty()) next = std::strtoull(n.c_str(), nullptr, 10);
+        write_file("numbering", std::to_string(next + 1) + "\n");
+        char digits[17];
+        snprintf(digits, sizeof digits, "200301%09llu", (unsigned long long)next);   // 15 digits
+        int sum = 0;   // a Luhn check digit ("card16m10")
+        for (int i = 14, k = 0; i >= 0; i--, k++) {
+            int d = digits[i] - '0';
+            if (k % 2 == 0) { d *= 2; if (d > 9) d -= 9; }
+            sum += d;
+        }
+        digits[15] = (char)('0' + (10 - sum % 10) % 10);
+        digits[16] = 0;
+        return std::string("<numbering status=\"0\" number=\"") + digits + "\"/>";
+    }
+    if (r.module == "userdata" && r.method == "read") {   // 109: not registered (0x184ca0)
+        const auto it = r.attrs.find("card");
+        const std::string data = it != r.attrs.end() && safe_name(it->second) ? read_file("userdata-" + it->second) : "";
+        if (data.empty()) return "<userdata status=\"109\"/>";
+        return data;   // kept as the answer element itself
+    }
+    if (r.module == "userdata" && r.method == "write") {
+        const auto it = r.attrs.find("card");
+        if (it == r.attrs.end() || !safe_name(it->second)) return "<userdata status=\"1\"/>";
+        const auto t = r.attrs.find("time");
+        write_file("userdata-" + it->second, "<userdata status=\"0\" time=\"" + (t != r.attrs.end() ? t->second : "") + "\">" +
+                                                 r.inner + "</userdata>");
+        return "<userdata status=\"0\"/>";
+    }
+    if (r.module == "services" && r.method == "get") {   // the other modules' URLs (0x18a808)
+        // the names the methods look up (their entries' second word): rank, p_friend, eemall and
+        // ntp all use "local"
+        static const char *modules[] = {"posevent", "pcbtracker", "numbering", "package", "userdata", "userid", "local"};
+        std::string items;
+        for (const char *m : modules) items += std::string("<item name=\"") + m + "\" url=\"http://" + host + "/\"/>";
+        return "<services expire=\"600\" status=\"0\">" + items + "</services>";
+    }
+    if (r.module == "ntp" && r.method == "get") {   // <time year.. sec../> (0x19b740)
+        const time_t t = now ? (time_t)now() : 0;
+        struct tm tm;
+        gmtime_r(&t, &tm);
+        char b[160];
+        snprintf(b, sizeof b, "<ntp status=\"0\"><time year=\"%d\" month=\"%d\" day=\"%d\" hour=\"%d\" min=\"%d\" sec=\"%d\"></time></ntp>",
+                 tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec);
+        return b;
+    }
+    if (r.module == "posevent" && (r.method == "sale" || r.method == "sales"))   // approve is required (0x18af68)
+        return "<posevent status=\"0\" approve=\"1\" margin=\"0\"/>";
+    return "<" + r.module + " status=\"0\"/>";
+}
+
+std::string EamuseServer::handle(const std::string &req) {
+    const size_t head_end = req.find("\r\n\r\n");
+    const std::string head = req.substr(0, head_end), info = header(head, "X-Eamuse-Info");
+    std::string body = head_end == std::string::npos ? "" : req.substr(head_end + 4);
+    if (!info.empty()) rc4(key(info), body);
+    Call c;
+    std::string xml;
+    if (parse(body, c)) {
+        xml = "<response>";
+        for (const Request &r : c.requests) {
+            // module elements written out as <x ...></x> (the game's parser also takes <x .../>)
+            std::string a = answer(c, r, header(head, "Host"));
+            if (a.size() > 2 && a.compare(a.size() - 2, 2, "/>") == 0 && a.find('>') == a.size() - 1)
+                a = a.substr(0, a.size() - 2) + "></" + r.module + ">";
+            xml += a;
+        }
+        xml += "</response>";
+    }
+    if (log) log(std::string("e-AMUSE3 call") + (info.empty() ? " (plain): " : ": ") + body + "\ne-AMUSE3 answer: " + (xml.empty() ? "(not understood)" : xml));
+    if (xml.empty()) return "HTTP/1.0 400 Bad Request\r\nContent-Length: 0\r\n\r\n";
+
+    // Answer in kind: an encrypted call gets an encrypted answer; a plain one (ntp, rank, ...: their
+    // packets have no cipher) a plain answer with no X-Eamuse-Info, which the game insists on (0x190290).
+    std::string info_line;
+    if (!info.empty()) {
+        serial_++;
+        const std::string out_info = "1-" + fmt("%08x-%04x", 0x484b0000u + serial_, serial_ & 0xffff);
+        rc4(key(out_info), xml);
+        info_line = "X-Eamuse-Info: " + out_info + "\r\n";
+    }
+    return "HTTP/1.0 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: " + std::to_string(xml.size()) +
+           "\r\n" + info_line + "\r\n" + xml;
+}
+
+}  // namespace hk::py
