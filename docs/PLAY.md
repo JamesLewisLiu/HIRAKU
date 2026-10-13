@@ -615,3 +615,30 @@ hiraku-gtfrk11m --session-join /tmp/gfdm.sock
 - **The session music** comes from the unit, in the DrumMania process. It goes over the cable to the GuitarFreaks side too, so both windows play it, in time with their own sounds.
 
 The regress cases are `gtfrk11m-install`, `gtfrk11m-boot`, and `drmn10m-session` + `gtfrk11m-session` (a session game: both cabinets play the first stage of 花火).
+
+## Twinkle: beatmania IIDX 3rd style (in progress, M15)
+
+beatmania IIDX 3rd style (`bmiidx3`) runs on HIRAKU's Twinkle core in lockstep with MAME (PLAN.md section 21). It needs MAME's `bmiidx3` set and its three CHDs: the program CD `gc992-jac01`, the Video CD `gc992-jaa04` and the sound board's hard disk `992hdda01` (unpacked to about 4 GB):
+
+```bash
+tools/ingest.py bmiidx3.7z gc992-jac01.chd gc992-jaa04.chd 992hdda01.chd
+ninja -C build/cmake hiraku-bmiidx3
+```
+
+**The first boot:** the device check passes and stops at **E150** (backup RAM cleared): press **1P Start** (1) to clear it. Then attract; insert coins (5) and press Start.
+
+| Key | Player 1 | Player 2 |
+|---|---|---|
+| Keys 1–7 | Z S X D C F V | M K , L . ; / |
+| Turntable | ← / → (and Left Shift / A) | ↓ / ↑ |
+| Start | 1 | 2 |
+
+Effect is E and VEFX is W. Coin is 5; Test and Service are F2 and 9. A USB IIDX controller has its keys on buttons 0–6 and its turntable on the first axis by default; Start, Effect and VEFX are buttons 8, 9 and 10. The effector's five sliders (Volume 1–5) are analog axes with no default binding. Controls are remapped in the launcher.
+
+**Lamps:** the key lamps, Start, VEFX, Effect and credit lamps, eight spotlights, the neon and the board's LEDs, by name for HID LEDs and the lights socket (docs/LIGHTS.md). The 16-segment display above the screen shows in the window title.
+
+**Not there yet:**
+- **The background video.** MAME doesn't show it either: the game sends the DVD player its commands, and the middle of the play field stays dark (TW-3).
+- **1st style (`bmiidx`)** stops at E600 DVD INIT ERROR, as in MAME (TW-5).
+
+The regress cases are `bmiidx3-boot` (the first boot to attract) and `bmiidx3-play` (a coin-up and a stage, after it).

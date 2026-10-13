@@ -202,6 +202,55 @@ std::vector<Control> make_djpstage() {
     return c;
 }
 
+// beatmania IIDX on Twinkle (MAME twinkle.cpp INPUT_PORTS twinkle): seven keys and a turntable per
+// player (the turntable is an 8-bit position, "1P Table"/"2P Table" in MAME), Start, VEFX, Effect,
+// and the effector's five sliders (4 bits each). Keys as in the usual keyboard layout: Z S X D C F V
+// and M K , L . ; / ; a USB IIDX controller's keys on buttons 0-6.
+std::vector<Control> make_iidx() {
+    std::vector<Control> c;
+    const char *p1keys[7] = {"key:Z, joy0:button0", "key:S, joy0:button1", "key:X, joy0:button2", "key:D, joy0:button3",
+                             "key:C, joy0:button4", "key:F, joy0:button5", "key:V, joy0:button6"};
+    const char *p2keys[7] = {"key:M", "key:K", "key:Comma", "key:L", "key:Period", "key:Semicolon", "key:Slash"};
+    for (int p = 1; p <= 2; p++) {
+        std::string P = "P" + std::to_string(p), g = "Player " + std::to_string(p);
+        for (int k = 1; k <= 7; k++)
+            c.push_back({P + "-" + std::to_string(k) + " (SW" + std::to_string((p - 1) * 7 + k) + ")", "Key " + std::to_string(k), g,
+                         false, p == 1 ? p1keys[k - 1] : p2keys[k - 1]});
+        c.push_back({P + " Turntable", "Turntable (analog axis)", g, true, p == 1 ? "joy0:axis0" : ""});
+        c.push_back({P + " Turntable -", "Turntable − (as a button)", g, false, p == 1 ? "key:Left, key:Left Shift" : "key:Down"});
+        c.push_back({P + " Turntable +", "Turntable + (as a button)", g, false, p == 1 ? "key:Right, key:A" : "key:Up"});
+        c.push_back({p == 1 ? "1 Player Start" : "2 Players Start", "Start", g, false, p == 1 ? "key:1, joy0:button8" : "key:2"});
+    }
+    c.push_back({"Effect", "Effect", "Cabinet", false, "key:E, joy0:button9"});
+    c.push_back({"VEFX", "VEFX", "Cabinet", false, "key:W, joy0:button10"});
+    for (int k = 1; k <= 5; k++)
+        c.push_back({"Volume " + std::to_string(k), "Effector slider " + std::to_string(k) + " (analog axis)", "Effector", true, ""});
+    c.push_back({"Coin 1", "Coin", "Cabinet", false, "key:5"});
+    c.push_back({"Test", "Test", "Cabinet", false, "key:F2"});
+    c.push_back({"Service", "Service", "Cabinet", false, "key:9"});
+    return c;
+}
+
+// Twinkle's outputs (MAME twinkle.cpp), as the Twinkle core numbers them:
+// reg 0 = I/O output 0x37 (active low), reg 1 = 0x87 (the spotlights, active low; MAME's spotlight0
+// is bit 3, 1 bit 2, 2 bit 1, 3 bit 0, 4-7 bits 4-7), reg 2 = 0x8f (the neon, active low),
+// reg 3 = the key lamps (key_led_w), reg 4 = the main board's LEDs (led_w, active low).
+std::vector<Lamp> make_iidx_lamps() {
+    std::vector<Lamp> l;
+    add_run(l, "P1 Key Lamp", "Player 1", 3, {0, 1, 2, 3, 4, 5, 6});
+    add_run(l, "P2 Key Lamp", "Player 2", 3, {7, 8, 9, 10, 11, 12, 13});
+    l.push_back({"P1 Start Lamp", "Player 1", 0, 0, true});
+    l.push_back({"P2 Start Lamp", "Player 2", 0, 1, true});
+    l.push_back({"VEFX Lamp", "Panel", 0, 2, true});
+    l.push_back({"Effect Lamp", "Panel", 0, 3, true});
+    l.push_back({"Credit Lamp", "Panel", 0, 4, true});
+    const int spot_bits[8] = {3, 2, 1, 0, 4, 5, 6, 7};
+    for (int k = 0; k < 8; k++) l.push_back({"Spotlight " + std::to_string(k + 1), "Cabinet", 1, spot_bits[k], true});
+    l.push_back({"Neon", "Cabinet", 2, 0, true});
+    for (int k = 0; k < 9; k++) l.push_back({"Board LED " + std::to_string(k + 1), "Board (diagnostic)", 4, k, true});
+    return l;
+}
+
 // DJ Main: reg 0 = 0x5d0000 (light_ctrl_1), reg 1 = 0x5d2000 (light_ctrl_2), as
 // MAME decodes them for beatmania; reg 2 = the board's row of 8 LEDs (active low).
 std::vector<Lamp> make_djbm_lamps() {
@@ -334,7 +383,7 @@ const std::vector<Control> &controls(const std::string &family) {
     static const std::map<std::string, std::vector<Control>> all = {
         {"bm3", make_bm3()}, {"popn", make_popn()}, {"ppp", make_ppp()}, {"kbm", make_kbm()},
         {"djbm", make_djbm()}, {"djpopn", make_djpopn()}, {"djpstage", make_djpstage()}, {"ddr", make_ddr()},
-        {"drmn", make_drmn()}, {"gtrf", make_gtrf()}};
+        {"drmn", make_drmn()}, {"gtrf", make_gtrf()}, {"iidx", make_iidx()}};
     auto f = all.find(family);
     return f != all.end() ? f->second : all.at("bm3");
 }
@@ -343,7 +392,7 @@ const std::vector<Lamp> &lamps(const std::string &family) {
     static const std::map<std::string, std::vector<Lamp>> all = {
         {"bm3", make_bm3_lamps()}, {"popn", make_popn_lamps()}, {"ppp", make_ppp_lamps()}, {"kbm", make_kbm_lamps()},
         {"djbm", make_djbm_lamps()}, {"djpopn", make_djpopn_lamps()}, {"djpstage", make_djpstage_lamps()},
-        {"ddr", make_ddr_lamps()}, {"drmn", make_drmn_lamps()}, {"gtrf", make_gtrf_lamps()}};
+        {"ddr", make_ddr_lamps()}, {"drmn", make_drmn_lamps()}, {"gtrf", make_gtrf_lamps()}, {"iidx", make_iidx_lamps()}};
     auto f = all.find(family);
     return f != all.end() ? f->second : all.at("bm3");
 }

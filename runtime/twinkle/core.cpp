@@ -28,10 +28,12 @@ class TwinkleCore final : public Core {
 public:
     bool option(const std::string &name, const std::function<std::string()> &value) override {
         if (name == "--rtc") { rtc_ = std::stoll(value()); return true; }
+        if (name == "--mame-mix") { mame_mix_ = true; return true; }
         return false;
     }
     std::string options_help() const override {
-        return "  --rtc SECONDS     the RTC's time at power-on (default: now), seconds since 1970\n";
+        return "  --rtc SECONDS     the RTC's time at power-on (default: now), seconds since 1970\n"
+               "  --mame-mix        sound at MAME's level (it can clip on loud stretches; default: 0.8 of it)\n";
     }
 
     bool init(const Options &o) override {
@@ -65,6 +67,7 @@ public:
         cfg.nvram_dir = o.nvram_dir;
         cfg.rtc_time = rtc_ >= 0 ? rtc_ : (int64_t)time(nullptr);
         if (o.trace) cfg.trace_dir = o.out;
+        if (mame_mix_) cfg.mix_gain = 1.0f;
         if (!twinkle::init(cfg)) return false;
         printf("hiraku %s: Twinkle, MAME's PS1 and 68000 interpreted\n", o.game.c_str());
         return true;
@@ -77,8 +80,9 @@ public:
     [[noreturn]] void run() override { twinkle::run(); }
     void shutdown() override { twinkle::save_nvram(); }
     void report() override {
-        printf("frames %llu, virtual time %.3f s, pc %08x, 68000 pc %06x\n", (unsigned long long)twinkle::frame_count(),
-               twinkle::seconds(), twinkle::pc(), twinkle::audio_pc());
+        printf("frames %llu, virtual time %.3f s, pc %08x, 68000 pc %06x, %llu lamp changes, display [%s]\n",
+               (unsigned long long)twinkle::frame_count(), twinkle::seconds(), twinkle::pc(), twinkle::audio_pc(),
+               (unsigned long long)twinkle::lamp_changes(), twinkle::display_text().c_str());
         if (std::string s = twinkle::sound_report(); !s.empty()) printf("%s\n", s.c_str());
     }
     void debug_line(uint64_t f) override {
@@ -90,13 +94,15 @@ public:
     uint64_t frame_count() const override { return twinkle::frame_count(); }
     bool set_input(const std::string &name, int value) override { return twinkle::set_input(name, value); }
     int script_button_delay() const override { return 1; }   // MAME latches digital inputs a frame late
-    void turntable_add(int, int) override {}
+    void turntable_add(int player, int delta) override { twinkle::turntable_add(player, delta); }
+    std::string display_text() const override { return twinkle::display_text(); }
     const std::vector<uint8_t> &lamp_state() const override { return twinkle::lamp_state(); }
     uint64_t lamp_changes() const override { return twinkle::lamp_changes(); }
 
 private:
     std::function<void()> on_fatal_;
     long long rtc_ = -1;
+    bool mame_mix_ = false;
 };
 
 }  // namespace

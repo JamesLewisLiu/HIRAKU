@@ -226,9 +226,16 @@ bool window_frame(const uint32_t *rgb, int w, int h, double vsec) {
     }
     if (!sync) g_present.add(vsec);
 
+    // a text display the game drives (IIDX's 16-segment ticker): in the title while it shows something
+    static std::string display;
+    if (std::string d = core().display_text(); d != display) {
+        display = d;
+        g_title_dirty = true;
+    }
     if (g_title_dirty && g_win) {
         g_title_dirty = false;
         std::string t = g_title;
+        if (display.find_first_not_of(' ') != std::string::npos) t += " - [" + display + "]";
         if (g_shown != picture::Mode::off) t += std::string(" - ") + picture::mode_label(g_shown);
         if (!g_macro.empty()) t += " - typing: " + g_macro;
         SDL_SetWindowTitle(g_win, t.c_str());

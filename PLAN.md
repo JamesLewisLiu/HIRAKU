@@ -1366,6 +1366,16 @@ The game already tells the player what to play. HIRAKU adds the picture. The mac
 - **The effector's sliders start centred in MAME** (frame 1,273): an `IPT_AD_STICK` field whose default is its minimum reads (65536 · (15 ≪ 24) / 131072 + 2²³) ≫ 24 = 8, so the I/O mux gives 0x88, not 0.
 - `--trace` writes the oracle's MMIO format with the same groups and folding; comparing two traces record by record found both divergences in minutes.
 
+### Progress (2026-10-13): TW-2, playable
+
+- **Controls** (`cabinet.cpp`, family `iidx`), by MAME's names: the 14 keys (`P1-1 (SW1)` …), the turntables (an analog axis, or two buttons each, through the host's turntable path: 1024 counts a turn become MAME's 8-bit "1P Table"/"2P Table" position, as DJ Main's dials), Start ×2, Effect, VEFX, the five effector sliders, Coin, Test, Service. Keyboard defaults Z S X D C F V and M K , L . ; /; a USB IIDX controller's keys on buttons 0–6.
+- **Lamps:** the key lamps (`key_led_w`), Start, VEFX, Effect and credit (I/O 0x37), the eight spotlights (0x87, in MAME's order), the neon (0x8f), the board's LEDs, by name for HID LEDs and the lights socket.
+- **The 16-segment display** as text (`Core::display_text()`, new and optional), shown in the window title: it scrolls "BEATMANIA 2DX 3RD STYLE", then the mode prompt. `HK_TW_DISPLAY=1` prints its changes.
+- **The launcher** lists Twinkle games (an IIDX icon, the ingest instructions); docs/PLAY.md has a Twinkle section.
+- **Sound:** MAME's mix peaks at 1.07 of full scale in a stage; the core plays at 0.8 of it by default, `--mame-mix` gives MAME's level (as the 573's).
+- **`oracle/scripts/bmiidx3-play.his`** (10,000 frames, from the NVRAM `bmiidx3-boot` leaves, which is byte-identical to MAME's): two coins, Start, mode and sound select, the first stage (5.1.1.) played with a fixed pattern of the seven keys and turntable spins in both directions, the result (failed), game over, attract. **In lockstep with MAME:** main RAM on all 10,000 frames, 166/166 snapshots, all 3,067,812 traced accesses, the sound lag 0 in all 63 windows with sound (correlation ≥ 0.995 but one window at 0.988, level 1.00–1.03). Regress case `bmiidx3-play`, after `bmiidx3-boot`.
+- **Left for TW-2:** the owner's hands-on test with an IIDX controller (keys, turntable feel, lamps).
+
 ### Risks
 - **The mix is undocumented** (TW-3). Fallback: a plain "video behind the PS1 picture where it is black" mode, labelled as a guess.
 - **The 68000 port** is a big generated file; if the shim can't host it cleanly, Musashi with tolerance-based checks on the SPU side, accepting that lockstep stops at the mailbox.

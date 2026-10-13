@@ -76,6 +76,10 @@ CASES = {
     # Twinkle (PLAN.md section 21): beatmania IIDX 3rd style's first power-on, E150, 1P Start,
     # attract; in lockstep with MAME at the pin (out/oracle/bmiidx3/boot)
     "bmiidx3-boot": ("bmiidx3", 9000, ["--rtc", "1791906310", "--script", "oracle/scripts/bmiidx3-boot.his"]),
+    # ... and a game from what it left: coins, Start, mode and sound select, the first stage played
+    # with keys and turntable spins, the result, game over (out/oracle/bmiidx3/play)
+    "bmiidx3-play": ("bmiidx3", 10000, ["--rtc", "1791916974", "--script", "oracle/scripts/bmiidx3-play.his"],
+                     "bmiidx3-boot"),
 }
 
 # report lines that describe the host, not the machine

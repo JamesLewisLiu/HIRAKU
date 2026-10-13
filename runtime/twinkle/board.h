@@ -30,7 +30,10 @@ struct Config {
     std::string video_cd;                  // the Video CD in the player (not read yet: MAME models no picture)
     std::string hdd;                       // the SPU board's hard disk, raw
     uint32_t hdd_cylinders = 0, hdd_heads = 16, hdd_sectors = 63;   // its geometry (the CHD's GDDD)
-    float mix_gain = 1.0f;                 // the output's gain (1.0 = MAME's)
+    // The output's gain. MAME's mix (the SPU at 0.75, the RF5C400 and CD audio at 1.0) peaks past
+    // full scale on loud stretches (1.07 in bmiidx3-play) and clips; 0.8 keeps MAME's balance with
+    // headroom. 1.0 (--mame-mix) is MAME's output, for comparing with its WAV.
+    float mix_gain = 0.8f;
     std::string nvram_dir;                 // RTC (backup RAM), dongle ("" = blank each run)
     int64_t rtc_time = 0;                  // the RTC's time at power-on (seconds since 1970)
     std::string trace_dir;                 // --trace: an oracle-format MMIO trace there (mmio.bin)
@@ -50,6 +53,8 @@ uint64_t frame_count();
 const std::string &family();
 bool set_input(const std::string &name, int value);
 const std::vector<uint8_t> &lamp_state();
+std::string display_text();                // the 16-segment display's 9 characters
+void turntable_add(int player, int delta);  // host turntable counts (1024 a turn)
 uint64_t lamp_changes();
 std::string sound_report();
 const uint8_t *mem(uint32_t addr, uint32_t len);

@@ -130,8 +130,15 @@ public:
     u32 m_outsec = 0;
     std::vector<OutField> m_outsec_fields;
 
+    // outputs, as cab::lamps("iidx") numbers them: 0 = I/O 0x37, 1 = 0x87 (spotlights), 2 = 0x8f
+    // (neon), 3 = the key lamps, 4 = the main board's LEDs; MAME's outputs start at 0 (off), which
+    // for the active-low registers is all ones
+    u32 m_lamp_reg[5] = {0xff, 0xff, 0xff, 0, 0x1ff};
     std::vector<u8> m_lamps;
     u64 m_lamp_changes = 0;
+    char m_display[10] = "         ";   // the 9-character 16-segment display (I/O 0x3f-0x7f), as ASCII
+    int m_dial_frac[2] = {0, 0};        // host turntable counts not yet a whole step of the 8-bit position
+    void set_lamp_reg(int reg, u32 v);
 
     void device_add_mconfig(machine_config &config) override;
     void device_start() override;                  // MAME's machine_start: after every other device
@@ -145,8 +152,8 @@ public:
     void twinkle_io_w(offs_t offset, u8 data);
     u8 twinkle_io_r(offs_t offset);
     void twinkle_videomixer_w(offs_t offset, u16 data);
-    void led_w(u16) {}
-    void key_led_w(u16) {}
+    void led_w(u16 data) { set_lamp_reg(4, data & 0x1ff); }
+    void key_led_w(u16 data) { set_lamp_reg(3, data & 0x3fff); }
     void serial_w(u16 data);
     u32 in6_r() { return m_in6; }
     void outsec_w(offs_t, u32 data, u32 mem_mask);
@@ -323,6 +330,9 @@ void twinkle_state::rf5c400_map(address_map &map) {
 void twinkle_state::device_start() {
     m_dma_timer = timer_alloc(&twinkle_state::scsi_dma_transfer, this);
     m_lamps.assign(cab::lamps(cfg.family).size(), 0);
+    const u32 init[5] = {m_lamp_reg[0], m_lamp_reg[1], m_lamp_reg[2], m_lamp_reg[3], m_lamp_reg[4]};
+    for (int r = 0; r < 5; r++) { m_lamp_reg[r] = ~init[r]; set_lamp_reg(r, init[r]); }
+    m_lamp_changes = 0;
 }
 
 void twinkle_state::device_reset_after_children() {
@@ -341,7 +351,20 @@ void twinkle_state::twinkle_io_w(offs_t offset, u8 data) {
     case 0:
         if (m_output_last[m_io_offset] != data) {
             m_output_last[m_io_offset] = data;
-            m_lamp_changes++;
+            switch (m_io_offset) {
+            case 0x37: set_lamp_reg(0, data); break;
+            case 0x87: set_lamp_reg(1, data); break;
+            case 0x8f: set_lamp_reg(2, data); break;
+            case 0x3f: case 0x47: case 0x4f: case 0x57: case 0x5f: case 0x67: case 0x6f: case 0x77: case 0x7f: {
+                // MAME: asciicharset[(data ^ 0xff) & 0x7f], the segments of that ASCII character
+                const char ch = (char)((data ^ 0xff) & 0x7f);
+                m_display[(m_io_offset - 0x3f) / 8] = ch >= 0x20 && ch < 0x7f ? ch : ' ';
+                m_lamp_changes++;
+                static const bool trace = getenv("HK_TW_DISPLAY") != nullptr;   // HK_TW_DISPLAY=1: print its changes
+                if (trace) fprintf(stderr, "display %.3f [%s]\n", machine().time().as_double(), m_display);
+                break;
+            }
+            }
         }
         break;
     case 1:
@@ -361,6 +384,16 @@ u8 twinkle_state::twinkle_io_r(offs_t offset) {
     case 0x2f: return (u8)(m_volume[4] & 0x0f);
     }
     return 0;
+}
+
+void twinkle_state::set_lamp_reg(int reg, u32 v) {
+    if (m_lamp_reg[reg] == v) return;
+    m_lamp_reg[reg] = v;
+    const auto &defs = cab::lamps(cfg.family);
+    m_lamps.resize(defs.size());
+    for (size_t k = 0; k < defs.size(); k++)
+        m_lamps[k] = (u8)(((m_lamp_reg[defs[k].reg] >> defs[k].bit) & 1) ^ (defs[k].active_low ? 1 : 0));
+    m_lamp_changes++;
 }
 
 // The sub board's Bt812 and overlay: MAME keeps only the bit-banged serial line's shifting
@@ -698,6 +731,18 @@ bool set_input(const std::string &name, int value) {
 }
 
 const std::vector<uint8_t> &lamp_state() { return g.state->m_lamps; }
+std::string display_text() { return g.state ? std::string(g.state->m_display) : std::string(); }
+
+// Host turntables arrive in Firebeat units (1024 counts a turn); MAME's "1P Table" / "2P Table"
+// ports are 8-bit positions, 256 a turn, as DJ Main's dials
+void turntable_add(int player, int delta) {
+    if (player < 0 || player > 1 || !g.state) return;
+    twinkle_state &st = *g.state;
+    st.m_dial_frac[player] += delta;
+    const int whole = st.m_dial_frac[player] / 4;
+    st.m_dial_frac[player] -= whole * 4;
+    st.m_table[player] = (u8)(st.m_table[player] + whole);
+}
 uint64_t lamp_changes() { return g.state->m_lamp_changes; }
 
 std::string sound_report() {

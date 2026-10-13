@@ -63,7 +63,13 @@ QString Game::howTo() const {
                        "(.zip or .7z) and its CD (CHD).\n\n"
                        "Drop them on this window, or File > Add game files. The CD is unpacked with MAME's chdman.")
             .arg(title, mame);
-    if (family.startsWith("dj") || core == "sys573") {   // DJ Main, 573: no program disc, no recompilation
+    if (core == "twinkle" && status == NotInstalled)   // Twinkle: the set, two CDs and the hard disk
+        return QString("HIRAKU has no data for %1 yet. You need your own dumps: the MAME ROM set \"%2\" "
+                       "(.zip or .7z), its program CD and Video CD, and its hard disk (CHDs).\n\n"
+                       "Drop them on this window, or File > Add game files. They are unpacked with MAME's "
+                       "chdman, which needs up to about 4 GB of space.")
+            .arg(title, mame);
+    if (family.startsWith("dj") || core == "sys573" || core == "twinkle") {   // DJ Main, 573, Twinkle: no recompilation
         if (status == NotInstalled)
             return QString("HIRAKU has no data for %1 yet. You need your own dumps: the MAME ROM set \"%2\" "
                            "(.zip or .7z) and its hard disk (CHD).\n\n"
@@ -104,7 +110,6 @@ QList<Game> scanGames() {
         Game g;
         g.id = sub;
         readManifest(manifest, g);
-        if (g.core == "twinkle") continue;   // no Twinkle core yet (PLAN.md section 21, TW-1)
         if (g.title.isEmpty()) g.title = g.id;
         // the binaries folder (Settings), next to the launcher, a copied build's bin/,
         // else where the README's build puts it
@@ -136,6 +141,7 @@ QIcon familyIcon(const QString &family) {
            : family == "ddr"  ? Look{QColor(0x8a, 0x2b, 0xc8), "DDR"}
            : family == "drmn" ? Look{QColor(0xc8, 0x3a, 0x2b), "DM"}
            : family == "gtrf" ? Look{QColor(0x2b, 0x8a, 0xc8), "GF"}
+           : family == "iidx" ? Look{QColor(0x18, 0x18, 0x20), "IIDX"}
                               : Look{QColor(0x3a, 0x4c, 0xb8), "bm III"};
     QIcon icon;
     for (int size : {32, 64}) {

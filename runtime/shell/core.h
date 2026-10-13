@@ -85,6 +85,9 @@ public:
     // and a counter that moves on every change.
     virtual const std::vector<uint8_t> &lamp_state() const = 0;
     virtual uint64_t lamp_changes() const = 0;
+    // A text display the game drives (beatmania IIDX's 16-segment ticker), as it reads now; ""
+    // for machines without one. lamp_changes() moves when it changes.
+    virtual std::string display_text() const { return {}; }
 };
 
 Core &core();   // defined by the core this binary is built with
