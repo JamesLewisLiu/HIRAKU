@@ -4,19 +4,29 @@ title = "DrumMania 10th Mix"
 family = "drmn"         # DrumMania cabinet: five pads, the bass pedal, select buttons
 mame = "drmn10m"        # MAME set name, used by the oracle
 core = "sys573"         # System 573 (runtime/sys573/, PLAN.md section 19); digital I/O board
-first_boot = "the game installs itself from CD to flash, no input needed; at INFO 508 (install done, power off) stop it and play again. Then NOTE 605 (RTC-RAM cleared): press Test. It stops at 'Please call attendant': the multi-session unit isn't emulated yet (nor in MAME)."
+first_boot = "the game installs itself from CD to flash, no input needed; at INFO 508 (install done, power off) stop it and play again. Then NOTE 605 (RTC-RAM cleared): press Test. The boot checks wait for the multi-session unit, which boots from its own CD (about two minutes in all)."
 
 [roms]
 bios = "700a01.22g"             # 573 BIOS, the same chip in every set
 h8 = "h8a01.bin"                # the H8's start-up response (JVS check)
 cassette_eeprom = "gcd40jaa.u1" # the game cassette's ZS01
 cassette_id = "gcd40jaa.u6"     # ... and its DS2401 serial number
-digital_id = "digital-id.bin"   # the digital I/O board's DS2401
+digital_id = "digital-id.bin"   # the digital I/O board's DS2401 (the multi-session unit has the same)
+msu_flash = "flash.20t"         # the multi-session unit's TX3927 firmware (29F400)
+msu_rtc = "m48t58y.6t"          # ... and its M48T58Y
 
 [board]
 io_board = "digital"            # GX894-PWB(B): FPGA + MAS3507D MP3
 cassette = "zi"                 # MAME's cassette variant: ZS01 + DS2401 (casszi)
-# MAME's drmn10m also has the multi-session unit (k573msu), an empty stub in MAME: left out
+msu = true                      # the multi-session unit (GXA25): MAME's is an empty stub; HIRAKU runs
+                                # windyfairy's fork's emulation (PLAN.md section 19). The game won't
+                                # start without it; in a single-cabinet game the music is the digital
+                                # board's, the unit's MP3 decoders are for session play
+npu = true                      # the network PCB unit (GUC07) for e-AMUSEMENT, fitted with --npu: a
+                                # high-level one after windyfairy's (runtime/sys573/npu.h); its disk is
+                                # the save folder's npu_hdd/, installed from hdd_chd with --cd hdd
 
 [cd]
-chd = "d40jaa02"        # the runtime CD; d40jba02 is the multi-session unit's, d40jca02 an HDD installer (needs the network unit)
+chd = "d40jaa02"        # the runtime CD
+msu_chd = "d40jba02"    # the multi-session unit's CD: its program and the session music
+hdd_chd = "d40jca02"    # the network unit's data installer: e-AMUSEMENT data for its hard disk

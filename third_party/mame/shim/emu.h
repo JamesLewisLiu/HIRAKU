@@ -177,7 +177,11 @@ template <typename... A> void stream_format(std::ostream &o, const char *fmt, A 
 }  // namespace util
 using util::string_format;
 
-[[noreturn]] void fatalerror(const char *fmt, ...);
+[[noreturn]] void hk_fatal(const std::string &text);
+// type-safe like MAME's (std::string arguments)
+template <typename... A> [[noreturn]] void fatalerror(const char *fmt, A &&...a) {
+    hk_fatal(util::string_format(fmt, std::forward<A>(a)...));
+}
 class emu_fatalerror {
 public:
     template <typename... A> emu_fatalerror(const char *fmt, A &&...a) : m_text(util::string_format(fmt, std::forward<A>(a)...)) {}
@@ -213,6 +217,7 @@ public:
     s64 seconds() const { return is_never() ? 1000000000 : (s64)(m_v / ATTOSECONDS_PER_SECOND); }
     attoseconds_t attoseconds() const { return is_never() ? 0 : (attoseconds_t)(m_v % ATTOSECONDS_PER_SECOND); }
     double as_double() const { return is_never() ? 1e9 : (double)m_v / 1e18; }
+    double as_hz() const { return 1.0 / as_double(); }
     u64 as_ticks(u32 frequency) const { return is_never() ? ~u64(0) : (u64)(m_v * frequency / ATTOSECONDS_PER_SECOND); }
     u64 as_ticks(u64 frequency) const { return is_never() ? ~u64(0) : (u64)(m_v * (i128)frequency / ATTOSECONDS_PER_SECOND); }
     // as MAME: whole seconds exact, the rest in whole attoseconds per tick
@@ -521,6 +526,7 @@ private:
     std::function<void(offs_t, T, T)> m_f;
 };
 
+using devcb_read_line = devcb_read_base<int>;
 using devcb_read8 = devcb_read_base<u8>;
 using devcb_read16 = devcb_read_base<u16>;
 using devcb_read32 = devcb_read_base<u32>;
@@ -693,8 +699,9 @@ struct address_map_entry {
 
     address_map_entry &mirror(offs_t m) { m_mirror = m; return *this; }
     address_map_entry &select(offs_t s) { m_select = s; return *this; }
-    address_map_entry &umask16(u16 m) { m_umask = m; return *this; }
-    address_map_entry &umask32(u32 m) { m_umask = m; return *this; }
+    // replicated over the bus as MAME does: umask16(0xff) on a 32-bit bus is 0x00ff00ff
+    address_map_entry &umask16(u16 m) { m_umask = u64(m) * 0x0001000100010001ull; return *this; }
+    address_map_entry &umask32(u32 m) { m_umask = u64(m) * 0x0000000100000001ull; return *this; }
     address_map_entry &umask64(u64 m) { m_umask = m; return *this; }
     address_map_entry &ram() { m_rkind = m_wkind = MEM; return *this; }
     address_map_entry &rom() { m_rkind = MEM; m_wkind = NOP; m_rom = true; return *this; }
@@ -1205,6 +1212,14 @@ template <typename... A> void osd_printf_warning(A &&...) {}
 template <typename... A> void osd_printf_error(A &&...) {}
 
 
+// logerror where no device's is in scope (a device interface's members, as diserial's log macros):
+// printed when HK_XT446_LOG is set, as a device's
+bool hk_log_on();
+void hk_log_text(const std::string &text);
+template <typename... A> void logerror(const char *fmt, A &&...a) {
+    if (hk_log_on()) hk_log_text(util::string_format(fmt, std::forward<A>(a)...));
+}
+
 // ---- device interfaces (MAME's device_interface: hooks around start and reset) ----------------
 class device_interface {
 public:
@@ -1346,7 +1361,15 @@ public:
 
     // device_memory_interface (folded in)
     virtual space_config_vector memory_space_config() const { return {}; }
-    address_space &space(int spacenum = 0);
+    enum { TR_READ, TR_WRITE, TR_FETCH };   // memory_translate() intentions
+    virtual bool memory_translate(int, int, offs_t &, address_space *&) { return true; }
+    // the space by number: cached once made (CPU cores ask for it on every access)
+    address_space &space(int spacenum = 0) {
+        if (unsigned(spacenum) < std::size(m_space_by_num) && m_space_by_num[spacenum]) [[likely]]
+            return *m_space_by_num[spacenum];
+        return make_space(spacenum);
+    }
+    address_space &make_space(int spacenum);
     bool has_space(int spacenum = 0) const;
     void set_addrmap(int spacenum, address_map_constructor map);
 
@@ -1370,6 +1393,7 @@ private:
     const machine_config *m_mconfig;
     std::vector<std::pair<int, address_map_constructor>> m_external_maps;
     std::vector<std::unique_ptr<address_space>> m_spaces;
+    address_space *m_space_by_num[4] = {};
 };
 
 // ---- finders ----------------------------------------------------------------------------
@@ -1618,6 +1642,7 @@ public:
     int standard_irq_callback(int, offs_t) { return 0; }
     bool debugger_enabled() const { return false; }
     // HIRAKU: the last instruction's PC, and an optional per-instruction trace
+    void debugger_privilege_hook() {}
     void debugger_instruction_hook(offs_t pc) { m_hook_pc = pc; if (m_hk_trace) [[unlikely]] m_hk_trace(pc); }
     std::function<void(offs_t)> m_hk_trace;
     void debugger_exception_hook(int) {}

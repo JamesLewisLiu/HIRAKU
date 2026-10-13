@@ -1771,7 +1771,10 @@ void psxcpu_device::psxcpu_internal_map(address_map &map)
 		map(0x1f801020 | i, 0x1f801023 | i).rw(FUNC(psxcpu_device::com_delay_r), FUNC(psxcpu_device::com_delay_w));
 		map(0x1f801024 | i, 0x1f80102f | i).ram();
 		map(0x1f801040 | i, 0x1f80104f | i).rw("sio0", FUNC(psxsio_device::read), FUNC(psxsio_device::write));
-		map(0x1f801050 | i, 0x1f80105f | i).rw("sio1", FUNC(psxsio_device::read), FUNC(psxsio_device::write));
+		if( hk_psx_sio1_uart ) // HIRAKU
+			map(0x1f801050 | i, 0x1f80105f | i).rw("sio1", FUNC(psxsio1_uart_device::read), FUNC(psxsio1_uart_device::write));
+		else
+			map(0x1f801050 | i, 0x1f80105f | i).rw("sio1", FUNC(psxsio_device::read), FUNC(psxsio_device::write));
 		map(0x1f801060 | i, 0x1f801063 | i).rw(FUNC(psxcpu_device::ram_config_r), FUNC(psxcpu_device::ram_config_w));
 		map(0x1f801064 | i, 0x1f80106f | i).ram();
 		map(0x1f801070 | i, 0x1f801077 | i).rw("irq", FUNC(psxirq_device::read), FUNC(psxirq_device::write));
@@ -3497,6 +3500,17 @@ void psxcpu_device::device_add_mconfig(machine_config &config)
 	auto &sio0(PSX_SIO0(config, "sio0", DERIVED_CLOCK(1, 2)));
 	sio0.irq_handler().set("irq", FUNC(psxirq_device::intin7));
 
-	auto &sio1(PSX_SIO1(config, "sio1", DERIVED_CLOCK(1, 2)));
-	sio1.irq_handler().set("irq", FUNC(psxirq_device::intin8));
+	if( hk_psx_sio1_uart ) // HIRAKU
+	{
+		auto &sio1(PSX_SIO1_UART(config, "sio1", DERIVED_CLOCK(1, 2)));
+		sio1.irq_handler().set("irq", FUNC(psxirq_device::intin8));
+	}
+	else
+	{
+		auto &sio1(PSX_SIO1(config, "sio1", DERIVED_CLOCK(1, 2)));
+		sio1.irq_handler().set("irq", FUNC(psxirq_device::intin8));
+	}
 }
+
+// HIRAKU: set before the machine is configured (runtime/sys573/board.cpp)
+bool hk_psx_sio1_uart = false;

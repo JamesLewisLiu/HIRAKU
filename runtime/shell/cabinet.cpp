@@ -123,6 +123,28 @@ std::vector<Control> make_drmn() {
     };
 }
 
+// GuitarFreaks (System 573, MAME ksys573.cpp "gtrfrks"): per guitar the neck's R, G and B, the
+// pick (strum), wailing (tilt) and the effect knob; Start per player. On the keyboard player 1
+// fingers A S D and picks with Space, player 2 J K L and Right Shift.
+std::vector<Control> make_gtrf() {
+    std::vector<Control> c;
+    for (int p = 1; p <= 2; p++) {
+        const std::string P = "P" + std::to_string(p), g = "Guitar " + std::to_string(p);
+        const bool one = p == 1;
+        c.push_back({P + " Button R", "Neck R (red)", g, false, one ? "key:A, joy0:button0" : "key:J, joy1:button0"});
+        c.push_back({P + " Button G", "Neck G (green)", g, false, one ? "key:S, joy0:button1" : "key:K, joy1:button1"});
+        c.push_back({P + " Button B", "Neck B (blue)", g, false, one ? "key:D, joy0:button2" : "key:L, joy1:button2"});
+        c.push_back({P + " Pick", "Pick", g, false, one ? "key:Space, joy0:button3" : "key:Right Shift, joy1:button3"});
+        c.push_back({P + " Wailing", "Wailing (tilt)", g, false, one ? "key:W, joy0:button4" : "key:I, joy1:button4"});
+        c.push_back({P + " Effect Knob", "Effect knob (analog axis)", g, true, one ? "joy0:axis0" : "joy1:axis0"});
+        c.push_back({one ? "1 Player Start" : "2 Players Start", "Start", g, false, one ? "key:1, joy0:button9" : "key:2, joy1:button9"});
+    }
+    c.push_back({"Coin 1", "Coin", "Cabinet", false, "key:5, joy0:button8"});
+    c.push_back({"Test", "Test", "Cabinet", false, "key:F2"});
+    c.push_back({"Service", "Service", "Cabinet", false, "key:9"});
+    return c;
+}
+
 // The board's status LEDs (lamp_output_w, active low): every family has them.
 void add_status(std::vector<Lamp> &l) {
     for (int k = 0; k < 8; k++) l.push_back({"Status LED " + std::to_string(k + 1), "Board (diagnostic)", 0, k, true});
@@ -282,6 +304,14 @@ std::vector<Lamp> make_drmn_lamps() {
     };
 }
 
+// GuitarFreaks: MAME's LAMPS port bits 7 to 4 (gtrfrks_lamps_b7..b4), as the board numbers them
+std::vector<Lamp> make_gtrf_lamps() {
+    return {
+        {"Spot Left", "Cabinet", 0, 0}, {"Spot Right", "Cabinet", 0, 1},
+        {"Start Lamp P1", "Panel", 0, 2}, {"Start Lamp P2", "Panel", 0, 3},
+    };
+}
+
 // pop'n stage: not decoded yet (no dump to watch); listed by register and bit
 std::vector<Lamp> make_djpstage_lamps() {
     std::vector<Lamp> l;
@@ -304,7 +334,7 @@ const std::vector<Control> &controls(const std::string &family) {
     static const std::map<std::string, std::vector<Control>> all = {
         {"bm3", make_bm3()}, {"popn", make_popn()}, {"ppp", make_ppp()}, {"kbm", make_kbm()},
         {"djbm", make_djbm()}, {"djpopn", make_djpopn()}, {"djpstage", make_djpstage()}, {"ddr", make_ddr()},
-        {"drmn", make_drmn()}};
+        {"drmn", make_drmn()}, {"gtrf", make_gtrf()}};
     auto f = all.find(family);
     return f != all.end() ? f->second : all.at("bm3");
 }
@@ -313,7 +343,7 @@ const std::vector<Lamp> &lamps(const std::string &family) {
     static const std::map<std::string, std::vector<Lamp>> all = {
         {"bm3", make_bm3_lamps()}, {"popn", make_popn_lamps()}, {"ppp", make_ppp_lamps()}, {"kbm", make_kbm_lamps()},
         {"djbm", make_djbm_lamps()}, {"djpopn", make_djpopn_lamps()}, {"djpstage", make_djpstage_lamps()},
-        {"ddr", make_ddr_lamps()}, {"drmn", make_drmn_lamps()}};
+        {"ddr", make_ddr_lamps()}, {"drmn", make_drmn_lamps()}, {"gtrf", make_gtrf_lamps()}};
     auto f = all.find(family);
     return f != all.end() ? f->second : all.at("bm3");
 }

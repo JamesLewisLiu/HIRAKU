@@ -32,6 +32,11 @@ public:
         if (name == "--rtc") { rtc_ = std::stoll(value()); return true; }
         if (name == "--mame-mix") { mame_mix_ = true; return true; }
         if (name == "--cassette") { cassette_slot_ = value(); return true; }
+        if (name == "--npu") { npu_ = true; return true; }
+        if (name == "--session-host") { session_host_ = value(); return true; }
+        if (name == "--session-join") { session_join_ = value(); return true; }
+        if (name == "--session-quantum") { session_quantum_ = std::stoi(value()); return true; }
+        if (name == "--cd") { cd_ = value(); return true; }
         return false;
     }
     std::string options_help() const override {
@@ -39,7 +44,15 @@ public:
                "  --mame-mix        sound at MAME's level: the SPU and CD audio summed at full gain, clipping\n"
                "                    where they add up past full scale (default: half, which never clips)\n"
                "  --cassette install  boot with the install cassette (first boot of games that install from CD\n"
-               "                    with one, ddr3mj: when it says so, power off and boot again without)\n";
+               "                    with one, ddr3mj: when it says so, power off and boot again without)\n"
+               "  --npu             fit the network PCB unit (e-AMUSEMENT GuitarFreaks and DrumMania): its hard\n"
+               "                    disk is the save folder's npu_hdd/\n"
+               "  --cd hdd          boot the unit's data installer CD (implies --npu): it installs the\n"
+               "                    e-AMUSEMENT data on the unit's disk; power off when it says it is done\n"
+               "  --session-host SOCKET  session play: this cabinet (the one with the multi-session unit,\n"
+               "                    DrumMania) waits at SOCKET (a path, or host:port) for the other\n"
+               "  --session-join SOCKET  session play: this cabinet (GuitarFreaks) joins the host's unit\n"
+               "  --session-quantum US   the lockstep quantum in microseconds (default 500; both sides alike)\n";
     }
 
     bool init(const Options &o) override {
@@ -62,11 +75,42 @@ public:
         get("install_id", cfg.install_id);
         get("digital_id", cfg.digital_id);
         get("io_board", cfg.io_board);
+        get("pccard1", cfg.pccard1);
         get("pccard2", cfg.pccard2);
         get("cassette", cfg.cassette);
         cfg.memory_card_reader = machine["memory_card_reader"] == "1";
+        cfg.msu = machine["msu"] == "1";
+        if (cfg.msu) cfg.msu_cd = o.data_path(machine["msu_cd"]);
+        get("msu_flash", cfg.msu_flash);
+        get("msu_rtc", cfg.msu_rtc);
         cfg.cd = o.data_path(machine["cd"]);
+        if (!cd_.empty()) {
+            if (cd_ != "hdd") {
+                fprintf(stderr, "--cd: hdd (the network unit's data installer)\n");
+                return false;
+            }
+            if (machine["hdd_cd"].empty()) {
+                fprintf(stderr, "%s has no network unit installer CD (run tools/ingest.py with its CHD)\n", o.game.c_str());
+                return false;
+            }
+            cfg.cd = o.data_path(machine["hdd_cd"]);
+            npu_ = true;
+        }
+        if (npu_) {
+            if (machine["npu"] != "1") {
+                fprintf(stderr, "%s has no network unit\n", o.game.c_str());
+                return false;
+            }
+            if (o.nvram_dir.empty()) {
+                fprintf(stderr, "--npu: the unit's disk needs a save folder (--nvram)\n");
+                return false;
+            }
+            cfg.pccard2 = "npu";
+        }
         cfg.nvram_dir = o.nvram_dir;
+        cfg.session_host = session_host_;
+        cfg.session_join = session_join_;
+        cfg.session_quantum_us = session_quantum_;
         cfg.rtc_time = rtc_ >= 0 ? rtc_ : (int64_t)time(nullptr);
         if (mame_mix_) cfg.mix_gain = 1.0f;
         if (!cassette_slot_.empty()) {
@@ -113,6 +157,10 @@ private:
     long long rtc_ = -1;
     bool mame_mix_ = false;
     std::string cassette_slot_;
+    bool npu_ = false;
+    std::string cd_;
+    std::string session_host_, session_join_;
+    int session_quantum_ = 500;
 };
 
 }  // namespace

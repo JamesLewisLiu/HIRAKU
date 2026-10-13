@@ -1,0 +1,12 @@
+# DrumMania 10th Mix: a game, from what drmn10m-boot left (its NVRAM: no NOTE 605 now). The boot
+# checks and the multi-session unit's link, the title by frame ~8400; two coins, then Start every
+# 300 frames through the mode select (STANDARD) and the music select (its default, 花火); the first
+# stage plays with no input, so it ends in GAME OVER, and attract shows 花火 on the hit chart. The
+# music is the digital board's MP3. Beyond MAME, which stops at "Please call attendant".
+game drmn10m
+
+at 9000 press "Coin 1" 8
+at 9040 press "Coin 1" 8
+from 9200 every 300 press "1 Player Start" 8
+from 0 every 300 snap
+at 13000 quit

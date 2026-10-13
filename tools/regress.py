@@ -56,6 +56,19 @@ CASES = {
     "drmn10m-install": ("drmn10m", 8400, ["--rtc", "1791883090", "--script", "oracle/scripts/drmn10m-install.his"]),
     "drmn10m-boot": ("drmn10m", 10800, ["--rtc", "1791883869", "--script", "oracle/scripts/drmn10m-boot.his"],
                      "drmn10m-install"),
+    "drmn10m-play": ("drmn10m", 13000, ["--rtc", "1791884700", "--script", "oracle/scripts/drmn10m-play.his"],
+                     "drmn10m-boot"),
+    "drmn10m-hdd": ("drmn10m", 9000, ["--rtc", "1791884700", "--cd", "hdd", "--script", "oracle/scripts/drmn10m-hdd.his"],
+                    "drmn10m-boot"),
+    "gtfrk11m-install": ("gtfrk11m", 28800, ["--rtc", "1791884700", "--script", "oracle/scripts/gtfrk11m-install.his"]),
+    "gtfrk11m-boot": ("gtfrk11m", 10800, ["--rtc", "1791885700", "--script", "oracle/scripts/gtfrk11m-boot.his"],
+                      "gtfrk11m-install"),
+    # session play: two processes on one session cable (runtime/sys573/link.h), each case naming
+    # its partner (run together, in parallel chains)
+    "drmn10m-session": ("drmn10m", 16800, ["--rtc", "1791884700", "--script", "oracle/scripts/drmn10m-session.his",
+                                           "--session-host", "out/regress/work/session.sock"], "drmn10m-boot", "gtfrk11m-session"),
+    "gtfrk11m-session": ("gtfrk11m", 16800, ["--rtc", "1791884700", "--script", "oracle/scripts/gtfrk11m-session.his",
+                                             "--session-join", "out/regress/work/session.sock"], "gtfrk11m-boot", "drmn10m-session"),
     # the analog board: first boot, the flash install (two Test presses), attract with CD audio
     "ddr2m-boot": ("ddr2m", 24000, ["--rtc", "1791828936", "--script", "oracle/scripts/ddr2m-boot.his"]),
     # ... and a game: coins, mode and song select, a song stepped through to CLEARED, stage 2
@@ -69,6 +82,11 @@ HOST_TIME = re.compile(r" in [0-9.]+ s of host time")   # kbm's synth line
 
 def after_of(case):
     return CASES[case][3] if len(CASES[case]) > 3 else None
+
+
+def partner_of(case):
+    """a session case's other cabinet: the two run at once, joined by the session cable"""
+    return CASES[case][4] if len(CASES[case]) > 4 else None
 
 
 def chain(case):
@@ -112,7 +130,7 @@ def cases_from(argv):
     for n in names:
         if n not in CASES:
             sys.exit(f"unknown case {n}; known: {', '.join(CASES)}")
-    return names
+    return names + [p for p in (partner_of(n) for n in names) if p and p not in names]
 
 
 def record_or_check(names, record):
@@ -198,6 +216,9 @@ def compare(case, base, cur):
 def bench(names):
     print(f"{'case':20} {'frames':>6} {'cpu s':>7} {'x real':>7} {'core %':>7}")
     for case in names:
+        if partner_of(case):
+            print(f"{case:20} skipped: a session case (it needs {partner_of(case)} at once)")
+            continue
         game, frames, _ = CASES[case][:3]
         for c in chain(case)[:-1]:   # what it starts after, untimed
             run(c, None)

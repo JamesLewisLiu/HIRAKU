@@ -394,6 +394,31 @@ void psxcpu_device::execute_run()
 	} while( m_icount > 0 );
 }
 ''', 'execute_run loop')
+    # SIO1 as a UART (sio_uart.h) for 573 boards with a multi-session unit; MAME's otherwise
+    s = edit(s, '''		map(0x1f801050 | i, 0x1f80105f | i).rw("sio1", FUNC(psxsio_device::read), FUNC(psxsio_device::write));
+''', '''		if( hk_psx_sio1_uart ) // HIRAKU
+			map(0x1f801050 | i, 0x1f80105f | i).rw("sio1", FUNC(psxsio1_uart_device::read), FUNC(psxsio1_uart_device::write));
+		else
+			map(0x1f801050 | i, 0x1f80105f | i).rw("sio1", FUNC(psxsio_device::read), FUNC(psxsio_device::write));
+''', 'sio1 map')
+    s = edit(s, '''	auto &sio1(PSX_SIO1(config, "sio1", DERIVED_CLOCK(1, 2)));
+	sio1.irq_handler().set("irq", FUNC(psxirq_device::intin8));
+}
+''', '''	if( hk_psx_sio1_uart ) // HIRAKU
+	{
+		auto &sio1(PSX_SIO1_UART(config, "sio1", DERIVED_CLOCK(1, 2)));
+		sio1.irq_handler().set("irq", FUNC(psxirq_device::intin8));
+	}
+	else
+	{
+		auto &sio1(PSX_SIO1(config, "sio1", DERIVED_CLOCK(1, 2)));
+		sio1.irq_handler().set("irq", FUNC(psxirq_device::intin8));
+	}
+}
+
+// HIRAKU: set before the machine is configured (runtime/sys573/board.cpp)
+bool hk_psx_sio1_uart = false;
+''', 'sio1 config')
     return s
 
 
@@ -402,6 +427,14 @@ def psx_h(s):
 ''', '''	virtual void execute_run() override;
 	void execute_one(); // HIRAKU
 ''', 'execute_one decl')
+    s = edit(s, '''#include "sio.h"
+''', '''#include "sio.h"
+#include "sio_uart.h" // HIRAKU
+
+// HIRAKU: SIO1 as a UART (sio_uart.h) when set, before the machine is configured: 573 boards with
+// a multi-session unit
+extern bool hk_psx_sio1_uart;
+''', 'sio_uart include')
     s = edit(s, '''	gte m_gte;
 ''', '''	gte m_gte;
 
@@ -537,6 +570,68 @@ def video_psx_cpp(s):
     return s
 
 
+def atapihle_cpp(s):
+    # a packet's byte count limit below one sector (the multi-session unit's firmware asks
+    # for 8 bytes of REQUEST SENSE's 18): MAME rounds the chunk down to a whole sector, 0,
+    # and offers no data at all. As windyfairy's System 573 fork does: send all of it.
+    return edit(s, """			if (m_buffer_size % m_sector_bytes)
+				m_buffer_size = m_buffer_size - (m_buffer_size % m_sector_bytes);
+""", """			if (m_buffer_size % m_sector_bytes)
+			{
+				// HIRAKU: below one sector, all of it (windyfairy's System 573 fork)
+				const uint32_t whole = m_buffer_size - (m_buffer_size % m_sector_bytes);
+				m_buffer_size = whole ? whole : m_data_size;
+			}
+""", 'fill_buffer sector rounding')
+
+
+def ins8250_cpp(s):
+    # the TX FIFO by head and tail alone: 16 bytes queued (a THRE handler filling the FIFO
+    # while the last byte still shifts out, as the multi-session unit's and Keyboardmania's
+    # firmware do) look like none, and all 16 are lost. A count, as the RX FIFO has.
+    s = edit(s, """	if(m_ttail != m_thead)
+	{
+		transmit_register_setup(m_tfifo[m_ttail]);
+		++m_ttail &= 0x0f;
+		m_regs.lsr &= ~INS8250_LSR_TSRE;
+		if(m_ttail == m_thead)
+""", """	if(m_tnum) // HIRAKU: by count, a full FIFO isn't an empty one
+	{
+		transmit_register_setup(m_tfifo[m_ttail]);
+		++m_ttail &= 0x0f;
+		m_tnum--;
+		m_regs.lsr &= ~INS8250_LSR_TSRE;
+		if(!m_tnum)
+""", 'tra_complete count')
+    s = edit(s, """	m_tfifo[m_thead] = data;
+	++m_thead &= 0x0f;
+""", """	if(m_tnum == 16) // HIRAKU: a write to a full FIFO is lost
+		return;
+	m_tfifo[m_thead] = data;
+	++m_thead &= 0x0f;
+	m_tnum++;
+""", 'push_tx count')
+    s = edit(s, """	save_item(NAME(m_ttail));
+""", """	save_item(NAME(m_ttail));
+	save_item(NAME(m_tnum));
+""", 'save m_tnum')
+    s = edit(s, """	m_thead = m_ttail = 0;
+	m_timeout->adjust""", """	m_thead = m_ttail = m_tnum = 0;
+	m_timeout->adjust""", 'reset m_tnum')
+    s = edit(s, """		std::fill(std::begin(m_tfifo), std::end(m_tfifo), 0);
+		m_thead = m_ttail = 0;
+""", """		std::fill(std::begin(m_tfifo), std::end(m_tfifo), 0);
+		m_thead = m_ttail = m_tnum = 0;
+""", 'fcr clear m_tnum')
+    return s
+
+
+def ins8250_h(s):
+    return edit(s, """	int m_thead, m_ttail;
+""", """	int m_thead, m_ttail, m_tnum; // HIRAKU: m_tnum
+""", 'm_tnum')
+
+
 def minimp3_h(s):
     # On AArch64 the NEON path rounds the 16-bit output as the SSE path does (clamp, then round
     # to nearest even), not half away from zero: the same samples on every host.
@@ -564,7 +659,8 @@ def main():
     for rel, fn in [('sound/swp30.cpp', swp30_cpp), ('sound/swp30.h', swp30_h),
                     ('cpu/psx/psx.cpp', psx_cpp), ('cpu/psx/psx.h', psx_h),
                     ('cpu/psx/mdec.cpp', mdec_cpp), ('cpu/psx/mdec.h', mdec_h),
-                    ('video/psx.cpp', video_psx_cpp),
+                    ('video/psx.cpp', video_psx_cpp), ('bus/ata/atapihle.cpp', atapihle_cpp),
+                    ('machine/ins8250.cpp', ins8250_cpp), ('machine/ins8250.h', ins8250_h),
                     ('../3rdparty/minimp3/minimp3.h', minimp3_h)]:
         p = root / rel
         text = p.read_text()

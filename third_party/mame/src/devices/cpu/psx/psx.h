@@ -17,6 +17,11 @@
 #include "gte.h"
 #include "irq.h"
 #include "sio.h"
+#include "sio_uart.h" // HIRAKU
+
+// HIRAKU: SIO1 as a UART (sio_uart.h) when set, before the machine is configured: 573 boards with
+// a multi-session unit
+extern bool hk_psx_sio1_uart;
 #include "psxdasm.h"
 
 //**************************************************************************

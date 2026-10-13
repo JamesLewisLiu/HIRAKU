@@ -1,0 +1,12 @@
+# GuitarFreaks 11th Mix joining DrumMania 10th Mix's session (with drmn10m-session, which hosts
+# the multi-session unit). From what gtfrk11m-boot left: two coins and Start during the
+# DrumMania cabinet's WELCOME (its 15 s joining period), then Start every 300 frames through the
+# shared mode and music select; the first stage of 花火, SESSION on the guitar's screen.
+game gtfrk11m
+
+at 9400 press "Coin 1" 8
+at 9450 press "Coin 1" 8
+at 9550 press "1 Player Start" 8
+from 9700 every 300 press "1 Player Start" 8
+from 8400 every 300 snap
+at 16800 quit

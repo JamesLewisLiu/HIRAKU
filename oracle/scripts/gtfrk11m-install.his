@@ -1,0 +1,8 @@
+# GuitarFreaks 11th Mix (System 573, digital I/O board): the first boot. The 573 BIOS boots the
+# runtime CD (d39jaa02), which installs itself to the onboard flash and then to the 32 MiB flash
+# card in PC card slot 1, with no inputs, then shows INFO 508 (install done, power-cycle) by
+# frame ~26400.
+game gtfrk11m
+
+from 0 every 600 snap
+at 28800 quit

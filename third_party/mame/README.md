@@ -32,6 +32,9 @@ driver class as the board.
 | `src/devices/sound/{cdda,mas3507d,mp3_audio}.*` | 573: CD audio, the digital I/O board's MP3 decoder |
 | `src/mame/konami/{k573cass,zs01,k573dio,k573fpga,k573mcr}.*` | 573: security cassettes, the digital I/O board and its FPGA, the JVS memory card reader |
 | `src/emu/dirtc.*` | MAME's RTC interface (the M48T58) |
+| `src/devices/machine/ins8250.*`, `src/emu/diserial.*` | the multi-session unit's PC16552D UARTs (two NS16550s each), MAME's serial interface |
+| `src/devices/cpu/mips/mips1*`, `src/3rdparty/softfloat3/` | the multi-session unit's TX3927 (an R3900 core): MAME's `mips1.cpp` with **windyfairy's TX3927 additions** (below); SoftFloat 3 (BSD-3-Clause, John R. Hauser / UC Berkeley), the FPU's arithmetic, the files MAME builds |
+| `src/mame/konami/k573msu.*`, `src/devices/sound/tc9446f.*`, `src/devices/cpu/psx/sio_uart.*` | **from windyfairy's System 573 fork, not MAME** (below): the multi-session unit, its TC9446F MP3 decoders, the PS1's SIO1 as a UART |
 | `src/3rdparty/minimp3/minimp3.h` | minimp3 (CC0), MAME's MP3 decoder backend |
 | `shim/screen.*`, `shim/machine/ram.*`, `shim/imagedev/*`, `shim/stubs/*`, `shim/*.h` | **HIRAKU code, not MAME:** MAME's screen timing, RAM device, a CD image class reading `.cue`/`.iso` (MAME reads CHDs), stand-ins for drive and controller types no 573 game selects, small utility headers |
 | `shim/` | **HIRAKU code, not MAME:** the part of MAME's framework (`emu.h`) these files use (see below) |
@@ -59,8 +62,33 @@ driver class as the board.
   - With no table (`HK_573_BLOCKS=0`, or a game without a recording) the loop is MAME's.
 - `mdec.cpp` / `mdec.h`: the IDCT sums over the nonzero coefficients only, from a transposed table. These are the same integer sums in another order, unsigned so they wrap as MAME's do.
 - `video/psx.cpp` (the GPU): textured pixels compute the level tables (`(component & 31) << 8`) instead of reading three 128 KiB tables. At shade 0x80 they skip the shade tables, which map every level to itself there.
+- `bus/ata/atapihle.cpp`: when a packet command's byte count limit is under a sector and more data is left, MAME rounds the chunk down to whole sectors, to nothing, and offers no data (the multi-session unit asks for REQUEST SENSE's 18 bytes 8 at a time). As windyfairy's fork does, such a chunk is all the data.
+- `machine/ins8250.cpp` / `.h`: the 16550's TX FIFO counts its bytes. By head and tail alone, 16 bytes queued (a THRE handler filling the FIFO while the last byte still shifts out) looked like none and were all lost: the multi-session unit's replies to the 573 stopped after 16 bytes. This is also the bug behind Keyboardmania's silent XT446 in MAME.
+- `psx.cpp` / `psx.h`: `hk_psx_sio1_uart` (set by the board for the multi-session unit) makes SIO1 a `psxsio1_uart_device`, as the fork's `psx.cpp` does for every PS1.
 - `3rdparty/minimp3/minimp3.h`: on AArch64 the NEON path converts the decoded samples to 16 bits as the SSE path does (clamp, then round to nearest even). Upstream's NEON code rounds halves away from zero, so ddr3mj's and DrumMania's MP3 music came out different on ARM hosts (regress, 2026-10-13).
 - The H8 files are unchanged.
+
+## The multi-session unit (windyfairy's fork)
+
+MAME's `k573msu` is an empty stub. These files come from windyfairy's System 573 work,
+<https://github.com/987123879113/mame>, branch `bemani_k573msu_wip` at `928dfcb`
+(BSD-3-Clause, as MAME). They're not pristine copies: `hiraku-edits.py` doesn't apply
+to them, and the changes are listed here.
+
+- `k573msu.*` (the unit):
+  - no RS-232 ports: `link_uart()` gives the board the UART the 573's SIO1 talks to (as the fork's `msu_local()`);
+  - the TX3927 at the fork's 25 MHz; `HK_MSU_132=1` runs the real 132 MHz (8.25 MHz × 16), which the game doesn't need and which costs ~2.5× as much (the firmware polls as fast as the CPU runs);
+  - the FIFO timer as a plain emu_timer, the RAM's mirrors mapped in `device_start`, MAME's current `ATAPI_CDROM`, the DIP switches read as all off;
+  - HIRAKU's traces: `HK_MSU_TRACE=1` prints the UART, CD drive, FPGA and LED accesses.
+- `tc9446f.*`: the fork's decoder on MAME's bundled minimp3, its functions renamed so they don't clash with `mp3_audio`'s; the current stream interface.
+- `sio_uart.*`: the fork's `psxsio1_device` changes, as a separate device type, so SIO1 stays MAME's without the unit.
+- `mips1.cpp` / `.h`: MAME's file at the commit above, with the fork's TX3927 patch applied and moved to the current device interfaces (line callbacks, timers). The TX3927 runs without cache emulation: with MAME's caches and the fork ignoring `CACHE`, the unit ran stale instructions after its OS copied itself into RAM. `HK_MSU_CONSOLE=1` prints the firmware's console.
+  - **Speed, the same results** (the unit's RAM, PC and cycle count every 60 frames identical, `HK_MSU_HASH`):
+    - `fetch()` takes its instruction as a template, as `load()` does, instead of a `std::function` per instruction;
+    - for the TX3927, kseg0/kseg1 addresses are mapped inline instead of through the virtual `translate()`, and reads from memory pages come straight from the shim's page table.
+  - **Speed, changing the unit's timing:**
+    - **Timers on demand.** The fork fired an emu_timer on every timer tick: three timers at ~520 kHz each, ~1.5 M scheduler events a second. Each timer is now caught up to the present when it's read or written, with the fork's semantics: steps of 32, compare A, zero clear, the restart of all three on a mode or divider write. An emu_timer is set only for the tick where an enabled interval interrupt comes. Register reads now see the ticks up to the CPU's own time, not up to the last timeslice.
+    - **Idle skipping.** A `j` to itself with a `nop` in its delay slot, which the unit's RTOS runs when it has nothing to do (three quarters of its instructions), uses up the rest of the timeslice at once. Only an interrupt leaves such a loop, and interrupts come at the end of a timeslice. `HK_MSU_NOIDLE=1` turns it off.
 
 ## The shim
 
@@ -87,13 +115,14 @@ files use. No MAME code is involved.
 - **devcb:** read, write and line callbacks, with constants and no-ops.
 - **Address spaces:**
   - page tables: direct pages for RAM/ROM, and per-byte read/write handler tables for I/O;
-  - mirrors, select bits, `umask`, submaps, and handlers narrower than the bus.
+  - mirrors, select bits, `umask`, submaps, and handlers narrower than the bus. As in MAME, `umask16`/`umask32` repeat across a wider bus, and a narrower handler gets every unit with any mask bits, called with that unit's mask (`umask16(0xff)` on a 32-bit bus: two 16-bit units, each masked 0x00ff).
 - **Scheduler (`running_machine`):**
   - CPUs run in timeslices up to the next timer;
   - `machine().time()` is the running CPU's local time, or the expiry time of the timer that is firing;
   - the same LCG as MAME's `machine().rand()`.
 - **Slow accesses:** when one handler covers the bytes accessed in a little-endian space, `read_slow` calls it directly, with the same offset, mask and order `read_bus` would work out lane by lane.
 - **For the 573's recompiled blocks:** the page table is public (`pages()`, `page_bits()`), `version()` changes whenever the map does, and `mem_ptr()` finds the memory behind an address on a mixed page (the scratchpad). `ram_device` allocates page-aligned memory, so code pages can be write-protected.
+- **Address spaces by number** are cached once made: `space()` is called on every access by some cores (`mips1`).
 - **Stubs:** save states, debugger state and NVRAM are accepted and ignored.
   `logerror` prints only when `HK_XT446_LOG` is set.
 

@@ -46,6 +46,11 @@ def capped(cmd, mem):
     return cmd
 
 
+# at most 8 compiles at once: the 573's recompiled blocks are large sources, and 16 of them at a
+# time went past the 12 GB cap
+JOBS = str(min(os.cpu_count() or 4, 8))
+
+
 def core_of(game: str) -> str:
     with open(os.path.join(ROOT, "games", game, "game.toml"), "rb") as fh:
         return tomllib.load(fh).get("core", "firebeat")
@@ -75,7 +80,7 @@ def main() -> int:
 
     run(["cmake", "-S", ROOT, "-B", GEN, "-G", "Ninja", "-DCMAKE_C_COMPILER=clang", "-DCMAKE_CXX_COMPILER=clang++",
          "-DHK_PGO_GENERATE=ON"], stdout=subprocess.DEVNULL)
-    run(capped(["ninja", "-C", GEN, *[f"hiraku-{g}" for g in games]], "12G"))
+    run(capped(["ninja", "-j", JOBS, "-C", GEN, *[f"hiraku-{g}" for g in games]], "12G"))
 
     os.makedirs(OUT, exist_ok=True)
     for f in glob.glob(os.path.join(OUT, "*.profraw")):
@@ -95,7 +100,7 @@ def main() -> int:
              *glob.glob(os.path.join(OUT, f"{core}__*.profraw"))])
 
     run(["cmake", "-S", ROOT, "-B", args.build, f"-DHK_PGO_DIR={OUT}"], stdout=subprocess.DEVNULL)
-    run(capped(["ninja", "-C", args.build], "12G"))
+    run(capped(["ninja", "-j", JOBS, "-C", args.build], "12G"))
     print(f"done     {os.path.relpath(OUT, ROOT)}/*.profdata, used by {os.path.relpath(args.build, ROOT)}")
     return 0
 

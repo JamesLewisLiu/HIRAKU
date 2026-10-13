@@ -150,7 +150,8 @@ def ingest_sys573(args) -> int:
     outdir = os.path.join(args.out, gid)
     names = set(copy_romset(args.romset, os.path.join(outdir, "rom")))
     roms = game["roms"]
-    keys = ("bios", "h8", "cassette_eeprom", "cassette_id", "install_eeprom", "install_id", "digital_id")
+    keys = ("bios", "h8", "cassette_eeprom", "cassette_id", "install_eeprom", "install_id", "digital_id",
+            "msu_flash", "msu_rtc")
     missing = [roms[k] for k in keys if roms.get(k) and roms[k] not in names]
     if missing:
         print(f"ERROR    the set lacks {', '.join(missing)}")
@@ -165,17 +166,29 @@ def ingest_sys573(args) -> int:
         if roms.get(k):
             machine[k] = roms[k]
     board = game.get("board", {})
-    for k in ("io_board", "cassette", "pccard2"):
+    for k in ("io_board", "cassette", "pccard1", "pccard2"):
         if board.get(k):
             machine[k] = board[k]
     if board.get("memory_card_reader"):
         machine["memory_card_reader"] = "1"
     if getattr(args, "cd", None):
         machine["cd"] = media_path(args.cd, outdir)
+    if board.get("msu"):
+        machine["msu"] = "1"
+    if getattr(args, "msu_cd", None):
+        machine["msu_cd"] = media_path(args.msu_cd, outdir)
+    if board.get("npu"):
+        machine["npu"] = "1"
+    if getattr(args, "hdd_cd", None):
+        machine["hdd_cd"] = media_path(args.hdd_cd, outdir)
     if not machine.get("cd"):
         print(f"ERROR    no CD: add {game['cd']['chd']}.chd (or its .cue/.bin)")
         return 1
-    order = ["core", "family", *keys, "io_board", "cassette", "pccard2", "memory_card_reader", "cd"]
+    order = ["core", "family", *keys, "io_board", "cassette", "pccard1", "pccard2", "memory_card_reader", "cd", "msu", "msu_cd",
+             "npu", "hdd_cd"]
+    if machine.get("msu") and not machine.get("msu_cd"):
+        print(f"ERROR    no multi-session unit CD: add {game['cd'].get('msu_chd')}.chd")
+        return 1
     with open(machine_path, "w") as fh:
         for k in order:
             if k in machine:
@@ -393,7 +406,8 @@ def ingest_auto(args, inputs: list[str]) -> int:
         for c in chds:
             stem = os.path.splitext(os.path.basename(c))[0]
             for g in games:
-                if stem in (g.get("hdd", {}).get("chd"), g.get("cd", {}).get("chd")):
+                if stem in (g.get("hdd", {}).get("chd"), g.get("cd", {}).get("chd"), g.get("cd", {}).get("msu_chd"),
+                            g.get("cd", {}).get("hdd_chd")):
                     hint = g
     if hint:
         print(f"game     {hint['id']}: {hint['title']} (from {'the set' if romsets else 'the CHD name'})")
@@ -441,7 +455,14 @@ def ingest_auto(args, inputs: list[str]) -> int:
         args.hdd = args.hdd or next((p for p, k in media if k == "hd"), None)
         return ingest_djmain(args)
     if core == "sys573":
-        args.cd = next((p for p in cds), None)
+        # the runtime CD, the multi-session unit's (DrumMania 4th Mix and later) and the network
+        # unit's data installer (e-AMUSEMENT GuitarFreaks and DrumMania), by name
+        want = hint.get("cd", {})
+        stem = lambda p: os.path.splitext(os.path.basename(p))[0]
+        args.msu_cd = next((p for p in cds if stem(p) == want.get("msu_chd")), None) if want.get("msu_chd") else None
+        args.hdd_cd = next((p for p in cds if stem(p) == want.get("hdd_chd")), None) if want.get("hdd_chd") else None
+        args.cd = next((p for p in cds if stem(p) == want.get("chd")), None) or \
+            next((p for p in cds if p not in (args.msu_cd, args.hdd_cd)), None)
         return ingest_sys573(args)
     print(f"ERROR    {hint['id']} is a Firebeat game: its program CD is needed (none of the images holds one)")
     return 1

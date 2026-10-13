@@ -1,0 +1,13 @@
+# DrumMania 10th Mix and GuitarFreaks 11th Mix in session (with gtfrk11m-session, run alongside:
+# two processes on one session cable, runtime/sys573/link.h). This side hosts the multi-session
+# unit. From what drmn10m-boot left: two coins and Start at the title; the WELCOME screen opens
+# the joining period, the GuitarFreaks cabinet joins (PLAYER 1 ENTRY), then both pass CAUTION,
+# the mode select (STANDARD) and the music select, and play the first stage of 花火 together,
+# its music from the unit's MP3 decoder.
+game drmn10m
+
+at 9000 press "Coin 1" 8
+at 9040 press "Coin 1" 8
+from 9200 every 300 press "1 Player Start" 8
+from 8400 every 300 snap
+at 16800 quit

@@ -59,14 +59,14 @@ std::string format_args(const char *fmt, const std::vector<fmt_arg> &args) {
 
 }  // namespace hk_mame
 
-void fatalerror(const char *fmt, ...) {
-    va_list ap;
-    va_start(ap, fmt);
-    fprintf(stderr, "mame shim: fatal: ");
-    vfprintf(stderr, fmt, ap);
-    fprintf(stderr, "\n");
-    va_end(ap);
+void hk_fatal(const std::string &text) {
+    fprintf(stderr, "mame shim: fatal: %s\n", text.c_str());
     abort();
+}
+
+bool hk_log_on() { return device_t::s_log; }
+void hk_log_text(const std::string &text) {
+    if (device_t::s_log) fprintf(stderr, "%s\n", text.c_str());
 }
 
 std::string attotime::as_string(int precision) const {
@@ -127,6 +127,7 @@ void device_t::start() {
     for (device_interface *i : m_interfaces) i->interface_post_start();
     m_started = true;
 }
+
 
 device_t *hk_interface_device(device_interface &i) { return &i.device(); }
 
@@ -190,7 +191,7 @@ bool device_t::has_space(int spacenum) const {
     return false;
 }
 
-address_space &device_t::space(int spacenum) {
+address_space &device_t::make_space(int spacenum) {
     for (auto &s : m_spaces)
         if (s->m_spacenum == spacenum) return *s;
     const address_space_config *cfg = nullptr;
@@ -211,6 +212,7 @@ address_space &device_t::space(int spacenum) {
     }
     sp->finalize();
     m_spaces.push_back(std::move(sp));
+    if (unsigned(spacenum) < std::size(m_space_by_num)) m_space_by_num[spacenum] = m_spaces.back().get();
     return *m_spaces.back();
 }
 
@@ -306,7 +308,8 @@ void address_space::apply(address_map_entry &er) {
         if (e->m_extmem) {
             mem = e->m_extmem;
         } else if (e->m_has_region) {
-            memory_region *r = m_device.machine().find_region(e->m_region);
+            // relative to the device whose function made the map, as MAME (then by full or short name)
+            memory_region *r = hk_find_region(*e->m_map.m_device, e->m_region.c_str());
             if (!r) fatalerror("%s: region %s missing", m_device.tag(), e->m_region.c_str());
             if (e->m_region_offset + len > r->bytes()) fatalerror("%s: region %s too small (%x-%x + %x, %x bytes)", m_device.tag(), e->m_region.c_str(), e->m_start, e->m_end, e->m_region_offset, r->bytes());
             mem = r->base() + e->m_region_offset;
@@ -415,16 +418,18 @@ u64 address_space::read_bus(u64 bus_ba, u64 mask) {
             } else {
                 u64 smask = (u64(1) << e->m_rwidth) - 1;
                 int units = 0;
+                // a unit with any umask bits is the handler's (MAME's units): umask16(0xff) on a
+                // 32-bit bus is two 16-bit units, each called with mem_mask 0x00ff
                 for (int k = 0; k < m_bus_bytes / hw; k++) {
                     u64 lm = smask << lane_shift(bus_ba + k * hw, hw);
-                    if ((e->m_umask & lm) == lm) units++;
+                    if (e->m_umask & lm) units++;
                 }
                 int u = 0;
                 for (int k = 0; k < m_bus_bytes / hw; k++) {
                     u64 sh = lane_shift(bus_ba + k * hw, hw);
                     u64 lm = smask << sh;
-                    if ((e->m_umask & lm) != lm) continue;
-                    if (em & lm) result |= (e->m_rh((offs_t)((offb / m_bus_bytes) * units + u), smask) & smask) << sh;
+                    if (!(e->m_umask & lm)) continue;
+                    if (em & lm & e->m_umask) result |= (e->m_rh((offs_t)((offb / m_bus_bytes) * units + u), (e->m_umask >> sh) & smask) & smask) << sh;
                     u++;
                 }
             }
@@ -482,14 +487,14 @@ void address_space::write_bus(u64 bus_ba, u64 data, u64 mask) {
                 int units = 0;
                 for (int k = 0; k < m_bus_bytes / hw; k++) {
                     u64 lm = smask << lane_shift(bus_ba + k * hw, hw);
-                    if ((e->m_umask & lm) == lm) units++;
+                    if (e->m_umask & lm) units++;
                 }
                 int u = 0;
                 for (int k = 0; k < m_bus_bytes / hw; k++) {
                     u64 sh = lane_shift(bus_ba + k * hw, hw);
                     u64 lm = smask << sh;
-                    if ((e->m_umask & lm) != lm) continue;
-                    if (em & lm) e->m_wh((offs_t)((offb / m_bus_bytes) * units + u), (data >> sh) & smask, smask);
+                    if (!(e->m_umask & lm)) continue;
+                    if (em & lm & e->m_umask) e->m_wh((offs_t)((offb / m_bus_bytes) * units + u), (data >> sh) & smask, (e->m_umask >> sh) & smask);
                     u++;
                 }
             }

@@ -294,7 +294,21 @@ set(HK_573_MAME
   src/devices/bus/pccard/pccard.cpp src/devices/bus/pccard/linflash.cpp
   src/devices/machine/jvshost.cpp src/devices/machine/jvsdev.cpp src/devices/bus/psx/ctlrport.cpp src/devices/bus/psx/memcard.cpp
   src/mame/konami/k573cass.cpp src/mame/konami/zs01.cpp src/mame/konami/k573dio.cpp src/mame/konami/k573fpga.cpp src/mame/konami/k573mcr.cpp)
+list(APPEND HK_573_MAME
+  # the multi-session unit's TX3927 CPU (mips1), and the serial parts between it and the 573
+  src/devices/cpu/mips/mips1.cpp src/devices/cpu/mips/mips1dsm.cpp src/emu/diserial.cpp src/devices/machine/ins8250.cpp
+  src/devices/sound/tc9446f.cpp src/mame/konami/k573msu.cpp src/devices/cpu/psx/sio_uart.cpp)
 list(TRANSFORM HK_573_MAME PREPEND ${HK_MAME}/)
+# softfloat3 (Berkeley SoftFloat 3, BSD-3): the MIPS CPUs' FPU in mips1; MAME builds it as C++
+file(GLOB_RECURSE HK_SF3_SRC ${HK_MAME}/src/3rdparty/softfloat3/source/*.c)
+set_source_files_properties(${HK_SF3_SRC} PROPERTIES LANGUAGE CXX)
+add_library(hk_softfloat3 STATIC ${HK_SF3_SRC})
+target_include_directories(hk_softfloat3 PRIVATE ${HK_MAME}/src/3rdparty/softfloat3/build/MAME
+  ${HK_MAME}/src/3rdparty/softfloat3/source ${HK_MAME}/src/3rdparty/softfloat3/source/8086)
+target_include_directories(hk_softfloat3 PUBLIC ${HK_MAME}/src/3rdparty/softfloat3/source/include)
+target_compile_definitions(hk_softfloat3 PUBLIC SOFTFLOAT_ROUND_ODD INLINE_LEVEL=5 SOFTFLOAT_FAST_DIV32TO16
+  SOFTFLOAT_FAST_DIV64TO32 SOFTFLOAT_FAST_INT64 LITTLEENDIAN=1)
+target_compile_options(hk_softfloat3 PRIVATE -w -O2)
 set(HK_573_INC ${HK_MAME}/shim ${HK_MAME}/shim/stubs ${HK_MAME}/src/devices ${HK_MAME}/src/mame/konami
   ${HK_MAME}/src/emu ${HK_MAME}/src/3rdparty)
 # The System 573's MAME code (CPU interpreter, GPU, SPU): mostly MAME's interpreter, which
@@ -305,8 +319,9 @@ separate_arguments(HK_573_OPT_LIST UNIX_COMMAND "${HK_573_OPT}")
 add_library(hiraku_mame573 STATIC ${HK_573_MAME})
 target_include_directories(hiraku_mame573 PUBLIC ${HK_573_INC})
 target_compile_options(hiraku_mame573 PRIVATE -w ${HK_573_OPT_LIST})
+target_link_libraries(hiraku_mame573 PUBLIC hk_softfloat3)
 
-add_library(hiraku_sys573 STATIC runtime/sys573/board.cpp runtime/sys573/core.cpp runtime/sys573/mips.cpp)
+add_library(hiraku_sys573 STATIC runtime/sys573/board.cpp runtime/sys573/core.cpp runtime/sys573/mips.cpp runtime/sys573/npu.cpp runtime/sys573/link.cpp)
 target_include_directories(hiraku_sys573 PUBLIC runtime)
 target_link_libraries(hiraku_sys573 PUBLIC hiraku_mame573 hiraku_cabinet)
 target_compile_options(hiraku_sys573 PRIVATE -O2 -Wno-unused-parameter)

@@ -134,6 +134,7 @@ QIcon familyIcon(const QString &family) {
            : family == "kbm"  ? Look{QColor(0x2e, 0x9e, 0x6a), "KBM"}
            : family == "ddr"  ? Look{QColor(0x8a, 0x2b, 0xc8), "DDR"}
            : family == "drmn" ? Look{QColor(0xc8, 0x3a, 0x2b), "DM"}
+           : family == "gtrf" ? Look{QColor(0x2b, 0x8a, 0xc8), "GF"}
                               : Look{QColor(0x3a, 0x4c, 0xb8), "bm III"};
     QIcon icon;
     for (int size : {32, 64}) {

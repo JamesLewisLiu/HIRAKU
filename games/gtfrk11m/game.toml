@@ -1,0 +1,25 @@
+# GuitarFreaks 11th Mix (G*D39 VER. JAA), Konami 2004
+id = "gtfrk11m"
+title = "GuitarFreaks 11th Mix"
+family = "gtrf"         # GuitarFreaks cabinet: two guitars (neck R/G/B, pick, wailing, effect knob)
+mame = "gtfrk11m"       # MAME set name, used by the oracle
+core = "sys573"         # System 573 (runtime/sys573/, PLAN.md section 19); digital I/O board
+first_boot = "the game installs itself from CD to flash, no input needed; when it asks to power off, stop it and play again."
+
+[roms]
+bios = "700a01.22g"             # 573 BIOS, the same chip in every set
+h8 = "h8a01.bin"                # the H8's start-up response (JVS check)
+cassette_eeprom = "gcd39ja.u1"  # the game cassette's ZS01
+cassette_id = "gcd39ja.u6"      # ... and its DS2401 serial number
+digital_id = "digital-id.bin"   # the digital I/O board's DS2401
+
+[board]
+io_board = "digital"            # GX894-PWB(B): FPGA + MAS3507D MP3
+cassette = "zi"                 # MAME's cassette variant: ZS01 + DS2401 (casszi)
+pccard1 = "32mb"                # MAME's pccard1_32mb(): a Fujitsu 32 MiB flash card in slot 1
+npu = true                      # the network PCB unit (GUC07) for e-AMUSEMENT, fitted with --npu
+                                # (runtime/sys573/npu.h); its disk installed from hdd_chd with --cd hdd
+
+[cd]
+chd = "d39jaa02"        # the runtime CD (MAME: BAD_DUMP)
+hdd_chd = "d39jba02"    # the network unit's data installer: e-AMUSEMENT data for its hard disk

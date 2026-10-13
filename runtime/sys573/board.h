@@ -28,15 +28,24 @@ struct Config {
     // ksys573.cpp's note 3): its files, and which cassette is in the slot, "game" or "install"
     std::string install_eeprom, install_id;
     std::string cassette_slot = "game";
+    // the multi-session unit (DrumMania 4th Mix and later): windyfairy's emulation, not MAME's
+    // stub (PLAN.md section 19); its CD (the songs' music), firmware and timekeeper
+    bool msu = false;
+    std::string msu_cd, msu_flash = "flash.20t", msu_rtc = "m48t58y.6t";
     std::string io_board = "analog";       // analog (GX700-PWB(F)) | digital (GX894-PWB(B), MP3)
     std::string digital_id = "digital-id.bin";
     std::string cd;                        // the CD image (.cue or .iso)
-    std::string pccard2;                   // "32mb": a Fujitsu 32 MiB flash card in slot 2
+    std::string pccard1;                   // "32mb": a Fujitsu 32 MiB flash card in slot 1 (GuitarFreaks)
+    std::string pccard2;                   // "32mb": a Fujitsu 32 MiB flash card in slot 2; "npu": the network unit (npu.h)
     bool memory_card_reader = false;       // the JVS memory card reader (ddr3m)
     // The output's gain. MAME sums the SPU and the CD audio at 1.0 each and clips the sum at full
     // scale: DDR's mix peaks at 2.0 and crackles. The board mixes them in analog; 0.5 keeps MAME's
     // balance with no clipping. 1.0 (--mame-mix) is MAME's output, for comparing with its WAV.
     float mix_gain = 0.5f;
+    // session play (link.h): the cabinet with the multi-session unit hosts the cable (a socket
+    // path or host:port); the other joins it. Both run in lockstep, a quantum of emulated time apart.
+    std::string session_host, session_join;
+    int session_quantum_us = 500;
     std::string nvram_dir;                 // flash, timekeeper, cassette, card ("" = blank each run)
     int64_t rtc_time = 0;                  // the timekeeper's time at power-on (seconds since 1970)
 };

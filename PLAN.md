@@ -772,6 +772,69 @@ Each phase has an exit test. Sizes are assisted-effort guesses; DJ Main went fas
     2. Its SIO1 changes touch the PS1 device every 573 game uses: they go in only for games with the unit, or behind the switch, so DDR's lockstep holds.
     3. A second MIPS CPU then runs in the machine. MAME's `mips1` interpreter first; the recompiler later if it costs.
     4. Exit: DrumMania 10th Mix reaches attract and plays a song with its music.
+- **Progress (2026-10-13): the multi-session unit runs, and DrumMania 10th Mix gets past it, further than MAME.** Attract (logo, title, hit chart, the How To Play demo) and a game (mode and music select, the first stage of 花火 with its music, the hit chart updated after) run.
+  - **Ported** from windyfairy's fork (third_party/mame/README.md lists every change): the TX3927 in MAME's current `mips1.cpp`, plus SoftFloat 3; `k573msu`; `tc9446f`; and SIO1 as a UART (`psxsio1_uart_device`), which only games with the unit get.
+  - **What it took, beyond the port:**
+    - **The shim's `umask`** didn't repeat `umask16` across the 32-bit bus as MAME does, so the unit's 16-bit UART handlers were never called. The boot loader then failed its UART check: "DEVICE CHECK FAIL. HALT.", LED code 0xc0.
+    - **MAME's ATAPI layer** rounds a chunk under the byte count limit down to whole sectors, so a REQUEST SENSE asked for 8 bytes at a time got none. Fixed as the fork does: such a chunk is all the data.
+    - **MAME's 16550 lost a full TX FIFO:** 16 queued bytes looked like none. The unit's replies stopped after 16 bytes, and the 573 restarted the session every few seconds. Fixed with a count. This is also the bug behind Keyboardmania's silent XT446 in MAME.
+    - **The TX3927 without cache emulation:** with MAME's caches and the fork's ignored `CACHE`, the unit ran stale code after its OS copied itself to RAM.
+    - **SIO1's DSR stays the cassette's.** The fork also wires the unit's DTR to it; the firmware drops DTR while setting up its UARTs, and the game reported ERROR 120 (no cassette).
+  - **What the unit does:**
+    1. Its boot loader (`GXA25 BOOTLOADER`; `HK_MSU_CONSOLE=1` prints it) tests its RAM, configures the FPGA, checks its UARTs, initialises the four TC9446Fs, then loads and checks `/GXA25PWB.EBF` from its CD.
+    2. The program talks to the 573 over SIO1 at 115200 baud: SLIP-framed packets with sequence numbers and CRCs, a keepalive every second, and the game's `GCD40JAA`.
+    3. The 573 has it open `JA10.DAT`.
+    - In a single-cabinet game the songs' music is the digital board's MP3, not the unit's. Its decoders (`NNNN__BK.DAT` / `___K.DAT` on its CD) are for session play with GuitarFreaks; their four streams are in the mix (at 0.65, the fork's routing), silent so far.
+  - **Cost:** the unit is a second MIPS, interpreted by MAME's `mips1`, and costs more than the whole 573:
+    - at first, at the fork's 25 MHz (the default), the run took ~6–10 ms a frame on the desktop;
+    - at the real 132 MHz (8.25 MHz × 16, `HK_MSU_132=1`), ~31 ms. The game goes the same way at both: the same link timing, the same lamps.
+    - The profile is `mips1`'s memory path (`translate`, `fetch`, `read_sized`, a `std::function` per access), around the firmware's DSP-status polling loop.
+  - **Against MAME:** `drmn10m-install` is still MAME's: main RAM on every frame, and the NVRAM byte for byte. `drmn10m-boot` is MAME's until the game first touches SIO1 (frame 1688), where the link to the unit starts.
+  - **Regress cases:** `drmn10m-install`, `drmn10m-boot` (now on to attract) and `drmn10m-play` (a game through the first stage). All the other cases were unchanged by the shim's umask fix.
+  - **Next:** a faster TX3927 (below); session play needs a second cabinet.
+- **Progress (2026-10-13): the unit, 3.7× faster.** The drmn10m run, the unit's steady state after its boot: 10.6 → 2.8 ms a frame on the desktop (p99 6.5 ms), the unit and the 573 together. The unit's boot: 7.1 → 3.0 ms.
+  - **Exact** (the unit's RAM, PC and cycles every 60 frames unchanged, `HK_MSU_HASH=file`), 10.6 → 6.7 ms:
+    - the shim's `space()` was a search on every access;
+    - `mips1`'s fetch built a `std::function` per instruction;
+    - the TX3927 maps kseg0/1 inline instead of through the virtual `translate()`, and reads memory pages directly.
+  - **Timers on demand** (6.9 → 5.0 ms): the fork's three TX3927 timers fired ~1.5 M emu_timer events a second. They are now computed when read or written, with an emu_timer only for an enabled interrupt's tick. The unit's timing moves slightly, so the drmn10m cases were re-recorded after checking the same flow: link, mode and music select, the stage, the hit chart.
+  - **Idle skipping** (5.0 → 3.2 ms, with the bench's digest): three quarters of the unit's instructions were its RTOS's idle loop, `j .` with a `nop`, which only an interrupt leaves. It now ends the timeslice at once. `HK_MSU_NOIDLE=1` turns it off.
+  - **What's left:** the unit's share is the RTOS's decoder-control task, which polls through the scheduler (semaphores, task switches) as fast as the CPU runs. That's why the real 132 MHz still costs ~7 ms: 5× the polls for the same result.
+  - drmn10m's R3000 recording now covers attract and a game, and PGO is trained on the drmn10m cases too (`pgo.py` builds with at most 8 jobs: 16 at once went past its 12 GB cap).
+- **Started (2026-10-13): e-AMUSEMENT, step 1: the network PCB unit and its hard disk.** drmn10m's e-AMUSEMENT is the pop'n 9 protocol (the same RC4 secret, envelope and modules, plus GFDM's `gamedata`, shoprank, landdata and session), which the 573 game speaks itself (`httpac.c`). The unit only gives it sockets and files.
+  - **The unit** (GUC07: a TX3927, an Ethernet chip and a 10 GB IDE disk, cabled to a PC card in slot 2; a stub in MAME) is high-level: `runtime/sys573/npu.{h,cpp}`, after windyfairy's HLE (github.com/987123879113/mame, branch `npu_hle`, 45e5eaa1, BSD-3). The 573 calls it through a 16-bit FIFO: start-up 0x80–0x82, sockets 0x22–0x2e, settings 0x3a, files 0x40–0x54. It needs no ROM.
+  - **The disk is a folder,** the save folder's `npu_hdd/` (and a RAM disk, `npu_ram/`, emptied at power-on), since the game only asks for files. FORMAT empties it and writes `.format`, the partition figures that devctl 2 reads back. Without `.format` it doesn't mount, like an unformatted disk.
+  - **Fitted with `--npu`.** `--cd hdd` boots the unit's data installer CD (`d40jca02`, game.toml's `hdd_chd`, ingested as `hdd_cd`). The game finds the disk unformatted, formats it, and installs 78 songs' data (407 MB, ~69,000 frames) to INSTALLATION COMPLETED. The next boot reads it all (DATA 3/4). Regress: `drmn10m-hdd` (the install's first 9000 frames).
+  - **Beyond windyfairy's unit, from the game's driver (drmn10m's addresses):**
+    - The 573 and the unit each publish their place in the two 64 KiB rings (the game writes 0x34/0x36 and reads the unit's back). windyfairy's counted words received instead, which drifts. The unit now follows the game's positions.
+    - Message 0x39 is the unit's link event: its first word, "link up", is kept at 0x80139834. The network module (0x80058de8) fetches the settings (0x3a) only after it. The unit now sends it after call 0x37 (link events on); windyfairy's only answered call 0x38, which this game never makes.
+    - Message 1 is a ping. The game answers each with call 0 and counts them (it waits for the first at start-up).
+  - **e-AMUSEMENT ON** (test mode > NETWORK OPTIONS > e-AMUSEMENT OPTIONS, hold Start + Left/Right): the game fetches the seven settings, opens a socket (it fails: no network yet, step 2) and says センターサーバーと通信できません. Service goes on to the game in standby.
+  - **Open: e-AMUSEMENT OFF with the installed disk ends at "Please call attendant" (the multi-session unit not recognised).** The link starts at 180 s, against 139.5 s from the same save without the unit. The exchange is byte for byte the same until one of the 573's packets carries 0x30 where it had 0x3e (`ff 20 3e 12` → `ff 20 30 12`, then `32 48` → `32 30`). From there the session goes another way and the game reconnects in a loop. Not a race: the timing is the same within milliseconds, and the unit at 132 MHz fails the same way. Likely the game tells the unit something about the disk's songs that the unit (or its CD) doesn't answer as the real one does.
+  - **Next:** that difference; then step 2, the sockets through the Python core's VirtualNet (`runtime/python/eanet`), moved to shared code.
+- **Progress (2026-10-13): GuitarFreaks 11th Mix runs, and DrumMania 10th Mix and GuitarFreaks 11th Mix play a session together.** Beyond MAME (both sets NOT_WORKING, its unit a stub).
+  - **GuitarFreaks 11th Mix (`gtfrk11m`)** is MAME's set: the digital board, a ZI cassette and a 32 MiB flash card in slot 1 (`pccard1`, new). The first boot installs the runtime CD (`d39jaa02`) to the onboard flash, then to the card, until INFO 508 (~26,400 frames). After NOTE 605 (Test), attract and its demo play. About 1.8 ms a frame.
+    - The `gtrf` family: per guitar, R/G/B, pick, wailing and the effect knob (MAME's dial, an analog axis), and Start. Service moves to IN3 as in MAME's `gtrfrks` ports. The lamps are the LAMPS port's (spots, starts).
+    - Its network unit's installer is `d39jba02` (`--cd hdd`, as drmn10m's).
+    - DrumMania 10th Mix sessions with GuitarFreaks **11th** Mix, not 10th (the 10th Mix pairs with DrumMania 9th).
+  - **Session play is two processes on a session cable** (`runtime/sys573/link.{h,cpp}`). Each game is its own executable, with its own recompiled R3000 code, and windyfairy's fork also joins two MAMEs (`msu_port2` to the GuitarFreaks' `rs232_network`, null modem).
+    - **The DrumMania side hosts** (`--session-host SOCKET`). Its unit's second port (`duart_com_0:chan0`) is on the cable, wired as SIO1 is to the first.
+    - **GuitarFreaks joins** (`--session-join SOCKET`). Its SIO1 is a UART there, as on the DrumMania side, and the unit's DTR doesn't reach it (SIO1's DSR is the cassette's).
+    - **The cable carries line levels** (TXD, DTR, RTS each way) stamped with the sender's emulated time. TXD goes once a bit, as the sending UART's bit clock calls it: the fork's SIO1 takes one bit per call, not by time (with changes only, every byte arrived as 0x55).
+    - **Lockstep:** every quantum (500 µs; `--session-quantum`) each side sends what changed and waits for the other, and a change lands one quantum later, a cable 500 µs long. So a session replays the same on any host: two runs were identical on both sides, every snapshot.
+    - **Transport:** a Unix socket or TCP (host:port).
+    - **Cost:** the pair runs at the slower side's pace, about 4.1 ms a frame (the DrumMania side, its unit included).
+  - **What happens:**
+    - GuitarFreaks' SESSION NETWORK CHECK says PORT 2, OK; DrumMania's, PORT 1.
+    - Coins and Start on the DrumMania side open WELCOME and its joining period (SESSION PLAY SETTINGS: 15 s), and the GuitarFreaks cabinet enters (PLAYER 1 ENTRY) with coins and Start there.
+    - Both then show CAUTION, the mode and music select, and the first stage of 花火 together, SESSION on the guitar's screen.
+    - The music is the unit's first MP3 decoder (peak 0.93, the first time it plays), on the DrumMania process's output.
+  - **Regress:** `gtfrk11m-install`, `gtfrk11m-boot`, and the pair `drmn10m-session` + `gtfrk11m-session` (a case may name a partner; the two run at once; `bench` skips them).
+  - **Not yet:**
+    - The session music on the GuitarFreaks side's output (a real cabinet takes it from the unit).
+    - Hands-on play.
+    - Two machines over TCP, not tried.
+    - Sessions with the network unit fitted (its open issue above).
 
 **573-4. Efficiency** (sized by the measurements in 573-1)
 - **Measured (2026-10-12, `HK_PROFILE=1`, ddr2m 150 s from the installed flash, 21,600 samples):**

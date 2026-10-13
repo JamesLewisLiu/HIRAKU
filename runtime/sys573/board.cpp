@@ -24,10 +24,16 @@
 #include "bus/ata/cr589.h"
 #include "bus/pccard/pccard.h"
 #include "bus/pccard/linflash.h"
+#include "sys573/link.h"
+#include "sys573/npu.h"
 #include "imagedev/cdromimg.h"
 #include "k573cass.h"
 #include "k573dio.h"
 #include "k573mcr.h"
+#include "k573msu.h"
+#include "sound/tc9446f.h"
+#include "cpu/psx/sio_uart.h"
+#include "machine/ins8250.h"
 #include "machine/jvshost.h"
 #include "dirtc.h"
 #include <numeric>
@@ -90,6 +96,7 @@ sys573_jvs_host::sys573_jvs_host(const machine_config &mconfig, const char *tag,
 // The game's configuration while the board is built: the shim runs device_add_mconfig as each
 // device is constructed, before init() can hand the board its cfg.
 const Config *g_build = nullptr;
+SessionLink g_link;   // the session cable to another cabinet's process (link.h), when there is one
 
 // MAME's ioport output field: the write callback runs when its bits change
 // (dynamic_field::write), with the active-low inversion of the field's default.
@@ -189,7 +196,11 @@ public:
     u16 control_r(offs_t, u16) { return m_control; }
     void control_w(offs_t, u16 data, u16 mem_mask);
     void atapi_reset_w(u16 data) { if (!(data & 1)) m_ata->reset(); }
-    void lamps_w(offs_t, u32, u32) {}
+    // MAME's LAMPS port: GuitarFreaks' lamps (gtrfrks_lamps_b4..b7, active low); nothing else
+    void lamps_w(offs_t, u32 data, u32 mem_mask) {
+        if (cfg.family != "gtrf" || !(mem_mask & 0xf0)) return;
+        for (int k = 0; k < 4; k++) set_lamp(k, !(data & (0x80u >> k)));   // spot L, spot R, start L, start R
+    }
     u16 jvs_input_r(offs_t, u16);
     void jvs_input_w(offs_t, u16 data, u16);
     bool jvs_is_valid_packet();
@@ -241,7 +252,49 @@ void sys573_state::device_add_mconfig(machine_config &config) {
     m_ata->slot(0).set_default_option("cr589");
 
     KONAMI573_CASSETTE_SLOT(config, m_cassette);
-    m_cassette->dsr_handler().set(*m_maincpu->subdevice<psxsio1_device>("sio1"), &psxsio1_device::write_dsr);
+    if (c.msu) {
+        // the multi-session unit on SIO1 (a UART then: hk_psx_sio1_uart), as the fork's msu_local()
+        auto &sio1 = *m_maincpu->subdevice<psxsio1_uart_device>("sio1");
+        m_cassette->dsr_handler().set(sio1, &psxsio1_uart_device::write_dsr);
+        auto &msu = KONAMI_573_MULTI_SESSION_UNIT(config, "k573msu", 0);
+        ns16550_device &uart = msu.link_uart();
+        sio1.txd_handler().set(uart, &ins8250_uart_device::rx_w);
+        sio1.dtr_handler().set(uart, &ins8250_uart_device::dsr_w);
+        sio1.rts_handler().set(uart, &ins8250_uart_device::cts_w);
+        uart.out_tx_callback().set(sio1, &psxsio1_uart_device::write_rxd);
+        uart.out_rts_callback().set(sio1, &psxsio1_uart_device::write_cts);
+        // not the unit's DTR: SIO1's DSR is the cassette's presence (the fork wires both to it, and
+        // the unit's firmware drops DTR as it sets up its UARTs, so the game lost its cassette:
+        // ERROR 120)
+        if (!c.session_host.empty()) {
+            // the other cabinet (GuitarFreaks) on the unit's second port, the fork's msu_port2,
+            // wired as SIO1 is to the first
+            auto &port2 = *msu.subdevice<ns16550_device>("duart_com_0:chan0");
+            port2.out_tx_callback().set([](int s) { g_link.out(SessionLink::TXD, s); });
+            port2.out_dtr_callback().set([](int s) { g_link.out(SessionLink::DTR, s); });
+            port2.out_rts_callback().set([](int s) { g_link.out(SessionLink::RTS, s); });
+            g_link.in = [&port2](SessionLink::Line l, int s) {
+                if (l == SessionLink::TXD) port2.rx_w(s);
+                else if (l == SessionLink::DTR) port2.dsr_w(s);
+                else port2.cts_w(s);
+            };
+        }
+    } else if (!c.session_join.empty()) {
+        // a cabinet joining another's multi-session unit (the fork's msu_remote): SIO1 a UART on
+        // the session cable; the unit's TXD and RTS come back, not its DTR (SIO1's DSR is the
+        // cassette's, as above)
+        auto &sio1 = *m_maincpu->subdevice<psxsio1_uart_device>("sio1");
+        m_cassette->dsr_handler().set(sio1, &psxsio1_uart_device::write_dsr);
+        sio1.txd_handler().set([](int s) { g_link.out(SessionLink::TXD, s); });
+        sio1.dtr_handler().set([](int s) { g_link.out(SessionLink::DTR, s); });
+        sio1.rts_handler().set([](int s) { g_link.out(SessionLink::RTS, s); });
+        g_link.in = [&sio1](SessionLink::Line l, int s) {
+            if (l == SessionLink::TXD) sio1.write_rxd(s);
+            else if (l == SessionLink::RTS) sio1.write_cts(s);
+        };
+    } else {
+        m_cassette->dsr_handler().set(*m_maincpu->subdevice<psxsio1_device>("sio1"), &psxsio1_device::write_dsr);
+    }
 
     static const char *const flash_tags[8] = {"29f016a.31m", "29f016a.27m", "29f016a.31l", "29f016a.27l",
                                               "29f016a.31j", "29f016a.27j", "29f016a.31h", "29f016a.27h"};
@@ -280,9 +333,20 @@ void sys573_state::device_add_mconfig(machine_config &config) {
     }
     // k573a(): the analog board is the driver's own handlers (konami573a_map); init_ddr() sends
     // its outputs to ddr_output_callback (gx700pwbf_output)
+    if (c.pccard1 == "32mb") {   // pccard1_32mb() (MAME also offers id245p01 there)
+        m_pccard1->option_add("32mb", FUJITSU_32MB_FLASH_CARD);
+        m_pccard1->set_default_option("32mb");
+    }
     if (c.pccard2 == "32mb") {   // pccard2_32mb()
         m_pccard2->option_add("32mb", FUJITSU_32MB_FLASH_CARD);
         m_pccard2->set_default_option("32mb");
+    } else if (c.pccard2 == "npu") {   // the network PCB unit (MAME: a stub, not fitted), high-level
+        m_pccard2->option_add("npu", KONAMI_573_NPU_HLE);
+        m_pccard2->set_default_option("npu");
+        const std::string nv = c.nvram_dir;
+        m_pccard2->set_option_machine_config("npu", [nv](device_t *d) {
+            static_cast<k573npu_hle_device *>(d)->set_dirs(nv.empty() ? "" : nv + "/npu_hdd", nv.empty() ? "" : nv + "/npu_ram");
+        });
     }
     // the cassette: konami573() adds cassx(); ddr3m's cassyyi() replaces it
     // (cassyyi() and cassxxi() add the install cassette, of the game's kind)
@@ -357,6 +421,7 @@ void sys573_state::device_start() {
     m_h8_length = (int)h8->bytes();
     m_h8_index = 0;
     m_stage_mask = 0xffffffff;   // ddr_state::machine_start
+    if (cfg.family == "gtrf") m_stage &= ~0x0303u;   // gtrfrks: the effect knobs (dials) at 0
     m_lamps.assign(cab::lamps(cfg.family).size(), 0);
 }
 
@@ -624,12 +689,19 @@ struct Board {
     Config cfg;
     FrameHook frame_hook;
     AudioSink audio_sink;
-    // the digital board's MP3 (MAS3507D) at 44.1 kHz, resampled for the host when the MP3 is
-    // another rate (the emulation never sees this), and where the resampler is between samples
-    std::deque<float> mp3[2];
-    double mp3_pos = 0;
-    float mp3_peak = 0;   // the MP3's largest |sample|, and its rate (the report)
-    u32 mp3_rate = 0;
+    // the MP3 decoders: the digital board's MAS3507D and the multi-session unit's four TC9446Fs,
+    // each at 44.1 kHz, resampled for the host when the MP3 is another rate (the emulation never
+    // sees this), and where its resampler is between samples
+    struct Decoder {
+        sound_stream *stream;
+        float gain;               // MAME's route
+        bool msu;
+        std::deque<float> q[2];
+        double pos = 0;
+        float peak = 0;           // its largest |sample|, and its rate (the report)
+        u32 rate = 0;
+    };
+    std::vector<Decoder> decoders;
     u64 frames = 0;
     float sound_peak = 0;     // the mix's largest |sample| (1.0 = full scale)
     u64 sound_over = 0;       // samples past full scale (clipped at the output)
@@ -666,6 +738,36 @@ bool init(const Config &cfg) {
         m.add_region(r.tag, std::move(d));
     }
     cdrom_image_device::hk_set_path(":ata:0:cr589:image", cfg.cd);
+    if (cfg.msu) {
+        cdrom_image_device::hk_set_path(":k573msu:ata_cdrom:0:cdrom:image", cfg.msu_cd);
+        // the unit's TX3927 firmware: ROM_LOAD16_WORD_SWAP into a big-endian 32-bit region, so each
+        // 32-bit word is the file's first 16-bit (little-endian) word above its second; held as host
+        // (little-endian) words, the two halves of every 32-bit word swap
+        std::vector<u8> fw = load_file(rom(cfg.msu_flash)), rtc = load_file(rom(cfg.msu_rtc)),
+                        id = load_file(rom(cfg.digital_id));
+        if (fw.size() != 0x80000 || rtc.empty() || id.empty()) {
+            fprintf(stderr, "the multi-session unit needs %s, %s and %s in %s\n", cfg.msu_flash.c_str(), cfg.msu_rtc.c_str(),
+                    cfg.digital_id.c_str(), cfg.rom_dir.c_str());
+            return false;
+        }
+        for (size_t k = 0; k < fw.size(); k += 4) {
+            std::swap(fw[k], fw[k + 2]);
+            std::swap(fw[k + 1], fw[k + 3]);
+        }
+        m.add_region(":k573msu:tmpr3927", std::move(fw));
+        m.add_region(":k573msu:m48t58y", std::move(rtc));
+        m.add_region(":k573msu:digital_id", std::move(id));
+    }
+    hk_psx_sio1_uart = cfg.msu || !cfg.session_join.empty();
+    if (!cfg.session_host.empty() && !cfg.msu) {
+        fprintf(stderr, "--session-host: %s has no multi-session unit (start the DrumMania side as the host)\n", cfg.game.c_str());
+        return false;
+    }
+    if (!cfg.session_host.empty() || !cfg.session_join.empty()) {
+        const bool host = !cfg.session_host.empty();
+        if (!g_link.open(host ? cfg.session_host : cfg.session_join, host, attotime::from_usec(cfg.session_quantum_us)))
+            return false;
+    }
 
     g_build = &g.cfg;
     sys573_state &st = sys573_state::SYS573_STATE(m.config(), "");
@@ -673,6 +775,25 @@ bool init(const Config &cfg) {
     st.cfg = cfg;
     st.m_screen->m_hk_frame = [](screen_device &screen) {
         g.frames++;
+        // HK_MSU_TRACE=1: where the multi-session unit's CPU is, every 300 frames
+        static const bool msu_trace = getenv("HK_MSU_TRACE") != nullptr;
+        if (msu_trace && g.frames % 300 == 0)
+            if (auto *msu = g.state->subdevice<cpu_device>("k573msu:maincpu"))
+                fprintf(stderr, "f%llu msu pc %08x cycles %llu\n", (unsigned long long)g.frames, msu->pc(), (unsigned long long)msu->total_cycles());
+        // HK_MSU_HASH=file: every 60 frames, the unit's PC, cycle count and a hash of its RAM (to
+        // check that a change meant to be invisible leaves the unit as it was: the 573's digest
+        // doesn't see it)
+        static FILE *msu_hash = getenv("HK_MSU_HASH") ? fopen(getenv("HK_MSU_HASH"), "w") : nullptr;
+        if (msu_hash && g.frames % 60 == 0)
+            if (auto *msu = g.state->subdevice<cpu_device>("k573msu:maincpu")) {
+                ram_device *ram = g.state->subdevice<ram_device>("k573msu:ram");
+                const u64 *w = (const u64 *)ram->pointer();
+                u64 h = 0xcbf29ce484222325ull;
+                for (size_t i = 0; i < ram->size() / 8; i++) h = (h ^ w[i]) * 0x100000001b3ull;
+                fprintf(msu_hash, "%llu %08x %llu %016llx\n", (unsigned long long)g.frames, msu->pc(),
+                        (unsigned long long)msu->total_cycles(), (unsigned long long)h);
+                fflush(msu_hash);
+            }
         if (!g.frame_hook) return;
         const rectangle &vis = screen.visible_area();
         const int w = vis.width(), h = vis.height();
@@ -692,6 +813,7 @@ bool init(const Config &cfg) {
             if (rtc->has_battery()) rtc->set_current_time(system_time(m.m_base_time));
     };
     m.start();
+    g_link.attach(m);
     m.reset();
 
     // HK_573_ITRACE=file,from,to: every instruction of frames [from, to) as "totalcycles pc"
@@ -724,38 +846,39 @@ void set_audio_sink(AudioSink s) { g.audio_sink = std::move(s); }
         m.timeslice();
         // sound: MAME's speaker, the SPU plus the CR-589's CD audio (both 44.1 kHz, routed at 1.0;
         // the CD at its MODE SELECT volume, set_output_gain), plus the digital board's MP3 (routed
-        // at 1.0)
+        // at 1.0) and the multi-session unit's four (0.65 each, as windyfairy's fork routes them)
         if (g.audio_sink) {
-            static sound_stream *spu = nullptr, *cd = nullptr, *mp3 = nullptr;
+            static sound_stream *spu = nullptr, *cd = nullptr;
             if (!spu)
                 for (sound_stream *s : m.m_streams) {
                     if (s->m_device == g.state->m_spu.target()) spu = s;
                     else if (dynamic_cast<cdda_device *>(s->m_device) && s->sample_rate() == 44100) cd = s;
-                    else if (dynamic_cast<mas3507d_device *>(s->m_device)) mp3 = s;
+                    else if (dynamic_cast<mas3507d_device *>(s->m_device)) g.decoders.push_back({s, 1.0f, false});
+                    else if (dynamic_cast<tc9446f_device *>(s->m_device)) g.decoders.push_back({s, 0.65f, true});
                 }
-            if (mp3) {
-                // what its 50 Hz updates produced, never more: the MAS3507D decodes and asks the
-                // FPGA for data as its stream updates, so updating it here would change the machine
-                auto &ml = mp3->m_out[0], &mr = mp3->m_out[1];
+            for (Board::Decoder &d : g.decoders) {
+                // what its 50 Hz updates produced, never more: the decoders decode and ask for data
+                // as their streams update, so updating one here would change the machine
+                auto &ml = d.stream->m_out[0], &mr = d.stream->m_out[1];
                 const size_t avail = std::min(ml.size(), mr.size());
-                const u32 rate = mp3->sample_rate();
-                g.mp3_rate = rate;
-                for (size_t i = 0; i < avail; i++) g.mp3_peak = std::max({g.mp3_peak, std::fabs(ml[i]), std::fabs(mr[i])});
+                const u32 rate = d.stream->sample_rate();
+                d.rate = rate;
+                for (size_t i = 0; i < avail; i++) d.peak = std::max({d.peak, std::fabs(ml[i]), std::fabs(mr[i])});
                 size_t used = avail;
                 if (rate == 44100 || !rate) {
-                    g.mp3[0].insert(g.mp3[0].end(), ml.begin(), ml.begin() + avail);
-                    g.mp3[1].insert(g.mp3[1].end(), mr.begin(), mr.begin() + avail);
+                    d.q[0].insert(d.q[0].end(), ml.begin(), ml.begin() + avail);
+                    d.q[1].insert(d.q[1].end(), mr.begin(), mr.begin() + avail);
                 } else {   // linear, from rate to 44.1 kHz
                     const double step = rate / 44100.0;
-                    while (g.mp3_pos + 1 < (double)avail) {
-                        const size_t i = (size_t)g.mp3_pos;
-                        const float f = (float)(g.mp3_pos - (double)i);
-                        g.mp3[0].push_back(ml[i] + (ml[i + 1] - ml[i]) * f);
-                        g.mp3[1].push_back(mr[i] + (mr[i + 1] - mr[i]) * f);
-                        g.mp3_pos += step;
+                    while (d.pos + 1 < (double)avail) {
+                        const size_t i = (size_t)d.pos;
+                        const float f = (float)(d.pos - (double)i);
+                        d.q[0].push_back(ml[i] + (ml[i + 1] - ml[i]) * f);
+                        d.q[1].push_back(mr[i] + (mr[i + 1] - mr[i]) * f);
+                        d.pos += step;
                     }
-                    used = std::min(avail, (size_t)g.mp3_pos);
-                    g.mp3_pos -= (double)used;
+                    used = std::min(avail, (size_t)d.pos);
+                    d.pos -= (double)used;
                 }
                 ml.erase(ml.begin(), ml.begin() + used);
                 mr.erase(mr.begin(), mr.begin() + used);
@@ -767,7 +890,7 @@ void set_audio_sink(AudioSink s) { g.audio_sink = std::move(s); }
                 auto &l = spu->m_out[0], &r = spu->m_out[1];
                 size_t n = std::min(l.size(), r.size());
                 if (cd) n = std::min({n, cd->m_out[0].size(), cd->m_out[1].size()});
-                if (mp3) n = std::min(n, g.mp3[0].size());
+                for (const Board::Decoder &d : g.decoders) n = std::min(n, d.q[0].size());
                 if (n) {
                     std::vector<float> lr(n * 2);
                     for (size_t i = 0; i < n; i++) { lr[2 * i] = l[i]; lr[2 * i + 1] = r[i]; }
@@ -782,13 +905,12 @@ void set_audio_sink(AudioSink s) { g.audio_sink = std::move(s); }
                             c.erase(c.begin(), c.begin() + n);
                         }
                     }
-                    if (mp3) {
+                    for (Board::Decoder &d : g.decoders)
                         for (int ch = 0; ch < 2; ch++) {
-                            auto &q = g.mp3[ch];
-                            for (size_t i = 0; i < n; i++) lr[2 * i + ch] += q[i];
+                            auto &q = d.q[ch];
+                            for (size_t i = 0; i < n; i++) lr[2 * i + ch] += q[i] * d.gain;
                             q.erase(q.begin(), q.begin() + n);
                         }
-                    }
                     for (float &v : lr) {
                         v *= g.cfg.mix_gain;
                         const float a = std::fabs(v);
@@ -833,9 +955,23 @@ bool set_input(const std::string &name, int value) {
         // on IN2's buttons, the select buttons on player 2's left and right
         {"High Tom", {0, 0x100}}, {"Low Tom", {0, 0x200}}, {"Hi-Hat", {0, 0x400}}, {"Snare", {0, 0x800}},
         {"Select L", {0, 0x001}}, {"Select R", {0, 0x002}}, {"Cymbal", {1, 0x1000}}, {"Bass Drum", {1, 0x4000}},
+        // GuitarFreaks (MAME's gtrfrks ports): the neck buttons on IN2's buttons, the pick and the
+        // wailing on the stage bits; Service on IN3 (IN1's is unused)
+        {"P1 Button R", {1, 0x1000}}, {"P1 Button G", {1, 0x2000}}, {"P1 Button B", {1, 0x4000}},
+        {"P1 Pick", {0, 0x400}}, {"P1 Wailing", {0, 0x800}},
+        {"P2 Button R", {1, 0x0010}}, {"P2 Button G", {1, 0x0020}}, {"P2 Button B", {1, 0x0040}},
+        {"P2 Pick", {0, 0x004}}, {"P2 Wailing", {0, 0x008}},
+        {"Service 1 (IN3)", {2, 0x100}},
     };
+    // the effect knobs: MAME's dials, a 2-bit position (not active low) on the stage bits
+    if (name == "P1 Effect Knob" || name == "P2 Effect Knob") {
+        const int sh = name[1] == '1' ? 8 : 0;
+        st.m_stage = (st.m_stage & ~(3u << sh)) | ((u32)(-value & 3) << sh);   // PORT_REVERSE
+        return true;
+    }
     // the shell's cabinet names for MAME's (runtime/shell/cabinet.cpp)
-    auto it = names.find(name == "Test" ? "Service Mode" : name == "Service" ? "Service 1" : name);
+    const char *service = g.cfg.family == "gtrf" ? "Service 1 (IN3)" : "Service 1";
+    auto it = names.find(name == "Test" ? "Service Mode" : name == "Service" ? service : name);
     if (it == names.end()) return false;
     switch (it->second.first) {
     case 0: return bit(st.m_stage, it->second.second);
@@ -852,10 +988,19 @@ std::string sound_report() {
     snprintf(b, sizeof b, "sound: mix peak %.2f of full scale, %.3f %% of samples over it", g.sound_peak,
              100.0 * (double)g.sound_over / (double)g.sound_samples);
     std::string out = b;
-    if (g.mp3_rate) {
-        snprintf(b, sizeof b, "; the MP3 peaks at %.2f, at %u Hz", g.mp3_peak, g.mp3_rate);
+    std::string msu;
+    u32 msu_rate = 0;
+    for (const Board::Decoder &d : g.decoders) {
+        if (d.msu) {
+            snprintf(b, sizeof b, "%s%.2f", msu.empty() ? "" : "/", d.peak);
+            msu += b;
+            msu_rate = std::max(msu_rate, d.rate);
+            continue;
+        }
+        snprintf(b, sizeof b, "; the MP3 peaks at %.2f, at %u Hz", d.peak, d.rate);
         out += b;
     }
+    if (!msu.empty()) out += "; the unit's MP3s peak at " + msu + ", at " + std::to_string(msu_rate) + " Hz";
     return out;
 }
 

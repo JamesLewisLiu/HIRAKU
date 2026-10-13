@@ -511,23 +511,38 @@ Controls, coins and lamps are DDR's, as for 2ndMIX above. The lamps come from th
 
 **Speed** (desktop, recompiled R3000 code): attract 0.48 ms a frame, a song 0.62 ms.
 
-**Not yet:** a hands-on test. MAME flags this set NOT_WORKING without saying why; so far it plays as MAME does.
-
-## System 573: DrumMania 10th Mix (not playable yet, M14)
-
-DrumMania 10th Mix (`drmn10m`) needs MAME's `drmn10m` set and the runtime CD `d40jaa02`:
+**The network PCB unit (e-AMUSEMENT), started:** the e-AMUSEMENT cabinet's network unit, with its hard disk as the save folder's `npu_hdd/` folder (runtime/sys573/npu.h). Ingest the unit's installer CD as well:
 
 ```bash
-tools/ingest.py drmn10m.7z d40jaa02.chd
+tools/ingest.py drmn10m.7z d40jaa02.chd d40jba02.chd d40jca02.chd
+```
+
+1. **Install its data:** `hiraku-drmn10m --cd hdd`. The game formats the disk and installs about 400 MB, about 20 minutes of game time, until **INSTALLATION COMPLETED**. Then quit.
+2. **Play with it:** `hiraku-drmn10m --npu`. The boot reads the disk's songs.
+3. **e-AMUSEMENT** is OFF by default (test mode > NETWORK OPTIONS > e-AMUSEMENT OPTIONS; hold Start and press Left/Right to change it). With it ON the game tries the network, finds none (センターサーバーと通信できません) and goes on in standby with Service (9).
+
+Not working yet: with the unit and e-AMUSEMENT OFF, the boot ends at "Please call attendant", the multi-session unit not recognised (PLAN.md section 19). Without `--npu` the game is as before. `HK_573_NPU_LOG=1` prints the unit's calls (2: their words, 3: every register access).
+
+**Not yet:** a hands-on test. MAME flags this set NOT_WORKING without saying why; so far it plays as MAME does.
+
+## System 573: DrumMania 10th Mix (M14, further than MAME)
+
+DrumMania 10th Mix (`drmn10m`) needs MAME's `drmn10m` set, the runtime CD `d40jaa02` and the multi-session unit's CD `d40jba02`:
+
+```bash
+tools/ingest.py drmn10m.7z d40jaa02.chd d40jba02.chd
 ninja -C build/cmake hiraku-drmn10m
 ```
 
-**It boots as far as MAME does, and no further:**
+**The first boots:**
 1. The first boot installs the CD to the onboard flash by itself and shows **INFO 508** (power-cycle): stop it.
 2. The next boot shows **NOTE 605** (RTC-RAM cleared): press **Test** (F2).
-3. After the boot checks it stops at **"Please call attendant"**: the multi-session unit can't be found.
+3. The boot checks load the game's data, then wait for the **multi-session unit**, which boots from its own CD meanwhile: about two and a half minutes from power-on.
+4. Then the warning screen, the title and attract. Two coins (5) make a credit.
 
-The unit is a box of its own: a second CPU, a CD drive and audio decoders. It plays the songs' music, and the game won't run without it. MAME doesn't emulate it either, which is why MAME flags the set NOT_WORKING. PLAN.md section 19 has the plan.
+The unit is a box of its own: a second CPU (a TX3927), a CD drive, four MP3 decoders and four UARTs. The game won't start without it. MAME's is an empty stub, so MAME stops at **"Please call attendant"** (likely why it flags the set NOT_WORKING). HIRAKU runs windyfairy's emulation of it (third_party/mame/README.md). In a one-cabinet game the music comes from the digital board's MP3, as on DDR. The unit's decoders are for session play with GuitarFreaks (below).
+
+**Speed:** about 2.8 ms a frame on the desktop, the unit and the 573 together (p99 6.5 ms). The unit's CPU is interpreted and runs at 25 MHz, as in the fork. Its timers are computed on demand and its RTOS's idle loop is skipped. The real chip's 132 MHz (`HK_MSU_132=1`) changes nothing in the game and costs about 7 ms: the firmware's decoder task polls through the RTOS as fast as the CPU goes.
 
 | Key | DrumMania |
 |---|---|
@@ -538,4 +553,65 @@ The unit is a box of its own: a second CPU, a CD drive and audio decoders. It pl
 | 5 | coin |
 | F2 / 9 | test / service |
 
-**Checked against MAME, clock for clock** (`oracle/scripts/drmn10m-install.his`, `drmn10m-boot.his`): the install and the boot to the multi-session unit's error. Main RAM is identical on every frame, and the NVRAM after the install is byte for byte MAME's. Both are regress cases.
+**Checked against MAME, clock for clock** (`oracle/scripts/drmn10m-install.his`, `drmn10m-boot.his`):
+- the install: main RAM is identical on every frame, and the NVRAM after it is byte for byte MAME's;
+- the boot, until the game first uses the link to the unit (28 s in): main RAM is identical on every frame.
+
+From there on the unit answers, which MAME's can't.
+
+The regress cases are `drmn10m-install`, `drmn10m-boot` (now on to attract), `drmn10m-play` (a game: the first stage of 花火) and `drmn10m-hdd` (the network unit's install, its first 9000 frames).
+
+**The network PCB unit (e-AMUSEMENT), started:** the e-AMUSEMENT cabinet's network unit, with its hard disk as the save folder's `npu_hdd/` folder (runtime/sys573/npu.h). Ingest the unit's installer CD as well:
+
+```bash
+tools/ingest.py drmn10m.7z d40jaa02.chd d40jba02.chd d40jca02.chd
+```
+
+1. **Install its data:** `hiraku-drmn10m --cd hdd`. The game formats the disk and installs about 400 MB, about 20 minutes of game time, until **INSTALLATION COMPLETED**. Then quit.
+2. **Play with it:** `hiraku-drmn10m --npu`. The boot reads the disk's songs.
+3. **e-AMUSEMENT** is OFF by default (test mode > NETWORK OPTIONS > e-AMUSEMENT OPTIONS; hold Start and press Left/Right to change it). With it ON the game tries the network, finds none (センターサーバーと通信できません) and goes on in standby with Service (9).
+
+Not working yet: with the unit and e-AMUSEMENT OFF, the boot ends at "Please call attendant", the multi-session unit not recognised (PLAN.md section 19). Without `--npu` the game is as before. `HK_573_NPU_LOG=1` prints the unit's calls (2: their words, 3: every register access).
+
+**Not yet:** a hands-on test.
+
+## System 573: GuitarFreaks 11th Mix, and session play with DrumMania (further than MAME)
+
+GuitarFreaks 11th Mix (`gtfrk11m`) needs MAME's `gtfrk11m` set and its runtime CD `d39jaa02` (`d39jba02` is its network unit's installer, for `--cd hdd`):
+
+```bash
+tools/ingest.py gtfrk11m.7z d39jaa02.chd d39jba02.chd
+ninja -C build/cmake hiraku-gtfrk11m
+```
+
+**The first boots:**
+1. The first boot installs the CD to the onboard flash and the flash card by itself (about 7 minutes of game time), then shows **INFO 508**: stop it.
+2. The next boot shows **NOTE 605**: press **Test** (F2).
+3. Then attract. Two coins (5) make a credit.
+
+| Key | Guitar 1 | Guitar 2 |
+|---|---|---|
+| Neck R / G / B | A / S / D | J / K / L |
+| Pick | Space | Right Shift |
+| Wailing | W | I |
+| Start | 1 | 2 |
+
+The effect knob is an analog axis (a joystick's first axis). Coin is 5; Test and Service are F2 and 9.
+
+**Session play.** DrumMania 10th Mix and GuitarFreaks 11th Mix play together through DrumMania's multi-session unit, each in its own process, joined by a session cable:
+
+```bash
+hiraku-drmn10m --session-host /tmp/gfdm.sock
+```
+
+```bash
+hiraku-gtfrk11m --session-join /tmp/gfdm.sock
+```
+
+- **Start the DrumMania side first;** it waits for the other. A host:port works too (TCP), for two machines (not tried yet).
+- **The two run in lockstep,** at the slower one's pace: about 4.1 ms a frame together on the desktop.
+- **To play a session:** credits and Start on one cabinet open the **WELCOME** screen, with 15 s for the other to join (credits and Start there). Then both choose the mode and the music together and play the same song.
+- **Check the cable** in test mode: SESSION NETWORK CHECK says PORT 1 (DrumMania) and PORT 2 (GuitarFreaks), OK.
+- **The session music** comes from the unit, so it plays on the DrumMania window's sound only, for now.
+
+The regress cases are `gtfrk11m-install`, `gtfrk11m-boot`, and `drmn10m-session` + `gtfrk11m-session` (a session game: both cabinets play the first stage of 花火).
