@@ -67,9 +67,10 @@ QString familyName(const QString &family) {
     if (family == "djpopn") return "pop'n music (DJ Main)";
     if (family == "djpstage") return "pop'n stage (DJ Main)";
     if (family == "ddr") return "Dance Dance Revolution (System 573)";
+    if (family == "pypopn") return "pop'n music (Konami Python)";
     return family;
 }
 
-QStringList families() { return {"bm3", "popn", "ppp", "kbm", "djbm", "djpopn", "djpstage", "ddr"}; }
+QStringList families() { return {"bm3", "popn", "ppp", "kbm", "djbm", "djpopn", "djpstage", "ddr", "pypopn"}; }
 
 }  // namespace cfg

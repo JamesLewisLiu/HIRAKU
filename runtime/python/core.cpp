@@ -262,7 +262,7 @@ public:
             fprintf(stderr, "no Python dumps/%s/machine.txt - run tools/ingest.py <the set's .py1> first\n", o.game.c_str());
             return false;
         }
-        family_ = m.count("family") ? m["family"] : "popn";
+        family_ = m.count("family") ? m["family"] : "pypopn";
         lamps_.assign(hk::cab::lamps(family_).size(), 0);
 
         // The run's own copy of what Reliquary writes back
@@ -314,6 +314,8 @@ public:
             self_->audio_.push_back(l);
             self_->audio_.push_back(r);
         };
+        Hiraku::p1io_output = [](const u32 *payload, u32 quads) { self_->on_p1io_output(payload, quads); };
+        if (const char *f = getenv("HK_PY_P1IO_LOG")) p1io_log_ = fopen(f, "w");
         if (!no_picture_) Hiraku::gs_frame = [](const u32 *rgba, u32 w, u32 h) { self_->on_gs_frame(rgba, w, h); };
 
         if (!VMManager::Internal::CPUThreadInitialize()) fatal("the emulator's CPU thread could not start");
@@ -361,7 +363,7 @@ public:
     int audio_rate() const override { return 48000; }
     void turntable_add(int, int) override {}
     const std::vector<uint8_t> &lamp_state() const override { return lamps_; }
-    uint64_t lamp_changes() const override { return 0; }
+    uint64_t lamp_changes() const override { return lamp_changes_; }
 
     static PythonCore *self_;
 
@@ -451,6 +453,28 @@ private:
             if (auto it = by_name.find(p1io); it != by_name.end()) binds_[mame] = it->second;
     }
 
+    // CPU thread: a JAMMA output command to the interface board (outputs; the input poll).
+    // HK_PY_P1IO_LOG=<file>: each change of its payload, and the commands per frame.
+    void on_p1io_output(const u32 *payload, u32 quads) {
+        p1io_polls_++;
+        // lamps: word 8, as shell/cabinet.cpp's pypopn family reads it
+        if (quads > 8 && family_ == "pypopn") {
+            const auto &defs = hk::cab::lamps(family_);
+            for (size_t k = 0; k < defs.size() && k < lamps_.size(); k++) {
+                const uint8_t lit = (payload[8] >> defs[k].bit) & 1;
+                if (lit != lamps_[k]) lamps_[k] = lit, lamp_changes_++;
+            }
+        }
+        std::vector<u32> words(payload, payload + std::min<u32>(quads, 16));
+        if (words == p1io_last_) return;
+        p1io_last_ = words;
+        if (p1io_log_) {
+            fprintf(p1io_log_, "%llu out", (unsigned long long)frame_);
+            for (u32 w : words) fprintf(p1io_log_, " %08x", w);
+            fputc('\n', p1io_log_);
+        }
+    }
+
     // GS thread: the picture shown at this vsync, as 0x00RRGGBB
     void on_gs_frame(const u32 *rgba, u32 w, u32 h) {
         std::lock_guard lock(gs_mutex_);
@@ -471,6 +495,11 @@ private:
     // CPU thread, at each vsync: sound so far, the previous vsync's picture, the shell
     void on_vsync() {
         if (!frame_) prof::g_cpu_tid = (pid_t)syscall(SYS_gettid);
+        if (p1io_log_ && p1io_polls_ != p1io_polls_logged_) {
+            fprintf(p1io_log_, "%llu polls %llu\n", (unsigned long long)frame_, (unsigned long long)(p1io_polls_ - p1io_polls_logged_));
+            p1io_polls_logged_ = p1io_polls_;
+            fflush(p1io_log_);
+        }
         frame_++;
         if (audio_sink_ && !audio_.empty()) audio_sink_(audio_.data(), (int)(audio_.size() / 2));
         audio_.clear();
@@ -503,11 +532,15 @@ private:
     std::span<const u8> font_data_;   // mapped for the process's life
     std::map<std::string, u32> binds_;
     std::vector<uint8_t> lamps_;
+    uint64_t lamp_changes_ = 0;
     FrameHook frame_hook_;
     AudioSink audio_sink_;
     std::function<void()> on_fatal_;
     uint64_t frame_ = 0;
     std::vector<float> audio_;
+    FILE *p1io_log_ = nullptr;
+    uint64_t p1io_polls_ = 0, p1io_polls_logged_ = 0;
+    std::vector<u32> p1io_last_;
 
     std::mutex gs_mutex_;
     std::condition_variable gs_cv_;

@@ -87,11 +87,12 @@ MainWindow::MainWindow() {
         if (d.exec() == QDialog::Accepted) showDetails();
     });
     auto *addFiles = new QAction(QIcon::fromTheme("list-add"), "Add game files…", this);
-    addFiles->setToolTip("Add a game from its files: the MAME ROM set (.zip/.7z), CHDs or disc images.\n"
+    addFiles->setToolTip("Add a game from its files: the MAME ROM set (.zip/.7z), CHDs or disc images,\n"
+                         "or a Konami Python game's .py1 (PCSX2 Reliquary's descriptor).\n"
                          "You can also drop them on this window.");
     connect(addFiles, &QAction::triggered, this, [this] {
         QStringList f = QFileDialog::getOpenFileNames(this, "Add game files", QString(),
-            "Game files (*.zip *.7z *.chd *.cue *.iso *.img *.bin);;All files (*)");
+            "Game files (*.zip *.7z *.chd *.cue *.iso *.img *.bin *.py1);;All files (*)");
         if (!f.isEmpty()) addGameFiles(f);
     });
     auto *addFolder = new QAction(QIcon::fromTheme("folder-new"), "Add a game folder…", this);
@@ -430,6 +431,7 @@ QStringList MainWindow::arguments(const Game &g) const {
     if (s.value("lights/socket", true).toBool()) a << "--lights-socket" << cfg::lightsSocket();
     QString sf = s.value("audio/soundfont").toString();
     if (g.family == "kbm" && !sf.isEmpty()) a << "--soundfont" << sf;
+    if (g.core == "python") a << "--renderer" << "vk";   // Vulkan GS: less CPU than the software one (PLAN.md section 21)
     if (!cfg::nvramBase().isEmpty()) a << "--nvram" << cfg::nvramDir(g.id);
     a << UnlocksDialog::macroArguments(g.id);   // codes typed at every start
     a << QProcess::splitCommand(s.value("game/extraArgs").toString());

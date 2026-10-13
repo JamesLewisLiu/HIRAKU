@@ -26,13 +26,26 @@ for f in "$build"/hiraku "$build"/hiraku-*; do
   [ -x "$f" ] && [ -f "$f" ] || continue
   case $(basename "$f") in hiraku-recomp) continue ;; esac
   strip -o "$d/bin/$(basename "$f")" "$f"
+  # Konami Python games (runtime/python/) are built in PCSX2 Reliquary's tree and linked
+  # into the build dir: they need Reliquary's resources/ beside them, and the libraries
+  # built for it outside the system (oracle/pcsx2/build-reliquary.sh's deps/), which
+  # they find in bin/lib through their $ORIGIN/lib run path
+  real=$(readlink -f "$f")
+  if [ -d "$(dirname "$real")/resources" ]; then
+    [ -d "$d/bin/resources" ] || cp -r "$(dirname "$real")/resources" "$d/bin/resources"
+    ldd "$real" | awk '$3 ~ /^\// && $3 !~ /^\/(usr\/)?lib(64)?\// {print $3}' | while read -r lib; do
+      cp -L "$lib" "$d/bin/lib/"
+    done
+  fi
 done
-sdl=$(ldd "$build"/hiraku-bm1stmix | awk '/libSDL3/ {print $3}')
+sdl=$(ldd "$(ls "$build"/hiraku-* | head -1)" | awk '/libSDL3/ {print $3}')
 [ -n "$sdl" ] && cp -L "$sdl" "$d/bin/lib/"
 cp -r "$root/games" "$root/docs" "$root/shaders" "$d/"
 cp -r "$root/oracle/scripts" "$d/scripts"
 mkdir -p "$d/tools"
-cp "$root"/tools/{ingest.py,chd.py,fbexe.py,pack-data.py,regress.py,unlock.py} "$d/tools/"
+cp "$root"/tools/{ingest.py,chd.py,fbexe.py,pack-data.py,regress.py,unlock.py,pythonfs.py,chdread.py} "$d/tools/"
+# Konami Python ingest reads disks in place through libchdr (tools/chdread.py)
+[ -f "$root/build/libchdr_mini.so" ] && mkdir -p "$d/build" && cp "$root/build/libchdr_mini.so" "$d/build/"
 cp "$root/LICENSE" "$d/" 2>/dev/null || true
 cat > "$d/README.txt" <<'EOF'
 HIRAKU, a build for another Linux PC.
@@ -48,6 +61,9 @@ Game data, either way:
       tools/pack-data.py /path/to/this/hiraku GAME...
   (dumps/GAME/ and its disc images, with relative paths in machine.txt). Saved settings and NVRAM live in
 ~/.local/share/hiraku/GAME (copy them over for games that need a first-boot setup).
+
+Konami Python games (bin/hiraku-popn9): Vulkan or OpenGL drivers from the system;
+--renderer vk (or gl) draws on the GPU, the default software renderer on the CPU.
 
 Run a game:
     bin/hiraku-popn8 --window          (--window 3 for 3x, --fullscreen)

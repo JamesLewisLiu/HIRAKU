@@ -16,9 +16,9 @@ oracle/pcsx2/run.py popn9 --frames 3000 --snap-every 0 --interp          # the s
   - Six dependencies (KDDockWidgets, plutovg, plutosvg, rapidyaml, libbacktrace, ECM) are built into `$HK_PYTHON_WORK/deps` at the versions and SHA-256s of Reliquary's CI. The rest are Arch packages.
   - Each heavy step runs under `systemd-run` with 10 GB and -j8. The main build peaks at 1.3 GB and takes ~1.5 min.
   - The zip lacks the paraLLEl-GS submodule, so that renderer and Wayland pointer locking are left out.
-- `reliquary-oracle.patch` (six files):
+- `reliquary-oracle.patch` (seven files):
   - a per-vsync hook in `VMManager.cpp`: `HK_FRAMEHASH=<file>` appends `frame ee_hash iop_hash` (FNV-1a over the 32 MiB EE and 2 MiB IOP RAM) every `HK_FRAMEHASH_EVERY` vsyncs; `HK_STOP_FRAME=<n>` exits at vsync n. Works in `pcsx2-qt` and in `hiraku-<game>` alike;
-  - `pcsx2/HirakuHooks.h`: the vsync, audio and picture taps the core uses (null otherwise);
+  - `pcsx2/HirakuHooks.h`: the vsync, audio and picture taps the core uses, and the interface board's output command (lamps, the input poll) in `KonamiPython1.cpp`; all null otherwise;
   - the derived MagicGate keystore is printed only with `PCSX2_PRINT_KEYSTORE` set (stock Reliquary always prints it to stdout);
   - `-DHIRAKU_DIR=<checkout>` in the top `CMakeLists.txt` adds `runtime/python/`.
 - `run.py`: one run of a `.py1` set from the collection (`HK_PYTHON_SETS`, default `~/Downloads/konami-python-1-collection`).
@@ -38,3 +38,20 @@ oracle/pcsx2/run.py popn9 --frames 3000 --snap-every 0 --interp          # the s
 - **It needs a window.** Qt's `offscreen` platform gives the GS no surface, so a window opens on the desktop (XWayland, `HK_QPA` to change).
 - **Stock Reliquary prints the derived MagicGate keystore.** The patch stops that; `run.py` also strips it from the logs it keeps. Never commit or share raw logs of an unpatched build.
 - **Inputs:** `pcsx2-qt` takes no scripted inputs. Scripts run in the core (`build/cmake/hiraku-popn9 --script oracle/scripts/popn9-play.his`).
+
+## The pinned Reliquary, and updating it
+
+HIRAKU is built and checked against **PCSX2 Reliquary 1.9.4**, the release zip `pcsx2-reliquary-1.9.4-reliquary.zip`, SHA-256 `da9b9a601e8b3eeede9eb8bae6d46e81e1001beb98b438859aa847c75b547884`. Reliquary re-syncs with upstream PCSX2 about monthly, and any update can change what the game does frame by frame, so an update is a deliberate step:
+1. **Unpack the new release** next to the old one, and point `HK_PYTHON_WORK` at a copy of the work folder, so the pinned build stays usable.
+2. **Apply the patch:** `build-reliquary.sh patch`.
+   - If a hunk fails, re-apply it by hand. The patch is only taps and hooks (`HirakuHooks.h`) and the keystore guard, so this means finding the same spots in the new files.
+   - Then regenerate `reliquary-oracle.patch` from the new tree.
+3. **Build:** `configure`, then `build`.
+4. **Check the core against the new oracle:**
+   - `run.py popn9 --frames 3000 --snap-every 0 --unlimited`;
+   - `hiraku-popn9 --frames 3000` with `HK_FRAMEHASH`;
+   - the two hash files must be identical.
+5. **Run `tools/regress.py check popn9-play`.**
+   - If it still passes, the update changed nothing that pop'n 9 shows.
+   - If it differs, look at what changed (pictures, sound, the frame it starts at) before re-recording the baseline. Note the reason in PLAN.md §21.
+6. **Update the pinned version and SHA-256 here.**

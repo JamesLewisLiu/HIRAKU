@@ -579,7 +579,12 @@ def main() -> int:
         return ingest_firebeat(args)
     if not args.inputs and not args.romset:
         ap.error("give the game's files (ROM set, CHDs, images), or --exe")
+    # Konami Python: a .py1, or a set's folder (Reliquary's collections keep <set>.py1 beside it)
     py1 = [f for f in args.inputs if f.lower().endswith(".py1")]
+    for f in args.inputs:
+        if os.path.isdir(f):
+            near = os.path.normpath(f) + ".py1"
+            py1 += sorted(glob.glob(os.path.join(f, "*.py1"))) + ([near] if os.path.exists(near) else [])
     if py1:
         return ingest_python(args, py1[0])
     return ingest_auto(args, args.inputs)

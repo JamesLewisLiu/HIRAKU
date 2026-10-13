@@ -10,7 +10,7 @@
  #include "SIO/Pad/Pad.h"
  #include "SIO/Sio.h"
  #include "SIO/Sio0.h"
-@@ -3069,8 +3072,57 @@
+@@ -3069,8 +3072,58 @@
  	R5900SymbolImporter.OnElfLoadedInMemory();
  }
  
@@ -59,6 +59,7 @@
 +void (*Hiraku::vsync_cpu)() = nullptr;
 +void (*Hiraku::audio_sample)(float, float) = nullptr;
 +void (*Hiraku::gs_frame)(const u32*, u32, u32) = nullptr;
++void (*Hiraku::p1io_output)(const u32*, u32) = nullptr;
 +
  void VMManager::Internal::VSyncOnCPUThread()
  {
@@ -127,6 +128,25 @@
  	printf("===== KEYSTORE =====\n\n");
  	printf("MG_CARDKEY_0="); printChunk(g_keyStore.CardKeyLow[0], 8); printChunk(g_keyStore.CardKeyHi[0], 8); printf("\n");
  	printf("MG_CARDIV_0="); printChunk(g_keyStore.CardIV[0], 8); printf("\n");
+--- a/pcsx2/FireWire/Devices/KonamiPython1.cpp
++++ b/pcsx2/FireWire/Devices/KonamiPython1.cpp
+@@ -1,6 +1,7 @@
+ // SPDX-FileCopyrightText: 2002-2026 PCSX2 Dev Team
+ // SPDX-License-Identifier: GPL-3.0+
+ 
++#include "HirakuHooks.h"
+ #include "FireWire/Devices/KonamiPython1.h"
+ 
+ #include "Common.h"
+@@ -3099,6 +3100,8 @@
+ 
+ 			if (command_offset == KONAMI_JAMMA_OUTPUT_COMMAND_OFFSET && payload_quads >= 8)
+ 			{
++				if (Hiraku::p1io_output) [[unlikely]]
++					Hiraku::p1io_output(payload, payload_quads);
+ 				if (IsPython1P1IOSerialMode())
+ 				{
+ 					const u32 previous_latch = s_p1io_output_latch_byte;
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
 @@ -96,6 +96,12 @@
@@ -144,7 +164,7 @@
  else()
 --- a/pcsx2/HirakuHooks.h
 +++ b/pcsx2/HirakuHooks.h
-@@ -0,0 +1,19 @@
+@@ -0,0 +1,23 @@
 +// SPDX-License-Identifier: GPL-3.0+
 +// HIRAKU (local patch, not upstream): taps for running this emulator as a HIRAKU
 +// machine core (runtime/python/ in HIRAKU). All are null unless a host sets them.
@@ -163,4 +183,8 @@
 +	// GS thread, after each vsync's present: the displayed picture at the internal
 +	// resolution, unscaled, RGBA8 (R in the low byte). nullptr/0x0 for a blank frame.
 +	extern void (*gs_frame)(const u32* rgba, u32 width, u32 height);
++	// CPU thread (IOP time), each JAMMA output command the game sends to the Python 1
++	// interface board: its output latches (lamps, coin counters) in the payload. The board
++	// answers each one with an input report, so this is also the game's input poll.
++	extern void (*p1io_output)(const u32* payload, u32 quads);
 +} // namespace Hiraku

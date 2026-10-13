@@ -92,12 +92,14 @@ configure() {
 		-DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ \
 		-DCMAKE_EXE_LINKER_FLAGS_INIT=$LDF -DCMAKE_MODULE_LINKER_FLAGS_INIT=$LDF -DCMAKE_SHARED_LINKER_FLAGS_INIT=$LDF \
 		-DCMAKE_PREFIX_PATH="$DEPS" \
-		-DCMAKE_BUILD_RPATH="$DEPS/lib" \
-		-DUSE_LINKED_FFMPEG=ON \
+		-DCMAKE_BUILD_RPATH="$DEPS/lib;\$ORIGIN/lib" \
+		-DUSE_LINKED_FFMPEG=OFF \
 		-DENABLE_TESTS=OFF \
 		-DWAYLAND_SCANNER=OFF \
 		-DHIRAKU_DIR="$HIRAKU"
-	# ^ pcsx2-qt takes its Wayland pointer-lock protocol XMLs from the (absent) parallel-gs submodule;
+	# ^ $ORIGIN/lib: a packaged copy (tools/package.sh) finds the local deps beside the binary.
+	#   FFmpeg is loaded at run time, only for video capture, so the binaries start without it.
+	#   pcsx2-qt takes its Wayland pointer-lock protocol XMLs from the (absent) parallel-gs submodule;
 	#   hiding wayland-scanner skips only that optional relative-pointer feature.
 }
 

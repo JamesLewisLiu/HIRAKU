@@ -1184,7 +1184,26 @@ Each phase ends with `tools/regress.py check popn9-play` bit-identical, unless i
   - one 175 ms frame at boot (frame 326);
   - to be measured properly (A/B, median) and on N100-class hardware.
 
-**Next:** PY-1b in the roadmap above. The profile behind it was measured with the core's `HK_PY_PROFILE=1` sampler and its `--no-picture` option (both added after PY-1).
+**PY-1b (2026-10-13), done but for the owner's test:**
+- **Lamps:** the patch taps the interface board's JAMMA output command (`Hiraku::p1io_output`). Word 8 holds the lamps.
+  - The bits were read off the game's LAMP CHECK, item by item: SW-LAMP 1–9 = bits 0–8, HI-LAMP 1–5 = bits 14–10, LEFT-LAMP 1–2 = 15–16, RIGHT-LAMP 1–2 = 17–18.
+  - They form the cabinet family `pypopn`: pop'n's controls, Firebeat pop'n's lamp names. All 18 lamps light through the lights socket.
+  - `HK_PY_P1IO_LOG=<file>` logs the command's payload changes.
+- **The input poll:** the game sends that command, and gets the input report back, **exactly once per frame**. This is the fact PY-4 starts from.
+- **Launcher:**
+  - accepts a `.py1`;
+  - the ingester also takes a set's folder (the `.py1` beside it);
+  - Python games get `--renderer vk`, a `pypopn` family name and icon, and Python-specific install and build hints.
+- **NVRAM:**
+  - Reliquary rewrites the BBSRAM file in the NVRAM folder on every write; the core copies the dump's files there only when they're missing.
+  - pop'n 9 writes nothing in normal play: bookkeeping is OFF by default, and a factory reset rewrites identical bytes.
+  - A scripted change of a saved setting is still to do. Test-mode submenus miss 6-frame presses (10 work), and the hold-red-and-press-blue change didn't take in a script. The owner's hands-on test covers it meanwhile.
+- **Packaging:**
+  - Reliquary is built with `$ORIGIN/lib` in the run path and FFmpeg loaded at run time (the binaries no longer need it).
+  - `tools/package.sh` adds `resources/`, the libraries built for Reliquary and the CHD reader. The packaged binary runs with the build's `deps/` moved away.
+- **Reliquary pinned:** 1.9.4, the zip's SHA-256 and the update procedure are in `oracle/pcsx2/README.md`. The patch: 7 files, 190 lines.
+
+**Next:** the owner's test; then PY-2 (measurements on low-end hardware). The profile behind it was measured with the core's `HK_PY_PROFILE=1` sampler and its `--no-picture` option (both added after PY-1).
 
 ### Decisions (owner, 2026-10-13)
 

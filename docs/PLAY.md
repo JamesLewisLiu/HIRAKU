@@ -503,4 +503,10 @@ build/cmake/hiraku-popn9 --window --renderer vk
 
 In test mode, blue (buttons 4/6) moves and red (5) selects; I/O CHECK > INPUT CHECK shows SW1–SW9 lighting for buttons 1–9.
 
-**Not yet:** lamps (the interface board's outputs aren't decoded), the board's own CPU (Reliquary answers its FireWire commands directly), other Python games (they need their own `games/<id>/game.toml`; the ingester tells you the program's SHA-1).
+**Lamps:** the 9 button lamps, 5 top lamps and 4 side lamps, through the lights socket and HID lamps (docs/LIGHTS.md), as the game's LAMP CHECK names them.
+
+**From the launcher:** drop the `.py1` (or the set's folder) on its window; it passes `--renderer vk` for Python games.
+
+**On another PC:** `tools/package.sh` takes the Python binaries along with Reliquary's resources and the libraries built for it; `tools/pack-data.py DEST popn9` copies the game's data, CHD included (2.4 GB).
+
+**Not yet:** the board's own CPU (Reliquary answers its FireWire commands directly), other Python games (they need their own `games/<id>/game.toml`; the ingester tells you the program's SHA-1).
