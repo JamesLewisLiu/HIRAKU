@@ -517,7 +517,8 @@ In test mode, blue (buttons 4/6) moves and red (5) selects; I/O CHECK > INPUT CH
 - **What works:** with it ON, HIRAKU plays the cabinet's card reader/writer and 10-key, and Konami's e-AMUSEMENT server (closed in 2003) inside the emulator, with no network traffic.
   - The title screen says "e-AMUSEMENT connected!" and "cards can be used!!".
   - A new card is registered as on the cabinet: after Start, put the card in (Insert), enter a name, then a 4-digit PIN twice on the 10-key. The game writes the card ("card save complete") and plays on with it.
-- **Not yet:** what the card keeps between credits (the player data, written to the server at the end of a credit), rankings, and KONAMI ID.
+  - The player data is saved at the end of each credit (in the save folder's `eamuse/`). Next time, the card and the PIN bring back your name, character and options; a wrong PIN plays without the card.
+- **Not yet:** rankings, KONAMI ID, p-friend and the Gambler Z labyrinth.
 - **The card:** `card.bin` in the save folder (`~/.local/share/hiraku/popn9`), 128 bytes, created as a fresh pop'n 9 card. Insert puts it in the slot (or takes it back); the reader takes it when the game opens the slot and gives it back when the game ejects it.
 - **The 10-key:** the numeric keypad's 0–9, Enter and `.`, with Backspace as Clear.
 

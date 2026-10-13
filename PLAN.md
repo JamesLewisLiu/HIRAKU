@@ -1288,7 +1288,13 @@ Each phase ends with `tools/regress.py check popn9-play` bit-identical, unless i
       - `numbering.assign` gets `2003010000000010` (16 digits, Luhn check);
       - the game formats, writes and reads back the card: `68 23 41 01` + CRC-8, the ID at 6–13 (byte-reversed), CRC-16 at 0x3f;
       - "カードセーブ完了", then `userid.ctou` (no KONAMI ID), and mode select with the card.
-    - **Not done yet:** a credit played with the card (userdata.write at the end, then userdata.read on the next insert), rank registration, KONAMI ID (userid adduser/addcard), p_friend, eemall.
+    - **Checked, a whole credit and the card again** (`oracle/scripts/popn9-card-new.his`, then `popn9-card-again.his`, same save):
+      - at the credit's end the game sends `p_friend.state` and `userdata.write card=… time="2003-06-02 06:42:41+9"`, with the player data base64 in `<b>` (chunks of 0x200 bytes, `0x197fc0`); the server keeps the time and the `<b>` chunks;
+      - next credit: `userdata.read` gets them back, the game skips the name and asks the PIN;
+      - 1234 shows the player's name ("あああ"), character and options, then `p_friend.get` and `userid.ctou`, and mode select with the card;
+      - a wrong PIN gets "パスワードが違います" and, after the retries, play without the card;
+      - the PIN is checked by the game, from the player data.
+    - **Not done yet:** rankings (`rank.get` is answered empty and `rank.register` isn't seen yet), KONAMI ID (`userid` ctou/adduser/addcard answer nothing), p_friend, eemall, and the Gambler Z labyrinth (`rank.*_gz`).
     - **Seen once:** one `popn9-play` check differed right after a rebuild, then was identical three times running. Where it differed was not captured; watch for it.
   - **Debugging aids:** `HK_PY_WATCH=addr,…` prints EE RAM words when they change. Ghidra headless decompiles (`$HK_PYTHON_WORK/ghidra`: `Decomp.java OUT addr|range:A-B…`, `Refs.java addr…`).
 - **Tools:**
