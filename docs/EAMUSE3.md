@@ -271,7 +271,7 @@ rank_offset rank_num`; `get_gz` has no courses.
   `course="0" music="3" combo="365"` for the first course (3 songs) cleared. A run that clears no
   song sends none.
 - **`register_gz`** sends `gpcb_id prog parts shop_name area_num`, at the end of a credit in
-  event phases 1–3 [game], after that credit's labyrinth (its walk and any boss fight), while the
+  event phases 1 and 2 [game], after that credit's labyrinth (its walk and any boss fight), while the
   item list shows:
   - `parts` is the labyrinth's items word (below) in 8 hex digits, `prog` the number of its bits set
     (0–25; `0x188248`). A save with two songs and the first boss sent `prog="4" parts="00084003"`;
@@ -280,6 +280,9 @@ rank_offset rank_num`; `get_gz` has no courses.
   - **Gambler Z progress is the shop's, per cabinet.** The labyrinth itself lives in the cabinet's
     own settings; the server only ranks the shops (see below).
 - **`get_h`** and **`get_gz`** come at start-up in phases MAX and 1–3.
+- **Phase 3** (GAMBLER Z DATA RELEASE) ends the event [game]: no labyrinth after a credit and no
+  `register_gz`, but `get_gz` still comes at start-up, and attract mode shows the shop ranking
+  (the final standings) after its demos, in place of the course pages.
 - **Other statuses:** 700 and 701 make the game show "not ranked"-style results (meaning
   unconfirmed).
 - **When it's sent:** a course result is registered when a card is in use (`0x1359e8`, from the
@@ -413,4 +416,3 @@ The card holds no player data, only an identity.
 - `package.intend`; what `alter` and `aflag` are for; what the pop'n friends statuses 600 and 601
   mean to a player.
 - What 700/701 mean exactly.
-- **The Gambler Z labyrinth:** what phase 3 does with it, and a boss fought in play.
