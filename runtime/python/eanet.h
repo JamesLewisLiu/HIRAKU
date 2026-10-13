@@ -1,11 +1,15 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// The network a Python 1 cabinet's e-AMUSEMENT sees, inside HIRAKU: no host sockets. The
-// interface board has the network port, and the game (through the IOP) sends it BSD-style
-// socket commands on channels 0-7 (PLAN.md section 21, "e-AMUSEMENT"). This answers them
-// as a small LAN would:
+// The network a Python 1 cabinet's e-AMUSEMENT sees, inside HIRAKU: no host sockets of its own.
+// The interface board has the network port, and the game (through the IOP) sends it BSD-style
+// socket commands on channels 0-7 (PLAN.md section 21, "e-AMUSEMENT"). This answers them as
+// a small LAN would:
 //   - the board's addresses: 192.168.50.2/24, gateway and DNS 192.168.50.1;
-//   - DNS (UDP 53): any name starting "services" is 192.168.50.1;
-//   - TCP to 192.168.50.1: an HTTP/1.0 server in the process (a handler per request).
+//   - DNS (UDP 53): "services..." is 192.168.50.1; any other name gets an address of its own
+//     on the LAN (192.168.50.10 on), remembered, so a connection to it names its host again;
+//   - TCP: each HTTP request the game sends goes to a handler, with the host and port it
+//     connected to (docs/EAMUSE3.md). The handler answers at once (the server in the core:
+//     reproducible) or later (a real server on the network); a recv waits for the answer, as
+//     the board's does.
 // Board commands (the game's RPC number + 1): 0b socket, 0c bind, 0d listen, 0e accept,
 // 0f connect, 13 setsockopt, 14 send, 15 sendto, 16 recv, 17 recvfrom, 1c shutdown,
 // 1d close, 1e a board property. The rest (start-up, DHCP, the machine id) stay the
@@ -15,6 +19,7 @@
 #include <cstdint>
 #include <functional>
 #include <map>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -29,32 +34,55 @@ public:
         std::function<void(uint32_t channel, const uint32_t words[8])> respond;
         std::function<bool(uint32_t addr, uint8_t *data, uint32_t size)> read;
     };
-    // One HTTP request in (bytes as sent), the whole response out.
-    using Http = std::function<std::string(const std::string &request)>;
+    // Where a connection goes: the name the game looked up ("services..." for its e-AMUSEMENT
+    // server), or a dotted address if it connected to one directly; and the port.
+    struct Target {
+        std::string host;
+        uint16_t port = 0;
+        bool services = false;   // the game's own server ("services...")
+    };
+    // One HTTP request in (bytes as sent); call `done` with the whole response, now or later
+    // and from any thread ("" = the connection failed).
+    using Http = std::function<void(const Target &, const std::string &request, std::function<void(std::string)> done)>;
 
     VirtualNet(Io io, Http http) : io_(std::move(io)), http_(std::move(http)) {}
 
     // A board socket command; false = not ours.
     bool command(uint32_t channel, const uint32_t *p, uint32_t quads);
+    // Call once a frame (the emulator's thread): answers that arrived complete waiting recvs.
+    void poll();
 
     // Each command and its answer, for HK_PY_NET_LOG.
     std::function<void(const std::string &)> log;
 
 private:
     struct Socket {
-        int type = 0;              // 1 stream, 2 datagram
-        bool connected = false;    // to the server
-        std::string request;       // stream: bytes the game sent, not answered yet
+        uint64_t id = 0;           // unique, unlike the descriptor
+        int type = 0;              // 1 stream, 2 datagram, 3 raw (ICMP)
+        Target target;
+        bool connected = false;
+        std::string request;       // stream: bytes the game sent, not complete yet
         std::string pending;       // stream: answer not read yet
-        bool answered = false;     // the server has answered (and will close: HTTP/1.0)
+        bool in_flight = false;    // a request is with the handler
+        bool answered = false;     // the handler has answered (and will close: HTTP/1.0)
+        bool waiting = false;      // a recv is parked: channel, buffer, length
+        uint32_t wait_ch = 0, wait_buf = 0, wait_len = 0;
         std::vector<std::vector<uint8_t>> datagrams;   // datagram: answers not read yet
     };
     void respond(uint32_t channel, int32_t ret, uint32_t w2 = 0, uint32_t w3 = 0);
     void http_progress(Socket &s);
+    void deliver(Socket &s, uint32_t ch, uint32_t buf, uint32_t len);
+    std::vector<uint8_t> dns_answer(const uint8_t *q, size_t n, std::string *name);
+    Target target_of(uint32_t ip_be, uint16_t port) const;
 
     Io io_;
     Http http_;
     std::map<int, Socket> sockets_;
+    uint64_t next_id_ = 1;
+    std::map<std::string, uint32_t> name_ip_;   // DNS names given out, and back
+    std::map<uint32_t, std::string> ip_name_;
+    std::mutex done_mutex_;                       // answers from the handler, any thread
+    std::vector<std::pair<uint64_t, std::string>> done_;
 };
 
 }  // namespace hk::py

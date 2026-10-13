@@ -138,6 +138,15 @@ void EamuseServer::rc4(const std::vector<uint8_t> &k, std::string &d) {
     }
 }
 
+std::string EamuseServer::clear(const std::string &m) {
+    const size_t he = m.find("\r\n\r\n");
+    if (he == std::string::npos) return m;
+    const std::string head = m.substr(0, he), info = header(head, "X-Eamuse-Info");
+    std::string body = m.substr(he + 4);
+    if (!info.empty()) rc4(key(info), body);
+    return head.substr(0, head.find("\r\n")) + (info.empty() ? " (plain): " : ": ") + body;
+}
+
 bool EamuseServer::parse(const std::string &x, Call &c) {
     size_t at = x.find("<call");
     if (at == std::string::npos) return false;

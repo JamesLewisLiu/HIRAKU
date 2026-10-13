@@ -117,6 +117,10 @@ target_compile_options(hiraku_xt446 PRIVATE -w -O3)
 add_executable(hiraku-xt446 tools/xt446/xt446_render.cpp runtime/core/sampler.cpp)
 target_link_libraries(hiraku-xt446 PRIVATE hiraku_xt446)
 
+# The e-AMUSE3 server of the Python core, on the network (docs/EAMUSE3.md): plain C++, no emulator
+add_executable(hiraku-eamuse tools/eamuse/server.cpp runtime/python/easerver.cpp)
+target_include_directories(hiraku-eamuse PRIVATE runtime)
+
 # --- cabinet tables, lights file formats (shared with the launcher) -------------
 add_library(hiraku_cabinet STATIC runtime/shell/cabinet.cpp runtime/host/hiddesc.cpp)
 target_include_directories(hiraku_cabinet PUBLIC runtime)

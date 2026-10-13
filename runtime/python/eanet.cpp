@@ -6,6 +6,7 @@
 #include <cstdarg>
 #include <cstdio>
 #include <cstring>
+#include <mutex>
 
 namespace hk::py {
 
@@ -26,32 +27,6 @@ std::string fmt(const char *f, ...) {
     vsnprintf(b, sizeof b, f, a);
     va_end(a);
     return b;
-}
-
-// The A record for a "services..." name, NXDOMAIN for anything else; empty if not a query.
-std::vector<uint8_t> dns_answer(const uint8_t *q, size_t n, std::string *name) {
-    if (n < 12 || q[4] != 0 || q[5] == 0) return {};
-    size_t at = 12;
-    std::string first;
-    while (at < n && q[at] != 0) {
-        const size_t len = q[at];
-        if ((len & 0xc0) || at + 1 + len >= n) return {};
-        if (!name->empty()) *name += '.';
-        name->append(reinterpret_cast<const char *>(q + at + 1), len);
-        if (first.empty()) first = name->substr(0, len);
-        at += 1 + len;
-    }
-    if (at + 5 > n) return {};
-    at += 5;   // the terminating 0, type, class
-    std::vector<uint8_t> r(q, q + at);
-    const bool ours = first == "services";
-    r[2] = 0x81; r[3] = ours ? 0x80 : 0x83;
-    r[4] = 0; r[5] = 1; r[6] = 0; r[7] = ours ? 1 : 0;
-    r[8] = r[9] = r[10] = r[11] = 0;
-    if (ours)
-        r.insert(r.end(), {0xc0, 0x0c, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00, 0x00, 60, 0x00, 0x04,
-                           SERVER_IP[0], SERVER_IP[1], SERVER_IP[2], SERVER_IP[3]});
-    return r;
 }
 
 uint16_t checksum(const uint8_t *p, size_t n) {
@@ -83,6 +58,53 @@ std::vector<uint8_t> echo_reply(const std::vector<uint8_t> &icmp, uint32_t to) {
 
 }  // namespace
 
+// The A record for a name: "services..." is the server; any other name an address of its own
+std::vector<uint8_t> VirtualNet::dns_answer(const uint8_t *q, size_t n, std::string *name) {
+    if (n < 12 || q[4] != 0 || q[5] == 0) return {};
+    size_t at = 12;
+    while (at < n && q[at] != 0) {
+        const size_t len = q[at];
+        if ((len & 0xc0) || at + 1 + len >= n) return {};
+        if (!name->empty()) *name += '.';
+        name->append(reinterpret_cast<const char *>(q + at + 1), len);
+        at += 1 + len;
+    }
+    if (at + 5 > n || name->empty()) return {};
+    at += 5;   // the terminating 0, type, class
+    uint32_t ip = SERVER_IP_BE;
+    if (name->compare(0, 8, "services") != 0) {
+        auto it = name_ip_.find(*name);
+        if (it == name_ip_.end()) {
+            const uint32_t next = 0xc0a8320a + (uint32_t)name_ip_.size();   // 192.168.50.10 on
+            if ((next & 0xff) == 0xff) return {};
+            it = name_ip_.emplace(*name, next).first;
+            ip_name_[next] = *name;
+        }
+        ip = it->second;
+    }
+    std::vector<uint8_t> r(q, q + at);
+    r[2] = 0x81; r[3] = 0x80;
+    r[4] = 0; r[5] = 1; r[6] = 0; r[7] = 1;
+    r[8] = r[9] = r[10] = r[11] = 0;
+    r.insert(r.end(), {0xc0, 0x0c, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00, 0x00, 60, 0x00, 0x04,
+                       (uint8_t)(ip >> 24), (uint8_t)(ip >> 16), (uint8_t)(ip >> 8), (uint8_t)ip});
+    return r;
+}
+
+VirtualNet::Target VirtualNet::target_of(uint32_t ip, uint16_t port) const {
+    Target t;
+    t.port = port;
+    if (ip == SERVER_IP_BE) {
+        t.host = "services";
+        t.services = true;
+    } else if (auto it = ip_name_.find(ip); it != ip_name_.end()) {
+        t.host = it->second;
+    } else {
+        t.host = fmt("%u.%u.%u.%u", ip >> 24, (ip >> 16) & 255, (ip >> 8) & 255, ip & 255);
+    }
+    return t;
+}
+
 void VirtualNet::respond(uint32_t channel, int32_t ret, uint32_t w2, uint32_t w3) {
     uint32_t w[8] = {};
     w[1] = __builtin_bswap32((uint32_t)ret);
@@ -101,8 +123,45 @@ void VirtualNet::http_progress(Socket &s) {
     if (s.request.size() < head + 4 + body) return;
     const std::string req = s.request.substr(0, head + 4 + body);
     s.request.erase(0, head + 4 + body);
-    s.pending += http_(req);
-    s.answered = true;
+    s.in_flight = true;
+    const uint64_t id = s.id;
+    http_(s.target, req, [this, id](std::string answer) {
+        std::lock_guard<std::mutex> l(done_mutex_);
+        done_.emplace_back(id, std::move(answer));
+    });
+    poll();   // an answer given at once is there at once
+}
+
+void VirtualNet::deliver(Socket &s, uint32_t ch, uint32_t buf, uint32_t len) {
+    if (s.pending.empty()) {
+        respond(ch, 0);   // the server has closed (HTTP/1.0)
+        if (log) log(fmt("ch%u 16 recv = 0", ch));
+        return;
+    }
+    const uint32_t n = (uint32_t)std::min<size_t>(s.pending.size(), len);
+    io_.write(buf, reinterpret_cast<const uint8_t *>(s.pending.data()), n);
+    s.pending.erase(0, n);
+    respond(ch, (int32_t)n);
+    if (log) log(fmt("ch%u 16 recv = %u", ch, n));
+}
+
+void VirtualNet::poll() {
+    std::vector<std::pair<uint64_t, std::string>> done;
+    {
+        std::lock_guard<std::mutex> l(done_mutex_);
+        done.swap(done_);
+    }
+    for (auto &[id, answer] : done)
+        for (auto &[fd, s] : sockets_) {
+            if (s.id != id) continue;
+            s.pending += answer;
+            s.in_flight = false;
+            s.answered = true;
+            if (s.waiting) {
+                s.waiting = false;
+                deliver(s, s.wait_ch, s.wait_buf, s.wait_len);
+            }
+        }
 }
 
 bool VirtualNet::command(uint32_t ch, const uint32_t *p, uint32_t quads) {
@@ -130,6 +189,7 @@ bool VirtualNet::command(uint32_t ch, const uint32_t *p, uint32_t quads) {
         int fd = 0;
         while (sockets_.count(fd)) fd++;
         sockets_[fd].type = (int)arg(2);
+        sockets_[fd].id = next_id_++;
         respond(ch, fd);
         note(fmt("socket(%u, %u) = %d", arg(1), arg(2), fd));
         return true;
@@ -147,11 +207,14 @@ bool VirtualNet::command(uint32_t ch, const uint32_t *p, uint32_t quads) {
     case 0x0f: {   // connect(fd, family/port, address)
         const int fd = (int)arg(1);
         auto it = sockets_.find(fd);
-        const bool ok = it != sockets_.end() && arg(3) == SERVER_IP_BE;
-        if (ok) it->second.connected = true;
+        const bool ok = it != sockets_.end();
+        if (ok) {
+            it->second.connected = true;
+            it->second.target = target_of(arg(3), (uint16_t)arg(2));
+        }
         respond(ch, ok ? 0 : -1);
         note(fmt("connect(%d, %u.%u.%u.%u:%u) = %d", fd, arg(3) >> 24, (arg(3) >> 16) & 255, (arg(3) >> 8) & 255,
-                 arg(3) & 255, arg(2) & 0xffff, ok ? 0 : -1));
+                 arg(3) & 255, arg(2) & 0xffff, ok ? 0 : -1) + (ok ? " " + it->second.target.host : ""));
         return true;
     }
     case 0x14: case 0x15: {   // send / sendto(fd, buffer, length, flags[, family/port, address])
@@ -201,17 +264,20 @@ bool VirtualNet::command(uint32_t ch, const uint32_t *p, uint32_t quads) {
             note(fmt("recvfrom(%d) = %zu", fd, d.size()));
             return true;
         }
-        if (s.pending.empty()) {
-            const int32_t r = s.answered ? 0 : -0xe;
-            respond(ch, r);
-            note(fmt("recv(%d) = %d", fd, r));
+        if (s.pending.empty() && s.in_flight) {   // the answer is on its way: the recv waits for it
+            s.waiting = true;
+            s.wait_ch = ch;
+            s.wait_buf = arg(2);
+            s.wait_len = arg(3);
+            note(fmt("recv(%d) waits", fd));
             return true;
         }
-        const uint32_t n = (uint32_t)std::min<size_t>(s.pending.size(), arg(3));
-        io_.write(arg(2), reinterpret_cast<const uint8_t *>(s.pending.data()), n);
-        s.pending.erase(0, n);
-        respond(ch, (int32_t)n);
-        note(fmt("recv(%d) = %u", fd, n));
+        if (s.pending.empty() && !s.answered) {
+            respond(ch, -0xe);
+            note(fmt("recv(%d) = -14 (nothing sent)", fd));
+            return true;
+        }
+        deliver(s, ch, arg(2), arg(3));
         return true;
     }
     case 0x1d: {   // close

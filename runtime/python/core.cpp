@@ -78,6 +78,7 @@
 
 #include "python/cardunit.h"
 #include "python/eanet.h"
+#include "python/eaclient.h"
 #include "python/easerver.h"
 #include "shell/cabinet.h"
 #include "shell/core.h"
@@ -264,6 +265,10 @@ public:
         if (name == "--pcsx2-log") { pcsx2_log_ = true; return true; }
         if (name == "--no-picture") { no_picture_ = true; return true; }
         if (name == "--picture-overlap") { picture_now_ = false; return true; }
+        if (name == "--eamuse") {   // local (the server in the core) or http://host[:port][/path]
+            eamuse_ = value();
+            return eamuse_ == "local" || hk::py::EamuseRemote(eamuse_).ok();
+        }
         if (name == "--pcsx2-set") {   // Section/Key=value, after the core's own settings
             const std::string v = value();
             const size_t slash = v.rfind('/', v.find('=')), eq = v.find('=');
@@ -281,7 +286,9 @@ public:
                "  --picture-overlap    hand over the previous vsync's picture, so the GS overlaps the EE: less\n"
                "                       time per frame, a frame (16.7 ms) more latency. The default waits for each\n"
                "                       vsync's own picture\n"
-               "  --pcsx2-set S/K=V    set one of the emulator's settings (its ini's section S, key K), for experiments\n";
+               "  --pcsx2-set S/K=V    set one of the emulator's settings (its ini's section S, key K), for experiments\n"
+               "  --eamuse local|URL   e-AMUSEMENT (when the game has it on): the server in the core (default, offline,\n"
+               "                       reproducible), or a real one at http://host[:port][/path] (docs/EAMUSE3.md)\n";
     }
 
     bool init(const Options &o) override {
@@ -330,7 +337,28 @@ public:
             io.write = [](uint32_t addr, const uint8_t *d, uint32_t n) { Hiraku::net_write(addr, d, n); };
             io.respond = [](uint32_t ch, const uint32_t w[8]) { Hiraku::net_respond(ch, w); };
             io.read = [](uint32_t addr, uint8_t *d, uint32_t n) { return Hiraku::iop_read(addr, d, n); };
-            net_ = std::make_unique<hk::py::VirtualNet>(io, [this](const std::string &req) { return http(req); });
+            net_ = std::make_unique<hk::py::VirtualNet>(io, [this](const hk::py::VirtualNet::Target &t, const std::string &req,
+                                                                   std::function<void(std::string)> done) {
+                if (!remote_) { done(server_->handle(req)); return; }
+                // online: off the emulator's thread; the recv waits for the answer
+                std::thread([this, t, req, done = std::move(done)] {
+                    std::string error;
+                    std::string answer = remote_->exchange(t, req, &error);
+                    if (net_log_) {
+                        std::lock_guard<std::mutex> l(net_log_mutex_);
+                        fprintf(net_log_, "online %s:%u %s\n  -> %s\n", t.services ? remote_->host().c_str() : t.host.c_str(),
+                                t.services ? remote_->port() : t.port, hk::py::EamuseServer::clear(req).c_str(),
+                                answer.empty() ? ("failed: " + error).c_str() : hk::py::EamuseServer::clear(answer).c_str());
+                        fflush(net_log_);
+                    }
+                    if (answer.empty()) fprintf(stderr, "e-AMUSEMENT: %s\n", error.c_str());
+                    done(std::move(answer));
+                }).detach();
+            });
+            if (eamuse_ != "local") {
+                remote_ = std::make_unique<hk::py::EamuseRemote>(eamuse_);
+                printf("e-AMUSEMENT: online, %s\n", eamuse_.c_str());
+            }
             server_ = std::make_unique<hk::py::EamuseServer>(run_dir_ + "/eamuse");
             // the emulated RTC's start (init_emulator: 2003-06-01 12:00) plus the machine's own time
             server_->now = [this] { return (int64_t)1054468800 + (int64_t)seconds(); };
@@ -362,6 +390,7 @@ public:
         if (const char *f = getenv("HK_PY_NET_LOG")) net_log_ = fopen(f, "w");
         if (net_) {
             if (net_log_) net_->log = server_->log = [this](const std::string &s) {
+                std::lock_guard<std::mutex> l(net_log_mutex_);
                 fprintf(net_log_, "%llu %s\n", (unsigned long long)frame_, s.c_str());
                 fflush(net_log_);
             };
@@ -586,6 +615,7 @@ private:
                     p = *e ? e + 1 : e;
                 }
         }
+        if (net_) net_->poll();   // online answers that arrived
         for (auto &[addr, last] : watch_) {
             uint32_t v;
             memcpy(&v, eeMem->Main + (addr & 0x1fffffc), 4);
@@ -638,7 +668,9 @@ private:
     FILE *net_log_ = nullptr;
     std::unique_ptr<hk::py::EamuseServer> server_;
     std::vector<std::pair<uint32_t, uint32_t>> watch_;   // HK_PY_WATCH: address, last value
-    std::string http(const std::string &req) { return server_->handle(req); }
+    std::unique_ptr<hk::py::EamuseRemote> remote_;   // --eamuse URL: online
+    std::string eamuse_ = "local";
+    std::mutex net_log_mutex_;
     std::map<std::string, int> held_;   // the card button's and 10-key's last values
     std::string card_state_;
     void card_changed() {

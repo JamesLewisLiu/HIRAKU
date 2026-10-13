@@ -35,6 +35,8 @@ public:
     // The protocol's own pieces, public for tools and tests.
     static std::vector<uint8_t> key(const std::string &info);   // "1-xxxxxxxx-xxxx"
     static void rc4(const std::vector<uint8_t> &key, std::string &data);
+    // An HTTP message (request or answer) as text: its first line and its body in clear.
+    static std::string clear(const std::string &message);
 
 private:
     // One module element of a call: <MODULE method=.. ...>inner</MODULE>. A call can carry
