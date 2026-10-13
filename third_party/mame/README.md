@@ -59,6 +59,7 @@ driver class as the board.
   - With no table (`HK_573_BLOCKS=0`, or a game without a recording) the loop is MAME's.
 - `mdec.cpp` / `mdec.h`: the IDCT sums over the nonzero coefficients only, from a transposed table. These are the same integer sums in another order, unsigned so they wrap as MAME's do.
 - `video/psx.cpp` (the GPU): textured pixels compute the level tables (`(component & 31) << 8`) instead of reading three 128 KiB tables. At shade 0x80 they skip the shade tables, which map every level to itself there.
+- `3rdparty/minimp3/minimp3.h`: on AArch64 the NEON path converts the decoded samples to 16 bits as the SSE path does (clamp, then round to nearest even). Upstream's NEON code rounds halves away from zero, so ddr3mj's and DrumMania's MP3 music came out different on ARM hosts (regress, 2026-10-13).
 - The H8 files are unchanged.
 
 ## The shim

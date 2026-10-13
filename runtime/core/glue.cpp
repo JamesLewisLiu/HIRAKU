@@ -22,11 +22,12 @@
 // Only one fiber runs at a time and hk_ctx is "the CPU", shared by all.
 //
 // Fibers switch tens of thousands of times per second (every guest thread
-// switch). On x86-64 the switch is a few instructions of our own: libc's
-// swapcontext also saves and restores the signal mask, a system call each
-// time, which cost ~14 % of a whole run. Other hosts use ucontext.
+// switch). On x86-64 and AArch64 the switch is a few instructions of our own:
+// libc's swapcontext also saves and restores the signal mask, a system call
+// each time, which cost ~14 % of a whole run (and Android's libc has no
+// ucontext functions at all). Other hosts use ucontext.
 #include <sys/mman.h>
-#if defined(__x86_64__) && !defined(_WIN32)
+#if (defined(__x86_64__) || defined(__aarch64__)) && defined(__ELF__)
 #define HK_FIBER_ASM 1
 #else
 #include <ucontext.h>
@@ -49,10 +50,11 @@ constexpr size_t FIBER_STACK = 1 << 20;
 
 #if HK_FIBER_ASM
 // hk_fiber_switch(&save_sp, load_sp): push the callee-saved registers and the
-// SSE/x87 control words on this stack, store the stack pointer in *save_sp,
-// load load_sp and pop the same from there. A new fiber's stack is prepared
-// by fiber_stack_init so that this "returns" into fiber_entry.
+// floating-point control word(s) on this stack, store the stack pointer in
+// *save_sp, load load_sp and pop the same from there. A new fiber's stack is
+// prepared by fiber_stack_init so that this "returns" into fiber_entry.
 extern "C" void hk_fiber_switch(void **save_sp, void *load_sp);
+#if defined(__x86_64__)
 asm(R"(
     .text
     .globl hk_fiber_switch
@@ -82,6 +84,48 @@ hk_fiber_switch:
     ret
     .size hk_fiber_switch, .-hk_fiber_switch
 )");
+#else
+// AArch64: x19-x28, the frame pointer x29, the link register x30 (where to
+// return to), d8-d15 (the low halves of v8-v15: all the ABI preserves) and FPCR.
+asm(R"(
+    .text
+    .globl hk_fiber_switch
+    .hidden hk_fiber_switch
+    .type hk_fiber_switch, %function
+hk_fiber_switch:
+    sub sp, sp, #176
+    stp x19, x20, [sp, #0]
+    stp x21, x22, [sp, #16]
+    stp x23, x24, [sp, #32]
+    stp x25, x26, [sp, #48]
+    stp x27, x28, [sp, #64]
+    stp x29, x30, [sp, #80]
+    stp d8, d9, [sp, #96]
+    stp d10, d11, [sp, #112]
+    stp d12, d13, [sp, #128]
+    stp d14, d15, [sp, #144]
+    mrs x2, fpcr
+    str x2, [sp, #160]
+    mov x2, sp
+    str x2, [x0]
+    mov sp, x1
+    ldr x2, [sp, #160]
+    msr fpcr, x2
+    ldp x19, x20, [sp, #0]
+    ldp x21, x22, [sp, #16]
+    ldp x23, x24, [sp, #32]
+    ldp x25, x26, [sp, #48]
+    ldp x27, x28, [sp, #64]
+    ldp x29, x30, [sp, #80]
+    ldp d8, d9, [sp, #96]
+    ldp d10, d11, [sp, #112]
+    ldp d12, d13, [sp, #128]
+    ldp d14, d15, [sp, #144]
+    add sp, sp, #176
+    ret
+    .size hk_fiber_switch, .-hk_fiber_switch
+)");
+#endif
 #endif
 
 struct Fiber {
@@ -129,6 +173,7 @@ void thread_main() {
     __builtin_unreachable();
 }
 
+#if defined(__x86_64__)
 // The frame hk_fiber_switch pops, from the saved stack pointer up: control
 // words, r15 r14 r13 r12 rbx rbp, return address (fiber_entry), then a dummy
 // return address for fiber_entry itself, which keeps the ABI's alignment
@@ -144,6 +189,22 @@ void *fiber_stack_init(void *stack) {
     sp[8] = 0;
     return sp;
 }
+#else
+// The 176-byte frame hk_fiber_switch pops (see there), at the top of the
+// stack: x30 = fiber_entry, x29 = 0 (the end of the frame chain), the current
+// FPCR, the rest zero. sp is the stack's top on entry, 16-aligned as the ABI
+// wants.
+void *fiber_stack_init(void *stack) {
+    auto *top = reinterpret_cast<uint64_t *>(static_cast<char *>(stack) + FIBER_STACK);
+    uint64_t *sp = top - 22;
+    for (int k = 0; k < 22; k++) sp[k] = 0;
+    sp[11] = reinterpret_cast<uint64_t>(&fiber_entry);
+    uint64_t fpcr;
+    asm volatile("mrs %0, fpcr" : "=r"(fpcr));
+    sp[20] = fpcr;
+    return sp;
+}
+#endif
 #endif
 
 Fiber *new_thread_fiber() {

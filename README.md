@@ -36,6 +36,8 @@ tools/ingest.py path/to/program-disc.cue --romset path/to/bm3final.zip --hdd pat
 analyze/ghidra.sh bm3final                  # → build/bm3final/manifest.json
 analyze/prep.py bm3final                    # → build/bm3final/recomp.txt
 cmake -S . -B build/cmake -G Ninja && ninja -C build/cmake
+cmake -B build/arm64 -G Ninja -DCMAKE_TOOLCHAIN_FILE=cmake/aarch64-linux-gnu.cmake && ninja -C build/arm64 -j2   # 64-bit ARM Linux (headless; runs here under qemu)
+HK_REGRESS_BIN=build/arm64 tools/regress.py check   # the ARM build against the same baseline
 ctest --test-dir build/cmake                # instruction semantics vs QEMU
 tools/regress.py record; tools/regress.py check   # runs stay bit-identical (per-frame picture + sound hashes)
 tools/regress.py bench                      # share of a core, and host work per frame (mean / p99 / worst)

@@ -4,6 +4,8 @@
 
 #include "emu.h"
 
+#include <unistd.h>
+
 class ram_device : public device_t {
 public:
     ram_device(const machine_config &mconfig, const char *tag, device_t *owner, u32 clock = 0);
@@ -23,12 +25,13 @@ protected:
     void device_start() override { allocate(); }
 
 private:
-    // page-aligned, so the 573's recompiled blocks can write-protect the pages holding code
-    // (runtime/sys573/mips.cpp)
+    // aligned to the host's pages (4 KiB on x86-64, 16 KiB on some ARM hosts), so the 573's
+    // recompiled blocks can write-protect the pages holding code (runtime/sys573/mips.cpp)
     void allocate() {
         if (m_data) return;
-        const size_t n = ((size_t)m_size + 4095) & ~size_t(4095);
-        m_data.reset(static_cast<u8 *>(aligned_alloc(4096, n ? n : 4096)));
+        const size_t page = (size_t)sysconf(_SC_PAGESIZE);
+        const size_t n = ((size_t)m_size + page - 1) & ~(page - 1);
+        m_data.reset(static_cast<u8 *>(aligned_alloc(page, n ? n : page)));
         memset(m_data.get(), m_value, n);
     }
     struct freer { void operator()(u8 *p) const { free(p); } };

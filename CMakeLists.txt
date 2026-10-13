@@ -11,6 +11,10 @@ if(NOT CMAKE_BUILD_TYPE)
 endif()
 
 add_compile_options(-Wall -Wextra -fno-strict-aliasing)
+# The same results on every host (the regress dumps are bit-exact): no fused multiply-adds,
+# which compilers otherwise make wherever the host has them (every AArch64 CPU, x86-64 with
+# -march), and a signed plain char, as on x86-64 (it is unsigned on AArch64).
+add_compile_options(-ffp-contract=off -fsigned-char)
 include_directories(${CMAKE_SOURCE_DIR}/include)
 
 # Profile-guided optimisation (tools/pgo.py): HIRAKU's machines are interpreters, schedulers and
@@ -294,8 +298,8 @@ list(TRANSFORM HK_573_MAME PREPEND ${HK_MAME}/)
 set(HK_573_INC ${HK_MAME}/shim ${HK_MAME}/shim/stubs ${HK_MAME}/src/devices ${HK_MAME}/src/mame/konami
   ${HK_MAME}/src/emu ${HK_MAME}/src/3rdparty)
 # The System 573's MAME code (CPU interpreter, GPU, SPU): mostly MAME's interpreter, which
-# PGO (above) speeds up by ~30 % (PLAN.md section 19, 573-4). No -march: FMA contraction could
-# change floating-point results.
+# PGO (above) speeds up by ~30 % (PLAN.md section 19, 573-4). Safe with -march: contraction
+# into fused multiply-adds is off for everything (above).
 set(HK_573_OPT "-O3" CACHE STRING "compiler optimisation flags for the System 573's MAME code")
 separate_arguments(HK_573_OPT_LIST UNIX_COMMAND "${HK_573_OPT}")
 add_library(hiraku_mame573 STATIC ${HK_573_MAME})

@@ -1550,10 +1550,16 @@ static void mp3d_synth(float *xl, mp3d_sample_t *dstl, int nch, float *lins)
             dstl[(49 + i)*nch] = _mm_extract_epi16(pcm8, 6);
 #else /* HAVE_SSE */
             int16x4_t pcma, pcmb;
+#if defined(__aarch64__) || defined(_M_ARM64)
+            /* HIRAKU: as the SSE path (clamp, round to nearest even), for the same samples on every host */
+            pcma = vqmovn_s32(vcvtnq_s32_f32(vmaxq_f32(vminq_f32(a, VSET(32767.0f)), VSET(-32768.0f))));
+            pcmb = vqmovn_s32(vcvtnq_s32_f32(vmaxq_f32(vminq_f32(b, VSET(32767.0f)), VSET(-32768.0f))));
+#else
             a = VADD(a, VSET(0.5f));
             b = VADD(b, VSET(0.5f));
             pcma = vqmovn_s32(vqaddq_s32(vcvtq_s32_f32(a), vreinterpretq_s32_u32(vcltq_f32(a, VSET(0)))));
             pcmb = vqmovn_s32(vqaddq_s32(vcvtq_s32_f32(b), vreinterpretq_s32_u32(vcltq_f32(b, VSET(0)))));
+#endif
             vst1_lane_s16(dstr + (15 - i)*nch, pcma, 1);
             vst1_lane_s16(dstr + (17 + i)*nch, pcmb, 1);
             vst1_lane_s16(dstl + (15 - i)*nch, pcma, 0);
@@ -1831,10 +1837,16 @@ void mp3dec_f32_to_s16(const float *in, int16_t *out, int num_samples)
         out[i+7] = _mm_extract_epi16(pcm8, 7);
 #else /* HAVE_SSE */
         int16x4_t pcma, pcmb;
+#if defined(__aarch64__) || defined(_M_ARM64)
+        /* HIRAKU: as the SSE path (clamp, round to nearest even), for the same samples on every host */
+        pcma = vqmovn_s32(vcvtnq_s32_f32(vmaxq_f32(vminq_f32(a, VSET(32767.0f)), VSET(-32768.0f))));
+        pcmb = vqmovn_s32(vcvtnq_s32_f32(vmaxq_f32(vminq_f32(b, VSET(32767.0f)), VSET(-32768.0f))));
+#else
         a = VADD(a, VSET(0.5f));
         b = VADD(b, VSET(0.5f));
         pcma = vqmovn_s32(vqaddq_s32(vcvtq_s32_f32(a), vreinterpretq_s32_u32(vcltq_f32(a, VSET(0)))));
         pcmb = vqmovn_s32(vqaddq_s32(vcvtq_s32_f32(b), vreinterpretq_s32_u32(vcltq_f32(b, VSET(0)))));
+#endif
         vst1_lane_s16(out+i  , pcma, 0);
         vst1_lane_s16(out+i+1, pcma, 1);
         vst1_lane_s16(out+i+2, pcma, 2);

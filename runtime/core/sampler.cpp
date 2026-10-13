@@ -24,7 +24,14 @@ uintptr_t g_base = 0;
 void on_prof(int, siginfo_t *, void *uc) {
     auto *ctx = static_cast<ucontext_t *>(uc);
     int n = g_n;
-    if (n < MAX) { g_samples[n] = (uintptr_t)ctx->uc_mcontext.gregs[REG_RIP]; g_n = n + 1; }
+#if defined(__x86_64__)
+    const uintptr_t pc = (uintptr_t)ctx->uc_mcontext.gregs[REG_RIP];
+#elif defined(__aarch64__)
+    const uintptr_t pc = (uintptr_t)ctx->uc_mcontext.pc;
+#else
+    const uintptr_t pc = 0;
+#endif
+    if (n < MAX) { g_samples[n] = pc; g_n = n + 1; }
 }
 
 void dump() {

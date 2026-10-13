@@ -5,7 +5,8 @@
     third_party/mame/hiraku-edits.py SRC_DEVICES_DIR
 
 SRC_DEVICES_DIR is a MAME src/devices tree, or third_party/mame/src/devices
-holding fresh copies of the files listed in the README. The edits are applied
+holding fresh copies of the files listed in the README (and minimp3.h in the
+src/3rdparty next to it). The edits are applied
 in place. Every anchor must be found exactly once, so the script fails loudly
 when upstream changes the code an edit relies on. The H8 files need no edits.
 """
@@ -536,6 +537,26 @@ def video_psx_cpp(s):
     return s
 
 
+def minimp3_h(s):
+    # On AArch64 the NEON path rounds the 16-bit output as the SSE path does (clamp, then round
+    # to nearest even), not half away from zero: the same samples on every host.
+    def neon(s, indent, store, name):
+        i = ' ' * indent
+        old = (f"{i}a = VADD(a, VSET(0.5f));\n"
+               f"{i}b = VADD(b, VSET(0.5f));\n"
+               f"{i}pcma = vqmovn_s32(vqaddq_s32(vcvtq_s32_f32(a), vreinterpretq_s32_u32(vcltq_f32(a, VSET(0)))));\n"
+               f"{i}pcmb = vqmovn_s32(vqaddq_s32(vcvtq_s32_f32(b), vreinterpretq_s32_u32(vcltq_f32(b, VSET(0)))));\n"
+               f"{i}{store}\n")
+        new = ("#if defined(__aarch64__) || defined(_M_ARM64)\n"
+               f"{i}/* HIRAKU: as the SSE path (clamp, round to nearest even), for the same samples on every host */\n"
+               f"{i}pcma = vqmovn_s32(vcvtnq_s32_f32(vmaxq_f32(vminq_f32(a, VSET(32767.0f)), VSET(-32768.0f))));\n"
+               f"{i}pcmb = vqmovn_s32(vcvtnq_s32_f32(vmaxq_f32(vminq_f32(b, VSET(32767.0f)), VSET(-32768.0f))));\n"
+               "#else\n" + old[:-len(f"{i}{store}\n")] + "#endif\n" + f"{i}{store}\n")
+        return edit(s, old, new, name)
+    s = neon(s, 12, 'vst1_lane_s16(dstr + (15 - i)*nch, pcma, 1);', 'minimp3 synth rounding')
+    return neon(s, 8, 'vst1_lane_s16(out+i  , pcma, 0);', 'minimp3 f32_to_s16 rounding')
+
+
 def main():
     if len(sys.argv) != 2:
         sys.exit(__doc__)
@@ -543,7 +564,8 @@ def main():
     for rel, fn in [('sound/swp30.cpp', swp30_cpp), ('sound/swp30.h', swp30_h),
                     ('cpu/psx/psx.cpp', psx_cpp), ('cpu/psx/psx.h', psx_h),
                     ('cpu/psx/mdec.cpp', mdec_cpp), ('cpu/psx/mdec.h', mdec_h),
-                    ('video/psx.cpp', video_psx_cpp)]:
+                    ('video/psx.cpp', video_psx_cpp),
+                    ('../3rdparty/minimp3/minimp3.h', minimp3_h)]:
         p = root / rel
         text = p.read_text()
         if 'HIRAKU' in text:

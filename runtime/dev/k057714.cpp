@@ -11,6 +11,8 @@
 #include <cstring>
 #if defined(__SSE2__)
 #include <emmintrin.h>
+#elif defined(__ARM_NEON)
+#include <arm_neon.h>
 #endif
 
 namespace hk {
@@ -242,7 +244,7 @@ void K057714::draw_frame(int frame, uint16_t *bitmap, int bw, int bh, bool inver
             const uint16_t *__restrict row = v + b0;
             if (identity) {
                 int i = 0;
-#if defined(__SSE2__)
+#if defined(__SSE2__) || defined(__ARM_NEON)
                 // From an even pixel on, 8 pixels at a time: swap each pair of
                 // 16-bit lanes back into pixel order, keep the opaque ones.
                 if (off && n > 0) {
@@ -250,6 +252,8 @@ void K057714::draw_frame(int frame, uint16_t *bitmap, int bw, int bh, bool inver
                     if ((p & 0x8000) != trans_value) d[0] = (uint16_t)(p & 0x7fff);
                     i = 1;
                 }
+#endif
+#if defined(__SSE2__)
                 const __m128i low15 = _mm_set1_epi16(0x7fff);
                 for (; i + 8 <= n; i += 8) {
                     // pixel base + i is even: pixels base+i .. base+i+7 are the 8 halfwords from there, pairs swapped
@@ -260,6 +264,14 @@ void K057714::draw_frame(int frame, uint16_t *bitmap, int bw, int bh, bool inver
                     __m128i old = _mm_loadu_si128(reinterpret_cast<const __m128i *>(d + i));
                     __m128i res = _mm_or_si128(_mm_and_si128(opaque, _mm_and_si128(x, low15)), _mm_andnot_si128(opaque, old));
                     _mm_storeu_si128(reinterpret_cast<__m128i *>(d + i), res);
+                }
+#elif defined(__ARM_NEON)
+                const uint16x8_t low15 = vdupq_n_u16(0x7fff);
+                for (; i + 8 <= n; i += 8) {
+                    const uint16x8_t x = vrev32q_u16(vld1q_u16(row + off + i));
+                    uint16x8_t opaque = vreinterpretq_u16_s16(vshrq_n_s16(vreinterpretq_s16_u16(x), 15));
+                    if (trans_value) opaque = vmvnq_u16(opaque);
+                    vst1q_u16(d + i, vbslq_u16(opaque, vandq_u16(x, low15), vld1q_u16(d + i)));
                 }
 #endif
                 for (; i < n; i++) {

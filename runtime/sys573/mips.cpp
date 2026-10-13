@@ -19,6 +19,7 @@
 
 #include <signal.h>
 #include <sys/mman.h>
+#include <unistd.h>
 
 // the game's blocks (tools/mipsgen.py; none without a recording)
 extern const hk573_block *const hk573_parts[];
@@ -46,7 +47,7 @@ struct Node {
 
 // Blocks are trusted from when their code was checked against memory until the epoch moves on:
 // whenever the CPU's memory map changes, or anything writes to a page of main RAM holding
-// checked code. Those pages (4 KiB on the host) are write-protected: a write to one, from a
+// checked code. Those pages (the host's: 4 KiB on x86-64, 16 KiB on some ARM hosts) are write-protected: a write to one, from a
 // store, DMA or a device, faults once and is let through, and the epoch moves on, so every block
 // is checked again before it next runs (writes to code are rare: a few dozen in a 150 s run).
 // A page that keeps being written (code and busy data side by side) is left unprotected, and
@@ -55,7 +56,8 @@ uint64_t &g_epoch = X::epoch;
 uint32_t g_map_version = 0;
 
 struct Guard {
-    static constexpr uint32_t PAGE = 4096, GIVE_UP = 64;   // faults before a page stays unprotected
+    static constexpr uint32_t GIVE_UP = 64;   // faults before a page stays unprotected
+    size_t page_size = 4096;                  // the host's (set in init)
     uint8_t *base = nullptr;
     size_t size = 0;
     std::vector<uint32_t> faults;
@@ -64,12 +66,12 @@ struct Guard {
     uint64_t total_faults = 0, protects = 0;
 
     bool has(const uint8_t *p) const { return p >= base && p < base + size; }
-    size_t page(const uint8_t *p) const { return (size_t)(p - base) / PAGE; }
+    size_t page(const uint8_t *p) const { return (size_t)(p - base) / page_size; }
     // protect the page if it may be; true if it is now protected
     bool protect(size_t i) {
         if (prot[i]) return true;
         if (faults[i] >= GIVE_UP) return false;
-        if (mprotect(base + i * PAGE, PAGE, PROT_READ) != 0) return false;
+        if (mprotect(base + i * page_size, page_size, PROT_READ) != 0) return false;
         prot[i] = 1;
         protects++;
         return true;
@@ -82,7 +84,7 @@ void on_segv(int sig, siginfo_t *si, void *uc) {
     if (gd.has(a)) {
         const size_t i = gd.page(a);
         if (gd.prot[i]) {
-            mprotect(gd.base + i * Guard::PAGE, Guard::PAGE, PROT_READ | PROT_WRITE);
+            mprotect(gd.base + i * gd.page_size, gd.page_size, PROT_READ | PROT_WRITE);
             gd.prot[i] = 0;
             gd.faults[i]++;
             gd.total_faults++;
@@ -373,10 +375,11 @@ void init(psxcpu_device &cpu) {
     if (const char *gv = getenv("HK_573_GUARD"); !gv || strcmp(gv, "0") != 0) {
         ram_device &ram = X::ram(cpu);
         Guard &gd = g_guard;
+        gd.page_size = (size_t)sysconf(_SC_PAGESIZE);
         gd.base = ram.pointer();
-        gd.size = ram.size() & ~size_t(Guard::PAGE - 1);
-        gd.faults.assign(gd.size / Guard::PAGE, 0);
-        gd.prot.assign(gd.size / Guard::PAGE, 0);
+        gd.size = ram.size() & ~(gd.page_size - 1);
+        gd.faults.assign(gd.size / gd.page_size, 0);
+        gd.prot.assign(gd.size / gd.page_size, 0);
         struct sigaction sa {};
         sa.sa_sigaction = on_segv;
         sa.sa_flags = SA_SIGINFO | SA_NODEFER;

@@ -1134,6 +1134,27 @@ queue at its target). The emulated machine is unchanged.
 - Tested with the window on DP-1 (240 Hz) and DP-2 (144 Hz, with `HK_DISPLAY_SYNC_SKEW` to force a
   fit); 60 Hz still to test on a real 60 Hz display (the N100 cabinet).
 
+## 22. ARM hosts (2026-10-13)
+
+Step 1 towards an Android/ARM version: the cores on 64-bit ARM Linux. The recompilers emit C and
+C++, not x86 code, and neither guest CPU has an FPU, so the work was in the host glue:
+- **Fibers:** `hk_fiber_switch` in AArch64 assembly too (x19-x30, d8-d15, FPCR). The ucontext
+  fallback costs ~14 % (a system call per switch) and Android's libc has no ucontext at all.
+- **Same results everywhere:** `-ffp-contract=off` (AArch64 compilers fuse `a*b+c` by default;
+  no change on x86-64, which has no FMA without `-march`) and `-fsigned-char` (plain char is
+  unsigned on AArch64). minimp3's NEON path rounded its 16-bit output differently from the SSE
+  path; it now rounds as SSE does (`hiraku-edits.py`).
+- **Page size from the host:** the 573's RAM and its write-protect guard used 4 KiB; ARM hosts
+  can have 16 KiB pages (Android 15+, Asahi).
+- The profiler's ticks (`cntvct_el0`) and sampled PC; a NEON copy of the K057714 blit.
+- `cmake/aarch64-linux-gnu.cmake` cross-builds with clang on Arch's `aarch64-linux-gnu-gcc`,
+  statically linked, so qemu-aarch64 runs the binaries (and the build's own `hiraku-recomp`).
+
+**Result:** the recompiler's output on ARM is byte-identical to x86's, and all 17 regress cases
+give the same digests on the ARM build (under qemu) as on x86. Not measured yet: speed on real
+ARM hardware (qemu says nothing about it). Android itself (GLES renderer, frame pacing,
+launcher, packaging of the per-dump game code) is still to decide.
+
 ## M0 steps (all done)
 
 1. ~~`git init` HIRAKU and add `.gitignore` for `dumps/` and `build/`~~ Done.

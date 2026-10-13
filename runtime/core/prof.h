@@ -33,6 +33,21 @@ inline double ns_per_tick() {
     const uint64_t dt = ticks() - t0, dn = now_ns() - n0;
     return dt > 1'000'000 ? (double)dn / (double)dt : 0.3;   // ~3 GHz until measured
 }
+#elif defined(__aarch64__)
+// The generic timer's virtual count, readable from user space on every AArch64 OS
+inline uint64_t ticks() {
+    uint64_t t;
+    asm volatile("mrs %0, cntvct_el0" : "=r"(t));
+    return t;
+}
+inline double ns_per_tick() {
+    static const double r = [] {
+        uint64_t f;
+        asm volatile("mrs %0, cntfrq_el0" : "=r"(f));
+        return f ? 1e9 / (double)f : 1.0;
+    }();
+    return r;
+}
 #else
 inline uint64_t ticks() { return now_ns(); }
 inline double ns_per_tick() { return 1.0; }
