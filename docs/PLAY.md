@@ -524,10 +524,11 @@ In test mode, blue (buttons 4/6) moves and red (5) selects; I/O CHECK > INPUT CH
   - A line of text in the server's `message` file (in `eamuse/` offline, or `hiraku-eamuse`'s data folder) scrolls across the title screen of every cabinet, from its next start.
   - Any server that implements docs/EAMUSE3.md works the same way; `tools/eamuse/check.py URL` checks one.
 - **Course rankings** are kept and given back. The HITASURA and Gambler Z boards, KONAMI ID and ee'MALL follow the game's formats but haven't been seen in play yet (docs/EAMUSE3.md).
-- **The card:** `card.bin` in the save folder (`~/.local/share/hiraku/popn9`), 128 bytes, created as a fresh pop'n 9 card. Insert puts it in the slot (or takes it back); the reader takes it when the game opens the slot and gives it back when the game ejects it.
+- **The card:** `card.bin` in the save folder (`~/.local/share/hiraku/popn9`), 128 bytes, created as a fresh card of the game played (pop'n 9 or 10). Insert puts it in the slot (or takes it back); the reader takes it when the game opens the slot and gives it back when the game ejects it.
 - **The 10-key:** the numeric keypad's 0–9, Enter and `.`, with Backspace as Clear.
 
-**pop'n music 10–14:** they run the same way and play (coins, mode, button select, songs); their lamps and inputs are the same as pop'n 9's, checked in each game's LAMP CHECK. What is pop'n 9's alone so far: `--autoplay`, the unlocks, and the e-AMUSEMENT server, which knows pop'n 9's calls (each later game adds some of its own).
+**pop'n music 10–14:** they run the same way and play (coins, mode, button select, songs); their lamps and inputs are the same as pop'n 9's, checked in each game's LAMP CHECK. What is pop'n 9's alone so far: `--autoplay` and the unlocks.
+- **e-AMUSEMENT:** pop'n 10 works as pop'n 9 does (cards registered, saved and read back; test mode > NETWORK OPTIONS > e-AMUSEMENT OPTIONS); a pop'n 9 card can be carried over. Its rankings are kept but not shown yet. pop'n 11–14 are being worked on (docs/EAMUSE3.md, "Later games"); pop'n 14 needs an IC card reader.
 - pop'n 12–14 start in ENJOY mode with 5 buttons selected; blue moves to 9.
 - The pop'n 11 dump has a damaged first sector (a PC wrote a blank partition table there); HIRAKU and Reliquary read the boot header's backup copy.
 

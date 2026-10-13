@@ -343,7 +343,8 @@ public:
         }
         py1_path_ = run_dir_ + "/" + o.game + ".py1";
         if (family_ == "pypopn" && !bare_board_) {
-            card_ = std::make_unique<hk::py::CardUnit>(run_dir_ + "/card.bin");
+            // a fresh card is one of this game (cardunit.h)
+            card_ = std::make_unique<hk::py::CardUnit>(run_dir_ + "/card.bin", hk::py::CardUnit::fresh_header(o.game));
             hk::py::VirtualNet::Io io;
             io.write = [](uint32_t addr, const uint8_t *d, uint32_t n) { Hiraku::net_write(addr, d, n); };
             io.respond = [](uint32_t ch, const uint32_t w[8]) { Hiraku::net_respond(ch, w); };

@@ -58,7 +58,15 @@ private:
     std::string answer(const Call &c, const Request &r, const std::string &host);
     std::string message() const;   // the owner's title-screen message (package "message"), or ""
 
+    struct Entered {   // a result entered on a board (enter)
+        std::map<std::string, std::string> kept;   // the entrant's best, as kept
+        size_t place, entries;
+        bool update;   // the result is the new best
+    };
+    Entered enter(const Board &b, const Request &r);
     std::string rank_register(const Board &b, const Request &r);
+    // pop'n 10 on: their own calls and answers ("" leaves the call to pop'n 9's)
+    std::string answer_later(const std::string &game, const Request &r, const std::string &host);
     std::string rank_get(const Board &b, const Request &r);
     static std::string item(const Board &b, const std::map<std::string, std::string> &entry, size_t place);
     std::string read_file(const std::string &name) const;

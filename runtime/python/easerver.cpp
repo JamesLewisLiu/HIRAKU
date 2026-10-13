@@ -276,6 +276,8 @@ using Board = EamuseServer::Board;
 const Board BOARD_SCORE = {"rank-score", "card_id", {"name", "score", "cool", "great", "good", "bad", "combo", "option", "konami_id", "shop_name", "area_num", "gpcb_id"}, "score", "cool", 10};
 const Board BOARD_H = {"rank-hitasura", "card_id", {"name", "music", "combo", "konami_id", "shop_name", "area_num", "gpcb_id"}, "music", "combo", 10};
 const Board BOARD_GZ = {"rank-gamblerz", "gpcb_id", {"prog", "parts", "shop_name", "area_num"}, "prog", "parts", 16};
+// pop'n 10 on: rank.exp sends what pop'n 9's rank.register did; one board per game (the file's prefix)
+const std::vector<const char *> EXP_KEEP = {"name", "score", "cool", "great", "good", "bad", "combo", "option", "shop_name", "area_num"};
 
 bool better(const Board &b, const Record &x, const Record &y) {   // x ranks above y
     const long x1 = num(x, b.first), y1 = num(y, b.first);
@@ -286,6 +288,12 @@ bool better(const Board &b, const Record &x, const Record &y) {   // x ranks abo
 }  // namespace
 
 std::string EamuseServer::rank_register(const Board &b, const Request &r) {
+    const Entered e = enter(b, r);
+    return item(b, e.kept, e.place) + "entry=\"" + std::to_string(e.entries) + "\" update=\"" + (e.update ? "1" : "0") + "\"/>";
+}
+
+// A result entered on a board: kept if it beats the entrant's best; where the entrant now stands
+EamuseServer::Entered EamuseServer::enter(const Board &b, const Request &r) {
     const std::string course = b.file == BOARD_GZ.file ? "0" : std::to_string(num(r.attrs, "course"));
     const std::string who = attr(r.attrs, b.who);
     std::vector<Record> all = from_lines(read_file(b.file));
@@ -308,11 +316,10 @@ std::string EamuseServer::rank_register(const Board &b, const Request &r) {
     for (const Record &e : all)
         if (e.at("course") == course) board.push_back(e);
     std::stable_sort(board.begin(), board.end(), [&](const Record &x, const Record &y) { return better(b, x, y); });
-    size_t place = 1;
-    Record kept = mine;
+    Entered out{mine, 1, board.size(), update};
     for (size_t i = 0; i < board.size(); i++)
-        if (board[i].at("who") == who) { place = i + 1; kept = board[i]; }
-    return item(b, kept, place) + "entry=\"" + std::to_string(board.size()) + "\" update=\"" + (update ? "1" : "0") + "\"/>";
+        if (board[i].at("who") == who) { out.place = i + 1; out.kept = board[i]; }
+    return out;
 }
 
 std::string EamuseServer::rank_get(const Board &b, const Request &r) {
@@ -347,8 +354,11 @@ std::string EamuseServer::item(const Board &b, const Record &e, size_t place) {
 }
 
 std::string EamuseServer::answer(const Call &c, const Request &r, const std::string &host) {
-    (void)c;
     const std::string &m = r.module, &f = r.method;
+    // pop'n 10 on (model C20, D11, E12, ...): their own calls and answer formats; pop'n 9 (C00)
+    // and anything not handled there go on below
+    if (const std::string game = c.model.substr(0, 3); !game.empty() && game != "C00")
+        if (std::string a = answer_later(game, r, host); !a.empty()) return a;
     if (m == "numbering" && f == "assign") {   // a new card's number (0x197530): 16 digits
         uint64_t next = 1;
         if (std::string n = read_file("numbering"); !n.empty()) next = std::strtoull(n.c_str(), nullptr, 10);
@@ -470,6 +480,80 @@ std::string EamuseServer::answer(const Call &c, const Request &r, const std::str
     // services this server keeps nothing for: pcbtracker alive, posevent income, package intend,
     // p_friend get/state/ask
     return "<" + m + " status=\"0\"/>";
+}
+
+// pop'n music 10 on (docs/EAMUSE3.md, "Later games"): game is the model's first three
+// characters. "" leaves the call to pop'n 9's answers (services, numbering, userid, posevent, ...).
+std::string EamuseServer::answer_later(const std::string &game, const Request &r, const std::string &host) {
+    const std::string &m = r.module, &f = r.method;
+    if (m == "services" && f == "get") {   // as pop'n 9, and eemall/shopinf look up their own names
+        static const char *modules[] = {"posevent", "pcbtracker", "numbering", "package", "userdata", "userid", "local", "eemall", "shopinf"};
+        std::string items;
+        for (const char *mod : modules) items += std::string("<item name=\"") + mod + "\" url=\"http://" + esc(host) + "/\"/>";
+        return "<services expire=\"600\" status=\"0\">" + items + "</services>";
+    }
+    if (m == "userdata") {   // as pop'n 9, kept per game: userdata-<game>-<card>
+        const std::string card = attr(r.attrs, "card");
+        if (!safe_name(card)) return "<userdata status=\"1\"/>";
+        if (f == "read") {
+            std::string data = read_file("userdata-" + game + "-" + card);
+            // a card carried over from pop'n 9: what pop'n 9 saved (the game converts it)
+            if (data.empty()) data = read_file("userdata-" + card);
+            return data.empty() ? "<userdata status=\"109\"/>" : data;
+        }
+        if (f == "write") {
+            write_file("userdata-" + game + "-" + card, "<userdata status=\"0\" time=\"" + esc(attr(r.attrs, "time")) + "\">" + r.inner + "</userdata>");
+            return "<userdata status=\"0\"/>";
+        }
+    }
+    if (m == "ntp" && f == "get") {   // one attribute: "YYYY-MM-DD hh:mm:ss" and the zone (pop'n 10 0x19da48)
+        const time_t t = now ? (time_t)now() : 0;
+        struct tm tm;
+        gmtime_r(&t, &tm);
+        char b[96];
+        snprintf(b, sizeof b, "<ntp status=\"0\" time=\"%04d-%02d-%02d %02d:%02d:%02d+9\"/>", tm.tm_year + 1900, tm.tm_mon + 1,
+                 tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec);
+        return b;
+    }
+    if (m == "rank") {
+        if (f == "exp") {   // a course played: <rank update entry rank hi_score hi_cool/> (0x19dda8)
+            const Board b{nullptr, "card_id", EXP_KEEP, "score", "cool", 10};
+            const std::string file = game + "-rank-exp";
+            Board named = b;
+            named.file = file.c_str();
+            const Entered e = enter(named, r);
+            return "<rank status=\"0\" update=\"" + std::string(e.update ? "1" : "0") + "\" entry=\"" + std::to_string(e.entries) +
+                   "\" rank=\"" + std::to_string(e.place) + "\" hi_score=\"" + esc(attr(e.kept, "score")) + "\" hi_cool=\"" +
+                   esc(attr(e.kept, "cool")) + "\"/>";
+        }
+        // the rankings as a <b> block the game decodes (0x19e300); none yet: an empty board
+        if (f == "get") return "<rank status=\"0\"/>";
+        // the server's ranking course (0x19e420); 117: none (the game clears it, 0x187f2c)
+        if (f == "course") return "<rank status=\"117\"/>";
+        if (f == "shop") return "<rank status=\"0\"/>";
+    }
+    if (m == "message" && f == "get") {   // (0x19f4e0) phase: the event phase, set online when >= 0
+        // (0x18dee0); -1 leaves the cabinet's own. text: the owner's message.
+        const std::string ph = read_file("phase-" + game);
+        const long phase = ph.empty() ? -1 : std::strtol(ph.c_str(), nullptr, 10);
+        return "<message status=\"0\" phase=\"" + std::to_string(phase) + "\" text=\"" + esc(message()) + "\"/>";
+    }
+    if (m == "eemall" && f == "get") {   // (0x19eda8) points, then <item num/> and <kisekae path pri/>
+        const std::string card = attr(r.attrs, "card_id");
+        std::string items;
+        const std::string list = safe_name(card) ? read_file("eemall-" + card) : "";
+        size_t at = 0, count = 0;
+        while (at < list.size() && count < 99) {
+            size_t e = list.find('\n', at);
+            if (e == std::string::npos) e = list.size();
+            const long n = std::strtol(list.c_str() + at, nullptr, 10);
+            if (e > at && n > 0) { items += "<item num=\"" + std::to_string(n) + "\"/>"; count++; }
+            at = e + 1;
+        }
+        return "<eemall status=\"0\" now_point=\"0\" add_point=\"0\">" + items + "</eemall>";
+    }
+    if (m == "shopinf" && f == "getsservip") return "<shopinf status=\"0\"/>";   // no shop servers (0x19f2a8)
+    return "";
 }
 
 // The owner's message for the cabinets' title screens (the file "message"), at most 255 bytes,

@@ -30,11 +30,17 @@ uint8_t sum8(const uint8_t *p, size_t n) {
 
 }  // namespace
 
-CardUnit::CardUnit(std::string card_file) : file_(std::move(card_file)) { load(); }
+CardUnit::CardUnit(std::string card_file, Header fresh) : file_(std::move(card_file)), fresh_(fresh) { load(); }
 
-std::vector<uint8_t> CardUnit::new_card() {
+CardUnit::Header CardUnit::fresh_header(const std::string &game) {
+    if (game == "popn10") return {0x28, 0x23, 0x49, 0x01};
+    if (game == "popn11") return {0x28, 0x24, 0x45, 0x11};
+    return {0x28, 0x23, 0x41, 0x01};   // pop'n 9
+}
+
+std::vector<uint8_t> CardUnit::new_card(const Header &h) {
     std::vector<uint8_t> c(CARD_BYTES, 0);
-    c[0] = 0x28; c[1] = 0x23; c[2] = 0x41; c[3] = 0x01;   // pop'n 9, new
+    for (int i = 0; i < 4; i++) c[i] = h[i];
     c[4] = crc8(c.data(), 4);
     return c;
 }
@@ -43,7 +49,7 @@ void CardUnit::load() {
     std::ifstream f(file_, std::ios::binary);
     card_.assign(std::istreambuf_iterator<char>(f), std::istreambuf_iterator<char>());
     if (card_.size() != CARD_BYTES) {
-        card_ = new_card();
+        card_ = new_card(fresh_);
         save();
     }
 }
@@ -103,8 +109,9 @@ bool CardUnit::write(const uint8_t *d, uint32_t n, std::vector<uint8_t> &reply) 
 
     switch (cmd) {   // the card unit
     case 0x00: case 0x01:
-    case 0x10: case 0x11:   // reset
+    case 0x10: case 0x11:   // reset: a card inside comes back out (pop'n 10 returns a refused card so)
         read_ready_ = buffer_ready_ = false;
+        if (inside_) { inside_ = false; offered_ = false; accepting_ = false; }
         answer(0x01, cmd, {0x00}, 0x01, reply);
         break;
     case 0x12:   // status

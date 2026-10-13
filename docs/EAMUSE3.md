@@ -432,11 +432,60 @@ The card holds no player data, only an identity.
   | Header | Type |
   |---|---|
   | `28 23 41 01` | a new pop'n 9 card |
+  | `28 23 49 01` / `28 24 45 11` | a new pop'n 10 / 11 card (their programs; "Later games") |
   | `68 23 41 01` | registered |
   | `6c 23 41 01` | "death" (dead) |
   | `18 23 41 01` / `58 23 41 01` | location test |
   | `08 1f 7d f1` | Konami common |
   | `08 20 82 01` | e-AMUSEMENT common |
+
+## Later games: pop'n music 10–14
+
+Each later pop'n speaks the same transport, cipher and envelope, with its own `model` (`C20:J:A:A`
+pop'n 10, `D11:J:A:A` 11, `E12:J:A:B` 12, `E13:J:A:E` 13, `F14:J:A:B` 14). HIRAKU's server picks
+the game by the model's first three characters; pop'n 9's answers are unchanged. Player data is
+kept per game (`userdata-C20-CARD`, ...). Turning e-AMUSEMENT on: test mode > NETWORK OPTIONS >
+e-AMUSEMENT OPTIONS, as in pop'n 9 (pop'n 13 and 14 start their menus' cursors on EXIT).
+
+**pop'n music 10** (checked in HIRAKU: a new card registered, a whole credit saved, the card read
+back with its PIN; `oracle/scripts/popn10-eamuse-on.his`, `popn10-card-new.his`,
+`popn10-card-again.his`). The EE program's addresses are pop'n 10's.
+- **As pop'n 9:** services (plus `eemall` and `shopinf`, looked up by those names), pcbtracker,
+  posevent, numbering, package, userdata, userid, p_friend `state`/`ask`.
+- **The card:** a new pop'n 10 card is `28 23 49 01` ("C20 NEW CARD", `0x1ad3c8` type 7; used
+  `68 23 49 01`). A pop'n 9 card is offered for carrying over (name and clears; it then no longer
+  works on pop'n 9): a pop'n 10 `userdata.read` of a card with no pop'n 10 data gets its pop'n 9
+  data. When the player refuses, the game hands the card back with a card-unit **reset**.
+- **p_friend.get** sends `card_num card_id name shop_name area_num` and reads `<p_friend
+  chara_num rare_f/>` (`0x19e7e8`); no `chara_num` means none.
+- **rank.exp** (pop'n 9's `rank.register`, the same fields): answer `<rank status="0" update entry
+  rank hi_score hi_cool/>` on the element itself (`0x19dda8`).
+- **rank.get** (no attributes): the rankings as a `<b>` text block of up to 16 KiB that fills a
+  7,984-byte table (`0x19e300`, used at `0x187be4`). Its format is not worked out; HIRAKU answers
+  none (`<rank status="0"/>`), which the game takes as empty.
+- **rank.course:** the server's ranking course, `<rank status="0" course_num music="a,b,c,d"
+  area_num course_name user_name comment type/>` (`0x19e420`); status **117** means none.
+- **rank.shop** sends `praystar_lo praystar_hi shop_name area_num`; answer `<rank status="0"/>`.
+- **message.get:** `<message status="0" phase="N" text="..."/>` (`0x19f4e0`). `phase` >= 0 sets the
+  cabinet's event phase when it differs (`0x18dee0`, "PHASE ONLINE UPDATE"); a missing phase reads
+  as 0, so answer `-1` unless you mean it. HIRAKU's server takes it from the file `phase-C20`.
+- **eemall.get** (`card_id`): `<eemall status="0" now_point add_point>`, then `<item num/>` (up to
+  99) and `<kisekae path pri/>` (up to 15) (`0x19eda8`).
+- **shopinf.getsservip** (`srcip`): up to five `<sservip ipaddr/>`; none is fine.
+- **ntp.get:** one attribute, `<ntp status="0" time="2003-06-01 12:00:00+9"/>` (`0x19da48`: six
+  numbers, then an optional zone in hours).
+
+**pop'n music 11** (`D11`): game features move into a module named after the game, with a `type`:
+`<D11 type="rank" method="get"/>`, `D11.game_get`, and in the program `D11.rank_exp`, `rank_shop`,
+`pf_get`, `pf_ask`, `game_select`, `player_get`, `player_set`, `renewc_reg`, `renewc_ask`, plus
+`eemall.check` and `portfw.get`. A new card is `28 24 45 11` ("D11 NEW CARD"). Start-up passes with
+plain answers; the rest is being worked out.
+
+**pop'n music 12** (`E12`): the same `E12 type=...` calls at start-up; no card types by name in its
+program (its card system changed). **pop'n music 13** (`E13`): stops after `services.get` with
+"センターサーバーと通信できません" (5-2007-0000): its services answer needs more. **pop'n music 14**
+(`F14`): uses an IC card reader ("IC CARD R/W UNIT ERROR", 5-1508-000, without one), which HIRAKU
+doesn't play yet.
 
 ## Not known yet
 
