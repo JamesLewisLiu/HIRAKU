@@ -38,6 +38,9 @@ public:
     // An HTTP message (request or answer) as text: its first line and its body in clear.
     static std::string clear(const std::string &message);
 
+public:
+    struct Board;   // a ranking (easerver.cpp)
+
 private:
     // One module element of a call: <MODULE method=.. ...>inner</MODULE>. A call can carry
     // several (posevent sends three at once); the answer has one element each, in order.
@@ -53,6 +56,9 @@ private:
     static bool parse(const std::string &xml, Call &c);
     std::string answer(const Call &c, const Request &r, const std::string &host);
 
+    std::string rank_register(const Board &b, const Request &r);
+    std::string rank_get(const Board &b, const Request &r);
+    static std::string item(const Board &b, const std::map<std::string, std::string> &entry, size_t place);
     std::string read_file(const std::string &name) const;
     void write_file(const std::string &name, const std::string &data) const;
 

@@ -432,6 +432,8 @@ QStringList MainWindow::arguments(const Game &g) const {
     QString sf = s.value("audio/soundfont").toString();
     if (g.family == "kbm" && !sf.isEmpty()) a << "--soundfont" << sf;
     if (g.core == "python") a << "--renderer" << "vk";   // Vulkan GS: less CPU than the software one (PLAN.md section 21)
+    if (g.core == "python" && !s.value("eamuse/server").toString().isEmpty())   // e-AMUSEMENT online (docs/EAMUSE3.md)
+        a << "--eamuse" << s.value("eamuse/server").toString();
     if (!cfg::nvramBase().isEmpty()) a << "--nvram" << cfg::nvramDir(g.id);
     a << UnlocksDialog::macroArguments(g.id);   // codes typed at every start
     a << QProcess::splitCommand(s.value("game/extraArgs").toString());

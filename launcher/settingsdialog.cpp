@@ -105,6 +105,15 @@ SettingsDialog::SettingsDialog(QWidget *parent) : QDialog(parent) {
     fl->addWidget(path);
     v->addWidget(lights);
 
+    auto *ea = new QGroupBox("e-AMUSEMENT (Konami Python: pop'n music 9)");
+    auto *fe = new QFormLayout(ea);
+    m_eamuse = new QLineEdit(s.value("eamuse/server").toString());
+    m_eamuse->setPlaceholderText("offline: HIRAKU's own server (or http://host:port/ to play online)");
+    m_eamuse->setToolTip("Empty: the server inside HIRAKU, saves in the game's save folder. A URL: a server on the network, "
+                         "such as hiraku-eamuse on another PC (docs/EAMUSE3.md). The game's e-AMUSEMENT must be ON in test mode.");
+    fe->addRow("Server:", m_eamuse);
+    v->addWidget(ea);
+
     auto *paths = new QGroupBox("Folders");
     auto *fp = new QFormLayout(paths);
     m_root = new QLineEdit(s.value("paths/root").toString());
@@ -148,6 +157,7 @@ void SettingsDialog::accept() {
     s.setValue("paths/nvram", m_nvram->text().trimmed());
     s.setValue("ui/hideWhileRunning", m_hideLauncher->isChecked());
     s.setValue("game/extraArgs", m_extra->text().trimmed());
+    s.setValue("eamuse/server", m_eamuse->text().trimmed());
     s.sync();
     QDialog::accept();
 }

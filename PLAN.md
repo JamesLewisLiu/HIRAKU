@@ -1294,7 +1294,20 @@ Each phase ends with `tools/regress.py check popn9-play` bit-identical, unless i
       - 1234 shows the player's name ("あああ"), character and options, then `p_friend.get` and `userid.ctou`, and mode select with the card;
       - a wrong PIN gets "パスワードが違います" and, after the retries, play without the card;
       - the PIN is checked by the game, from the player data.
-    - **Not done yet:** rankings (`rank.get` is answered empty and `rank.register` isn't seen yet), KONAMI ID (`userid` ctou/adduser/addcard answer nothing), p_friend, eemall, and the Gambler Z labyrinth (`rank.*_gz`).
+    - **Rankings, KONAMI ID, ee'MALL** (2026-10-13), from the parsers (`0x19a080`…, `0x1992e8`…, `0x198858`…, `0x19b558`) and the status mappings (`0x184f68`, `0x1863e8`, `0x186620`, `0x186818`):
+      - **Boards:** score per course, HITASURA per course, and Gambler Z per shop. Each entrant's best is kept; the board is sorted; `register` answers with the place, the number of entries and `update`.
+      - **userid:** ctou 112 means no KONAMI ID; adduser 113/114; addcard 115/116/114.
+      - **ee'MALL:** items per card, from `eemall-CARD`.
+      - **Checked in play** (`oracle/scripts/popn9-card-expert.his`): an EXPERT course with the card, failed in its first song, still sends `rank.register`. The name is hex Shift-JIS, `area_num` 255. The game then shows INTERNET RANKING, "あああ さんの New ハイスコア 918 は 4位 4人中です", from the server's answer against three seeded entries.
+    - **Online** (`--eamuse http://host[:port][/path]`, `eaclient.cpp`): the core forwards each request to the server. Answers arrive on a worker thread, and the game's recv waits for them (the board's status block is written when the answer is there). DNS gives every name an address of its own on the virtual LAN, so the URLs the server hands out reach their hosts.
+      - **`hiraku-eamuse`** (`tools/eamuse/server.cpp`): the same server behind an HTTP/1.0 listener.
+      - **Checked:** a card registered through it on 127.0.0.1; offline unchanged.
+    - **For server owners:**
+      - `docs/EAMUSE3.md`: transport, the crypto and its in-kind rule, the envelope, every module with its statuses, the card, a card's life.
+      - `tools/eamuse/corpus.json`: the game's calls, captured or built from its formats, flagged.
+      - `tools/eamuse/check.py URL`: the corpus checked against the parsers' rules, then a stateful scenario. hiraku-eamuse passes all of it.
+    - **Launcher:** Settings > e-AMUSEMENT > Server (empty = offline) passes `--eamuse`.
+    - **Not done yet:** HITASURA and Gambler Z boards in play (`register_h`, `_gz`: phases MAX and 1–3), KONAMI ID registration on the cabinet, the attract mode's ranking pages, p_friend, eemall in play.
     - **Seen once:** one `popn9-play` check differed right after a rebuild, then was identical three times running. Where it differed was not captured; watch for it.
   - **Debugging aids:** `HK_PY_WATCH=addr,…` prints EE RAM words when they change. Ghidra headless decompiles (`$HK_PYTHON_WORK/ghidra`: `Decomp.java OUT addr|range:A-B…`, `Refs.java addr…`).
 - **Tools:**

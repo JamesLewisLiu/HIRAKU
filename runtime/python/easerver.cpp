@@ -10,6 +10,7 @@
 #include <cstring>
 #include <ctime>
 #include <fstream>
+#include <algorithm>
 #include <iterator>
 
 namespace hk::py {
@@ -192,17 +193,163 @@ void EamuseServer::write_file(const std::string &name, const std::string &data) 
 }
 
 namespace {
-bool safe_name(const std::string &s) {   // a card number used as a file name
-    if (s.empty() || s.size() > 32) return false;
+
+bool safe_name(const std::string &s) {   // a card number or id used in a file name
+    if (s.empty() || s.size() > 40) return false;
     for (char ch : s)
-        if (!std::isalnum((unsigned char)ch)) return false;
+        if (!std::isalnum((unsigned char)ch) && ch != '-' && ch != '_') return false;
     return true;
 }
+
+std::string esc(const std::string &v) {   // an attribute value, XML-escaped
+    std::string o;
+    for (char ch : v) {
+        switch (ch) {
+        case '&': o += "&amp;"; break;
+        case '<': o += "&lt;"; break;
+        case '>': o += "&gt;"; break;
+        case '"': o += "&quot;"; break;
+        default: o += ch;
+        }
+    }
+    return o;
+}
+
+std::string attr(const std::map<std::string, std::string> &m, const char *k) {
+    const auto it = m.find(k);
+    return it == m.end() ? "" : it->second;
+}
+
+long num(const std::map<std::string, std::string> &m, const char *k, int base = 10) {
+    return std::strtol(attr(m, k).c_str(), nullptr, base);
+}
+
+// Records kept as lines of tab-separated key=value fields (values never hold tabs or newlines)
+using Record = std::map<std::string, std::string>;
+
+std::string to_line(const Record &r) {
+    std::string l;
+    for (const auto &[k, v] : r) {
+        std::string clean = v;
+        for (char &ch : clean)
+            if (ch == '\t' || ch == '\n' || ch == '\r') ch = ' ';
+        l += (l.empty() ? "" : "\t") + k + "=" + clean;
+    }
+    return l + "\n";
+}
+
+std::vector<Record> from_lines(const std::string &text) {
+    std::vector<Record> out;
+    size_t at = 0;
+    while (at < text.size()) {
+        size_t e = text.find('\n', at);
+        if (e == std::string::npos) e = text.size();
+        const std::string line = text.substr(at, e - at);
+        at = e + 1;
+        if (line.empty()) continue;
+        Record r;
+        size_t f = 0;
+        while (f <= line.size()) {
+            size_t t = line.find('\t', f);
+            if (t == std::string::npos) t = line.size();
+            const std::string field = line.substr(f, t - f);
+            if (const size_t eq = field.find('='); eq != std::string::npos) r[field.substr(0, eq)] = field.substr(eq + 1);
+            f = t + 1;
+        }
+        out.push_back(std::move(r));
+    }
+    return out;
+}
+
 }  // namespace
+
+// The three rankings (docs/EAMUSE3.md, "rank"): what is kept and how entries compare
+struct EamuseServer::Board {
+    const char *file;
+    const char *who;                   // the request's field naming the entrant
+    std::vector<const char *> keep;    // fields from the request kept with the entry
+    const char *first, *second;        // ranked by these, larger first
+    int second_base;                   // parts is hex
+};
+namespace {
+using Board = EamuseServer::Board;
+const Board BOARD_SCORE = {"rank-score", "card_id", {"name", "score", "cool", "great", "good", "bad", "combo", "option", "konami_id", "shop_name", "area_num", "gpcb_id"}, "score", "cool", 10};
+const Board BOARD_H = {"rank-hitasura", "card_id", {"name", "music", "combo", "konami_id", "shop_name", "area_num", "gpcb_id"}, "music", "combo", 10};
+const Board BOARD_GZ = {"rank-gamblerz", "gpcb_id", {"prog", "parts", "shop_name", "area_num"}, "prog", "parts", 16};
+
+bool better(const Board &b, const Record &x, const Record &y) {   // x ranks above y
+    const long x1 = num(x, b.first), y1 = num(y, b.first);
+    if (x1 != y1) return x1 > y1;
+    return num(x, b.second, b.second_base) > num(y, b.second, b.second_base);
+}
+
+}  // namespace
+
+std::string EamuseServer::rank_register(const Board &b, const Request &r) {
+    const std::string course = b.file == BOARD_GZ.file ? "0" : std::to_string(num(r.attrs, "course"));
+    const std::string who = attr(r.attrs, b.who);
+    std::vector<Record> all = from_lines(read_file(b.file));
+    Record mine{{"course", course}, {"who", who}};
+    for (const char *k : b.keep) mine[k] = attr(r.attrs, k);
+    bool update = true;
+    bool found = false;
+    for (Record &e : all) {
+        if (e["course"] != course || e["who"] != who) continue;
+        found = true;
+        if (better(b, mine, e)) e = mine;   // a better result replaces the kept one
+        else update = false;
+    }
+    if (!found) all.push_back(mine);
+    std::string text;
+    for (const Record &e : all) text += to_line(e);
+    if (update) write_file(b.file, text);
+    // the entrant's place in the course
+    std::vector<Record> board;
+    for (const Record &e : all)
+        if (e.at("course") == course) board.push_back(e);
+    std::stable_sort(board.begin(), board.end(), [&](const Record &x, const Record &y) { return better(b, x, y); });
+    size_t place = 1;
+    Record kept = mine;
+    for (size_t i = 0; i < board.size(); i++)
+        if (board[i].at("who") == who) { place = i + 1; kept = board[i]; }
+    return item(b, kept, place) + "entry=\"" + std::to_string(board.size()) + "\" update=\"" + (update ? "1" : "0") + "\"/>";
+}
+
+std::string EamuseServer::rank_get(const Board &b, const Request &r) {
+    const std::vector<Record> all = from_lines(read_file(b.file));
+    const bool courses = b.file != BOARD_GZ.file;
+    const long c0 = courses ? num(r.attrs, "course_offset") : 0, cn = courses ? std::max(1L, num(r.attrs, "course_num")) : 1;
+    const long r0 = std::max(1L, num(r.attrs, "rank_offset")), rn = std::min(100L, std::max(0L, num(r.attrs, "rank_num")));
+    std::string out;
+    for (long c = c0; c < c0 + cn && c < c0 + 20; c++) {
+        std::vector<Record> board;
+        for (const Record &e : all)
+            if (std::strtol(attr(e, "course").c_str(), nullptr, 10) == c) board.push_back(e);
+        std::stable_sort(board.begin(), board.end(), [&](const Record &x, const Record &y) { return better(b, x, y); });
+        out += courses ? "<item course=\"" + std::to_string(c) + "\" entry=\"" + std::to_string(board.size()) + "\"/>"
+                       : "<item entry=\"" + std::to_string(board.size()) + "\"/>";
+        for (long i = r0 - 1; i < (long)board.size() && i < r0 - 1 + rn; i++) out += item(b, board[(size_t)i], (size_t)i + 1) + "/>";
+    }
+    return out;
+}
+
+// An entry as the game reads it: <item rank=.. (the board's fields) area=.. id=..
+std::string EamuseServer::item(const Board &b, const Record &e, size_t place) {
+    std::string o = "<item rank=\"" + std::to_string(place) + "\" ";
+    if (b.file == BOARD_SCORE.file)
+        o += "name=\"" + esc(attr(e, "name")) + "\" score=\"" + esc(attr(e, "score")) + "\" cool=\"" + esc(attr(e, "cool")) + "\" ";
+    else if (b.file == BOARD_H.file)
+        o += "name=\"" + esc(attr(e, "name")) + "\" music=\"" + esc(attr(e, "music")) + "\" combo=\"" + esc(attr(e, "combo")) + "\" ";
+    else
+        o += "prog=\"" + esc(attr(e, "prog")) + "\" parts=\"" + esc(attr(e, "parts")) + "\" shop_name=\"" + esc(attr(e, "shop_name")) + "\" ";
+    const std::string id = !attr(e, "konami_id").empty() ? attr(e, "konami_id") : attr(e, "who");
+    return o + "area=\"" + esc(attr(e, "area_num")) + "\" id=\"" + esc(id) + "\" ";
+}
 
 std::string EamuseServer::answer(const Call &c, const Request &r, const std::string &host) {
     (void)c;
-    if (r.module == "numbering" && r.method == "assign") {   // a new card's number (0x197530): 16 digits
+    const std::string &m = r.module, &f = r.method;
+    if (m == "numbering" && f == "assign") {   // a new card's number (0x197530): 16 digits
         uint64_t next = 1;
         if (std::string n = read_file("numbering"); !n.empty()) next = std::strtoull(n.c_str(), nullptr, 10);
         write_file("numbering", std::to_string(next + 1) + "\n");
@@ -218,29 +365,91 @@ std::string EamuseServer::answer(const Call &c, const Request &r, const std::str
         digits[16] = 0;
         return std::string("<numbering status=\"0\" number=\"") + digits + "\"/>";
     }
-    if (r.module == "userdata" && r.method == "read") {   // 109: not registered (0x184ca0)
-        const auto it = r.attrs.find("card");
-        const std::string data = it != r.attrs.end() && safe_name(it->second) ? read_file("userdata-" + it->second) : "";
+    if (m == "userdata" && f == "read") {   // 109: not registered (0x184ca0)
+        const std::string card = attr(r.attrs, "card");
+        const std::string data = safe_name(card) ? read_file("userdata-" + card) : "";
         if (data.empty()) return "<userdata status=\"109\"/>";
         return data;   // kept as the answer element itself
     }
-    if (r.module == "userdata" && r.method == "write") {
-        const auto it = r.attrs.find("card");
-        if (it == r.attrs.end() || !safe_name(it->second)) return "<userdata status=\"1\"/>";
-        const auto t = r.attrs.find("time");
-        write_file("userdata-" + it->second, "<userdata status=\"0\" time=\"" + (t != r.attrs.end() ? t->second : "") + "\">" +
-                                                 r.inner + "</userdata>");
+    if (m == "userdata" && f == "write") {
+        const std::string card = attr(r.attrs, "card");
+        if (!safe_name(card)) return "<userdata status=\"1\"/>";
+        write_file("userdata-" + card, "<userdata status=\"0\" time=\"" + esc(attr(r.attrs, "time")) + "\">" + r.inner + "</userdata>");
         return "<userdata status=\"0\"/>";
     }
-    if (r.module == "services" && r.method == "get") {   // the other modules' URLs (0x18a808)
+    if (m == "userid") {   // KONAMI ID: a user and password, with cards (0x1863e8, 0x186620, 0x186818)
+        std::vector<Record> users = from_lines(read_file("users"));
+        const std::string card = attr(r.attrs, "card"), user = attr(r.attrs, "user"), pass = attr(r.attrs, "pass");
+        auto owner = [&](const std::string &cd) -> Record * {
+            for (Record &u : users) {
+                const std::string cards = "," + attr(u, "cards") + ",";
+                if (!cd.empty() && cards.find("," + cd + ",") != std::string::npos) return &u;
+            }
+            return nullptr;
+        };
+        auto named = [&](const std::string &n) -> Record * {
+            for (Record &u : users)
+                if (attr(u, "user") == n) return &u;
+            return nullptr;
+        };
+        auto save = [&] {
+            std::string t;
+            for (const Record &u : users) t += to_line(u);
+            write_file("users", t);
+        };
+        if (f == "ctou") {   // card to user: 112 = none
+            const Record *u = owner(card);
+            if (!u) return "<userid status=\"112\"/>";
+            return "<userid status=\"0\" user=\"" + esc(attr(*u, "user")) + "\" active=\"" + esc(attr(*u, "active")) + "\"/>";
+        }
+        if (f == "adduser") {   // 113: the user exists, 114: the card is someone's
+            if (user.empty() || named(user)) return "<userid status=\"113\"/>";
+            if (owner(card)) return "<userid status=\"114\"/>";
+            users.push_back({{"user", user}, {"pass", pass}, {"cards", card}, {"active", "1"}});
+            save();
+            return "<userid status=\"0\" alter=\"\"/>";
+        }
+        if (f == "addcard") {   // 115: no such user, 116: wrong password, 114: the card is someone's
+            Record *u = named(user);
+            if (!u) return "<userid status=\"115\"/>";
+            if (attr(*u, "pass") != pass) return "<userid status=\"116\"/>";
+            if (Record *o = owner(card); o && o != u) return "<userid status=\"114\"/>";
+            if (!owner(card)) (*u)["cards"] = attr(*u, "cards").empty() ? card : attr(*u, "cards") + "," + card;
+            save();
+            return "<userid status=\"0\"/>";
+        }
+    }
+    if (m == "rank") {
+        if (f == "register") return "<rank status=\"0\">" + rank_register(BOARD_SCORE, r) + "</rank>";
+        if (f == "register_h") return "<rank status=\"0\">" + rank_register(BOARD_H, r) + "</rank>";
+        if (f == "register_gz") return "<rank status=\"0\">" + rank_register(BOARD_GZ, r) + "</rank>";
+        if (f == "get") return "<rank status=\"0\">" + rank_get(BOARD_SCORE, r) + "</rank>";
+        if (f == "get_h") return "<rank status=\"0\">" + rank_get(BOARD_H, r) + "</rank>";
+        if (f == "get_gz") return "<rank status=\"0\">" + rank_get(BOARD_GZ, r) + "</rank>";
+    }
+    if (m == "eemall" && f == "i_get") {   // the card's ee'MALL items: eemall-<card>, one number a line
+        const std::string card = attr(r.attrs, "card_id");
+        std::string items;
+        const std::string list = safe_name(card) ? read_file("eemall-" + card) : "";
+        size_t at = 0, count = 0;
+        while (at < list.size() && count < 99) {
+            size_t e = list.find('\n', at);
+            if (e == std::string::npos) e = list.size();
+            const long n = std::strtol(list.c_str() + at, nullptr, 10);
+            if (e > at && n > 0) { items += "<item num=\"" + std::to_string(n) + "\"/>"; count++; }
+            at = e + 1;
+        }
+        return "<eemall status=\"0\">" + items + "</eemall>";
+    }
+    if (m == "services" && f == "get") {   // the other modules' URLs (0x18a808)
         // the names the methods look up (their entries' second word): rank, p_friend, eemall and
         // ntp all use "local"
         static const char *modules[] = {"posevent", "pcbtracker", "numbering", "package", "userdata", "userid", "local"};
         std::string items;
-        for (const char *m : modules) items += std::string("<item name=\"") + m + "\" url=\"http://" + host + "/\"/>";
+        for (const char *mod : modules) items += std::string("<item name=\"") + mod + "\" url=\"http://" + esc(host) + "/\"/>";
         return "<services expire=\"600\" status=\"0\">" + items + "</services>";
     }
-    if (r.module == "ntp" && r.method == "get") {   // <time year.. sec../> (0x19b740)
+    if (m == "ntp" && f == "get") {   // <time year.. sec../> (0x19b740)
         const time_t t = now ? (time_t)now() : 0;
         struct tm tm;
         gmtime_r(&t, &tm);
@@ -249,9 +458,11 @@ std::string EamuseServer::answer(const Call &c, const Request &r, const std::str
                  tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec);
         return b;
     }
-    if (r.module == "posevent" && (r.method == "sale" || r.method == "sales"))   // approve is required (0x18af68)
+    if (m == "posevent" && (f == "sale" || f == "sales"))   // approve is required (0x18af68)
         return "<posevent status=\"0\" approve=\"1\" margin=\"0\"/>";
-    return "<" + r.module + " status=\"0\"/>";
+    // services this server keeps nothing for: pcbtracker alive, posevent income, package list
+    // (no downloads), p_friend get/state/ask
+    return "<" + m + " status=\"0\"/>";
 }
 
 std::string EamuseServer::handle(const std::string &req) {

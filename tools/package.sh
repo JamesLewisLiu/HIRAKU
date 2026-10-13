@@ -38,12 +38,17 @@ for f in "$build"/hiraku "$build"/hiraku-*; do
     done
   fi
 done
-sdl=$(ldd "$(ls "$build"/hiraku-* | head -1)" | awk '/libSDL3/ {print $3}')
+sdl=""
+for f in "$build"/hiraku "$build"/hiraku-*; do   # the first binary that has SDL (hiraku-eamuse hasn't)
+  [ -n "$sdl" ] || sdl=$(ldd "$f" 2>/dev/null | awk '/libSDL3/ {print $3}')
+done
 [ -n "$sdl" ] && cp -L "$sdl" "$d/bin/lib/"
 cp -r "$root/games" "$root/docs" "$root/shaders" "$d/"
 cp -r "$root/oracle/scripts" "$d/scripts"
 mkdir -p "$d/tools"
 cp "$root"/tools/{ingest.py,chd.py,fbexe.py,pack-data.py,regress.py,unlock.py,pythonfs.py,chdread.py} "$d/tools/"
+# e-AMUSEMENT (Konami Python): the server checker and the game's calls (docs/EAMUSE3.md)
+mkdir -p "$d/tools/eamuse" && cp "$root"/tools/eamuse/{check.py,corpus.json} "$d/tools/eamuse/"
 # Konami Python ingest reads disks in place through libchdr (tools/chdread.py)
 [ -f "$root/build/libchdr_mini.so" ] && mkdir -p "$d/build" && cp "$root/build/libchdr_mini.so" "$d/build/"
 cp "$root/LICENSE" "$d/" 2>/dev/null || true
@@ -64,6 +69,9 @@ Game data, either way:
 
 Konami Python games (bin/hiraku-popn9): Vulkan or OpenGL drivers from the system;
 --renderer vk (or gl) draws on the GPU, the default software renderer on the CPU.
+Their e-AMUSEMENT (pop'n music 9: cards, players, rankings) runs offline inside the game
+by default; bin/hiraku-eamuse --port 8080 is the same server for several PCs, which then run
+with --eamuse http://that-pc:8080/ (docs/EAMUSE3.md; tools/eamuse/check.py checks a server).
 
 Run a game:
     bin/hiraku-popn8 --window          (--window 3 for 3x, --fullscreen)
