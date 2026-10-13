@@ -96,11 +96,13 @@ struct FrameTimes {
     uint64_t n = 0, last = 0, last_wait = 0, worst_frame = 0;
     uint64_t last_cat[prof::NCAT] = {}, worst_cat[prof::NCAT] = {};
     double sum_ms = 0, max_ms = 0;
+    FILE *log = nullptr;   // HK_FRAMETIMES=file: every frame's host work, "frame ms"
 
     void frame(uint64_t f) {
         const uint64_t t = prof::ticks(), w = prof::g_wait_ticks;
         if (last) {
             double ms = (double)((t - last) - (w - last_wait)) * prof::ns_per_tick() / 1e6;
+            if (log) fprintf(log, "%llu %.3f\n", (unsigned long long)f, ms);
             hist[std::min(BINS, (int)(ms / 0.05))]++;
             n++;
             sum_ms += ms;
@@ -275,6 +277,7 @@ int main(int argc, char **argv) {
     };
 
     static FrameTimes frame_times;
+    if (const char *ft = getenv("HK_FRAMETIMES"); ft && *ft) frame_times.log = fopen(ft, "w");
     auto report = [&]() {
         frame_times.print();
         machine.report();

@@ -59,6 +59,7 @@ private:
 	int32_t p_n_quantize_uv[ DCTSIZE2 ];
 	int32_t p_n_cos[ DCTSIZE2 ];
 	int32_t p_n_cos_precalc[ DCTSIZE2 * DCTSIZE2 ];
+	int32_t m_hk_cos_t[ DCTSIZE2 * DCTSIZE2 ]; // HIRAKU: p_n_cos_precalc transposed
 
 	uint32_t n_0_command;
 	uint32_t n_0_address;

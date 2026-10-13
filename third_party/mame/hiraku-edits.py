@@ -416,12 +416,134 @@ protected:
     return s
 
 
+def mdec_cpp(s):
+    # the IDCT over the nonzero coefficients only (most of a block's 64 are zero), from a transposed
+    # table; the sums are the same integers in another order (unsigned, so they wrap as MAME's do)
+    s = edit(s, '''void psxmdec_device::mdec_idct( int32_t *p_n_src, int32_t *p_n_dst )
+{
+''', '''void psxmdec_device::mdec_idct( int32_t *p_n_src, int32_t *p_n_dst )
+{
+	// HIRAKU: the same sums, over the nonzero coefficients
+	{
+		uint32_t n_acc[ DCTSIZE2 ] = {};
+		for( uint32_t n_vu = 0; n_vu < DCTSIZE2; n_vu++ )
+		{
+			const uint32_t n_s = p_n_src[ n_vu ];
+			if( n_s == 0 )
+				continue;
+			const int32_t *p_n_c = &m_hk_cos_t[ n_vu * DCTSIZE2 ];
+			for( uint32_t n_yx = 0; n_yx < DCTSIZE2; n_yx++ )
+				n_acc[ n_yx ] += n_s * (uint32_t)p_n_c[ n_yx ];
+		}
+		for( uint32_t n_yx = 0; n_yx < DCTSIZE2; n_yx++ )
+			p_n_dst[ n_yx ] = (int32_t)n_acc[ n_yx ] >> ( MDEC_COS_PRECALC_BITS + 2 );
+		return;
+	}
+
+''', 'mdec_idct')
+    s = edit(s, '''						p_n_cos[ ( n_v * 8 ) + n_y ] ) >> ( 30 - MDEC_COS_PRECALC_BITS ) );
+				}
+			}
+		}
+	}
+}
+''', '''						p_n_cos[ ( n_v * 8 ) + n_y ] ) >> ( 30 - MDEC_COS_PRECALC_BITS ) );
+				}
+			}
+		}
+	}
+
+	// HIRAKU: transposed, for mdec_idct()
+	for( uint32_t n_yx = 0; n_yx < DCTSIZE2; n_yx++ )
+		for( uint32_t n_vu = 0; n_vu < DCTSIZE2; n_vu++ )
+			m_hk_cos_t[ n_vu * DCTSIZE2 + n_yx ] = p_n_cos_precalc[ n_yx * DCTSIZE2 + n_vu ];
+}
+''', 'mdec_cos_precalc')
+    return s
+
+
+def mdec_h(s):
+    s = edit(s, '''	int32_t p_n_cos_precalc[ DCTSIZE2 * DCTSIZE2 ];
+''', '''	int32_t p_n_cos_precalc[ DCTSIZE2 * DCTSIZE2 ];
+	int32_t m_hk_cos_t[ DCTSIZE2 * DCTSIZE2 ]; // HIRAKU: p_n_cos_precalc transposed
+''', 'cos_t')
+    return s
+
+
+def video_psx_cpp(s):
+    # textured pixels: the level tables are (component << 8), computed instead of read from three
+    # 128 KiB tables; and shading at 0x80 (raw textures, most sprites) gives the texel back unchanged
+    # (each shade table maps level l at 0x80 to l), so the shade tables are skipped then.
+    s = edit(s, """#define SHADEDPIXEL( PIXELUPDATE ) \\
+		if( n_bgr != 0 ) \\
+		{ \\
+			WRITE_PIXEL( \\
+				p_n_redshade[ p_n_redlevel[ n_bgr ] | n_r.w.h ] | \\
+				p_n_greenshade[ p_n_greenlevel[ n_bgr ] | n_g.w.h ] | \\
+				p_n_blueshade[ p_n_bluelevel[ n_bgr ] | n_b.w.h ] | \\
+				( n_bgr & 0x8000 ) ) \\
+		} \\
+""", """/* HIRAKU: p_n_redlevel[] and friends, computed */
+#define HK_RLEVEL( c ) ( ( ( c ) & 0x1f ) << 8 )
+#define HK_GLEVEL( c ) ( ( ( ( c ) >> 5 ) & 0x1f ) << 8 )
+#define HK_BLEVEL( c ) ( ( ( ( c ) >> 10 ) & 0x1f ) << 8 )
+#define HK_NEUTRAL ( n_r.w.h == 0x80 && n_g.w.h == 0x80 && n_b.w.h == 0x80 )
+
+#define SHADEDPIXEL( PIXELUPDATE ) \\
+		if( n_bgr != 0 ) \\
+		{ \\
+			if( HK_NEUTRAL ) \\
+				WRITE_PIXEL( n_bgr ) \\
+			else \\
+				WRITE_PIXEL( \\
+					p_n_redshade[ HK_RLEVEL( n_bgr ) | n_r.w.h ] | \\
+					p_n_greenshade[ HK_GLEVEL( n_bgr ) | n_g.w.h ] | \\
+					p_n_blueshade[ HK_BLEVEL( n_bgr ) | n_b.w.h ] | \\
+					( n_bgr & 0x8000 ) ) \\
+		} \\
+""", 'SHADEDPIXEL')
+    s = edit(s, """				WRITE_PIXEL( \\
+					p_n_redtrans[ p_n_f[ p_n_redlevel[ n_bgr ] | n_r.w.h ] | p_n_redb[ *( p_vram ) ] ] | \\
+					p_n_greentrans[ p_n_f[ p_n_greenlevel[ n_bgr ] | n_g.w.h ] | p_n_greenb[ *( p_vram ) ] ] | \\
+					p_n_bluetrans[ p_n_f[ p_n_bluelevel[ n_bgr ] | n_b.w.h ] | p_n_blueb[ *( p_vram ) ] ] | \\
+					0x8000 ) \\
+			} \\
+			else \\
+			{ \\
+				WRITE_PIXEL( \\
+					p_n_redshade[ p_n_redlevel[ n_bgr ] | n_r.w.h ] | \\
+					p_n_greenshade[ p_n_greenlevel[ n_bgr ] | n_g.w.h ] | \\
+					p_n_blueshade[ p_n_bluelevel[ n_bgr ] | n_b.w.h ] ) \\
+			} \\
+""", """				WRITE_PIXEL( \\
+					p_n_redtrans[ p_n_f[ HK_RLEVEL( n_bgr ) | n_r.w.h ] | p_n_redb[ *( p_vram ) ] ] | \\
+					p_n_greentrans[ p_n_f[ HK_GLEVEL( n_bgr ) | n_g.w.h ] | p_n_greenb[ *( p_vram ) ] ] | \\
+					p_n_bluetrans[ p_n_f[ HK_BLEVEL( n_bgr ) | n_b.w.h ] | p_n_blueb[ *( p_vram ) ] ] | \\
+					0x8000 ) \\
+			} \\
+			else if( HK_NEUTRAL ) \\
+			{ \\
+				WRITE_PIXEL( n_bgr ) \\
+			} \\
+			else \\
+			{ \\
+				WRITE_PIXEL( \\
+					p_n_redshade[ HK_RLEVEL( n_bgr ) | n_r.w.h ] | \\
+					p_n_greenshade[ HK_GLEVEL( n_bgr ) | n_g.w.h ] | \\
+					p_n_blueshade[ HK_BLEVEL( n_bgr ) | n_b.w.h ] ) \\
+			} \\
+""", 'TRANSPARENTPIXEL')
+    return s
+
+
 def main():
     if len(sys.argv) != 2:
         sys.exit(__doc__)
     root = Path(sys.argv[1])
     for rel, fn in [('sound/swp30.cpp', swp30_cpp), ('sound/swp30.h', swp30_h),
-                    ('cpu/psx/psx.cpp', psx_cpp), ('cpu/psx/psx.h', psx_h)]:
+                    ('cpu/psx/psx.cpp', psx_cpp), ('cpu/psx/psx.h', psx_h),
+                    ('cpu/psx/mdec.cpp', mdec_cpp), ('cpu/psx/mdec.h', mdec_h),
+                    ('video/psx.cpp', video_psx_cpp)]:
         p = root / rel
         text = p.read_text()
         if 'HIRAKU' in text:

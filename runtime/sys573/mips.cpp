@@ -20,7 +20,7 @@
 #include <signal.h>
 #include <sys/mman.h>
 
-// the game's blocks (tools/mipsgen.py; mips_none.cpp when it has none)
+// the game's blocks (tools/mipsgen.py; none without a recording)
 extern const hk573_block *const hk573_parts[];
 extern const uint32_t hk573_part_sizes[];
 extern const uint32_t hk573_nparts;
@@ -30,10 +30,10 @@ namespace {
 
 using X = hk_psx;
 constexpr uint32_t TAB_SIZE = 1u << 22;   // indexed by (pc >> 2) & 0x3fffff, as in execute_run()
-constexpr int MAX_LEN = 64;               // the longest block the recorder makes
+constexpr int MAX_LEN = 128;              // the longest block the recorder makes
 
 struct Node {
-    uint32_t pc, len;
+    uint32_t pc, len, nwords;
     void (*fn)(psxcpu_device &);
     const hk573_block *b;
     const Node *next;             // other blocks at the same index: other code at this pc, or another mirror
@@ -51,7 +51,7 @@ struct Node {
 // is checked again before it next runs (writes to code are rare: a few dozen in a 150 s run).
 // A page that keeps being written (code and busy data side by side) is left unprotected, and
 // its blocks are checked on every run.
-uint64_t g_epoch = 1;
+uint64_t &g_epoch = X::epoch;
 uint32_t g_map_version = 0;
 
 struct Guard {
@@ -99,8 +99,9 @@ void on_segv(int sig, siginfo_t *si, void *uc) {
     }
 }
 
-// which instructions end a block: a branch (after its delay slot), or one a block always hands to
-// the interpreter. tools/mipsgen.py compiles what the recorder stored, in the same terms.
+// which instructions end a block: a jump (after its delay slot), or one a block always hands to
+// the interpreter. A conditional branch ends it only where it is taken. tools/mipsgen.py compiles
+// what the recorder stored, in the same terms.
 enum Kind { NORMAL, BRANCH, TERMINAL };
 Kind kind(uint32_t w) {
     const uint32_t op = w >> 26, rs = (w >> 21) & 31, fn = w & 63;
@@ -136,7 +137,7 @@ struct Rec {
 };
 
 struct Stats {
-    uint64_t runs = 0, insns = 0, short_slice = 0, not_fast = 0, mismatch = 0;
+    uint64_t runs = 0, insns = 0, short_slice = 0, not_fast = 0, mismatch = 0, checked = 0, unwatched = 0;
 };
 
 struct State {
@@ -163,23 +164,23 @@ bool words_at(psxcpu_device &d, uint32_t a, uint32_t *out, int n) {
     return true;
 }
 
-// the block's words against memory at pc, through the CPU's page table; host: where they start
-bool same_code(psxcpu_device &d, const hk573_block *b, const uint8_t *&host) {
+// a range of code against memory, through the CPU's page table; host: where it starts
+bool same_code(psxcpu_device &d, uint32_t pc, uint32_t nwords, const uint32_t *words, const uint8_t *&host) {
     const X::page_t *pg = X::pages(d);
-    uint32_t a = b->pc;
+    uint32_t a = pc;
     host = nullptr;
-    for (uint32_t i = 0; i < b->len;) {
+    for (uint32_t i = 0; i < nwords;) {
         const uint8_t *p = pg[a >> X::PAGE_BITS].direct_r;
         if (!p) return false;
         const uint32_t off = a & X::PAGE_MASK;
         if (!host) host = p + off;
         else if (p + off != host + 4 * i) return false;   // not contiguous on the host: never trusted
-        const uint32_t n = std::min<uint32_t>(b->len - i, (X::PAGE_MASK + 1 - off) / 4);
+        const uint32_t n = std::min<uint32_t>(nwords - i, (X::PAGE_MASK + 1 - off) / 4);
         const uint8_t *q = p + off;
         for (uint32_t k = 0; k < n; k++) {
             uint32_t w;
             memcpy(&w, q + 4 * k, 4);
-            if (w != b->words[i + k]) return false;
+            if (w != words[i + k]) return false;
         }
         i += n;
         a += n * 4;
@@ -187,19 +188,30 @@ bool same_code(psxcpu_device &d, const hk573_block *b, const uint8_t *&host) {
     return true;
 }
 
-// the block's code is at pc now: trust it until the epoch moves on, if it can be watched
+// the code is there and can be watched (main RAM, write-protected) or never changes (ROM)
+bool same_and_watched(psxcpu_device &d, uint32_t pc, uint32_t nwords, const uint32_t *words, bool &watched) {
+    const uint8_t *host;
+    if (!same_code(d, pc, nwords, words, host)) return false;
+    Guard &gd = g_guard;
+    const uint8_t *end = host + 4 * nwords - 1;
+    if (gd.has(host)) {
+        if (!(gd.has(end) && gd.protect(gd.page(host)) && gd.protect(gd.page(end)))) watched = false;
+    } else if (X::pages(d)[pc >> X::PAGE_BITS].direct_w) {
+        watched = false;   // writable, and not main RAM: can't be watched
+    }
+    return true;
+}
+
+// the block's code (and its loop's) is at pc now: trust it until the epoch moves on, if it can be
+// watched
 bool check(psxcpu_device &d, const Node *n) {
     const hk573_block *b = n->b;
-    const uint8_t *host;
-    if (!same_code(d, b, host)) return false;
-    Guard &gd = g_guard;
-    const uint8_t *end = host + 4 * b->len - 1;
-    if (gd.has(host)) {
-        n->epoch = gd.has(end) && gd.protect(gd.page(host)) && gd.protect(gd.page(end)) ? g_epoch : 0;
-    } else {
-        // ROM (the BIOS) never changes; anything else writable can't be watched
-        n->epoch = !X::pages(d)[b->pc >> X::PAGE_BITS].direct_w ? g_epoch : 0;
-    }
+    bool watched = true;
+    if (!same_and_watched(d, b->pc, b->nwords, b->words, watched)) return false;
+    for (uint32_t i = 0; i < b->nextra; i++)
+        if (!same_and_watched(d, b->extra[i].pc, b->extra[i].nwords, b->extra[i].words, watched)) return false;
+    n->epoch = watched ? g_epoch : 0;
+    if (g.stats_on) (watched ? g.st.checked : g.st.unwatched)++;
     return true;
 }
 
@@ -241,12 +253,14 @@ bool run(psxcpu_device &d, const void *p) {
             if (g.stats_on) g.st.short_slice++;
             return ran;
         }
-        if (g.stats_on) {
-            g.st.runs++;
-            g.st.insns += n->len;
-        }
         X::bailed = false;
+        const int before = X::icount(d);
+        const int stolen = d.m_cycles_stolen;
         n->fn(d);
+        if (g.stats_on) {   // what it ran: the cycles it took, less any a device cut from the timeslice
+            g.st.runs++;
+            g.st.insns += before - X::icount(d) - (d.m_cycles_stolen - stolen);
+        }
         ran = true;
         if (X::icount(d) <= 0 || X::bailed || X::delayr(d) >= (uint32_t)X::DELAY_PC) return true;
         if (space.version() != g_map_version) return true;   // a device changed the map: start over
@@ -277,15 +291,18 @@ void record(psxcpu_device &d) {
     if (X::delayr(d) >= (uint32_t)X::DELAY_PC || !X::fast_mode(d)) return;   // blocks never start here
     uint32_t w[MAX_LEN + 1];
     int n = 0;
-    for (; n < MAX_LEN; n++) {
+    while (n < MAX_LEN && words_at(d, pc + 4 * n, &w[n], 1)) {
+        const Kind k = kind(w[n++]);
+        if (k == TERMINAL) break;
+        if (k != BRANCH) continue;
+        const uint32_t op = w[n - 1] >> 26;
+        const bool conditional = op == 1 || (op >= 4 && op <= 7);
         if (!words_at(d, pc + 4 * n, &w[n], 1)) break;
-        const Kind k = kind(w[n]);
-        if (k == TERMINAL) { n++; break; }
-        if (k == BRANCH) {
-            n++;
-            if (words_at(d, pc + 4 * n, &w[n], 1) && kind(w[n]) != BRANCH) n++;   // the delay slot
-            break;
-        }
+        const Kind slot = kind(w[n]);
+        if (slot == BRANCH) break;   // a branch in the delay slot: left to the interpreter
+        n++;
+        if (!conditional || slot == TERMINAL) break;
+        // a conditional branch: the block runs on where it isn't taken
     }
     if (n == 0) return;
     g.cur_end = pc + 4 * n;
@@ -316,6 +333,9 @@ void load_recording(const std::string &path) {
 }
 
 std::unordered_map<uint32_t, uint64_t> g_slow;   // slow accesses from blocks, per 16 bytes
+// ... by region (flash window, the PS1's I/O page, other) and kind (1, 2, 4: reads of that size;
+// 3: lwl/lwr; 8: word writes; 7: narrower writes)
+uint64_t g_slow_kind[3][9];
 
 }  // namespace
 
@@ -345,7 +365,7 @@ void init(psxcpu_device &cpu) {
         for (uint32_t j = 0; j < hk573_part_sizes[i]; j++) {
             const hk573_block *b = &hk573_parts[i][j];
             const void *&slot = g.tab[(b->pc >> 2) & (TAB_SIZE - 1)];
-            g.nodes.push_back(Node{b->pc, b->len, b->fn, b, static_cast<const Node *>(slot)});
+            g.nodes.push_back(Node{b->pc, b->len, b->nwords, b->fn, b, static_cast<const Node *>(slot)});
             slot = &g.nodes.back();
         }
     g.nblocks = total;
@@ -401,6 +421,8 @@ std::string report() {
              g.nblocks, g.st.runs, g.st.insns, total ? 100.0 * (double)g.st.insns / (double)total : 0.0, total,
              g.st.short_slice, g.st.not_fast, g.st.mismatch, g_guard.protects, g_guard.total_faults);
     std::string out = b;
+    snprintf(b, sizeof b, "\nmips: code checked %" PRIu64 " times, %" PRIu64 " of them unwatched", g.st.checked, g.st.unwatched);
+    out += b;
     std::map<uint32_t, uint64_t> by64k;
     uint64_t all = 0;
     for (auto &[a, n] : g_slow) { by64k[a >> 16] += n; all += n; }
@@ -408,6 +430,12 @@ std::string report() {
     out += b;
     for (auto &[pg, n] : by64k)
         if (n * 100 >= all) { snprintf(b, sizeof b, " %04xxxxx %" PRIu64, pg, n); out += b; }
+    static const char *const region[3] = {"flash", "I/O", "other"};
+    for (int r = 0; r < 3; r++) {
+        snprintf(b, sizeof b, "\nmips: slow %s: lb %" PRIu64 " lh %" PRIu64 " lw %" PRIu64 " lwl/r %" PRIu64 " sw %" PRIu64 " sb/sh %" PRIu64,
+                 region[r], g_slow_kind[r][1], g_slow_kind[r][2], g_slow_kind[r][4], g_slow_kind[r][3], g_slow_kind[r][8], g_slow_kind[r][7]);
+        out += b;
+    }
     std::vector<std::pair<uint64_t, uint32_t>> top;
     for (auto &[a, n] : g_slow) top.emplace_back(n, a);
     std::sort(top.rbegin(), top.rend());
@@ -420,4 +448,7 @@ std::string report() {
 
 }  // namespace hk::k573::mips
 
-void hk_psx::note(uint32_t a) { hk::k573::mips::g_slow[a & ~15u]++; }
+void hk_psx::note(uint32_t a, int size) {
+    hk::k573::mips::g_slow[a & ~15u]++;
+    hk::k573::mips::g_slow_kind[(a >> 16) == 0x1f80 ? 1 : (a >> 22) == (0x1f000000u >> 22) ? 0 : 2][size]++;
+}

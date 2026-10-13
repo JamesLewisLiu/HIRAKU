@@ -19,11 +19,23 @@
 #define HK_COLD __attribute__((noinline, cold))
 
 // one recompiled block, generated from the instruction words it was compiled from
+// one recompiled block, generated from the instruction words it was compiled from. A block runs
+// on past conditional branches that aren't taken: its first stretch, up to the first one, is
+// len instructions (cycles: MAME's PS1 CPU takes one per instruction); the block itself checks
+// there is room in the timeslice before each further stretch.
+// more code a block's function runs (the other blocks of a loop compiled with it)
+struct hk573_range {
+    uint32_t pc, nwords;
+    const uint32_t *words;
+};
 struct hk573_block {
     uint32_t pc;
-    uint32_t len;            // instructions, and so cycles (MAME's PS1 CPU takes one per instruction)
+    uint32_t len;            // the first stretch
+    uint32_t nwords;
     const uint32_t *words;   // the code it was compiled from (checked against memory on entry)
     void (*fn)(psxcpu_device &);
+    uint32_t nextra;         // the other blocks of its loop, checked with it
+    const hk573_range *extra;
 };
 
 // friend of psxcpu_device (third_party/mame/hiraku-edits.py)
@@ -54,6 +66,9 @@ struct hk_psx {
     // the instruction at pc goes to the interpreter (an exception, a bus error, an instruction
     // blocks don't do), from the state before it; then the block ends
     static inline bool bailed = false;   // the interpreter ran an instruction: the mode may have changed
+    // moves on whenever checked code may have changed (mips.cpp): a block that loops on itself
+    // stops looping
+    static inline uint64_t epoch = 1;
     static HK_COLD void bail(D &d, uint32_t pc, uint32_t delayr, uint32_t delayv, int icount) {
         bailed = true;
         d.m_pc = pc;
@@ -69,17 +84,19 @@ struct hk_psx {
     // short (abort_timeslice, eat_cycles), 2 on a bus error (the access is repeated by bail) ----
     struct Slow { uint32_t v; int st; };
     static inline bool note_on = false;           // HK_573_MIPS_STATS: count the slow accesses
-    static void note(uint32_t a);                 // (mips.cpp)
-    static HK_INLINE int after_slow(D &d, int ic) {
+    static void note(uint32_t a, int size);       // (mips.cpp)
+    // after a slow access: 2 on a bus error; 1 when the block must end after this instruction (a
+    // device cut the timeslice short, or changed the memory map); else 0
+    static HK_INLINE int after_slow(D &d, int ic, uint32_t map_version) {
         if (d.m_berr) { d.m_berr = 0; return 2; }
-        return d.m_icount != ic ? 1 : 0;
+        return d.m_icount != ic || d.m_program->version() != map_version ? 1 : 0;
     }
-    static HK_COLD Slow rd8_slow(D &d, uint32_t a, int ic) { if (note_on) note(a); d.m_icount = ic; uint32_t v = d.m_data.read_byte(a); return {v, after_slow(d, ic)}; }
-    static HK_COLD Slow rd16_slow(D &d, uint32_t a, int ic) { if (note_on) note(a); d.m_icount = ic; uint32_t v = d.m_data.read_word(a); return {v, after_slow(d, ic)}; }
-    static HK_COLD Slow rd32_slow(D &d, uint32_t a, int ic) { if (note_on) note(a); d.m_icount = ic; uint32_t v = d.m_data.read_dword(a); return {v, after_slow(d, ic)}; }
-    static HK_COLD Slow rd32m_slow(D &d, uint32_t a, uint32_t m, int ic) { if (note_on) note(a); d.m_icount = ic; uint32_t v = d.m_data.read_dword(a, m); return {v, after_slow(d, ic)}; }
-    static HK_COLD int wr32_slow(D &d, uint32_t a, uint32_t v, int ic) { if (note_on) note(a); d.m_icount = ic; d.m_data.write_dword(a, v); return after_slow(d, ic); }
-    static HK_COLD int wr32m_slow(D &d, uint32_t a, uint32_t v, uint32_t m, int ic) { if (note_on) note(a); d.m_icount = ic; d.m_data.write_dword(a, v, m); return after_slow(d, ic); }
+    static HK_COLD Slow rd8_slow(D &d, uint32_t a, int ic) { if (note_on) note(a, 1); const uint32_t mv = d.m_program->version(); d.m_icount = ic; uint32_t v = d.m_data.read_byte(a); return {v, after_slow(d, ic, mv)}; }
+    static HK_COLD Slow rd16_slow(D &d, uint32_t a, int ic) { if (note_on) note(a, 2); const uint32_t mv = d.m_program->version(); d.m_icount = ic; uint32_t v = d.m_data.read_word(a); return {v, after_slow(d, ic, mv)}; }
+    static HK_COLD Slow rd32_slow(D &d, uint32_t a, int ic) { if (note_on) note(a, 4); const uint32_t mv = d.m_program->version(); d.m_icount = ic; uint32_t v = d.m_data.read_dword(a); return {v, after_slow(d, ic, mv)}; }
+    static HK_COLD Slow rd32m_slow(D &d, uint32_t a, uint32_t m, int ic) { if (note_on) note(a, 3); const uint32_t mv = d.m_program->version(); d.m_icount = ic; uint32_t v = d.m_data.read_dword(a, m); return {v, after_slow(d, ic, mv)}; }
+    static HK_COLD int wr32_slow(D &d, uint32_t a, uint32_t v, int ic) { if (note_on) note(a, 8); const uint32_t mv = d.m_program->version(); d.m_icount = ic; d.m_data.write_dword(a, v); return after_slow(d, ic, mv); }
+    static HK_COLD int wr32m_slow(D &d, uint32_t a, uint32_t v, uint32_t m, int ic) { if (note_on) note(a, 7); const uint32_t mv = d.m_program->version(); d.m_icount = ic; d.m_data.write_dword(a, v, m); return after_slow(d, ic, mv); }
 
     // the scratchpad (1 KiB at 0x1f800000, on a page shared with I/O) when it is mapped as RAM in
     // both directions: else nullptr. Set by the dispatcher whenever the map changes.

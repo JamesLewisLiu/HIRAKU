@@ -309,32 +309,30 @@ target_compile_options(hiraku_sys573 PRIVATE -O2 -Wno-unused-parameter)
 hk_pgo(sys573 hiraku_mame573)
 
 # hiraku_sys573_game(<id>): a System 573 game. MAME's devices, and the game's recompiled R3000
-# blocks when there is a recording of them, build/<id>/mips573.txt (runtime/sys573/mips.h):
-# tools/mipsgen.py turns it into C++. Without one, the CPU is all interpreted.
+# blocks when there is a recording of them, build/<id>/mips573.txt (runtime/sys573/mips.h,
+# tools/mipsrec.py): tools/mipsgen.py turns it into C++. Without one, the CPU is all interpreted.
 set(HK_573_BLOCK_FILES 8)
 set(HK_573_MIN_RUNS 1 CACHE STRING "blocks run fewer times than this in the recording are left to the interpreter")
 function(hiraku_sys573_game id)
   set(rec ${CMAKE_SOURCE_DIR}/build/${id}/mips573.txt)
-  if(EXISTS ${rec})
-    set(gen ${CMAKE_BINARY_DIR}/gen573/${id})
-    set(outs ${gen}/table.cpp)
-    math(EXPR last "${HK_573_BLOCK_FILES} - 1")
-    foreach(k RANGE ${last})
-      list(APPEND outs ${gen}/blocks_${k}.cpp)
-    endforeach()
-    add_custom_command(
-      OUTPUT ${outs}
-      COMMAND python3 ${CMAKE_SOURCE_DIR}/tools/mipsgen.py ${rec} ${gen} --files ${HK_573_BLOCK_FILES} --min-runs ${HK_573_MIN_RUNS}
-      DEPENDS ${CMAKE_SOURCE_DIR}/tools/mipsgen.py ${rec}
-      COMMENT "Recompiling ${id}'s R3000 blocks")
-    add_library(hiraku_${id}_blocks STATIC ${outs})
-    target_link_libraries(hiraku_${id}_blocks PRIVATE hiraku_mame573)
-    target_include_directories(hiraku_${id}_blocks PRIVATE ${CMAKE_SOURCE_DIR}/runtime)
-    # generated code: unused variables and labels are normal; wrapping arithmetic is the guest's
-    target_compile_options(hiraku_${id}_blocks PRIVATE -w -O2 -fwrapv)
-  else()
-    add_library(hiraku_${id}_blocks STATIC runtime/sys573/mips_none.cpp)
-  endif()
+  set(gen ${CMAKE_BINARY_DIR}/gen573/${id})
+  set(outs ${gen}/table.cpp)
+  math(EXPR last "${HK_573_BLOCK_FILES} - 1")
+  foreach(k RANGE ${last})
+    list(APPEND outs ${gen}/blocks_${k}.cpp)
+  endforeach()
+  # every build: mipsgen.py does nothing unless the recording (or the script) changed, and
+  # writes empty tables while there is none, so a new recording needs no cmake run
+  add_custom_target(hiraku_${id}_mipsgen
+    COMMAND python3 ${CMAKE_SOURCE_DIR}/tools/mipsgen.py ${rec} ${gen} --files ${HK_573_BLOCK_FILES} --min-runs ${HK_573_MIN_RUNS}
+    BYPRODUCTS ${outs}
+    COMMENT "Recompiling ${id}'s R3000 blocks, if its recording changed")
+  add_library(hiraku_${id}_blocks STATIC ${outs})
+  add_dependencies(hiraku_${id}_blocks hiraku_${id}_mipsgen)
+  target_link_libraries(hiraku_${id}_blocks PRIVATE hiraku_mame573)
+  target_include_directories(hiraku_${id}_blocks PRIVATE ${CMAKE_SOURCE_DIR}/runtime)
+  # generated code: unused variables and labels are normal; wrapping arithmetic is the guest's
+  target_compile_options(hiraku_${id}_blocks PRIVATE -w -O2 -fwrapv)
   add_executable(hiraku-${id} runtime/main.cpp runtime/core/sampler.cpp)
   target_compile_definitions(hiraku-${id} PRIVATE HK_GAME_ID="${id}" HK_ROOT="${CMAKE_SOURCE_DIR}")
   if(TARGET hiraku_host)

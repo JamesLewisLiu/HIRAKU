@@ -1043,14 +1043,23 @@ void psxgpu_device::decode_tpage( uint32_t tpage )
 #define TEXTUREWINDOWINTERLEAVED8BIT( TXV, TXU ) TEXTUREINTERLEAVED8BIT( ( TXV & n_twh ), ( TXU & n_tww ) )
 #define TEXTUREWINDOWINTERLEAVED15BIT( TXV, TXU ) TEXTUREINTERLEAVED15BIT( ( TXV & n_twh ), ( TXU & n_tww ) )
 
+/* HIRAKU: p_n_redlevel[] and friends, computed */
+#define HK_RLEVEL( c ) ( ( ( c ) & 0x1f ) << 8 )
+#define HK_GLEVEL( c ) ( ( ( ( c ) >> 5 ) & 0x1f ) << 8 )
+#define HK_BLEVEL( c ) ( ( ( ( c ) >> 10 ) & 0x1f ) << 8 )
+#define HK_NEUTRAL ( n_r.w.h == 0x80 && n_g.w.h == 0x80 && n_b.w.h == 0x80 )
+
 #define SHADEDPIXEL( PIXELUPDATE ) \
 		if( n_bgr != 0 ) \
 		{ \
-			WRITE_PIXEL( \
-				p_n_redshade[ p_n_redlevel[ n_bgr ] | n_r.w.h ] | \
-				p_n_greenshade[ p_n_greenlevel[ n_bgr ] | n_g.w.h ] | \
-				p_n_blueshade[ p_n_bluelevel[ n_bgr ] | n_b.w.h ] | \
-				( n_bgr & 0x8000 ) ) \
+			if( HK_NEUTRAL ) \
+				WRITE_PIXEL( n_bgr ) \
+			else \
+				WRITE_PIXEL( \
+					p_n_redshade[ HK_RLEVEL( n_bgr ) | n_r.w.h ] | \
+					p_n_greenshade[ HK_GLEVEL( n_bgr ) | n_g.w.h ] | \
+					p_n_blueshade[ HK_BLEVEL( n_bgr ) | n_b.w.h ] | \
+					( n_bgr & 0x8000 ) ) \
 		} \
 		p_vram++; \
 		PIXELUPDATE \
@@ -1063,17 +1072,21 @@ void psxgpu_device::decode_tpage( uint32_t tpage )
 			if( ( n_bgr & 0x8000 ) != 0 ) \
 			{ \
 				WRITE_PIXEL( \
-					p_n_redtrans[ p_n_f[ p_n_redlevel[ n_bgr ] | n_r.w.h ] | p_n_redb[ *( p_vram ) ] ] | \
-					p_n_greentrans[ p_n_f[ p_n_greenlevel[ n_bgr ] | n_g.w.h ] | p_n_greenb[ *( p_vram ) ] ] | \
-					p_n_bluetrans[ p_n_f[ p_n_bluelevel[ n_bgr ] | n_b.w.h ] | p_n_blueb[ *( p_vram ) ] ] | \
+					p_n_redtrans[ p_n_f[ HK_RLEVEL( n_bgr ) | n_r.w.h ] | p_n_redb[ *( p_vram ) ] ] | \
+					p_n_greentrans[ p_n_f[ HK_GLEVEL( n_bgr ) | n_g.w.h ] | p_n_greenb[ *( p_vram ) ] ] | \
+					p_n_bluetrans[ p_n_f[ HK_BLEVEL( n_bgr ) | n_b.w.h ] | p_n_blueb[ *( p_vram ) ] ] | \
 					0x8000 ) \
+			} \
+			else if( HK_NEUTRAL ) \
+			{ \
+				WRITE_PIXEL( n_bgr ) \
 			} \
 			else \
 			{ \
 				WRITE_PIXEL( \
-					p_n_redshade[ p_n_redlevel[ n_bgr ] | n_r.w.h ] | \
-					p_n_greenshade[ p_n_greenlevel[ n_bgr ] | n_g.w.h ] | \
-					p_n_blueshade[ p_n_bluelevel[ n_bgr ] | n_b.w.h ] ) \
+					p_n_redshade[ HK_RLEVEL( n_bgr ) | n_r.w.h ] | \
+					p_n_greenshade[ HK_GLEVEL( n_bgr ) | n_g.w.h ] | \
+					p_n_blueshade[ HK_BLEVEL( n_bgr ) | n_b.w.h ] ) \
 			} \
 		} \
 		p_vram++; \

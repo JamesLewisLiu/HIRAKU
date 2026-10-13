@@ -861,6 +861,7 @@ private:
     u64 read_sized(u64 ba, int size);
     void write_sized(u64 ba, int size, u64 data);
     u64 read_slow(u64 ba, int size);
+    const address_map_entry *one_handler(u64 ba, int size, bool write) const;
     void write_slow(u64 ba, int size, u64 data);
     u64 read_bus(u64 bus_ba, u64 mask);   // one bus word at aligned byte address, lanes in mask
     void write_bus(u64 bus_ba, u64 data, u64 mask);

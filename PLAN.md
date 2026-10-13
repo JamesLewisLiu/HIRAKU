@@ -776,9 +776,30 @@ Each phase has an exit test. Sizes are assisted-effort guesses; DJ Main went fas
 
       - Without that run in the recording, blocks covered 64 % and the frame was 1.57 ms. **Coverage depends on what was recorded.**
       - In the 150 s: 325 M block runs (7.8 instructions each), 135 code pages protected, 46 written to.
-    - **Measured and dropped:** a direct path in the shim for single-handler I/O accesses made no difference. Flash reads are 36 M of the 42 M slow accesses: the game reads the whole 16 MiB flash about 4 times in 150 s of attract.
+    - **Second pass (2026-10-13), the next bottlenecks.** Same ddr2m attract run (mean frame), and its demo play, frames 5,400–9,000 (closest to a song), apart. All bit-identical: every 573 regress case, main RAM hashed on every ddr2m-play frame.
+
+      | Step | Mean frame | Demo play |
+      |---|---|---|
+      | after the first pass, PGO profile refreshed | 0.65 ms | ~0.67 ms |
+      | the board's frame copy: rows instead of `pix()` per pixel | 0.57 ms | |
+      | shim: one handler covering an access, called directly (the flash's 35 M byte reads per 150 s, the I/O registers) | 0.51 ms | |
+      | MDEC: the IDCT over the nonzero coefficients only | 0.48 ms | 0.63 ms |
+      | GPU: the level tables computed; textured pixels at shade 0x80 skip the shade tables | 0.48 ms | 0.61 ms |
+      | **loop regions:** blocks that loop back to a block compile into one function with gotos | **0.36 ms** | **0.49 ms** |
+
+      - **Loop regions** were the big one: the game waits for vblank by polling a RAM counter in a two-block loop (0x80020e18 ↔ 0x80020e64), which ran 450 M times in the recordings. Block runs in 150 s: 277 M → 24 M.
+        - A jump to a block in the same function is a goto. Before it, the function checks that the timeslice has room for the target's first stretch and that no checked code was written (`hk_psx::epoch`).
+        - The function's code is checked as a whole.
+      - **Blocks run on past conditional branches that aren't taken** (superblocks). At each further stretch they check the timeslice has room. Alone this was no faster; loop regions build on it.
+      - **Tools:** `tools/mipsgen.py` runs on every build and does nothing unless the recording changed, so `tools/mipsrec.py` then `ninja` is enough. `HK_FRAMETIMES=file` writes every frame's host time; `HK_PROFILE_AFTER=ms` starts the sampler later.
+      - **Measured and dropped:**
+        - transparent texels without a branch: no change;
+        - the screen's pens computed instead of looked up: 3 % slower;
+        - compiling MAME's GPU with strict aliasing: not tried, since MAME itself builds with `-fno-strict-aliasing`.
+      - **Where the time goes now (demo play):** MAME's GPU ~45 % (textured polygons 27 %, the screen conversion 6 %), the recompiled code ~12 %, the vblank wait loop ~5 %.
     - **Next:**
-      - profile again (GPU drawing ~17 %, MDEC ~6 %, and the flash and I/O reads now weigh as much as the blocks);
+      - **the GPU on a worker thread.** Commands are parsed in step with the CPU (status, VRAM reads and DMA stay synchronous); only the drawing is deferred, and every VRAM read waits for it. The N100 has 4 cores;
+      - exact fast-forward of the vblank wait loop: within a timeslice nothing but the CPU touches RAM;
       - record more of each game (songs, menus);
       - measure on N100-class hardware;
       - `ddr3mj` and the digital board's MP3 path.

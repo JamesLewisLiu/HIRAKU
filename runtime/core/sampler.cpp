@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// HK_PROFILE=1: a 1 kHz SIGPROF sampler of the host instruction pointer, for
+// HK_PROFILE=1: a 1 kHz SIGPROF sampler of the host instruction pointer (HK_PROFILE_AFTER=ms:
+// from that much CPU time on), for
 // finding hot spots without perf. Samples are written at exit to
 // hk-profile.txt as executable-relative addresses (symbolise with
 // llvm-symbolizer --obj=<binary>). Samples in shared libraries are written as
@@ -53,7 +54,9 @@ struct Init {
         sa.sa_sigaction = on_prof;
         sa.sa_flags = SA_SIGINFO | SA_RESTART;
         sigaction(SIGPROF, &sa, nullptr);
-        itimerval t{{0, 1000}, {0, 1000}};
+        // HK_PROFILE_AFTER=ms: start after that much CPU time (the part of a run that matters)
+        const long after = getenv("HK_PROFILE_AFTER") ? atol(getenv("HK_PROFILE_AFTER")) : 0;
+        itimerval t{{0, 1000}, {after / 1000, after > 0 ? (after % 1000) * 1000 : 1000}};
         setitimer(ITIMER_PROF, &t, nullptr);
         atexit(dump);
     }

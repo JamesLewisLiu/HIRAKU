@@ -497,7 +497,46 @@ void address_space::write_bus(u64 bus_ba, u64 data, u64 mask) {
     }
 }
 
+// The common slow access, done directly: a little-endian space and one handler using all its
+// lanes, covering the bytes accessed. Each handler call (offset, data, mask) and its order are
+// the ones read_bus/write_bus make after working them out lane by lane:
+// - a handler as wide as the bus gets the accessed lanes as its mask;
+// - a narrower one is called per unit the access touches, with the unit's whole mask (a byte read
+//   from a 16-bit handler reads the whole 16 bits).
+const address_map_entry *address_space::one_handler(u64 ba, int size, bool write) const {
+    if (m_big || size > m_bus_bytes || (ba & (size - 1))) return nullptr;
+    const page_t &p = m_pages[ba >> m_pbits];
+    const u64 pm = (u64(1) << m_pbits) - 1;
+    const u16 *idx = write ? p.widx.get() : p.ridx.get();
+    const u16 id = idx ? idx[ba & pm] : write ? p.did_w : p.did_r;
+    if (!id || (idx && idx[(ba + size - 1) & pm] != id)) return nullptr;
+    const address_map_entry *e = m_rt[id - 1].e;
+    if ((write ? e->m_wkind : e->m_rkind) != address_map_entry::HANDLER) return nullptr;
+    const u64 busmask = m_bus_bytes == 8 ? ~u64(0) : (u64(1) << (m_bus_bytes * 8)) - 1;
+    if ((e->m_umask & busmask) != busmask || ((e->m_start | e->m_mirror) & (m_bus_bytes - 1))) return nullptr;
+    const int hw = (write ? e->m_wwidth : e->m_rwidth) / 8;
+    if (hw > m_bus_bytes || (hw < size && size % hw)) return nullptr;
+    return e;
+}
+
 u64 address_space::read_slow(u64 ba, int size) {
+    if (!m_read_tap) {
+        if (const address_map_entry *e = one_handler(ba, size, false)) {
+            const u64 smask = size == 8 ? ~u64(0) : (u64(1) << (size * 8)) - 1;
+            const u64 off = (ba & ~(u64)e->m_mirror) - e->m_start;
+            const int hw = e->m_rwidth / 8;
+            if (hw == m_bus_bytes) {
+                const u64 sh = lane_shift(ba, size);
+                return (e->m_rh((offs_t)(off / hw), smask << sh) >> sh) & smask;
+            }
+            const u64 hmask = (u64(1) << (hw * 8)) - 1;
+            if (size <= hw)
+                return ((e->m_rh((offs_t)(off / hw), hmask) & hmask) >> ((off % hw) * 8)) & smask;
+            u64 v = 0;
+            for (int k = 0; k < size / hw; k++) v |= (e->m_rh((offs_t)(off / hw + k), hmask) & hmask) << (k * hw * 8);
+            return v;
+        }
+    }
     u64 bus = ba & ~u64(m_bus_bytes - 1);
     u64 sh = lane_shift(ba, size);
     u64 smask = size == 8 ? ~u64(0) : (u64(1) << (size * 8)) - 1;

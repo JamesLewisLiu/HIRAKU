@@ -120,10 +120,32 @@ void psxmdec_device::mdec_cos_precalc()
 			}
 		}
 	}
+
+	// HIRAKU: transposed, for mdec_idct()
+	for( uint32_t n_yx = 0; n_yx < DCTSIZE2; n_yx++ )
+		for( uint32_t n_vu = 0; n_vu < DCTSIZE2; n_vu++ )
+			m_hk_cos_t[ n_vu * DCTSIZE2 + n_yx ] = p_n_cos_precalc[ n_yx * DCTSIZE2 + n_vu ];
 }
 
 void psxmdec_device::mdec_idct( int32_t *p_n_src, int32_t *p_n_dst )
 {
+	// HIRAKU: the same sums, over the nonzero coefficients
+	{
+		uint32_t n_acc[ DCTSIZE2 ] = {};
+		for( uint32_t n_vu = 0; n_vu < DCTSIZE2; n_vu++ )
+		{
+			const uint32_t n_s = p_n_src[ n_vu ];
+			if( n_s == 0 )
+				continue;
+			const int32_t *p_n_c = &m_hk_cos_t[ n_vu * DCTSIZE2 ];
+			for( uint32_t n_yx = 0; n_yx < DCTSIZE2; n_yx++ )
+				n_acc[ n_yx ] += n_s * (uint32_t)p_n_c[ n_yx ];
+		}
+		for( uint32_t n_yx = 0; n_yx < DCTSIZE2; n_yx++ )
+			p_n_dst[ n_yx ] = (int32_t)n_acc[ n_yx ] >> ( MDEC_COS_PRECALC_BITS + 2 );
+		return;
+	}
+
 	int32_t *p_n_precalc = p_n_cos_precalc;
 
 	for( uint32_t n_yx = 0; n_yx < DCTSIZE2; n_yx++ )

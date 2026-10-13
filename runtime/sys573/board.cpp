@@ -644,8 +644,13 @@ bool init(const Config &cfg) {
         const rectangle &vis = screen.visible_area();
         const int w = vis.width(), h = vis.height();
         g.frame_rgb.resize((size_t)w * h);
-        for (int y = 0; y < h; y++)
-            for (int x = 0; x < w; x++) g.frame_rgb[(size_t)y * w + x] = screen.m_bitmap.pix(vis.top() + y, vis.left() + x) | 0xff000000u;
+        // raw rows: through pix() and the vectors, every store reloads the bitmap's pointers
+        u32 *__restrict dst = g.frame_rgb.data();
+        for (int y = 0; y < h; y++) {
+            const u32 *__restrict src = &screen.m_bitmap.pix(vis.top() + y, vis.left());
+            for (int x = 0; x < w; x++) dst[x] = src[x] | 0xff000000u;
+            dst += w;
+        }
         g.frame_hook(g.frames, g.frame_rgb.data(), w, h);
     };
     m.m_after_nvram_load = [&m] {

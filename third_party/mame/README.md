@@ -57,6 +57,8 @@ driver class as the board.
   - `execute_run()` first offers the instruction to `m_hk_run` when `m_hk_tab` has a block for its address and the CPU isn't in a branch delay slot. `m_hk_rec` sees every instruction, for recording;
   - `friend struct hk_psx` (`runtime/sys573/mips_ops.h`) gives the blocks MAME's registers and pipeline.
   - With no table (`HK_573_BLOCKS=0`, or a game without a recording) the loop is MAME's.
+- `mdec.cpp` / `mdec.h`: the IDCT sums over the nonzero coefficients only, from a transposed table. These are the same integer sums in another order, unsigned so they wrap as MAME's do.
+- `video/psx.cpp` (the GPU): textured pixels compute the level tables (`(component & 31) << 8`) instead of reading three 128 KiB tables. At shade 0x80 they skip the shade tables, which map every level to itself there.
 - The H8 files are unchanged.
 
 ## The shim
@@ -89,6 +91,7 @@ files use. No MAME code is involved.
   - CPUs run in timeslices up to the next timer;
   - `machine().time()` is the running CPU's local time, or the expiry time of the timer that is firing;
   - the same LCG as MAME's `machine().rand()`.
+- **Slow accesses:** when one handler covers the bytes accessed in a little-endian space, `read_slow` calls it directly, with the same offset, mask and order `read_bus` would work out lane by lane.
 - **For the 573's recompiled blocks:** the page table is public (`pages()`, `page_bits()`), `version()` changes whenever the map does, and `mem_ptr()` finds the memory behind an address on a mixed page (the scratchpad). `ram_device` allocates page-aligned memory, so code pages can be write-protected.
 - **Stubs:** save states, debugger state and NVRAM are accepted and ignored.
   `logerror` prints only when `HK_XT446_LOG` is set.
