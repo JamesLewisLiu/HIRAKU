@@ -1257,7 +1257,15 @@ Each phase ends with `tools/regress.py check popn9-play` bit-identical, unless i
     - Reliquary delivers 38 received bytes per transfer, so with the hook it now drains longer answers (the card read is 141 bytes).
     - **Checked:** with e-AMUSEMENT ON, the boot passes CARD R/W CHECK (test mode shows the unit as VER 1.0.0) and 10 KEY CHECK. Test mode's CARD CHECK reads the card: "CHECK IS COMPLETED. NEW CARD" (`oracle/scripts/popn9-eamuse-on.his`, then `popn9-cardcheck.his`). popn9-play and popn9-play-vk are unchanged. With e-AMUSEMENT OFF the game sends the unit no commands (4,000 frames from power-on, `HK_PY_CARD_LOG`).
     - **Not checked yet:** writing a card (only a new card's creation writes, after the server's numbering), and the 10-key in play.
-  - **Next:** step 2, the board's socket commands to a local connection (Reliquary answers them offline); step 3, a local e-AMUSE3 server, built from the game's own requests.
+  - **Step 2, the network (done):** `runtime/python/eanet.{h,cpp}`, a virtual LAN with no host sockets, behind a second hook (`Hiraku::net_command`, with `net_respond`/`net_write`/`iop_read`).
+    - **The commands:** the board command is the game's RPC number + 1 (EE wrappers `0x1b3648`–`0x1b6ae8`): 0b socket, 0c bind, 0d listen, 0e accept, 0f connect, 13 setsockopt, 14 send, 15 sendto, 16 recv, 17 recvfrom, 1c shutdown, 1d close, 1e a property (0x101 IP, 1 mask, 3 gateway, 6 DNS, 0xf the local domain `PYTHON1-00000001`).
+    - Each answer is the channel's 8-word status block: word 1 the result (byte-swapped), words 2 and 3 the sender for recvfrom.
+    - Start-up and DHCP (00–07, "bound") stay Reliquary's.
+    - **The LAN:** the board at 192.168.50.2/24; gateway, DNS and `services` at 192.168.50.1. DNS answers `services.*`, and TCP port 80 there reaches an HTTP/1.0 handler in the core.
+    - **The game's start-up** (state machine `0x182c58`): net init, DHCP, the addresses, then e-AMUSE3 starts (`0x18ec30`: DNS, domain, port 0x7e90). It resolves `services.PYTHON1-00000001`, connects to port 80 and POSTs `/` with `X-Eamuse-Info: 1-xxxxxxxx-xxxx` and an RC4-encrypted body.
+    - **The crypto is the modern e-AMUSEMENT one** (as in bemaniutils): key = MD5(the header's 6 bytes + the 26-byte shared secret), RC4, plain XML with no compression. The first request decrypts to `<call srcid="01401401000100045FEF" model="C00:J:A:A"><services method="get"/></call>`.
+    - **Checked:** popn9-play(-vk) unchanged. With e-AMUSEMENT OFF the game sends the board no socket commands (4,000 frames, `HK_PY_NET_LOG`).
+  - **Next:** step 3, the e-AMUSE3 server in the core: `services.get` first, then the rest from the game's own requests and its response parser.
 - **Tools:**
   - `tools/ab.py`: A/B of two binaries, or of two settings with `--a-args`/`--b-args`;
   - `--pcsx2-set Section/Key=value`: any emulator setting, for experiments;

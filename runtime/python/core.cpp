@@ -77,6 +77,7 @@
 #include "pcsx2/VMManager.h"
 
 #include "python/cardunit.h"
+#include "python/eanet.h"
 #include "shell/cabinet.h"
 #include "shell/core.h"
 
@@ -322,7 +323,14 @@ public:
             py1 += std::string(f.ini) + "=" + path + "\n";
         }
         py1_path_ = run_dir_ + "/" + o.game + ".py1";
-        if (family_ == "pypopn") card_ = std::make_unique<hk::py::CardUnit>(run_dir_ + "/card.bin");
+        if (family_ == "pypopn") {
+            card_ = std::make_unique<hk::py::CardUnit>(run_dir_ + "/card.bin");
+            hk::py::VirtualNet::Io io;
+            io.write = [](uint32_t addr, const uint8_t *d, uint32_t n) { Hiraku::net_write(addr, d, n); };
+            io.respond = [](uint32_t ch, const uint32_t w[8]) { Hiraku::net_respond(ch, w); };
+            io.read = [](uint32_t addr, uint8_t *d, uint32_t n) { return Hiraku::iop_read(addr, d, n); };
+            net_ = std::make_unique<hk::py::VirtualNet>(io, [this](const std::string &req) { return http(req); });
+        }
         if (!FileSystem::WriteStringToFile(py1_path_.c_str(), py1)) { fprintf(stderr, "python: cannot write %s\n", py1_path_.c_str()); return false; }
 
         const std::string bios = o.data_path(m["bios"]);
@@ -347,6 +355,14 @@ public:
         if (const char *f = getenv("HK_PY_P1IO_LOG")) p1io_log_ = fopen(f, "w");
         if (!no_picture_) Hiraku::gs_frame = [](const u32 *rgba, u32 w, u32 h) { self_->on_gs_frame(rgba, w, h); };
         if (const char *f = getenv("HK_PY_CARD_LOG")) card_log_ = fopen(f, "w");
+        if (const char *f = getenv("HK_PY_NET_LOG")) net_log_ = fopen(f, "w");
+        if (net_) {
+            if (net_log_) net_->log = [this](const std::string &s) {
+                fprintf(net_log_, "%llu %s\n", (unsigned long long)frame_, s.c_str());
+                fflush(net_log_);
+            };
+            Hiraku::net_command = [](u32 ch, const u32 *p, u32 q) { return self_->net_->command(ch, p, q); };
+        }
         if (card_) Hiraku::uart_write = [](const u8 *data, u32 size) {
             std::vector<uint8_t> reply;
             if (!self_->card_->write(data, size, reply)) return false;
@@ -599,6 +615,23 @@ private:
     std::string family_, run_dir_, py1_path_;
     std::unique_ptr<hk::py::CardUnit> card_;
     FILE *card_log_ = nullptr;
+    std::unique_ptr<hk::py::VirtualNet> net_;
+    FILE *net_log_ = nullptr;
+    // The e-AMUSE3 server: for now it records what the game asks (HK_PY_NET_LOG) and says no.
+    std::string http(const std::string &req) {
+        if (net_log_) {
+            fprintf(net_log_, "%llu HTTP request, %zu bytes:\n", (unsigned long long)frame_, req.size());
+            for (size_t i = 0; i < req.size(); i++) {
+                const unsigned char c = (unsigned char)req[i];
+                fprintf(net_log_, "%02x%s", c, (i % 32 == 31) ? "\n" : " ");
+            }
+            fprintf(net_log_, "\ntext: ");
+            for (unsigned char c : req) fputc(c >= 32 && c < 127 ? c : c == '\n' ? '\n' : '.', net_log_);
+            fprintf(net_log_, "\n");
+            fflush(net_log_);
+        }
+        return "HTTP/1.0 404 Not Found\r\nContent-Length: 0\r\n\r\n";
+    }
     std::map<std::string, int> held_;   // the card button's and 10-key's last values
     std::string card_state_;
     void card_changed() {

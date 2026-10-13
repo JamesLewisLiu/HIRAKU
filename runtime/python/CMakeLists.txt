@@ -41,7 +41,7 @@ set_target_properties(hk_python_shell PROPERTIES CXX_STANDARD 20 CXX_STANDARD_RE
 
 # One binary per Python game, as for the other cores: hiraku-<id>
 function(hiraku_python_game id)
-	add_executable(hiraku-${id} ${HK}/runtime/main.cpp ${HK}/runtime/python/core.cpp ${HK}/runtime/python/cardunit.cpp)
+	add_executable(hiraku-${id} ${HK}/runtime/main.cpp ${HK}/runtime/python/core.cpp ${HK}/runtime/python/cardunit.cpp ${HK}/runtime/python/eanet.cpp)
 	target_compile_definitions(hiraku-${id} PRIVATE HK_GAME_ID="${id}" HK_ROOT="${HK}")
 	target_include_directories(hiraku-${id} PRIVATE ${HK}/runtime "${CMAKE_BINARY_DIR}/common/include" "${CMAKE_SOURCE_DIR}/pcsx2")
 	target_link_libraries(hiraku-${id} PRIVATE hk_python_shell PCSX2_FLAGS PCSX2)

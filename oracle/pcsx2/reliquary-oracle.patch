@@ -10,7 +10,7 @@
  #include "SIO/Pad/Pad.h"
  #include "SIO/Sio.h"
  #include "SIO/Sio0.h"
-@@ -3069,8 +3072,60 @@
+@@ -3069,8 +3072,61 @@
  	R5900SymbolImporter.OnElfLoadedInMemory();
  }
  
@@ -62,6 +62,7 @@
 +void (*Hiraku::gs_frame)(const u32*, u32, u32) = nullptr;
 +void (*Hiraku::p1io_output)(const u32*, u32) = nullptr;
 +bool (*Hiraku::uart_write)(const u8*, u32) = nullptr;
++bool (*Hiraku::net_command)(u32, const u32*, u32) = nullptr;
 +
  void VMManager::Internal::VSyncOnCPUThread()
  {
@@ -182,7 +183,16 @@
  		else if (subop == 2 && (extio_mode || !s_uart_rx_fifo.empty()))
  			queued_read_data = QueueUartReadData(UART_CALLBACK_BYTE_LIMIT);
  
-@@ -3099,6 +3108,8 @@
+@@ -2828,6 +2837,8 @@
+ 			return false;
+ 
+ 		const u32 command = payload[0];
++		if (Hiraku::net_command && Hiraku::net_command(channel, payload, payload_quads)) [[unlikely]]
++			return true;
+ 		switch (command)
+ 		{
+ 			case 0:
+@@ -3099,6 +3110,8 @@
  
  			if (command_offset == KONAMI_JAMMA_OUTPUT_COMMAND_OFFSET && payload_quads >= 8)
  			{
@@ -191,7 +201,7 @@
  				if (IsPython1P1IOSerialMode())
  				{
  					const u32 previous_latch = s_p1io_output_latch_byte;
-@@ -3610,3 +3621,8 @@
+@@ -3610,3 +3623,23 @@
  		return p1io && p1io->DoState(sw);
  	}
  } // namespace FireWire::Devices
@@ -199,6 +209,21 @@
 +void Hiraku::uart_reply(const u8* data, u32 size)
 +{
 +	QueueUartBytes(data, size);
++}
++
++void Hiraku::net_respond(u32 channel, const u32* words)
++{
++	QueuePendingDbufBlockWrite(0xfffe, KONAMI_NET_RESPONSE_OFFSET_BASE + channel * KONAMI_NET_RESPONSE_STRIDE, words, 8);
++}
++
++void Hiraku::net_write(u32 iop_address, const u8* data, u32 size)
++{
++	QueuePendingDbufByteWrite(0x1000, iop_address, data, size);
++}
++
++bool Hiraku::iop_read(u32 iop_address, u8* data, u32 size)
++{
++	return ReadIopMemory(iop_address, data, size);
 +}
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
@@ -217,7 +242,7 @@
  else()
 --- a/pcsx2/HirakuHooks.h
 +++ b/pcsx2/HirakuHooks.h
-@@ -0,0 +1,32 @@
+@@ -0,0 +1,40 @@
 +// SPDX-License-Identifier: GPL-3.0+
 +// HIRAKU (local patch, not upstream): taps for running this emulator as a HIRAKU
 +// machine core (runtime/python/ in HIRAKU). All are null unless a host sets them.
@@ -249,4 +274,12 @@
 +	extern bool (*uart_write)(const u8* data, u32 size);
 +	// Queue bytes for the game to read from that serial port.
 +	void uart_reply(const u8* data, u32 size);
++	// CPU thread (IOP time), each socket command the game sends the Python 1 interface board
++	// (which has the network port): channel 0-7, payload[0] the command. True if the host
++	// answers it itself: data first (net_write, to IOP memory), then the channel's 8-word
++	// status block (net_respond, words as the board writes them).
++	extern bool (*net_command)(u32 channel, const u32* payload, u32 quads);
++	void net_respond(u32 channel, const u32* words);
++	void net_write(u32 iop_address, const u8* data, u32 size);
++	bool iop_read(u32 iop_address, u8* data, u32 size);
 +} // namespace Hiraku
