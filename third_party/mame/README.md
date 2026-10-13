@@ -52,6 +52,11 @@ driver class as the board.
     - `meg_state::step_decoded()` is `step()` with the instruction fields extracted once, when a program word changes, rather than on every one of the 17 M steps per second.
     - `step_decoded()` keeps the pipeline's 3- and 2-step delay slots as template constants: `run_decoded()` runs a whole sample's steps, cycling through the 6 phases. It picks the multiplier's operands through pointers set at decode time and keeps the accumulator in a register. About 8 % faster than the first pre-decoded version.
     - `HK_XT446_MEG_REF=1` runs MAME's `step()` instead. The two give bit-identical output.
+- `psx.cpp` / `psx.h` (the PS1 CPU), for the 573's recompiled R3000 blocks (`runtime/sys573/mips.h`):
+  - the body of `execute_run()`'s loop is `execute_one()`, so a block can hand a single instruction back to the interpreter;
+  - `execute_run()` first offers the instruction to `m_hk_run` when `m_hk_tab` has a block for its address and the CPU isn't in a branch delay slot. `m_hk_rec` sees every instruction, for recording;
+  - `friend struct hk_psx` (`runtime/sys573/mips_ops.h`) gives the blocks MAME's registers and pipeline.
+  - With no table (`HK_573_BLOCKS=0`, or a game without a recording) the loop is MAME's.
 - The H8 files are unchanged.
 
 ## The shim
@@ -84,6 +89,7 @@ files use. No MAME code is involved.
   - CPUs run in timeslices up to the next timer;
   - `machine().time()` is the running CPU's local time, or the expiry time of the timer that is firing;
   - the same LCG as MAME's `machine().rand()`.
+- **For the 573's recompiled blocks:** the page table is public (`pages()`, `page_bits()`), `version()` changes whenever the map does, and `mem_ptr()` finds the memory behind an address on a mixed page (the scratchpad). `ram_device` allocates page-aligned memory, so code pages can be write-protected.
 - **Stubs:** save states, debugger state and NVRAM are accepted and ignored.
   `logerror` prints only when `HK_XT446_LOG` is set.
 

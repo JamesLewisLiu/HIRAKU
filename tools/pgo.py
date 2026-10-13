@@ -61,6 +61,9 @@ def main() -> int:
             return 1
 
     os.environ["HK_REGRESS_BIN"] = GEN
+    # the 573's recompiled blocks off (runtime/sys573/mips.h): the interpreter runs whatever no
+    # recording covers, so it is what the profile must know about
+    os.environ["HK_573_BLOCKS"] = "0"
     import regress   # noqa: E402  (reads HK_REGRESS_BIN)
     cases = [c for c, (game, _, _) in regress.CASES.items()
              if os.path.exists(os.path.join(ROOT, "dumps", game, "machine.txt")) and core_of(game) in PROFILED]

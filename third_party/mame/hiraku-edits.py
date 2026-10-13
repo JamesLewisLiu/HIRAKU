@@ -353,11 +353,75 @@ protected:''', 'hook member')
     return s
 
 
+def psx_cpp(s):
+    # the loop body becomes execute_one(), so a recompiled block can hand one instruction back to
+    # the interpreter; execute_run() runs blocks where it has them (runtime/sys573/mips.cpp)
+    s = edit(s, '''void psxcpu_device::execute_run()
+{
+	do
+	{
+		if( LOG_BIOSCALL ) log_bioscall();
+''', '''// HIRAKU: one instruction, the body of MAME's execute_run() loop (without the m_icount--)
+void psxcpu_device::execute_one()
+{
+	{
+		if( LOG_BIOSCALL ) log_bioscall();
+''', 'execute_one head')
+    s = edit(s, '''		m_icount--;
+	} while( m_icount > 0 );
+}
+''', '''	}
+}
+
+void psxcpu_device::execute_run()
+{
+	do
+	{
+		// HIRAKU: recompiled blocks (runtime/sys573/mips.cpp). Outside a branch delay slot, a
+		// block compiled from the code at m_pc runs in place of the interpreter when there is
+		// one; it takes its own cycles off m_icount. m_hk_rec records where blocks start.
+		if( m_hk_rec ) m_hk_rec( *this );
+		if( m_hk_tab && m_delayr < PSXCPU_DELAYR_PC )
+		{
+			const void *b = m_hk_tab[ ( m_pc >> 2 ) & 0x3fffff ];
+			if( b && m_hk_run( *this, b ) )
+				continue;
+		}
+
+		execute_one();
+		m_icount--;
+	} while( m_icount > 0 );
+}
+''', 'execute_run loop')
+    return s
+
+
+def psx_h(s):
+    s = edit(s, '''	virtual void execute_run() override;
+''', '''	virtual void execute_run() override;
+	void execute_one(); // HIRAKU
+''', 'execute_one decl')
+    s = edit(s, '''	gte m_gte;
+''', '''	gte m_gte;
+
+	// HIRAKU: recompiled blocks (runtime/sys573/mips.cpp): m_hk_tab is indexed by
+	// (pc >> 2) & 0x3fffff, m_hk_run runs the block it holds (false: interpret instead)
+	friend struct hk_psx;
+public:
+	const void *const *m_hk_tab = nullptr;
+	bool ( *m_hk_run )( psxcpu_device &, const void * ) = nullptr;
+	void ( *m_hk_rec )( psxcpu_device & ) = nullptr;
+protected:
+''', 'hk members')
+    return s
+
+
 def main():
     if len(sys.argv) != 2:
         sys.exit(__doc__)
     root = Path(sys.argv[1])
-    for rel, fn in [('sound/swp30.cpp', swp30_cpp), ('sound/swp30.h', swp30_h)]:
+    for rel, fn in [('sound/swp30.cpp', swp30_cpp), ('sound/swp30.h', swp30_h),
+                    ('cpu/psx/psx.cpp', psx_cpp), ('cpu/psx/psx.h', psx_h)]:
         p = root / rel
         text = p.read_text()
         if 'HIRAKU' in text:

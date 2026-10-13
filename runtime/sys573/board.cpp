@@ -3,6 +3,7 @@
 // device tree on the framework shim, with MAME's own devices. The driver class
 // below follows ksys573_state and ddr_state; where it differs, a comment says so.
 #include "sys573/board.h"
+#include "sys573/mips.h"
 
 #include "shell/cabinet.h"
 
@@ -672,6 +673,7 @@ bool init(const Config &cfg) {
             };
         }
     }
+    mips::init(*st.m_maincpu);
     return true;
 }
 
@@ -728,7 +730,10 @@ void set_audio_sink(AudioSink s) { g.audio_sink = std::move(s); }
     }
 }
 
-void save_nvram() { if (g.machine) g.machine->nvram_save(); }
+void save_nvram() {
+    if (g.machine) g.machine->nvram_save();
+    mips::finish();
+}
 
 double seconds() { return g.machine ? g.machine->m_basetime.as_double() : 0.0; }
 uint64_t frame_count() { return g.frames; }

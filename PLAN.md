@@ -754,6 +754,34 @@ Each phase has an exit test. Sizes are assisted-effort guesses; DJ Main went fas
     - The breakpoint checks are the emulated CPU's own debug registers (CP0 DCIC); they must stay, and they exit on their first test.
     - The sampler's shares inside the interpreter loop are skewed: the switch's dispatch cost lands on the fetch line.
   - **Cheaper first steps considered** (each tried above): a cached instruction-fetch page, skipping the breakpoint hooks, a row-wise frame copy.
+  - **Started (2026-10-13): the R3000 recompiler** (`runtime/sys573/mips.h`, `mips_ops.h`, `tools/mipsgen.py`, `tools/mipsrec.py`).
+    - **Recording:** a run with `HK_573_RECORD=build/<game>/mips573.txt` interprets and notes every block it starts (up to a branch and its delay slot, max 64 instructions) with its instruction words. Counts add up over runs. `tools/mipsrec.py` records a game's regress cases.
+    - **Generation:** `tools/mipsgen.py` turns the recording into one C++ function per block, built into the game's binary (CMake, when the recording exists).
+      - Registers live in locals.
+      - MAME's pipeline (`m_delayr`/`m_delayv`: the load and branch delay slots) is worked out at generation time. The one thing left to run time is a load still pending when the block starts.
+      - RAM, ROM and the scratchpad are accessed through the shim's page table; anything else through MAME's handlers, at MAME's `m_icount` for that instruction.
+      - An instruction a block doesn't do (an exception, a bus error, `mtc0`, `rfe`, COP1/3) goes to MAME's interpreter (`execute_one()`), and the block ends.
+      - A device that cuts the timeslice short during an access ends the block after that instruction, as MAME's loop does.
+    - **Running:** MAME's `execute_run()` offers each instruction outside a delay slot to the dispatcher.
+      - A block runs when its words are at that address, the timeslice has room for all of it, and the CPU is in kernel mode with caches not isolated and no hardware breakpoints. Then the next block chains straight on.
+      - Code is checked once: main RAM's 4 KiB host pages holding checked code are write-protected (`mprotect`). Any write to them (a store, DMA, a device) faults once and moves an epoch on, so every block is checked again. A page that keeps faulting stays unprotected, and its blocks are checked on every run.
+      - Code no recording saw is interpreted.
+    - **Exactness:** all 573 regress cases are bit-identical with blocks: ddr3mj-boot, ddr2m-boot, ddr2m-play (main RAM hashed on all 21,000 frames too). Blocks run 100.0 % of the instructions there.
+    - **Speed, ddr2m attract from the installed flash, 9,000 frames, desktop:**
+
+      | Build | Mean frame |
+      |---|---|
+      | PGO interpreter (6ea1cac) | 1.8–1.9 ms |
+      | blocks | 0.65 ms (2.8×; MAME's 650 % is ~2.6 ms) |
+
+      - Without that run in the recording, blocks covered 64 % and the frame was 1.57 ms. **Coverage depends on what was recorded.**
+      - In the 150 s: 325 M block runs (7.8 instructions each), 135 code pages protected, 46 written to.
+    - **Measured and dropped:** a direct path in the shim for single-handler I/O accesses made no difference. Flash reads are 36 M of the 42 M slow accesses: the game reads the whole 16 MiB flash about 4 times in 150 s of attract.
+    - **Next:**
+      - profile again (GPU drawing ~17 %, MDEC ~6 %, and the flash and I/O reads now weigh as much as the blocks);
+      - record more of each game (songs, menus);
+      - measure on N100-class hardware;
+      - `ddr3mj` and the digital board's MP3 path.
 - **Budget**, as for M11: under 25 % of an N100 core on average, and no frame over ~8 ms of host work.
 - **If the CPU dominates, statically recompile the MIPS.**
   - The code runs from RAM, loaded from flash or CD, so the recompiler works from the blocks the interpreter has executed in reference runs, keyed by a hash of their bytes.

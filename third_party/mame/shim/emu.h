@@ -819,16 +819,24 @@ public:
     // HIRAKU debugging: observes writes that take the slow path (I/O), as MAME's install_write_tap
     std::function<void(offs_t byte_addr, u64 data, u64 mask)> m_write_tap, m_read_tap;
 
+    struct page_t {
+        u8 *direct_r = nullptr, *direct_w = nullptr;   // one memory entry covers the page: host pointer for its base
+        u16 did_r = 0, did_w = 0;                       // one entry covers the page: its index + 1 (memory or not)
+        std::unique_ptr<u16[]> ridx, widx;              // otherwise per byte: entry index + 1 (0 = unmapped)
+    };
+    // HIRAKU's recompiled 573 code reads and writes RAM through the page table directly
+    // (runtime/sys573/mips_ops.h): pages of 1 << page_bits() bytes, indexed by byte address
+    const page_t *pages() const { return m_pages.data(); }
+    int page_bits() const { return m_pbits; }
+    u32 version() const { return m_version; }   // changes whenever the map does
+    // the host memory behind byte address ba, if a memory entry covers it (nullptr otherwise)
+    u8 *mem_ptr(offs_t ba, bool write) const;
+
 private:
     struct entry_rt {
         address_map_entry *e;
         u8 *mem;       // MEM: the bus words backing [start, end] (byte address start -> mem)
         offs_t base;   // byte address that maps to mem[0]
-    };
-    struct page_t {
-        u8 *direct_r = nullptr, *direct_w = nullptr;   // one memory entry covers the page: host pointer for its base
-        u16 did_r = 0, did_w = 0;                       // one entry covers the page: its index + 1 (memory or not)
-        std::unique_ptr<u16[]> ridx, widx;              // otherwise per byte: entry index + 1 (0 = unmapped)
     };
 
     address_map_entry &runtime_entry(offs_t start, offs_t end);
@@ -871,6 +879,7 @@ private:
     std::vector<std::unique_ptr<address_map>> m_maps;
     std::vector<std::unique_ptr<std::vector<u8>>> m_owned;
     std::unique_ptr<address_map> m_runtime;   // entries installed after start
+    u32 m_version = 0;
 };
 
 inline u64 address_space::lane_shift(u64 ba, int size) const {

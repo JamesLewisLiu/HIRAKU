@@ -11,6 +11,7 @@
 
 #include "shell/core.h"
 #include "sys573/board.h"
+#include "sys573/mips.h"
 
 namespace hk {
 namespace {
@@ -78,6 +79,7 @@ public:
         printf("frames %llu, virtual time %.3f s, pc %08x, %llu lamp changes\n", (unsigned long long)k573::frame_count(),
                k573::seconds(), k573::pc(), (unsigned long long)k573::lamp_changes());
         if (std::string s = k573::sound_report(); !s.empty()) printf("%s\n", s.c_str());
+        if (std::string s = k573::mips::report(); !s.empty()) printf("%s\n", s.c_str());
     }
     void debug_line(uint64_t f) override { printf("f%llu pc %08x\n", (unsigned long long)f, k573::pc()); }
 

@@ -2342,9 +2342,9 @@ void psxcpu_device::execute_set_input( int inputnum, int state )
 }
 
 
-void psxcpu_device::execute_run()
+// HIRAKU: one instruction, the body of MAME's execute_run() loop (without the m_icount--)
+void psxcpu_device::execute_one()
 {
-	do
 	{
 		if( LOG_BIOSCALL ) log_bioscall();
 		debugger_instruction_hook( m_pc );
@@ -3361,6 +3361,25 @@ void psxcpu_device::execute_run()
 			}
 		}
 
+	}
+}
+
+void psxcpu_device::execute_run()
+{
+	do
+	{
+		// HIRAKU: recompiled blocks (runtime/sys573/mips.cpp). Outside a branch delay slot, a
+		// block compiled from the code at m_pc runs in place of the interpreter when there is
+		// one; it takes its own cycles off m_icount. m_hk_rec records where blocks start.
+		if( m_hk_rec ) m_hk_rec( *this );
+		if( m_hk_tab && m_delayr < PSXCPU_DELAYR_PC )
+		{
+			const void *b = m_hk_tab[ ( m_pc >> 2 ) & 0x3fffff ];
+			if( b && m_hk_run( *this, b ) )
+				continue;
+		}
+
+		execute_one();
 		m_icount--;
 	} while( m_icount > 0 );
 }

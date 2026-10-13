@@ -14,8 +14,8 @@ public:
     u32 size() const { return m_size; }
     u32 mask() const { return m_size - 1; }
     // allocated on first use, as MAME (devices take the pointer in their own device_start)
-    u8 *pointer() { allocate(); return m_data.data(); }
-    template <typename T> T *pointer() { allocate(); return reinterpret_cast<T *>(m_data.data()); }
+    u8 *pointer() { allocate(); return m_data.get(); }
+    template <typename T> T *pointer() { allocate(); return reinterpret_cast<T *>(m_data.get()); }
     u8 read(offs_t o) { return pointer()[o % m_size]; }
     void write(offs_t o, u8 d) { pointer()[o % m_size] = d; }
 
@@ -23,7 +23,15 @@ protected:
     void device_start() override { allocate(); }
 
 private:
-    void allocate() { if (m_data.empty()) m_data.assign(m_size, m_value); }
+    // page-aligned, so the 573's recompiled blocks can write-protect the pages holding code
+    // (runtime/sys573/mips.cpp)
+    void allocate() {
+        if (m_data) return;
+        const size_t n = ((size_t)m_size + 4095) & ~size_t(4095);
+        m_data.reset(static_cast<u8 *>(aligned_alloc(4096, n ? n : 4096)));
+        memset(m_data.get(), m_value, n);
+    }
+    struct freer { void operator()(u8 *p) const { free(p); } };
 
 public:
 
@@ -37,7 +45,7 @@ private:
     }
     u32 m_size = 0;
     u8 m_value = 0;
-    std::vector<u8> m_data;
+    std::unique_ptr<u8, freer> m_data;
 };
 
 DECLARE_DEVICE_TYPE(RAM, ram_device)

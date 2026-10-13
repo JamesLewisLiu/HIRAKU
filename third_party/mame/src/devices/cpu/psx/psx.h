@@ -182,6 +182,7 @@ protected:
 	virtual uint64_t execute_clocks_to_cycles(uint64_t clocks) const noexcept override { return ( clocks + 3 ) / 4; }
 	virtual uint64_t execute_cycles_to_clocks(uint64_t cycles) const noexcept override { return cycles * 4; }
 	virtual void execute_run() override;
+	void execute_one(); // HIRAKU
 	virtual void execute_set_input(int inputnum, int state) override;
 
 	// device_memory_interface overrides
@@ -301,6 +302,15 @@ protected:
 	void setcp3cr( int reg, uint32_t value );
 
 	gte m_gte;
+
+	// HIRAKU: recompiled blocks (runtime/sys573/mips.cpp): m_hk_tab is indexed by
+	// (pc >> 2) & 0x3fffff, m_hk_run runs the block it holds (false: interpret instead)
+	friend struct hk_psx;
+public:
+	const void *const *m_hk_tab = nullptr;
+	bool ( *m_hk_run )( psxcpu_device &, const void * ) = nullptr;
+	void ( *m_hk_rec )( psxcpu_device & ) = nullptr;
+protected:
 
 	devcb_read32 m_gpu_read_handler;
 	devcb_write32 m_gpu_write_handler;

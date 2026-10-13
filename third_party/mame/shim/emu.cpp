@@ -276,6 +276,18 @@ void address_space::install_mem(offs_t start, offs_t end, u8 *base, bool rom) {
     apply(e);
 }
 
+u8 *address_space::mem_ptr(offs_t a, bool write) const {
+    const u64 ba = a & m_byte_mask;
+    const page_t &p = m_pages[ba >> m_pbits];
+    if (u8 *d = write ? p.direct_w : p.direct_r) return d + (ba & ((u64(1) << m_pbits) - 1));
+    const u16 id = write ? (p.widx ? p.widx[ba & ((u64(1) << m_pbits) - 1)] : p.did_w)
+                         : (p.ridx ? p.ridx[ba & ((u64(1) << m_pbits) - 1)] : p.did_r);
+    if (!id) return nullptr;
+    const entry_rt &r = m_rt[id - 1];
+    if ((write ? r.e->m_wkind : r.e->m_rkind) != address_map_entry::MEM) return nullptr;
+    return r.mem + ((ba & ~(u64)(r.e->m_mirror | r.e->m_select)) - r.e->m_start);
+}
+
 void address_space::unmap_readwrite(offs_t start, offs_t end) {
     // an entry that claims the range and does nothing (reads 0)
     address_map_entry &e = runtime_entry(start, end);
@@ -284,6 +296,7 @@ void address_space::unmap_readwrite(offs_t start, offs_t end) {
 }
 
 void address_space::apply(address_map_entry &er) {
+    m_version++;
     address_map_entry *e = &er;
     const u64 psize = u64(1) << m_pbits;
     // backing memory
