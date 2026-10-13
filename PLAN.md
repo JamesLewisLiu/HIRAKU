@@ -1340,11 +1340,26 @@ Each phase ends with `tools/regress.py check popn9-play` bit-identical, unless i
 - PY-2 on low-end hardware, which decides whether PY-3 goes into PCSX2's GS texture path or SPU2 (both mean patching emulator logic, not just taps);
 - hands-on latency with real controls and audio (the owner). The profile behind it was measured with the core's `HK_PY_PROFILE=1` sampler and its `--no-picture` option (both added after PY-1).
 
+### pop'n music 10–14 (2026-10-13)
+
+The owner's media arrived (Reliquary `.py1` sets beside popn9). Survey, then support, the same day:
+- **The board is the same** [V]: boot ROM, config ROM, internal dongle and memory-card ID byte-identical to pop'n 9's; one `kn00002.ps2` for 10–14; the same 20 IOPRP modules. New: an external "black" DS2430 per game (`GameId` GEC20JAA, GCD11JAA, GCE12JAB, GCE13JAE, GNF14JAB), which ingest and the core already passed on. Details: docs/PYTHON.md §3–4.
+- **Two media quirks:**
+  - popn11's sector 0 is a blank PC MBR. `tools/pythonfs.py header()` takes the first of 0, 0x200, 0x400 that starts with the header's signature; copies can differ from sector 0 on intact disks (dogstdx, dstagef, wswe2k3), so a copy is only a fallback.
+  - popn13/14's record C is a loader for `ee/boot/game.bin` on a disk file system. Identification by record C's SHA-1 still works (each loader is distinct).
+- **Added:** `games/popn10..14/game.toml` (no MAME sets exist), `hiraku_python_game(popn10..14)`.
+- **Matches the oracle** [V]: EE/IOP RAM hashes identical to `pcsx2-qt` at all 50 checkpoints to frame 3,000 for every game. pop'n 13 only with the new `--bare-board`: it probes the card unit at frame 1,325, and HIRAKU's card unit answers where plain Reliquary has none (each side repeats itself exactly; found with `HK_PY_CARD_LOG`).
+- **`OPHFlagHack`:** Reliquary's game list sets it for every Python 1 game but Perfect Pool; the core didn't. It now does. pop'n 9's play case is identical either way.
+- **Plays** [V]: `oracle/scripts/popn10..14-play.his` (coins, mode, button select, a song with a button every 10 frames; pop'n 10 clears its first stage), regress cases `popn10-play` … `popn14-play`, recorded and repeating. Menus differ: 10/11 as 9 plus a BUTTON SELECT; 12–14 ENJOY with 5 buttons preselected; 13's mode select settles later. Menu presses need 10 frames (4 don't pick).
+- **Lamps and inputs** [V]: each game's LAMP CHECK steps through the same word-8 bits in the same order as pop'n 9 (`pypopn` holds); pop'n 14's INPUT CHECK lights SW1–9 and SERVICE for buttons 1–9 and service.
+- **Host cost:** like pop'n 9, ~2.4 ms of CPU-thread work per frame on average (software GS, headless).
+- **pop'n 9 only, so far:** `--autoplay` (it now says so for other games), unlocks, and the e-AMUSEMENT server's calls. From the programs' strings: 10/11 add `game` and drop `parts`; 12 adds `lobby` and `playerdata`; 13 `cardmng`; 14 `facility`.
+
 ### Decisions (owner, 2026-10-13)
 
 1. **Option 3:** host Reliquary's core in HIRAKU first (PY-1), then replace parts (the EE by static recompilation, the I/O by HIRAKU's cabinet layer) where a measurement says it pays.
 2. **Reliquary is the reference** for Python, in place of MAME, whose Python drivers are skeletons. The oracle pins its CPU mode.
-3. **The first set is `popn9`.** The owner gets the other games later for testing.
+3. **The first set is `popn9`.** The owner gets the other games later for testing. (pop'n 10–14 arrived 2026-10-13; the owner asked for their support.)
 - Still open: Python 2 media; a clean `dstagef`.
 - Licence: linking Reliquary makes the Python binaries GPL-3.0 as a whole (its Python 2 files carry only the repo's GPL-3). HIRAKU's own code stays GPL-3.0-or-later.
 

@@ -477,21 +477,21 @@ A dance pad is bound in the launcher's Controls (Dance Dance Revolution page): c
 
 **Not yet:** a hands-on test with a pad.
 
-## Konami Python 1: pop'n music 9 (in progress, M16)
+## Konami Python 1: pop'n music 9–14 (in progress, M16)
 
-pop'n music 9 (`popn9`) runs on HIRAKU's Python core: PCSX2 Reliquary's emulator hosted by HIRAKU's shell (PLAN.md §21, docs/PYTHON.md). It is built inside Reliquary's own build. You need:
+pop'n music 9 (`popn9`) runs on HIRAKU's Python core, and so do 10 (`popn10`), 11 (`popn11`), 12 Iroha (`popn12`), 13 Carnival (`popn13`) and 14 FEVER! (`popn14`): PCSX2 Reliquary's emulator hosted by HIRAKU's shell (PLAN.md §21, docs/PYTHON.md). It is built inside Reliquary's own build. You need:
 - Reliquary's source, `pcsx2-reliquary-1.9.4-reliquary.zip`, unpacked to `$HK_PYTHON_WORK/pcsx2-reliquary` (default `/run/media/roganis/DATA/Python-work`);
-- the set as Reliquary takes it: `popn9.py1` and its folder (the disk CHD, the interface board's ROMs, BBSRAM, dongle, the KN00002 memory card), plus the arcade BIOS (`COH-H31000.BIN`, `.NVM`, `.MEC`) and the MagicGate key files. The ingester finds `bios/` and `keys/` next to the sets' folder, or takes `--bios DIR --keys DIR`.
+- the set as Reliquary takes it: `popn9.py1` (or `popn10.py1` …) and its folder (the disk CHD, the interface board's ROMs, BBSRAM, dongles, the KN00002 memory card), plus the arcade BIOS (`COH-H31000.BIN`, `.NVM`, `.MEC`) and the MagicGate key files. The ingester finds `bios/` and `keys/` next to the sets' folder, or takes `--bios DIR --keys DIR`.
 
 ```bash
-oracle/pcsx2/build-reliquary.sh all     # once: Reliquary with HIRAKU's patch, and hiraku-popn9 (~3 min, memory-capped)
+oracle/pcsx2/build-reliquary.sh all     # once: Reliquary with HIRAKU's patch, and hiraku-popn9 … hiraku-popn14 (memory-capped)
 tools/build-libchdr.sh                  # once: the CHD reader the ingester uses
 tools/ingest.py ~/Downloads/konami-python-1-collection/kpython1/popn9.py1
 build/cmake/hiraku-popn9 --window --renderer vk
 ```
 
 - `--renderer vk` draws with Vulkan: less CPU. The default, `sw` (software), is what the reference runs. `tools/regress.py` checks both.
-- `--autoplay` (pop'n music 9) makes the game play every song itself, as in its attract demo: every note GREAT, the buttons ignored during songs. It's a mod for testing what clears unlock (events, HITASURA, Gambler Z); scores and e-AMUSEMENT rankings count it like any play.
+- `--autoplay` (pop'n music 9 only, for now) makes the game play every song itself, as in its attract demo: every note GREAT, the buttons ignored during songs. It's a mod for testing what clears unlock (events, HITASURA, Gambler Z); scores and e-AMUSEMENT rankings count it like any play.
 - Each frame's picture is shown at the end of that frame: 4 frames from a button to the picture, the game's own. `--picture-overlap` shows the previous frame's instead, so the GS works alongside the CPU: a little less time per frame on a slow PC, for a frame (16.7 ms) more latency.
 - `oracle/pcsx2/build-reliquary.sh pgo` (once, ~5 min) rebuilds with profile-guided optimisation: about 3 % less CPU, same results.
 - The CHD stays where it is (linked, not unpacked). The game's writes (BBSRAM, dongle, the disk's own writes as an overlay) go to the NVRAM folder, `~/.local/share/hiraku/popn9`.
@@ -527,8 +527,12 @@ In test mode, blue (buttons 4/6) moves and red (5) selects; I/O CHECK > INPUT CH
 - **The card:** `card.bin` in the save folder (`~/.local/share/hiraku/popn9`), 128 bytes, created as a fresh pop'n 9 card. Insert puts it in the slot (or takes it back); the reader takes it when the game opens the slot and gives it back when the game ejects it.
 - **The 10-key:** the numeric keypad's 0–9, Enter and `.`, with Backspace as Clear.
 
+**pop'n music 10–14:** they run the same way and play (coins, mode, button select, songs); their lamps and inputs are the same as pop'n 9's, checked in each game's LAMP CHECK. What is pop'n 9's alone so far: `--autoplay`, the unlocks, and the e-AMUSEMENT server, which knows pop'n 9's calls (each later game adds some of its own).
+- pop'n 12–14 start in ENJOY mode with 5 buttons selected; blue moves to 9.
+- The pop'n 11 dump has a damaged first sector (a PC wrote a blank partition table there); HIRAKU and Reliquary read the boot header's backup copy.
+
 **From the launcher:** drop the `.py1` (or the set's folder) on its window; it passes `--renderer vk` for Python games.
 
 **On another PC:** `tools/package.sh` takes the Python binaries along with Reliquary's resources and the libraries built for it; `tools/pack-data.py DEST popn9` copies the game's data, CHD included (2.4 GB).
 
-**Not yet:** the board's own CPU (Reliquary answers its FireWire commands directly), other Python games (they need their own `games/<id>/game.toml`; the ingester tells you the program's SHA-1).
+**Not yet:** the board's own CPU (Reliquary answers its FireWire commands directly), Python games other than pop'n 9–14 (they need their own `games/<id>/game.toml`; the ingester tells you the program's SHA-1).

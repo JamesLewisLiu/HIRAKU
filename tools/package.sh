@@ -68,7 +68,7 @@ Game data, either way:
   (dumps/GAME/ and its disc images, with relative paths in machine.txt). Saved settings and NVRAM live in
 ~/.local/share/hiraku/GAME (copy them over for games that need a first-boot setup).
 
-Konami Python games (bin/hiraku-popn9): Vulkan or OpenGL drivers from the system;
+Konami Python games (bin/hiraku-popn9 … hiraku-popn14): Vulkan or OpenGL drivers from the system;
 --renderer vk (or gl) draws on the GPU, the default software renderer on the CPU.
 Their e-AMUSEMENT (pop'n music 9: cards, players, rankings) runs offline inside the game
 by default; bin/hiraku-eamuse --port 8080 is the same server for several PCs, which then run

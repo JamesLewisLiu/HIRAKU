@@ -48,6 +48,12 @@ CASES = {
     # the same with the Vulkan GS, the one played with: deterministic on a given GPU and
     # driver (re-record on another PC); keeps GS settings honest (PLAN.md section 21, PY-3)
     "popn9-play-vk": ("popn9", 14000, ["--renderer", "vk", "--script", "oracle/scripts/popn9-play.his"]),
+    # pop'n music 10-14 on the same core: coins, mode, buttons, a song played (one button every 10 frames)
+    "popn10-play": ("popn10", 14000, ["--script", "oracle/scripts/popn10-play.his"]),
+    "popn11-play": ("popn11", 14000, ["--script", "oracle/scripts/popn11-play.his"]),
+    "popn12-play": ("popn12", 14000, ["--script", "oracle/scripts/popn12-play.his"]),
+    "popn13-play": ("popn13", 16000, ["--script", "oracle/scripts/popn13-play.his"]),
+    "popn14-play": ("popn14", 14000, ["--script", "oracle/scripts/popn14-play.his"]),
 }
 
 # report lines that describe the host, not the machine

@@ -54,8 +54,8 @@ HIRAKU is built and checked against **PCSX2 Reliquary 1.9.4**, the release zip `
 3. **Build:** `configure`, then `build`.
 4. **Check the core against the new oracle:**
    - `run.py popn9 --frames 3000 --snap-every 0 --unlimited`;
-   - `hiraku-popn9 --frames 3000` with `HK_FRAMEHASH`;
-   - the two hash files must be identical.
+   - `hiraku-popn9 --frames 3000 --bare-board` with `HK_FRAMEHASH`;
+   - the two hash files must be identical. `--bare-board` leaves out HIRAKU's e-AMUSEMENT card unit and network, which plain Reliquary doesn't have: pop'n 13 probes the card unit at frame 1,325, and the hashes part there without it. The same check passes for pop'n 10–14.
 5. **Run `tools/regress.py check popn9-play`.**
    - If it still passes, the update changed nothing that pop'n 9 shows.
    - If it differs, look at what changed (pictures, sound, the frame it starts at) before re-recording the baseline. Note the reason in PLAN.md §21.

@@ -11,7 +11,7 @@ no audio device. Runs are memory-capped (systemd-run) and time-limited.
 
 usage: run.py <game> [--seconds N] [--snap-every S] [--frames N] [--hash-every N]
               [--interp] [--unlimited] [--renderer 13|14|11] [--out DIR]
-  game: a .py1 name in the collection (popn9, dstagef, dogstdx, wswe, wswe2k3)
+  game: a .py1 name in the collection (popn9 … popn14, dstagef, dogstdx, wswe, wswe2k3, pesta, ppool)
 With the oracle patch (reliquary-oracle.patch), DIR/framehash.txt gets EE/IOP RAM
 hashes every --hash-every vsyncs and --frames stops the run at that vsync.
 Snapshots: a savestate over PINE every S seconds; its Screenshot.png and the EE

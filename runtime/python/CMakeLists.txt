@@ -49,3 +49,8 @@ function(hiraku_python_game id)
 endfunction()
 
 hiraku_python_game(popn9)
+hiraku_python_game(popn10)
+hiraku_python_game(popn11)
+hiraku_python_game(popn12)
+hiraku_python_game(popn13)
+hiraku_python_game(popn14)

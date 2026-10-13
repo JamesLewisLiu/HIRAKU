@@ -264,8 +264,13 @@ public:
         if (name == "--interp") { interp_ = true; return true; }
         if (name == "--pcsx2-log") { pcsx2_log_ = true; return true; }
         if (name == "--no-picture") { no_picture_ = true; return true; }
+        if (name == "--bare-board") { bare_board_ = true; return true; }
         if (name == "--picture-overlap") { picture_now_ = false; return true; }
-        if (name == "--autoplay") { autoplay_ = true; return true; }
+        if (name == "--autoplay") {
+            autoplay_ = true;
+            if (!has_autoplay(HK_GAME_ID)) fprintf(stderr, "autoplay: not available for %s yet (pop'n music 9 only)\n", HK_GAME_ID);
+            return true;
+        }
         if (name == "--eamuse") {   // local (the server in the core) or http://host[:port][/path]
             eamuse_ = value();
             return eamuse_ == "local" || hk::py::EamuseRemote(eamuse_).ok();
@@ -284,6 +289,8 @@ public:
                "  --interp             every CPU interpreted (EE, IOP, VU0, VU1), as the oracle's --interp\n"
                "  --pcsx2-log          the emulator's own log on stderr\n"
                "  --no-picture         don't read the GS's pictures back (black frames; for measuring)\n"
+               "  --bare-board         no e-AMUSEMENT card unit or network on the board, as in plain Reliquary\n"
+               "                       (for checking against the oracle: pop'n 13 probes the card unit at frame 1,325)\n"
                "  --picture-overlap    hand over the previous vsync's picture, so the GS overlaps the EE: less\n"
                "                       time per frame, a frame (16.7 ms) more latency. The default waits for each\n"
                "                       vsync's own picture\n"
@@ -312,7 +319,8 @@ public:
         }
         if (o.nvram_dir.empty() && exists(run_dir_)) FileSystem::RecursiveDeleteDirectory(run_dir_.c_str());
         mkdirs(run_dir_);
-        std::string py1 = "[Game]\nName=" + m["name"] + "\nIoMode=" + m["io_mode"] + "\n";
+        io_mode_ = m["io_mode"];
+        std::string py1 = "[Game]\nName=" + m["name"] + "\nIoMode=" + io_mode_ + "\n";
         if (!m["game_id"].empty()) py1 += "GameId=" + m["game_id"] + "\n";
         struct F { const char *key, *ini; bool writable; };
         const F files[] = {
@@ -334,7 +342,7 @@ public:
             py1 += std::string(f.ini) + "=" + path + "\n";
         }
         py1_path_ = run_dir_ + "/" + o.game + ".py1";
-        if (family_ == "pypopn") {
+        if (family_ == "pypopn" && !bare_board_) {
             card_ = std::make_unique<hk::py::CardUnit>(run_dir_ + "/card.bin");
             hk::py::VirtualNet::Io io;
             io.write = [](uint32_t addr, const uint8_t *d, uint32_t n) { Hiraku::net_write(addr, d, n); };
@@ -524,6 +532,8 @@ private:
         si.SetIntValue("EmuCore", "RtcMinute", 0);
         si.SetIntValue("EmuCore", "RtcSecond", 0);
         si.SetBoolValue("EmuCore/Speedhacks", "vuThread", false);
+        // as Reliquary's game list sets up every Python 1 game (GameList.cpp), but Perfect Pool
+        si.SetBoolValue("EmuCore/Gamefixes", "OPHFlagHack", io_mode_ != "PPOOL");
         for (const char *cpu : {"EnableEE", "EnableIOP", "EnableVU0", "EnableVU1"})
             si.SetBoolValue("EmuCore/CPU/Recompiler", cpu, !interp_);
         si.SetIntValue("EmuCore/GS", "Renderer", static_cast<int>(renderer_));
@@ -670,6 +680,11 @@ private:
         {"popn9", 0x10e644, 0x54430003, 0x00000000},   // bnel v0,v1 (mode != 2: flag = 0) -> nop
         {"popn9", 0x10dd9c, 0x10430036, 0x10000036},   // beq v0,v1 (mode == 2: no buttons) -> b
     };
+    static bool has_autoplay(const std::string &game) {
+        for (const CodePatch &p : AUTOPLAY)
+            if (game == p.game) return true;
+        return false;
+    }
     void apply_autoplay() {
         for (const CodePatch &p : AUTOPLAY)
             if (opt_.game == p.game && memRead32(p.addr) == p.was) {
@@ -685,7 +700,7 @@ private:
     }
 
     Options opt_;
-    std::string family_, run_dir_, py1_path_;
+    std::string family_, run_dir_, py1_path_, io_mode_;
     std::unique_ptr<hk::py::CardUnit> card_;
     FILE *card_log_ = nullptr;
     std::unique_ptr<hk::py::VirtualNet> net_;
@@ -706,6 +721,7 @@ private:
     }
     GSRendererType renderer_ = GSRendererType::SW;
     bool interp_ = false, pcsx2_log_ = false, no_picture_ = false, picture_now_ = true, autoplay_ = false;
+    bool bare_board_ = false;   // --bare-board: no card unit or e-AMUSEMENT network, as plain Reliquary
     std::span<const u8> font_data_;   // mapped for the process's life
     std::map<std::string, u32> binds_;
     struct Setting { std::string section, key, value; };

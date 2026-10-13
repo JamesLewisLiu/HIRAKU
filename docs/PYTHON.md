@@ -35,7 +35,7 @@ Working files live outside the repo, in `/run/media/roganis/DATA/Python-work/`: 
 
 | Board | BEMANI | Others |
 |---|---|---|
-| Python 1 | pop'n music 9 [V], 10, 11, 12 Iroha, 13 Carnival, 14 FEVER! [S: MAME header]; Dancing Stage Fusion (Europe) [V] | Winning Eleven Arcade 2002/2003 and PES The Arcade, Dog Station / Deluxe, Perfect Pool, Pool Pocket Fortunes, Baseball Heroes 2005, Battle Climaxx!, Monster Gate Online, Nice Smash!, Paintball Mania, Hawaiian De Golf, R.P.M. Red [S: MAME] |
+| Python 1 | pop'n music 9, 10, 11, 12 Iroha, 13 Carnival, 14 FEVER! [V]; Dancing Stage Fusion (Europe) [V] | Winning Eleven Arcade 2002/2003 and PES The Arcade, Dog Station / Deluxe, Perfect Pool, Pool Pocket Fortunes, Baseball Heroes 2005, Battle Climaxx!, Monster Gate Online, Nice Smash!, Paintball Mania, Hawaiian De Golf, R.P.M. Red [S: MAME] |
 | Python 2 | DDR SuperNOVA, SuperNOVA 2, Dancing Stage SuperNOVA; GuitarFreaks and DrumMania V, V2, V3 [S: MAME] | Thrill Drive 3, Toy's March 1/2, DANCE 86.4 FUNKY RADIO STATION [S: MAME] |
 
 - GuitarFreaks/DrumMania V4–V8 and pop'n 15 onward moved to the BEMANI PC [S: Wikipedia for GFDM; R for pop'n].
@@ -50,8 +50,21 @@ Working files live outside the repo, in `/run/media/roganis/DATA/Python-work/`: 
 | `dogstdx` Dog Station Deluxe | HDD `c30f04.chd` | 6.0 GB (~480 MiB) | `GNC30` | the only CHD matching MAME |
 | `wswe` Winning Eleven 2002 | CF `c18jaa03.chd` | 128 MB | `GEC18` | |
 | `wswe2k3` Winning Eleven 2003 | CF `c27jaa03.chd` | 128 MB | `GEC27` | |
+| `popn10` pop'n music 10 (JAA) | HDD `popn10.chd` | | `GQC20`, black dongle `GEC20JAA` | **plays in HIRAKU** (2026-10-13) [V] |
+| `popn11` pop'n music 11 (JAA) | HDD `popn11.chd` | | `GQD11`, black dongle `GCD11JAA` | **plays in HIRAKU** [V]; sector 0 is a blank PC MBR (below) |
+| `popn12` pop'n music 12 Iroha (JAB) | HDD `popn12.chd` | | `G-E12`, black dongle `GCE12JAB` | **plays in HIRAKU** [V] |
+| `popn13` pop'n music 13 Carnival (JAE) | HDD `e13_a04.chd` | | `G-E13`, black dongle `GCE13JAE` | **plays in HIRAKU** [V]; two-stage boot (below) |
+| `popn14` pop'n music 14 FEVER! (JAB) | HDD `popn14.chd` | | `G-F14`, black dongle `GNF14JAB` | **plays in HIRAKU** [V]; two-stage boot |
 
 Every set also has: the boot ROM, the config ROM, a DS2430 dongle (40 bytes: 32-byte EEPROM + 8-byte ROM ID), the M48T58 BBSRAM (8 KiB), and the **KN00002 memory-card dongle** (`kn00002.ps2`, 8 MiB with ECC, plus the 8-byte `kn00002.id`), identical in all five sets.
+
+**pop'n music 10–14** (arrived 2026-10-13) [V]:
+- The boot ROM, config ROM, internal dongle and `kn00002.id` are byte-identical to pop'n 9's. 10–14 share one `kn00002.ps2`, different from pop'n 9's. The BBSRAM differs per game.
+- Each adds an **external "black" DS2430** with the game's ID (`ExternalDonglePath`, `GameId` in the `.py1`). Reliquary takes it generically (two Dallas slots); HIRAKU's ingest and core pass it on.
+- **popn11's sector 0 is a blank PC MBR** (x86 boot code, no partitions): the disk was initialised on a PC. The header's copies at 0x200 and 0x400 are intact. `tools/pythonfs.py` takes the first of sector 0, 0x200, 0x400 that starts with the header's 8-byte signature; Reliquary boots it as it is.
+- **popn13 and popn14 boot in two stages:** record C is a ~300 KB loader that reads `ee/boot/game.bin` from a file system on the disk (`PythonDiskOpen`, `nr_file`; no file names in the clear) and checks the board (`PCB ERROR`). The game itself is only in RAM once it runs.
+- **The IOP side is the same:** the same 20 IOPRP modules in every game; ILINK and MCMAN byte-identical, SUBBOARD 64 bytes longer from pop'n 10 on, small SDK revisions elsewhere.
+- **e-AMUSEMENT modules differ** (from the EE programs' strings; 13/14 from their RAM): 10/11 as 9 plus `game`, without `parts`; 12 adds `lobby` and `playerdata`; 13 `cardmng`; 14 `facility`. HIRAKU's server knows pop'n 9's calls.
 
 **`dstagef` is not a clean dump** [V]:
 - its boot ROM is 32 bytes short: 32 bytes of 0xFF padding are missing before 0x70000, and its 0xF000 record is exactly the one hard-coded in Reliquary. Inserting 32 × 0xFF at 0x6FFE0 restores MAME's ROM apart from the records. Reliquary rejects the short file and falls back to a generated ROM;
@@ -63,7 +76,7 @@ SHA1s of every file are in `Python-work/notes/media-survey.md` §6. The `keys/` 
 
 - **HDDs:** no PS2 APA/PFS and no MBR. A Konami boot header sits at LBA 0 [V].
 - **CF cards:** an MBR with one FAT16 partition holding a single ~120 MiB file (`GEC18JAA.BIN`, `C27JAA.BIN`). That file has the same layout as an HDD [V].
-- **The header** (0x140 bytes, repeated at +0x200 and on some disks +0x400) holds three boot records, each stored twice [V]:
+- **The header** (0x140 bytes, repeated at +0x200 and on some disks +0x400; the copies can differ from sector 0, and on popn11 sector 0 is not a header at all) holds three boot records, each stored twice [V]:
 
   | Record | Fields | Contents |
   |---|---|---|
@@ -83,15 +96,22 @@ SHA1s of every file are in `Python-work/notes/media-survey.md` §6. The `keys/` 
   | dogstdx | 245,427 | 547,176 | 3,950,431 |
   | wswe | 244,227 | 492,123 | 2,235,861 |
   | wswe2k3 | 232,947 | 489,002 | 3,197,799 |
+  | popn10 | 247,651 | 506,911 | 2,580,374 |
+  | popn11 | 247,795 | 506,911 | 2,418,339 |
+  | popn12 | 247,795 | 506,911 | 2,468,936 |
+  | popn13 | 247,795 | 508,671 | 301,416 (the loader) |
+  | popn14 | 247,795 | 508,671 | 301,216 (the loader) |
+
+  popn11 and popn12 share records A and B (IOPRP built 2004-01-15); popn13 and popn14 share A with them and B with each other (2005-01-25).
 
   pop'n 9's EE program has ~13,100 `jal`, ~3,300 `jr`, ~1,300 MMI, ~1,200 COP1 and ~1,100 COP2 instruction words (a raw word count, not a disassembly). For scale, BM3 The Final is 1 MiB of PowerPC with 2,204 functions.
-- **No directory structure:** game data sits at fixed offsets known to the EE program [R]. Formats seen [V]:
+- **No directory structure** (pop'n 9–12): game data sits at fixed offsets known to the EE program [R]. pop'n 13 and 14 have a file system (above). Formats seen [V]:
   - `ADP` streams: 4-bit stereo ADPCM at 22,050 Hz, played by the interface board itself (Winning Eleven has ~35 of them);
   - TIM2 textures; uncompressed IRX modules; one MPEG-PS stream (wswe2k3);
   - `Svag` (KCE Tokyo) on dstagef;
   - pop'n 9: 372 `PM09` containers in 20 MiB slots from 0x20000000, one per song [R].
-- **Nothing on the disks is encrypted** [V].
-- Tools: `tools/pythonfs.py <chd|image> [outdir]` lists and decodes the three boot records of any of the five sets, CF cards included; `tools/chdread.py` reads byte ranges of a CHD without extracting it. `Python-work/tools/ps2mc.py` lists a raw PS2 memory card.
+- **Nothing on the disks is encrypted** [V] for the sets surveyed before pop'n 10. pop'n 13/14's `game.bin` is not checked (their loader holds a long key-like string).
+- Tools: `tools/pythonfs.py <chd|image> [outdir]` lists and decodes the three boot records of any set on hand, CF cards included; `tools/chdread.py` reads byte ranges of a CHD without extracting it. `Python-work/tools/ps2mc.py` lists a raw PS2 memory card.
 
 ## 5. How a Python 1 game boots [V unless marked]
 

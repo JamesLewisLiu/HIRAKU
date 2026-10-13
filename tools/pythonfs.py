@@ -119,8 +119,22 @@ def open_image(path):
     return img
 
 
+HEADER_MAGIC = bytes.fromhex('1eb3f7083f6ad60c')   # the first 8 bytes of every boot header seen
+
+
+def header(img):
+    """The boot header: sector 0, or else the first of its copies at 0x200 and 0x400 that is one.
+    popn11's dump has a blank PC MBR in sector 0 (the disk was initialised on a PC); its copies
+    are intact. Copies can differ from sector 0 on intact disks (dogstdx, dstagef, wswe2k3)."""
+    for at in (0, 0x200, 0x400):
+        h = img.read(at, 0x200)
+        if h.startswith(HEADER_MAGIC):
+            return h
+    raise ValueError('no Konami boot header at 0, 0x200 or 0x400')
+
+
 def records(img):
-    h = img.read(0, 0x200)
+    h = header(img)
     A = struct.unpack_from('>8I', h, 0x20)
     B = struct.unpack_from('<8I', h, 0xA0)
     C = struct.unpack_from('<8I', h, 0x100)
