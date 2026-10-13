@@ -15,6 +15,7 @@
 #include "video/psx.h"
 #include "sound/spu.h"
 #include "sound/cdda.h"
+#include "sound/mas3507d.h"
 #include "machine/ram.h"
 #include "machine/intelfsh.h"
 #include "machine/timekpr.h"
@@ -34,6 +35,7 @@
 #include <sys/stat.h>
 
 #include <cstdio>
+#include <deque>
 #include <map>
 
 namespace hk::k573 {
@@ -213,6 +215,8 @@ public:
     void gn845pwbb_do_w(int offset, int data) { m_stage_state[offset].DO = !data; }
     void gn845pwbb_clk_w(int offset, int data);
     void ddr_output_callback(offs_t offset, u8 data);
+    void drmn_output_callback(offs_t offset, u8 data);
+    void set_lamp(offs_t offset, bool lit);
 };
 
 const device_creator<sys573_state> sys573_state::SYS573_STATE("sys573", "Konami System 573");
@@ -270,7 +274,9 @@ void sys573_state::device_add_mconfig(machine_config &config) {
     if (digital) {
         // k573d(): the digital I/O board; ddr3m(): DDR's outputs on it
         KONAMI_573_DIGITAL_IO_BOARD(config, m_k573dio, XTAL(19'660'800));
-        m_k573dio->output_callback().set(*this, &sys573_state::ddr_output_callback);
+        // ddr3m(): DDR's outputs; drmn2m() to drmn10m(): DrumMania's
+        if (c.family == "drmn") m_k573dio->output_callback().set(*this, &sys573_state::drmn_output_callback);
+        else m_k573dio->output_callback().set(*this, &sys573_state::ddr_output_callback);
     }
     // k573a(): the analog board is the driver's own handlers (konami573a_map); init_ddr() sends
     // its outputs to ddr_output_callback (gx700pwbf_output)
@@ -279,11 +285,16 @@ void sys573_state::device_add_mconfig(machine_config &config) {
         m_pccard2->set_default_option("32mb");
     }
     // the cassette: konami573() adds cassx(); ddr3m's cassyyi() replaces it
-    if (c.cassette == "yi") m_cassette->option_add("game", KONAMI573_CASSETTE_YI);
-    else if (c.cassette == "xi") m_cassette->option_add("game", KONAMI573_CASSETTE_XI);
-    else if (c.cassette == "y") m_cassette->option_add("game", KONAMI573_CASSETTE_Y);
-    else m_cassette->option_add("game", KONAMI573_CASSETTE_X);
-    m_cassette->set_default_option("game");
+    // (cassyyi() and cassxxi() add the install cassette, of the game's kind)
+    for (const char *slot : {"game", "install"}) {
+        if (!strcmp(slot, "install") && c.install_eeprom.empty()) continue;
+        if (c.cassette == "zi") m_cassette->option_add(slot, KONAMI573_CASSETTE_ZI);   // casszi(): ZS01 + DS2401
+        else if (c.cassette == "yi") m_cassette->option_add(slot, KONAMI573_CASSETTE_YI);
+        else if (c.cassette == "xi") m_cassette->option_add(slot, KONAMI573_CASSETTE_XI);
+        else if (c.cassette == "y") m_cassette->option_add(slot, KONAMI573_CASSETTE_Y);
+        else m_cassette->option_add(slot, KONAMI573_CASSETTE_X);
+    }
+    m_cassette->set_default_option(c.cassette_slot.c_str());
     if (c.memory_card_reader) KONAMI_573_MEMORY_CARD_READER(config, "k573mcr", m_sys573_jvs_host);
 
     // MAME's OUT0/OUT1/OUT2 port fields, in mask order (ioport fields are kept sorted)
@@ -582,9 +593,23 @@ void sys573_state::ddr_output_callback(offs_t offset, u8 data) {
     // the cabinet's lamps (MAME's outputs): lit = data 0; the digital board's speaker neon (28)
     // is the analog board's 30
     if (offset == 28) offset = 30;
+    set_lamp(offset, !data);
+}
+
+// MAME's drmn_output_callback (ksys573.cpp), the digital board's numbering (DrumMania 2nd and
+// later): the drum lamps and the spots are lit at data 0, the neons, Start and Select at data 1
+void sys573_state::drmn_output_callback(offs_t offset, u8 data) {
+    switch (offset) {
+    case 0: case 1: case 2: case 3: case 8: case 12: set_lamp(offset, !data); break;
+    case 9: case 11: case 13: case 14: set_lamp(offset, data != 0); break;
+    default: break;
+    }
+}
+
+void sys573_state::set_lamp(offs_t offset, bool lit) {
     if (offset >= 32) return;
     const u32 bit = 1u << offset, was = m_outputs;
-    m_outputs = data ? m_outputs & ~bit : m_outputs | bit;
+    m_outputs = lit ? m_outputs | bit : m_outputs & ~bit;
     if (m_outputs == was) return;
     const auto &defs = cab::lamps(cfg.family);
     m_lamps.resize(defs.size());
@@ -599,6 +624,12 @@ struct Board {
     Config cfg;
     FrameHook frame_hook;
     AudioSink audio_sink;
+    // the digital board's MP3 (MAS3507D) at 44.1 kHz, resampled for the host when the MP3 is
+    // another rate (the emulation never sees this), and where the resampler is between samples
+    std::deque<float> mp3[2];
+    double mp3_pos = 0;
+    float mp3_peak = 0;   // the MP3's largest |sample|, and its rate (the report)
+    u32 mp3_rate = 0;
     u64 frames = 0;
     float sound_peak = 0;     // the mix's largest |sample| (1.0 = full scale)
     u64 sound_over = 0;       // samples past full scale (clipped at the output)
@@ -624,6 +655,8 @@ bool init(const Config &cfg) {
         {":h8_response", rom(cfg.h8)},
         {":cassette:game:eeprom", rom(cfg.cassette_eeprom)},
         {":cassette:game:id", cfg.cassette_id.empty() ? "" : rom(cfg.cassette_id)},           // the "i" cassettes
+        {":cassette:install:eeprom", cfg.install_eeprom.empty() ? "" : rom(cfg.install_eeprom)},
+        {":cassette:install:id", cfg.install_id.empty() ? "" : rom(cfg.install_id)},
         {":k573dio:digital_id", cfg.io_board == "digital" ? rom(cfg.digital_id) : ""},
     };
     for (auto &r : regions) {
@@ -690,14 +723,43 @@ void set_audio_sink(AudioSink s) { g.audio_sink = std::move(s); }
     for (;;) {
         m.timeslice();
         // sound: MAME's speaker, the SPU plus the CR-589's CD audio (both 44.1 kHz, routed at 1.0;
-        // the CD at its MODE SELECT volume, set_output_gain). The MP3 board's stream comes later.
+        // the CD at its MODE SELECT volume, set_output_gain), plus the digital board's MP3 (routed
+        // at 1.0)
         if (g.audio_sink) {
-            static sound_stream *spu = nullptr, *cd = nullptr;
+            static sound_stream *spu = nullptr, *cd = nullptr, *mp3 = nullptr;
             if (!spu)
                 for (sound_stream *s : m.m_streams) {
                     if (s->m_device == g.state->m_spu.target()) spu = s;
                     else if (dynamic_cast<cdda_device *>(s->m_device) && s->sample_rate() == 44100) cd = s;
+                    else if (dynamic_cast<mas3507d_device *>(s->m_device)) mp3 = s;
                 }
+            if (mp3) {
+                // what its 50 Hz updates produced, never more: the MAS3507D decodes and asks the
+                // FPGA for data as its stream updates, so updating it here would change the machine
+                auto &ml = mp3->m_out[0], &mr = mp3->m_out[1];
+                const size_t avail = std::min(ml.size(), mr.size());
+                const u32 rate = mp3->sample_rate();
+                g.mp3_rate = rate;
+                for (size_t i = 0; i < avail; i++) g.mp3_peak = std::max({g.mp3_peak, std::fabs(ml[i]), std::fabs(mr[i])});
+                size_t used = avail;
+                if (rate == 44100 || !rate) {
+                    g.mp3[0].insert(g.mp3[0].end(), ml.begin(), ml.begin() + avail);
+                    g.mp3[1].insert(g.mp3[1].end(), mr.begin(), mr.begin() + avail);
+                } else {   // linear, from rate to 44.1 kHz
+                    const double step = rate / 44100.0;
+                    while (g.mp3_pos + 1 < (double)avail) {
+                        const size_t i = (size_t)g.mp3_pos;
+                        const float f = (float)(g.mp3_pos - (double)i);
+                        g.mp3[0].push_back(ml[i] + (ml[i + 1] - ml[i]) * f);
+                        g.mp3[1].push_back(mr[i] + (mr[i + 1] - mr[i]) * f);
+                        g.mp3_pos += step;
+                    }
+                    used = std::min(avail, (size_t)g.mp3_pos);
+                    g.mp3_pos -= (double)used;
+                }
+                ml.erase(ml.begin(), ml.begin() + used);
+                mr.erase(mr.begin(), mr.begin() + used);
+            }
             if (spu) {
                 // the CD stream to now, so the SPU's samples don't wait for its 50 Hz update (the
                 // game sees the same either way: get_audio_lba() updates the stream itself)
@@ -705,6 +767,7 @@ void set_audio_sink(AudioSink s) { g.audio_sink = std::move(s); }
                 auto &l = spu->m_out[0], &r = spu->m_out[1];
                 size_t n = std::min(l.size(), r.size());
                 if (cd) n = std::min({n, cd->m_out[0].size(), cd->m_out[1].size()});
+                if (mp3) n = std::min(n, g.mp3[0].size());
                 if (n) {
                     std::vector<float> lr(n * 2);
                     for (size_t i = 0; i < n; i++) { lr[2 * i] = l[i]; lr[2 * i + 1] = r[i]; }
@@ -717,6 +780,13 @@ void set_audio_sink(AudioSink s) { g.audio_sink = std::move(s); }
                             const float gain = cdd->output_gain(ch);
                             for (size_t i = 0; i < n; i++) lr[2 * i + ch] += c[i] * gain;
                             c.erase(c.begin(), c.begin() + n);
+                        }
+                    }
+                    if (mp3) {
+                        for (int ch = 0; ch < 2; ch++) {
+                            auto &q = g.mp3[ch];
+                            for (size_t i = 0; i < n; i++) lr[2 * i + ch] += q[i];
+                            q.erase(q.begin(), q.begin() + n);
                         }
                     }
                     for (float &v : lr) {
@@ -759,6 +829,10 @@ bool set_input(const std::string &name, int value) {
         {"P2 Button 4", {2, 0x1000000}}, {"P2 Button 5", {2, 0x2000000}}, {"P2 Button 6", {2, 0x8000000}},
         // IN1
         {"Coin 1", {3, 0x1000000}}, {"Coin 2", {3, 0x2000000}}, {"Service 1", {3, 0x10000000}},
+        // DrumMania (MAME's drmn ports): the pads on the stage bits, the cymbal and the bass pedal
+        // on IN2's buttons, the select buttons on player 2's left and right
+        {"High Tom", {0, 0x100}}, {"Low Tom", {0, 0x200}}, {"Hi-Hat", {0, 0x400}}, {"Snare", {0, 0x800}},
+        {"Select L", {0, 0x001}}, {"Select R", {0, 0x002}}, {"Cymbal", {1, 0x1000}}, {"Bass Drum", {1, 0x4000}},
     };
     // the shell's cabinet names for MAME's (runtime/shell/cabinet.cpp)
     auto it = names.find(name == "Test" ? "Service Mode" : name == "Service" ? "Service 1" : name);
@@ -777,7 +851,12 @@ std::string sound_report() {
     char b[160];
     snprintf(b, sizeof b, "sound: mix peak %.2f of full scale, %.3f %% of samples over it", g.sound_peak,
              100.0 * (double)g.sound_over / (double)g.sound_samples);
-    return b;
+    std::string out = b;
+    if (g.mp3_rate) {
+        snprintf(b, sizeof b, "; the MP3 peaks at %.2f, at %u Hz", g.mp3_peak, g.mp3_rate);
+        out += b;
+    }
+    return out;
 }
 
 uint64_t lamp_changes() { return g.state->m_lamp_changes; }

@@ -23,6 +23,8 @@
 #   MAME_BIN      a MAME binary to run instead of the flatpak (System 573: the
 #                 build at HIRAKU's MAME pin, /run/media/roganis/DATA/mame-pin/k573)
 #   MAME_MEM      memory cap for the run (default 4G): MAME runs in a systemd scope
+#   MAME_ARGS     more MAME options, e.g. a slot option: MAME_ARGS="-cassette install" (ddr3mj's
+#                 install cassette, which HIRAKU's --cassette install matches)
 #
 # Converting dumps to CHD (once per game, chdman ships in the flatpak):
 #   flatpak run --command=chdman org.mamedev.MAME createcd -i cd.cue -o <set>/<name>.chd
@@ -73,6 +75,8 @@ args=(-rompath "$roms" -homepath "$out"
     -seconds_to_run "${RUN_SECONDS:-900}"
     -autoboot_script "$here/lua/hiraku.lua"
     "$set_name")
+# shellcheck disable=SC2206
+[[ -n "${MAME_ARGS:-}" ]] && args+=(${MAME_ARGS})
 
 if [[ -n "${MAME_BIN:-}" ]]; then
     env HIRAKU_OUT="$out" HIRAKU_SCRIPT="$script" HIRAKU_TAPS="${HIRAKU_TAPS:-all}" HIRAKU_NOFOLD="${HIRAKU_NOFOLD:-}" \

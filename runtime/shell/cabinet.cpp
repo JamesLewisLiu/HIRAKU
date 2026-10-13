@@ -104,6 +104,25 @@ std::vector<Control> make_ddr() {
     return c;
 }
 
+// DrumMania (System 573, MAME ksys573.cpp "drmn"): five pads, the bass pedal, the select buttons
+// and Start. On the keyboard the pads sit left to right as on the kit.
+std::vector<Control> make_drmn() {
+    return {
+        {"Hi-Hat", "Hi-hat", "Drums", false, "key:S, joy0:button0"},
+        {"Snare", "Snare", "Drums", false, "key:D, joy0:button1"},
+        {"High Tom", "High tom", "Drums", false, "key:J, joy0:button2"},
+        {"Low Tom", "Low tom", "Drums", false, "key:K, joy0:button3"},
+        {"Cymbal", "Cymbal", "Drums", false, "key:L, joy0:button4"},
+        {"Bass Drum", "Bass pedal", "Drums", false, "key:Space, joy0:button5"},
+        {"Select L", "Select left", "Panel", false, "key:Left"},
+        {"Select R", "Select right", "Panel", false, "key:Right"},
+        {"1 Player Start", "Start", "Panel", false, "key:1, key:Return, joy0:button9"},
+        {"Coin 1", "Coin", "Cabinet", false, "key:5, joy0:button8"},
+        {"Test", "Test", "Cabinet", false, "key:F2"},
+        {"Service", "Service", "Cabinet", false, "key:9"},
+    };
+}
+
 // The board's status LEDs (lamp_output_w, active low): every family has them.
 void add_status(std::vector<Lamp> &l) {
     for (int k = 0; k < 8; k++) l.push_back({"Status LED " + std::to_string(k + 1), "Board (diagnostic)", 0, k, true});
@@ -253,6 +272,16 @@ std::vector<Lamp> make_ddr_lamps() {
     return l;
 }
 
+// DrumMania: the digital board's outputs as MAME's drmn_output_callback names them (DrumMania
+// 2nd and later). reg 0, bit = output number.
+std::vector<Lamp> make_drmn_lamps() {
+    return {
+        {"Hi-Hat", "Drums", 0, 0}, {"High Tom", "Drums", 0, 1}, {"Low Tom", "Drums", 0, 2}, {"Snare", "Drums", 0, 3},
+        {"Cymbal", "Drums", 0, 12}, {"Start Lamp", "Panel", 0, 13}, {"Select Lamp", "Panel", 0, 14},
+        {"Spot Left/Right", "Cabinet", 0, 8}, {"Neon Top", "Cabinet", 0, 9}, {"Neon Woofer", "Cabinet", 0, 11},
+    };
+}
+
 // pop'n stage: not decoded yet (no dump to watch); listed by register and bit
 std::vector<Lamp> make_djpstage_lamps() {
     std::vector<Lamp> l;
@@ -274,7 +303,8 @@ std::string trim(std::string s) {
 const std::vector<Control> &controls(const std::string &family) {
     static const std::map<std::string, std::vector<Control>> all = {
         {"bm3", make_bm3()}, {"popn", make_popn()}, {"ppp", make_ppp()}, {"kbm", make_kbm()},
-        {"djbm", make_djbm()}, {"djpopn", make_djpopn()}, {"djpstage", make_djpstage()}, {"ddr", make_ddr()}};
+        {"djbm", make_djbm()}, {"djpopn", make_djpopn()}, {"djpstage", make_djpstage()}, {"ddr", make_ddr()},
+        {"drmn", make_drmn()}};
     auto f = all.find(family);
     return f != all.end() ? f->second : all.at("bm3");
 }
@@ -283,7 +313,7 @@ const std::vector<Lamp> &lamps(const std::string &family) {
     static const std::map<std::string, std::vector<Lamp>> all = {
         {"bm3", make_bm3_lamps()}, {"popn", make_popn_lamps()}, {"ppp", make_ppp_lamps()}, {"kbm", make_kbm_lamps()},
         {"djbm", make_djbm_lamps()}, {"djpopn", make_djpopn_lamps()}, {"djpstage", make_djpstage_lamps()},
-        {"ddr", make_ddr_lamps()}};
+        {"ddr", make_ddr_lamps()}, {"drmn", make_drmn_lamps()}};
     auto f = all.find(family);
     return f != all.end() ? f->second : all.at("bm3");
 }

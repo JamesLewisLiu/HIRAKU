@@ -1,0 +1,10 @@
+# DrumMania 10th Mix (System 573, digital I/O board): the first boot. The 573 BIOS boots the
+# runtime CD, which installs itself to the onboard flash with no inputs, then shows INFO 508
+# (install done, power-cycle) by frame ~7800. Hashes the main RAM every frame and snapshots every
+# 60 frames, to compare HIRAKU's 573 core with MAME through the install.
+game drmn10m
+
+hash ram  0x80000000 0x80400000   # 4 MiB main RAM (KSEG0)
+
+from 0 every 60 snap
+at 8400 quit

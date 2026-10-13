@@ -1,0 +1,19 @@
+# DDR 3rd Mix (System 573, digital I/O board): a game, from what the install left (start from
+# ddr3mj-install's NVRAM). Two coins at the title (frame ~4200), Start twice; the character, game mode and music
+# selects time out to their defaults (XANADU); the song, with the MP3 music, played by stepping on
+# all four panels every 8 frames from frame 7000: some arrows are hit, some missed. Hashes the main
+# RAM every frame, snapshots every 60 frames, to compare HIRAKU's 573 core with MAME through a song.
+game ddr3mj
+
+hash ram  0x80000000 0x80400000   # 4 MiB main RAM (KSEG0)
+
+at 4300 press "Coin 1" 8
+at 4340 press "Coin 1" 8
+at 4500 press "1 Player Start" 8
+at 4700 press "1 Player Start" 8
+from 7000 every 8 press "P1 Left" 4
+from 7000 every 8 press "P1 Down" 4
+from 7000 every 8 press "P1 Up" 4
+from 7000 every 8 press "P1 Right" 4
+from 0 every 60 snap
+at 16000 quit

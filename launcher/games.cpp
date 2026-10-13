@@ -41,6 +41,7 @@ void readManifest(const QString &path, Game &g) {
         else if (k == "mame") g.mame = v;
         else if (k == "core") g.core = v;
         else if (k == "first_boot") g.firstBoot = v;
+        else if (k == "install_cassette") g.installCassette = v == "yes";
     }
 }
 
@@ -132,6 +133,7 @@ QIcon familyIcon(const QString &family) {
            : family == "ppp"  ? Look{QColor(0xf0, 0x8a, 0x24), "PPP"}
            : family == "kbm"  ? Look{QColor(0x2e, 0x9e, 0x6a), "KBM"}
            : family == "ddr"  ? Look{QColor(0x8a, 0x2b, 0xc8), "DDR"}
+           : family == "drmn" ? Look{QColor(0xc8, 0x3a, 0x2b), "DM"}
                               : Look{QColor(0x3a, 0x4c, 0xb8), "bm III"};
     QIcon icon;
     for (int size : {32, 64}) {

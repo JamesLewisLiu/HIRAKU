@@ -150,7 +150,7 @@ def ingest_sys573(args) -> int:
     outdir = os.path.join(args.out, gid)
     names = set(copy_romset(args.romset, os.path.join(outdir, "rom")))
     roms = game["roms"]
-    keys = ("bios", "h8", "cassette_eeprom", "cassette_id", "digital_id")
+    keys = ("bios", "h8", "cassette_eeprom", "cassette_id", "install_eeprom", "install_id", "digital_id")
     missing = [roms[k] for k in keys if roms.get(k) and roms[k] not in names]
     if missing:
         print(f"ERROR    the set lacks {', '.join(missing)}")

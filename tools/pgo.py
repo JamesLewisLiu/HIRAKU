@@ -65,7 +65,7 @@ def main() -> int:
     # recording covers, so it is what the profile must know about
     os.environ["HK_573_BLOCKS"] = "0"
     import regress   # noqa: E402  (reads HK_REGRESS_BIN)
-    cases = [c for c, (game, _, _) in regress.CASES.items()
+    cases = [c for c, (game, *_) in regress.CASES.items()
              if os.path.exists(os.path.join(ROOT, "dumps", game, "machine.txt")) and core_of(game) in PROFILED]
     if not cases:
         print("ERROR    no ingested game to train on: tools/regress.py's cases need dumps/<game>/")

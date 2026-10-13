@@ -476,3 +476,66 @@ A dance pad is bound in the launcher's Controls (Dance Dance Revolution page): c
 **Checked against MAME, clock for clock** (`oracle/scripts/ddr2m-boot.his`, `ddr2m-play.his`): the first boot and flash install, attract mode, and a game. That game is coins, mode and song select, and a song stepped through to CLEARED. Main RAM is identical on every frame, every snapshot is pixel-identical, and the sound matches MAME's recording (with `--mame-mix`). Both are regress cases.
 
 **Not yet:** a hands-on test with a pad.
+
+## System 573: Dance Dance Revolution 3rdMIX (in progress, M14)
+
+DDR 3rdMIX (`ddr3mj`) is the first game on the 573's **digital I/O board**: the music is MP3, decrypted by the board's FPGA and decoded by its MAS3507D. It needs MAME's `ddr3mj` set and the CD `887jaa02`. The set carries the BIOS, both cassettes (the game's and the install one, each an X76F100 plus a DS2401) and the board's DS2401.
+
+```bash
+tools/ingest.py ddr3mj.7z 887jaa02.chd
+ninja -C build/cmake hiraku-ddr3mj
+```
+
+**The first boot needs the install cassette**, as on a real cabinet (MAME's note 3 in `ksys573.cpp`):
+1. **Play** in the launcher. With no saves yet, it puts the install cassette in the slot (the details pane says so). The game installs itself with no input: the CD to the onboard flash, then to the 32 MiB PC Card. That takes about 4½ minutes of game time (hold **Tab** to fast-forward).
+2. At **INFO 506** ("install complete, put the GN887 cassette back and power-cycle"), stop it.
+3. **Play** again: it boots with the game's cassette, checks the flash and goes to attract mode.
+
+If an install was stopped before INFO 506, the game shows **ERROR 147**: right-click it, **Boot once with the install cassette**, and Play. From the command line, the install cassette is `--cassette install`:
+
+```bash
+build/cmake/hiraku-ddr3mj --cassette install --window
+```
+
+Without the install, the game stops at **ERROR 147**. The flash and the PC Card live in the game's NVRAM folder like any other save.
+
+Controls, coins and lamps are DDR's, as for 2ndMIX above. The lamps come from the digital board's outputs.
+
+**Sound:** the SPU plus the MP3, in MAME's balance and played at half level (`--mame-mix` for MAME's level).
+
+**Checked against MAME, clock for clock** (`oracle/scripts/ddr3mj-install.his`, `ddr3mj-attract.his`, `ddr3mj-play.his`): the install, then from what it left, attract mode and a game.
+- The game: coins, Start, the selects timed out to XANADU, the song stepped through to its result, then stage 2.
+- Main RAM is identical on every frame, and the NVRAM after the install is byte for byte MAME's.
+- The sound matches MAME's recording: lag 0, correlation ≥ 0.999.
+- Each is a regress case: `ddr3mj-attract` and `ddr3mj-play` start from the NVRAM `ddr3mj-install` leaves.
+
+**Speed** (desktop, recompiled R3000 code): attract 0.48 ms a frame, a song 0.62 ms.
+
+**Not yet:** a hands-on test. MAME flags this set NOT_WORKING without saying why; so far it plays as MAME does.
+
+## System 573: DrumMania 10th Mix (not playable yet, M14)
+
+DrumMania 10th Mix (`drmn10m`) needs MAME's `drmn10m` set and the runtime CD `d40jaa02`:
+
+```bash
+tools/ingest.py drmn10m.7z d40jaa02.chd
+ninja -C build/cmake hiraku-drmn10m
+```
+
+**It boots as far as MAME does, and no further:**
+1. The first boot installs the CD to the onboard flash by itself and shows **INFO 508** (power-cycle): stop it.
+2. The next boot shows **NOTE 605** (RTC-RAM cleared): press **Test** (F2).
+3. After the boot checks it stops at **"Please call attendant"**: the multi-session unit can't be found.
+
+The unit is a box of its own: a second CPU, a CD drive and audio decoders. It plays the songs' music, and the game won't run without it. MAME doesn't emulate it either, which is why MAME flags the set NOT_WORKING. PLAN.md section 19 has the plan.
+
+| Key | DrumMania |
+|---|---|
+| S / D / J / K / L | hi-hat, snare, high tom, low tom, cymbal |
+| Space | bass pedal |
+| Left / Right | select |
+| 1 or Return | start |
+| 5 | coin |
+| F2 / 9 | test / service |
+
+**Checked against MAME, clock for clock** (`oracle/scripts/drmn10m-install.his`, `drmn10m-boot.his`): the install and the boot to the multi-session unit's error. Main RAM is identical on every frame, and the NVRAM after the install is byte for byte MAME's. Both are regress cases.

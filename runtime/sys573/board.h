@@ -24,6 +24,10 @@ struct Config {
     std::string h8 = "h8a01.bin";
     std::string cassette = "x";            // MAME's cassette variant: x (X76F041), yi (X76F100 + DS2401)
     std::string cassette_eeprom, cassette_id;   // files in rom_dir (no id for x)
+    // MAME's install cassette, for the first boot of games that install from CD with one (ddr3mj:
+    // ksys573.cpp's note 3): its files, and which cassette is in the slot, "game" or "install"
+    std::string install_eeprom, install_id;
+    std::string cassette_slot = "game";
     std::string io_board = "analog";       // analog (GX700-PWB(F)) | digital (GX894-PWB(B), MP3)
     std::string digital_id = "digital-id.bin";
     std::string cd;                        // the CD image (.cue or .iso)

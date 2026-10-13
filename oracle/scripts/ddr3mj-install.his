@@ -1,0 +1,12 @@
+# DDR 3rd Mix (System 573, digital I/O board): the first boot, with MAME's install cassette in
+# the slot (MAME: -cassette install; HIRAKU: --cassette install; ksys573.cpp's note 3). The 573
+# BIOS boots the CD, which installs itself, no inputs needed: the CD to the onboard flash, then to
+# the PC Card in slot 2 (edit data). By frame ~15600 it shows INFO 506: install done, put the
+# GN887 cassette back and power-cycle. Hashes the main RAM every frame and snapshots every 60
+# frames, to compare HIRAKU's 573 core with MAME through the install.
+game ddr3mj
+
+hash ram  0x80000000 0x80400000   # 4 MiB main RAM (KSEG0)
+
+from 0 every 60 snap
+at 16200 quit

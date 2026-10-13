@@ -385,6 +385,8 @@ void MainWindow::updateActions() {
     m_stop->setEnabled(running);
 }
 
+static bool installCassette(const Game &g);
+
 void MainWindow::showDetails() {
     const Game *g = selected();
     if (!g) {
@@ -404,6 +406,10 @@ void MainWindow::showDetails() {
         bool fresh = !QFileInfo::exists(cfg::nvramDir(g->id));
         if (fresh && !g->firstBoot.isEmpty())
             h += "<p><b>First boot:</b> " + g->firstBoot.toHtmlEscaped() + "</p>";
+        if (installCassette(*g))
+            h += "<p><b>The install cassette is in the slot</b> for the next start: the game installs itself from "
+                 "CD to flash. When it says the install is done (INFO 506), stop it and play again: it then boots "
+                 "with the game's cassette.</p>";
         h += "<p>Saves: <tt>" + cfg::nvramDir(g->id).toHtmlEscaped() + "</tt>" + (fresh ? " (none yet)" : "") + "</p>";
         QString m = picture::mode(g->id);
         bool own = cfg::settings().contains("picture/" + g->id) || QFileInfo::exists(picture::configDir(g->id));
@@ -413,6 +419,15 @@ void MainWindow::showDetails() {
                       own ? ", with its own settings" : "");
     }
     m_details->setText(h);
+}
+
+// A System 573 game that installs from CD with an install cassette (ddr3mj): its first boot (no
+// saves yet) has that cassette in the slot, as does the next start after "Boot once with the
+// install cassette" (an install stopped halfway). Otherwise the game's own cassette.
+static bool installCassette(const Game &g) {
+    if (!g.installCassette) return false;
+    if (cfg::settings().value("cassette/" + g.id).toString() == "install") return true;
+    return !QFileInfo::exists(cfg::nvramDir(g.id));
 }
 
 QStringList MainWindow::arguments(const Game &g) const {
@@ -431,6 +446,7 @@ QStringList MainWindow::arguments(const Game &g) const {
     QString sf = s.value("audio/soundfont").toString();
     if (g.family == "kbm" && !sf.isEmpty()) a << "--soundfont" << sf;
     if (!cfg::nvramBase().isEmpty()) a << "--nvram" << cfg::nvramDir(g.id);
+    if (installCassette(g)) a << "--cassette" << "install";
     a << UnlocksDialog::macroArguments(g.id);   // codes typed at every start
     a << QProcess::splitCommand(s.value("game/extraArgs").toString());
     return a;
@@ -464,6 +480,7 @@ void MainWindow::play(const QString &id) {
         m_proc.setProcessEnvironment(env);
     }
     m_proc.start(g->exe, args);
+    cfg::settings().remove("cassette/" + g->id);   // "Boot once with the install cassette" is used up
     statusBar()->showMessage("Running " + g->title);
     cfg::settings().setValue("ui/lastGame", g->id);
     updateActions();
@@ -506,6 +523,16 @@ void MainWindow::contextMenu(const QPoint &pos) {
             UnlocksDialog d(id, title, m_running == id, this);
             d.exec();
         });
+    if (g->installCassette) {
+        auto *inst = menu.addAction("Boot once with the install cassette", this, [this, id](bool on) {
+            if (on) cfg::settings().setValue("cassette/" + id, "install");
+            else cfg::settings().remove("cassette/" + id);
+            showDetails();
+        });
+        inst->setCheckable(true);
+        inst->setChecked(cfg::settings().value("cassette/" + id).toString() == "install");
+        inst->setToolTip("For an install that stopped before it was done (the game then shows ERROR 147)");
+    }
     menu.addSeparator();
     QString nv = cfg::nvramDir(id);
     auto *open = menu.addAction(QIcon::fromTheme("folder-open"), "Open the save folder", this,

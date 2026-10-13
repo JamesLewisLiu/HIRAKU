@@ -1,0 +1,11 @@
+# DDR 3rd Mix (System 573, digital I/O board): power-on with the game cassette, after the install
+# (start from ddr3mj-install's NVRAM). No inputs: the flash checksum, the boot check, the warning,
+# the intro video, the title, How To Play and a demo song, both with the MP3 music, the rankings.
+# Hashes the main RAM every frame and snapshots every 60 frames, to compare HIRAKU's 573 core with
+# MAME, the MP3 sound with it (oracle/audiosync.py).
+game ddr3mj
+
+hash ram  0x80000000 0x80400000   # 4 MiB main RAM (KSEG0)
+
+from 0 every 60 snap
+at 9000 quit

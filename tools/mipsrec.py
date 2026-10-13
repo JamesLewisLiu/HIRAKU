@@ -33,11 +33,11 @@ def is_573(game):
 def main():
     if any(a.startswith("-") for a in sys.argv[1:]):
         sys.exit(__doc__)
-    games = sys.argv[1:] or sorted({g for g, _, _ in regress.CASES.values() if is_573(g)})
+    games = sys.argv[1:] or sorted({g for g, *_ in regress.CASES.values() if is_573(g)})
     for game in games:
         if not is_573(game):
             sys.exit(f"{game} is not a System 573 game")
-        cases = [c for c, (g, _, _) in regress.CASES.items() if g == game]
+        cases = [c for c, (g, *_) in regress.CASES.items() if g == game]
         if not cases:
             print(f"{game}: no regress cases; record a run of your own (see --help)")
             continue

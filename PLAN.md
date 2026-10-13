@@ -728,6 +728,50 @@ Each phase has an exit test. Sizes are assisted-effort guesses; DJ Main went fas
   - depart from MAME only where a second reference shows it is wrong: hardware notes (psx-spx, community 573 research such as spicyjpeg's), or recordings from a real cabinet if the owner can get them;
   - each departure is a switch, so a MAME-exact mode stays available for the oracle.
 - **Exit:** `ddr3mj` plays a full song with the MP3 in step with the arrows (`oracle/audiosync.py` against MAME's WAV), and `drmn10m` plays a song.
+- **Progress (2026-10-13): `ddr3mj` installs, runs attract and plays a song, in lockstep with MAME.**
+  - **What it took:**
+    - MAME's install cassette: the slot's "install" option, from the set's `ge887ja.u1`/`u6`, with `--cassette install`. The core's own MAME devices already did the rest (digital board, FPGA, MAS3507D, YI cassette, PC Card).
+    - The MP3 in the mix: the MAS3507D's stream as its 50 Hz updates produce it. It is never updated from the host side: it decodes and asks the FPGA for data as it updates, so that would change the machine. The mix waits for it, up to 20 ms. Other MP3 rates are resampled for the host only; this game's are 44.1 kHz.
+    - `MAME_ARGS` in `oracle/mame.sh`, for slot options.
+    - Regress cases that start from another case's NVRAM (the power cycle between install and game).
+  - **The install** (`ddr3mj-install.his`, 16,200 frames, no inputs): main RAM identical to MAME on every frame, and all 27 NVRAM files (flash, PC Card, timekeeper, cassette) byte-identical after it.
+  - **Attract** (`ddr3mj-attract.his`, 9,000 frames) and **a game** (`ddr3mj-play.his`, 16,000 frames: XANADU stepped through to its result, then stage 2):
+    - main RAM identical to MAME on every frame;
+    - the sound, MP3 included, matches MAME's WAV: lag 0, correlation ≥ 0.999, level 1.00.
+  - **Speed** (recompiled, desktop): attract 0.48 ms a frame, the song 0.62 ms.
+  - **Why MAME flags these sets NOT_WORKING is still open.** Its sources don't say, and so far the game behaves as MAME does. Next: play it through by hand, and compare the arrows with the music.
+  - **Next:**
+    - ~~the install cassette in the launcher~~: done (a first boot uses it; right-click "Boot once with the install cassette");
+    - ~~`drmn10m`: ingest, the ZI cassette (ZS01 + DS2401), DrumMania's controls and lamps~~: done; the multi-session unit: below.
+- **Progress (2026-10-13): `drmn10m` (DrumMania 10th Mix) runs as far as MAME does.**
+  - **What it took:**
+    - the ZI cassette (ZS01 + DS2401);
+    - the digital board's outputs through MAME's `drmn_output_callback`;
+    - DrumMania's inputs: the pads on IN2's stage bits, the cymbal and bass pedal on its buttons, select L/R;
+    - the `drmn` family in `cabinet.cpp` (controls, lamps) and the launcher.
+  - **The flow:**
+    1. The first boot installs the runtime CD (`d40jaa02`) to the onboard flash by itself and shows INFO 508 (power-cycle).
+    2. The next boot shows NOTE 605 (RTC-RAM cleared): Test goes on.
+    3. The boot checks run, then **"Please call attendant": the multi-session unit can't be found.**
+  - **MAME stops at the same screen.** Its `k573msu` is an empty stub, which is the likely reason behind its NOT_WORKING flag.
+  - Regress cases `drmn10m-install` and `drmn10m-boot` (from what the install left), checked against MAME.
+  - **The multi-session unit (GXA25)** is a box of its own:
+    - a Toshiba TMPR3927 (MIPS R3900) running firmware from a 29F400 flash, `flash.20t`, which is in MAME's set;
+    - an ATAPI CD drive with the multi-session disc (`d40jba02`, on hand);
+    - four TC9446F audio decoders (MPEG-2 audio / AC-3);
+    - two PC16552 UARTs, and its own M48T58.
+  - It streams and mixes the music, so the songs' audio comes from it. The 573 talks to it over SIO1, the 8-pin mini-DIN cable. From DrumMania 4th Mix on the game won't run without it.
+  - **There is an emulation to start from:** the branch `bemani_k573msu_wip` of 987123879113's (windyfairy's) MAME fork, last changed 2022-03, BSD-3. It has:
+    - a TX3927 CPU in `mips1.cpp` (~1,500 lines);
+    - `k573msu.cpp` (~600 lines);
+    - `tc9446f.cpp` (~330 lines, decoding through pl_mpeg);
+    - SIO1 changes in `psx/sio.cpp` (~500 lines).
+  - It is a WIP, about 11,000 MAME commits behind, with TODOs (the CPU clock, an interrupt trigger, a buffer reset "hack").
+  - **The plan:**
+    1. Port it onto the shim as a departure from MAME: a switch, documented with its source. MAME-exact stays the default and the oracle's mode.
+    2. Its SIO1 changes touch the PS1 device every 573 game uses: they go in only for games with the unit, or behind the switch, so DDR's lockstep holds.
+    3. A second MIPS CPU then runs in the machine. MAME's `mips1` interpreter first; the recompiler later if it costs.
+    4. Exit: DrumMania 10th Mix reaches attract and plays a song with its music.
 
 **573-4. Efficiency** (sized by the measurements in 573-1)
 - **Measured (2026-10-12, `HK_PROFILE=1`, ddr2m 150 s from the installed flash, 21,600 samples):**

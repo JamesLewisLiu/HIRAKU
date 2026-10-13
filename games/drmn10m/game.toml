@@ -1,0 +1,22 @@
+# DrumMania 10th Mix (G*D40 VER. JAA), Konami 2004
+id = "drmn10m"
+title = "DrumMania 10th Mix"
+family = "drmn"         # DrumMania cabinet: five pads, the bass pedal, select buttons
+mame = "drmn10m"        # MAME set name, used by the oracle
+core = "sys573"         # System 573 (runtime/sys573/, PLAN.md section 19); digital I/O board
+first_boot = "the game installs itself from CD to flash, no input needed; at INFO 508 (install done, power off) stop it and play again. Then NOTE 605 (RTC-RAM cleared): press Test. It stops at 'Please call attendant': the multi-session unit isn't emulated yet (nor in MAME)."
+
+[roms]
+bios = "700a01.22g"             # 573 BIOS, the same chip in every set
+h8 = "h8a01.bin"                # the H8's start-up response (JVS check)
+cassette_eeprom = "gcd40jaa.u1" # the game cassette's ZS01
+cassette_id = "gcd40jaa.u6"     # ... and its DS2401 serial number
+digital_id = "digital-id.bin"   # the digital I/O board's DS2401
+
+[board]
+io_board = "digital"            # GX894-PWB(B): FPGA + MAS3507D MP3
+cassette = "zi"                 # MAME's cassette variant: ZS01 + DS2401 (casszi)
+# MAME's drmn10m also has the multi-session unit (k573msu), an empty stub in MAME: left out
+
+[cd]
+chd = "d40jaa02"        # the runtime CD; d40jba02 is the multi-session unit's, d40jca02 an HDD installer (needs the network unit)

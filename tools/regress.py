@@ -16,6 +16,7 @@ import concurrent.futures as cf
 import os
 import re
 import resource
+import shutil
 import subprocess
 import sys
 import time
@@ -24,7 +25,9 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 BIN = os.environ.get("HK_REGRESS_BIN") or os.path.join(ROOT, "build", "cmake")   # HK_REGRESS_BIN: another build
 OUT = os.path.join(ROOT, "out", "regress")
 
-# name: (game, frames, extra arguments)
+# name: (game, frames, extra arguments[, after]). A case with an `after` starts from the NVRAM
+# that case left (a power cycle between them: ddr3mj's install, then the game); the two run in
+# that order.
 CASES = {
     "bm3final-practice": ("bm3final", 12000, ["--script", "oracle/scripts/bm3final-practice.his"]),
     "popn7-attract": ("popn7", 3600, []),
@@ -38,6 +41,21 @@ CASES = {
     # System 573: power-on, BIOS, CD boot, the game's checks, ERROR 147 (no install yet);
     # in lockstep with MAME at the pin (PLAN.md section 19). The clock is fixed.
     "ddr3mj-boot": ("ddr3mj", 3600, ["--rtc", "1791804639", "--script", "oracle/scripts/ddr3mj-boot.his"]),
+    # ... and its first boot with the install cassette: the CD to the flash and the PC Card, INFO 506
+    "ddr3mj-install": ("ddr3mj", 16200, ["--cassette", "install", "--rtc", "1791878546",
+                                         "--script", "oracle/scripts/ddr3mj-install.his"]),
+    # ... then with the game cassette, from what the install left: attract, with the MP3 music
+    "ddr3mj-attract": ("ddr3mj", 9000, ["--rtc", "1791880031", "--script", "oracle/scripts/ddr3mj-attract.his"],
+                       "ddr3mj-install"),
+    # ... and a game from there: XANADU stepped through to its result, then stage 2 (with its MP3)
+    "ddr3mj-play": ("ddr3mj", 16000, ["--rtc", "1791880871", "--script", "oracle/scripts/ddr3mj-play.his"],
+                    "ddr3mj-install"),
+    # DrumMania 10th Mix (digital board): the first boot installs the CD to flash (INFO 508); then from
+    # what it left, NOTE 605 (Test), the boot checks, and "Please call attendant": the multi-session
+    # unit, a stub in MAME, is as far as MAME goes
+    "drmn10m-install": ("drmn10m", 8400, ["--rtc", "1791883090", "--script", "oracle/scripts/drmn10m-install.his"]),
+    "drmn10m-boot": ("drmn10m", 10800, ["--rtc", "1791883869", "--script", "oracle/scripts/drmn10m-boot.his"],
+                     "drmn10m-install"),
     # the analog board: first boot, the flash install (two Test presses), attract with CD audio
     "ddr2m-boot": ("ddr2m", 24000, ["--rtc", "1791828936", "--script", "oracle/scripts/ddr2m-boot.his"]),
     # ... and a game: coins, mode and song select, a song stepped through to CLEARED, stage 2
@@ -49,12 +67,33 @@ HOST_LINES = ("profile:", "audio:", "nvram:")
 HOST_TIME = re.compile(r" in [0-9.]+ s of host time")   # kbm's synth line
 
 
+def after_of(case):
+    return CASES[case][3] if len(CASES[case]) > 3 else None
+
+
+def chain(case):
+    """the cases to run, in order, for this one: the ones it starts after, then itself"""
+    c = [case]
+    while after_of(c[0]):
+        c.insert(0, after_of(c[0]))
+    return c
+
+
 def run(case, digest_path):
-    game, frames, extra = CASES[case]
+    game, frames, extra = CASES[case][:3]
     exe = os.path.join(BIN, "hiraku-" + game)
     work = os.path.join(OUT, "work", case)
     os.makedirs(work, exist_ok=True)
     cmd = [exe, "--frames", str(frames), "--out", work] + extra
+    if after_of(case) or any(after_of(c) == case for c in CASES):
+        # its own NVRAM directory: fresh, or what the case it comes after left
+        nv = os.path.join(work, "nvram")
+        shutil.rmtree(nv, ignore_errors=True)
+        if after_of(case):
+            shutil.copytree(os.path.join(OUT, "work", after_of(case), "nvram"), nv)
+        else:
+            os.makedirs(nv)
+        cmd += ["--nvram", nv]
     if digest_path:
         cmd += ["--digest", digest_path]
     t0 = time.monotonic()
@@ -89,9 +128,31 @@ def record_or_check(names, record):
             f.write("\n".join(stats) + "\n")
         return case, rc, wall, log
 
+    def group(cases):
+        # cases that run after one another, in order; the ones not asked for only set up the next
+        out = []
+        for c in cases:
+            if c in names:
+                out.append(one(c))
+            else:
+                rc, _, wall, _, log = run(c, None)
+                if rc != 0:
+                    out.append((c, rc, wall, log))
+                    break
+        return out
+
+    groups = []
+    for n in names:
+        ch = chain(n)
+        g = next((g for g in groups if set(g) & set(ch)), None)
+        if g is None:
+            groups.append(ch)
+        else:
+            g.extend(c for c in ch if c not in g)
+            g.sort(key=lambda c: len(chain(c)))
     bad = 0
-    with cf.ThreadPoolExecutor(max_workers=min(len(names), os.cpu_count() or 4)) as ex:
-        for case, rc, wall, log in ex.map(one, names):
+    with cf.ThreadPoolExecutor(max_workers=min(len(groups), os.cpu_count() or 4)) as ex:
+        for case, rc, wall, log in (r for rs in ex.map(group, groups) for r in rs):
             if rc != 0:
                 print(f"{case}: exit {rc}\n{log[-2000:]}")
                 bad += 1
@@ -137,7 +198,9 @@ def compare(case, base, cur):
 def bench(names):
     print(f"{'case':20} {'frames':>6} {'cpu s':>7} {'x real':>7} {'core %':>7}")
     for case in names:
-        game, frames, _ = CASES[case]
+        game, frames, _ = CASES[case][:3]
+        for c in chain(case)[:-1]:   # what it starts after, untimed
+            run(c, None)
         rc, stats, wall, cpu, log = run(case, None)
         if rc != 0:
             print(f"{case}: exit {rc}\n{log[-2000:]}")

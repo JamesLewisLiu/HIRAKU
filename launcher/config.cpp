@@ -24,11 +24,13 @@ QSettings &settings() {
 
 QString rootDir() {
     // the setting, else $HIRAKU_ROOT, else the checkout the launcher was built from,
-    // else the launcher's folder or its parent (a copied build): as the game binaries
+    // else the launcher's folder or its parent (a copied build): as the game binaries.
+    // A setting or $HIRAKU_ROOT without games/ is skipped: one left from another copy of
+    // HIRAKU (an older package moved or deleted) would otherwise show an empty list.
     QString r = settings().value("paths/root").toString();
-    if (!r.isEmpty()) return r;
+    if (!r.isEmpty() && QDir(r + "/games").exists()) return r;
     QString env = qEnvironmentVariable("HIRAKU_ROOT");
-    if (!env.isEmpty()) return env;
+    if (!env.isEmpty() && QDir(env + "/games").exists()) return env;
     if (QDir(QString(HK_ROOT) + "/dumps").exists()) return QString(HK_ROOT);
     QDir app(QCoreApplication::applicationDirPath());
     if (app.exists("dumps")) return app.absolutePath();
@@ -67,9 +69,10 @@ QString familyName(const QString &family) {
     if (family == "djpopn") return "pop'n music (DJ Main)";
     if (family == "djpstage") return "pop'n stage (DJ Main)";
     if (family == "ddr") return "Dance Dance Revolution (System 573)";
+    if (family == "drmn") return "DrumMania (System 573)";
     return family;
 }
 
-QStringList families() { return {"bm3", "popn", "ppp", "kbm", "djbm", "djpopn", "djpstage", "ddr"}; }
+QStringList families() { return {"bm3", "popn", "ppp", "kbm", "djbm", "djpopn", "djpstage", "ddr", "drmn"}; }
 
 }  // namespace cfg

@@ -31,12 +31,15 @@ public:
     bool option(const std::string &name, const std::function<std::string()> &value) override {
         if (name == "--rtc") { rtc_ = std::stoll(value()); return true; }
         if (name == "--mame-mix") { mame_mix_ = true; return true; }
+        if (name == "--cassette") { cassette_slot_ = value(); return true; }
         return false;
     }
     std::string options_help() const override {
         return "  --rtc SECONDS     the timekeeper's time at power-on (default: now), seconds since 1970\n"
                "  --mame-mix        sound at MAME's level: the SPU and CD audio summed at full gain, clipping\n"
-               "                    where they add up past full scale (default: half, which never clips)\n";
+               "                    where they add up past full scale (default: half, which never clips)\n"
+               "  --cassette install  boot with the install cassette (first boot of games that install from CD\n"
+               "                    with one, ddr3mj: when it says so, power off and boot again without)\n";
     }
 
     bool init(const Options &o) override {
@@ -55,6 +58,8 @@ public:
         get("h8", cfg.h8);
         get("cassette_eeprom", cfg.cassette_eeprom);
         get("cassette_id", cfg.cassette_id);
+        get("install_eeprom", cfg.install_eeprom);
+        get("install_id", cfg.install_id);
         get("digital_id", cfg.digital_id);
         get("io_board", cfg.io_board);
         get("pccard2", cfg.pccard2);
@@ -64,6 +69,17 @@ public:
         cfg.nvram_dir = o.nvram_dir;
         cfg.rtc_time = rtc_ >= 0 ? rtc_ : (int64_t)time(nullptr);
         if (mame_mix_) cfg.mix_gain = 1.0f;
+        if (!cassette_slot_.empty()) {
+            if (cassette_slot_ != "game" && cassette_slot_ != "install") {
+                fprintf(stderr, "--cassette: game or install\n");
+                return false;
+            }
+            if (cassette_slot_ == "install" && cfg.install_eeprom.empty()) {
+                fprintf(stderr, "%s has no install cassette\n", o.game.c_str());
+                return false;
+            }
+            cfg.cassette_slot = cassette_slot_;
+        }
         if (!k573::init(cfg)) return false;
         printf("hiraku %s: System 573, MAME's PS1 interpreted\n", o.game.c_str());
         return true;
@@ -96,6 +112,7 @@ private:
     std::function<void()> on_fatal_;
     long long rtc_ = -1;
     bool mame_mix_ = false;
+    std::string cassette_slot_;
 };
 
 }  // namespace
