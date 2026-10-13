@@ -21,7 +21,7 @@ import sys
 import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-BIN = os.path.join(ROOT, "build", "cmake")
+BIN = os.environ.get("HK_REGRESS_BIN") or os.path.join(ROOT, "build", "cmake")   # HK_REGRESS_BIN: another build
 OUT = os.path.join(ROOT, "out", "regress")
 
 # name: (game, frames, extra arguments)

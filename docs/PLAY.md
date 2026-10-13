@@ -34,6 +34,8 @@ tools/ingest.py /path/to/cd.cue --romset /path/to/bm3final.zip --hdd /path/to/hd
 analyze/ghidra.sh bm3final && analyze/prep.py bm3final && ninja -C build/cmake hiraku-bm3final
 ```
 
+**Optional, once your games are ingested:** `tools/pgo.py` rebuilds with profile-guided optimisation, trained on the regression cases of the games you have. It takes about 15 minutes. Results are identical, and some games need much less CPU: Keyboardmania −19 %, DDR −27 %, pop'n −3 %. Run it again after updating HIRAKU.
+
 The ingester writes `dumps/bm3final/`: the unpacked program, `machine.txt` (disc and HDD paths) and `rom/` (dongle image, default NVRAM, sound program). It needs:
 - the GCC01 program CD;
 - the MAME `bm3final` ROM set;
@@ -443,7 +445,7 @@ ninja -C build/cmake hiraku-ddr2m
 build/cmake/hiraku-ddr2m --window
 ```
 
-**Faster with profile-guided optimisation:** after ingesting a 573 game, `tools/pgo.py` trains the build on it and rebuilds. It takes a few minutes, and the 573 games then need ~30 % less CPU (ddr2m: 1.67 ms a frame instead of 2.41 on the desktop), with identical results. Run it again after updating HIRAKU's 573 code.
+**Faster with profile-guided optimisation:** `tools/pgo.py` (see "Once: build and ingest your dumps") makes the 573 games need ~27 % less CPU (ddr2m: 1.76 ms a frame instead of 2.41 on the desktop).
 
 **The first boot installs the game to the board's flash:**
 1. The game asks "DO YOU WANT TO INITIALIZE FLASH-ROM?": press Test (F2).

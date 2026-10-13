@@ -346,7 +346,30 @@ The target machine is an **N100-class x86 mini PC**: 4 cores, roughly 60 % of a 
 - **These cores are level with MAME, by design.** They run MAME's own CPU and device code; only the scheduler and memory map are HIRAKU's. Firebeat's 3.4× comes from the static recompiler.
 - **DJ Main needs nothing more.** Under 1 ms a frame is under 2 ms on an N100.
 - **System 573 is at the edge of the budget on an N100.** Scaled by ~0.6, ddr2m is ~4 ms a frame on average (~25 % of a core) and ~8 ms at worst. Section 19's 573-4 has the profile.
-- **With `tools/pgo.py` (2026-10-13):** ddr2m runs at 993 % real time, ~1.5× MAME. Mean 1.67 ms a frame, worst 4.1 ms; ~2.8 / ~7 ms scaled to an N100.
+- **With `tools/pgo.py` (2026-10-13):** ddr2m runs at ~950 % real time, ~1.45× MAME. Mean 1.76 ms a frame, worst 4.2 ms; ~2.9 / ~7 ms scaled to an N100.
+
+**Profile-guided optimisation for every core (2026-10-13, `tools/pgo.py`).**
+- It trains on the regress cases whose games are ingested and keeps one profile per core (build/pgo/<core>.profdata, never committed).
+- Per core, because the cores build the same sources into separate copies: Musashi as a 68000 and as a 68EC020, MAME's shim for the XT446 and for the 573. A single shared profile blended them, and DJ Main and ddr2m got slower.
+- CPU seconds per case, 2 runs each, every case bit-identical:
+
+| Case | Before | With PGO |
+|---|---|---|
+| kbm attract | 23.35 | 18.8 (**−19 %**, mean 5.2 ms a frame) |
+| popn7 attract | 3.10 | 3.00 (−3 %) |
+| ppp attract | 1.83 | 1.80 (−2 %) |
+| bm3final practice | 19.35 | 19.12 (−1 %) |
+| ddr2m, 150 s from the flash | 21.9 (wall) | 15.9 (**−27 %**) |
+| bm1stmix boot | 8.71 | 8.75 (no profile) |
+
+- **Profiled:**
+  - Firebeat's runtime, its SPU's 68000 and the XT446 (the synth card's SWP30 is where kbm gains).
+  - The 573's MAME code.
+- **Not profiled:**
+  - Firebeat's recompiled game code: no gain, and only the trained games would get a profile.
+  - DJ Main: 5 % slower with its profile.
+- **The training mix matters:** ddr2m was 1.44× with a profile trained without the flash-install run, and is 1.38× with it.
+- **A measurement note:** the regress cases write a snapshot every 60 frames to out/ on the DATA disk. Single 20–200 ms "frames" in `regress.py bench` are those writes, not the machine: with out/ on tmpfs, bm1stmix's worst frame is 2.2 ms.
 
 **What it took:**
 - **Fibers:** guest thread switches use a small x86-64 context switch instead of `swapcontext`. `swapcontext` made a system call (signal mask) on each of ~48,000 switches per second, which was 14 % of a run.

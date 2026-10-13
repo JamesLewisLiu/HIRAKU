@@ -13,6 +13,40 @@ endif()
 add_compile_options(-Wall -Wextra -fno-strict-aliasing)
 include_directories(${CMAKE_SOURCE_DIR}/include)
 
+# Profile-guided optimisation (tools/pgo.py): HIRAKU's machines are interpreters, schedulers and
+# renderers whose hot paths clang lays out better when it has counts from real runs. pgo.py
+# builds instrumented (HK_PGO_GENERATE), runs the regress cases it has dumps for, and writes one
+# profile per core to HK_PGO_DIR. Per core, because the cores compile the same sources into
+# separate copies (Musashi as a 68000 and as a 68EC020, MAME's shim for the XT446 and for the
+# 573): one profile would blend their hot paths. Measured (PLAN.md section 14), and so applied:
+# - firebeat: the runtime, the SPU's 68000, the XT446 (kbm -18 %, popn7 -3 %, bm3final -1 %); not
+#   the recompiled game code (no gain, and only the trained games would have a profile);
+# - sys573: MAME's code (-28 %);
+# - DJ Main: none (5 % slower with its profile).
+# The profiles stay out of the repo: they come from running the games.
+set(HK_PGO_DIR "" CACHE PATH "directory of per-core llvm-profdata profiles (tools/pgo.py)")
+option(HK_PGO_GENERATE "build instrumented, to train the profiles (tools/pgo.py)" OFF)
+set(HK_PGO_OK OFF)
+if((HK_PGO_GENERATE OR HK_PGO_DIR) AND NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+  message(WARNING "PGO needs clang (tools/pgo.py configures it): building without")
+elseif(HK_PGO_GENERATE)
+  add_compile_options(-fprofile-instr-generate)
+  add_link_options(-fprofile-instr-generate)
+elseif(HK_PGO_DIR)
+  set(HK_PGO_OK ON)
+  message(STATUS "profile-guided: ${HK_PGO_DIR}")
+endif()
+# hk_pgo(core target...): those targets are optimised with the core's profile, when there is one
+function(hk_pgo core)
+  set(prof "${HK_PGO_DIR}/${core}.profdata")
+  if(HK_PGO_OK AND EXISTS "${prof}")
+    foreach(t ${ARGN})
+      target_compile_options(${t} PRIVATE "-fprofile-instr-use=${prof}" -Wno-profile-instr-unprofiled
+                             -Wno-profile-instr-out-of-date -Wno-profile-instr-missing)
+    endforeach()
+  endif()
+endfunction()
+
 # --- decoder (shared) --------------------------------------------------------
 add_library(hiraku_ppc STATIC src/ppc/decode.cpp)
 target_include_directories(hiraku_ppc PUBLIC src)
@@ -117,6 +151,7 @@ add_library(hiraku_rt STATIC
   runtime/firebeat/synth.cpp)
 target_include_directories(hiraku_rt PUBLIC runtime)
 target_link_libraries(hiraku_rt PUBLIC hiraku_ppc musashi hiraku_ata hiraku_cabinet hiraku_xt446)
+hk_pgo(firebeat hiraku_rt musashi hiraku_xt446)   # not the game code: see hk_pgo above
 
 # --- the DJ Main core: an interpreted 68EC020 and the DJ Main board -----------------
 add_library(hiraku_djmain STATIC
@@ -258,33 +293,20 @@ set(HK_573_MAME
 list(TRANSFORM HK_573_MAME PREPEND ${HK_MAME}/)
 set(HK_573_INC ${HK_MAME}/shim ${HK_MAME}/shim/stubs ${HK_MAME}/src/devices ${HK_MAME}/src/mame/konami
   ${HK_MAME}/src/emu ${HK_MAME}/src/3rdparty)
-# The System 573's MAME code (CPU interpreter, GPU, SPU). Its time is MAME's interpreter, which
-# profile-guided optimisation speeds up by ~30 % (PLAN.md section 19, 573-4): tools/pgo.py trains
-# on the ingested games and sets HK_573_PGO_PROFILE. The profile stays out of the repo (it comes
-# from running the games). No -march: FMA contraction could change floating-point results.
+# The System 573's MAME code (CPU interpreter, GPU, SPU): mostly MAME's interpreter, which
+# PGO (above) speeds up by ~30 % (PLAN.md section 19, 573-4). No -march: FMA contraction could
+# change floating-point results.
 set(HK_573_OPT "-O3" CACHE STRING "compiler optimisation flags for the System 573's MAME code")
-set(HK_573_PGO_PROFILE "" CACHE FILEPATH "llvm-profdata profile for the System 573's MAME code (tools/pgo.py)")
-option(HK_573_PGO_GENERATE "build the System 573 code instrumented, to train a profile (tools/pgo.py)" OFF)
 separate_arguments(HK_573_OPT_LIST UNIX_COMMAND "${HK_573_OPT}")
-if((HK_573_PGO_GENERATE OR HK_573_PGO_PROFILE) AND NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-  message(WARNING "System 573 PGO needs clang (tools/pgo.py configures it): building without")
-elseif(HK_573_PGO_GENERATE)
-  list(APPEND HK_573_OPT_LIST -fprofile-instr-generate)
-elseif(HK_573_PGO_PROFILE AND EXISTS "${HK_573_PGO_PROFILE}")
-  list(APPEND HK_573_OPT_LIST "-fprofile-instr-use=${HK_573_PGO_PROFILE}")
-  message(STATUS "System 573: profile-guided, ${HK_573_PGO_PROFILE}")
-endif()
 add_library(hiraku_mame573 STATIC ${HK_573_MAME})
 target_include_directories(hiraku_mame573 PUBLIC ${HK_573_INC})
 target_compile_options(hiraku_mame573 PRIVATE -w ${HK_573_OPT_LIST})
-if(HK_573_PGO_GENERATE AND CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-  target_link_options(hiraku_mame573 INTERFACE -fprofile-instr-generate)
-endif()
 
 add_library(hiraku_sys573 STATIC runtime/sys573/board.cpp runtime/sys573/core.cpp)
 target_include_directories(hiraku_sys573 PUBLIC runtime)
 target_link_libraries(hiraku_sys573 PUBLIC hiraku_mame573 hiraku_cabinet)
 target_compile_options(hiraku_sys573 PRIVATE -O2 -Wno-unused-parameter)
+hk_pgo(sys573 hiraku_mame573)
 
 function(hiraku_sys573_game id)
   add_executable(hiraku-${id} runtime/main.cpp runtime/core/sampler.cpp)
