@@ -68,6 +68,7 @@ private:
     // pop'n 10 on: their own calls and answers ("" leaves the call to pop'n 9's)
     std::string answer_later(const std::string &game, const Request &r, const std::string &host);
     std::string answer_game(const std::string &game, const Request &r);
+    std::string answer_playerdata(const std::string &game, const Request &r);
     std::string rank_get(const Board &b, const Request &r);
     static std::string item(const Board &b, const std::map<std::string, std::string> &entry, size_t place);
     std::string read_file(const std::string &name) const;

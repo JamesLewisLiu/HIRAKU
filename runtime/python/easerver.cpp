@@ -104,6 +104,19 @@ size_t read_attrs(const std::string &x, size_t at, std::map<std::string, std::st
     return x.size();
 }
 
+std::string base64(const std::string &in) {
+    static const char *T = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    std::string o;
+    for (size_t i = 0; i < in.size(); i += 3) {
+        const uint32_t v = (uint8_t)in[i] << 16 | (i + 1 < in.size() ? (uint8_t)in[i + 1] << 8 : 0) | (i + 2 < in.size() ? (uint8_t)in[i + 2] : 0);
+        o += T[v >> 18 & 63];
+        o += T[v >> 12 & 63];
+        o += i + 1 < in.size() ? T[v >> 6 & 63] : '=';
+        o += i + 2 < in.size() ? T[v & 63] : '=';
+    }
+    return o;
+}
+
 std::string fmt(const char *f, unsigned a, unsigned b) {
     char s[64];
     snprintf(s, sizeof s, f, a, b);
@@ -593,7 +606,99 @@ std::string EamuseServer::answer_game(const std::string &game, const Request &r)
                    "\" ticket=\"" + esc(ticket) + "\" course=\"0,0,0,0\"/>";
         }
     }
-    // rank get (an empty table), rank shop, pf get/ask, game select, renewc reg/ask: nothing kept
+    if (type == "playerdata") return answer_playerdata(game, r);
+    // rank get (an empty table), rank shop, pf get/ask, game select, renewc reg/ask, game active:
+    // nothing kept
+    return open + "/>";
+}
+
+// pop'n 12's player data (docs/EAMUSE3.md): get and new answer a binary record of 0x708 bytes as
+// base64 in <b> (0x1917f8; decoded at 0x18f860 into 0x1867e68); set sends this credit's changes as
+// attributes and children (0x1919e8), merged into the record here. The record, as the game fills
+// and reads it: 0x00 the name (Shift-JIS, 13 bytes), 0x1b the puzzle position, 0x1c-0x33 six puzzle
+// pieces (32-bit), 0x34 the password (four digits, a byte each), 0x38 the option, 0x3a the
+// character (16-bit), from 0x3c a 16-bit word per song (2-bit clear marks per chart in bits 0-7,
+// flags in 0x100-0x800: 0x1b3958), from about 0x5f0 the network battle's. Scores are kept apart
+// (playerdata score asks one chart's).
+std::string EamuseServer::answer_playerdata(const std::string &game, const Request &r) {
+    constexpr size_t RECORD = 0x708, SONGS_END = 0x5f0;
+    const std::string &f = r.method;
+    const std::string open = "<" + game + " status=\"0\"";
+    std::string card = attr(r.attrs, "card_id");
+    if (card.empty()) card = attr(r.attrs, "new_card_id");
+    if (!safe_name(card)) return "<" + game + " status=\"1\"/>";
+    const std::string file = "pdata-" + game + "-" + card, scores_file = "pscore-" + game + "-" + card;
+    std::string rec = read_file(file);
+    auto put16 = [&](size_t at, long v) { if (at + 2 <= rec.size()) { rec[at] = (char)(v & 255); rec[at + 1] = (char)(v >> 8 & 255); } };
+    auto put32 = [&](size_t at, long v) { put16(at, v & 0xffff); put16(at + 2, v >> 16 & 0xffff); };
+    auto set_name = [&](const std::string &name) {
+        for (size_t i = 0; i < 13; i++) rec[i] = i < name.size() && i < 12 ? name[i] : 0;
+    };
+    auto set_password = [&](const std::string &pw) {
+        for (size_t i = 0; i < 4; i++) rec[0x34 + i] = i < pw.size() && std::isdigit((unsigned char)pw[i]) ? (char)(pw[i] - '0') : 0;
+    };
+    auto with_record = [&] { return open + "><b>" + base64(rec) + "</b></" + game + ">"; };
+
+    if (f == "new") {   // a new card: its record (name, password; the rest zero)
+        rec.assign(RECORD, 0);
+        set_name(attr(r.attrs, "name"));
+        set_password(attr(r.attrs, "password"));
+        write_file(file, rec);
+        return with_record();
+    }
+    if (f == "get") {   // 109: no player on this card (0x164be8)
+        if (rec.size() != RECORD) return "<" + game + " status=\"109\"/>";
+        return with_record();
+    }
+    if (f == "set") {
+        if (rec.size() != RECORD) rec.assign(RECORD, 0);
+        if (r.attrs.count("name")) set_name(attr(r.attrs, "name"));
+        if (r.attrs.count("password")) set_password(attr(r.attrs, "password"));
+        if (r.attrs.count("option")) put16(0x38, num(r.attrs, "option"));
+        if (r.attrs.count("chara_num")) put16(0x3a, num(r.attrs, "chara_num"));
+        if (r.attrs.count("puzzle_now")) rec[0x1b] = (char)num(r.attrs, "puzzle_now");
+        if (r.attrs.count("puzzle_piece")) {
+            const std::string pp = attr(r.attrs, "puzzle_piece");
+            size_t at = 0;
+            for (int k = 0; k < 6 && at <= pp.size(); k++) {
+                put32(0x1c + 4 * (size_t)k, std::strtol(pp.c_str() + at, nullptr, 10));
+                const size_t comma = pp.find(',', at);
+                if (comma == std::string::npos) break;
+                at = comma + 1;
+            }
+        }
+        // the songs played: their clear word into the record, the score kept if better
+        std::vector<Record> scores = from_lines(read_file(scores_file));
+        for (size_t at = r.inner.find("<music"); at != std::string::npos; at = r.inner.find("<music", at + 1)) {
+            std::map<std::string, std::string> m;
+            bool sc = false;
+            read_attrs(r.inner, at + 6, m, &sc);
+            const long n = num(m, "num");
+            if (n < 0) continue;
+            const size_t word = 0x3c + 2 * (size_t)n;
+            if (word + 2 <= SONGS_END) put16(word, num(m, "data"));
+            const std::string sheet = attr(m, "sheet");
+            bool found = false;
+            for (Record &e : scores)
+                if (attr(e, "num") == attr(m, "num") && attr(e, "sheet") == sheet) {
+                    found = true;
+                    if (num(m, "score") > num(e, "score")) e["score"] = attr(m, "score");
+                }
+            if (!found) scores.push_back({{"num", attr(m, "num")}, {"sheet", sheet}, {"score", attr(m, "score")}});
+        }
+        std::string t;
+        for (const Record &e : scores) t += to_line(e);
+        if (!scores.empty()) write_file(scores_file, t);
+        write_file(file, rec);
+        return open + "/>";
+    }
+    if (f == "score") {   // one chart's best: <E12 score/> (0x192a00)
+        long best = 0;
+        for (const Record &e : from_lines(read_file(scores_file)))
+            if (attr(e, "num") == attr(r.attrs, "music_num") && attr(e, "sheet") == attr(r.attrs, "sheet_num")) best = num(e, "score");
+        return open + " score=\"" + std::to_string(best) + "\"/>";
+    }
+    // conv (a pop'n 11 card's data), tmp, renew: not yet
     return open + "/>";
 }
 

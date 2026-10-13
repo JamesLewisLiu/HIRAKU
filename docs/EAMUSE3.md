@@ -493,21 +493,46 @@ the `local` service.
   with `course="c0,c1,c2,c3"`: `<D11 mileage ticket course/>`. HIRAKU keeps `player-D11-CARD`.
 - **`eemall.check`:** `<eemall/>`. **`portfw.get`** (`privateip`): `<portfw globalip port/>`; none is fine.
 
-**pop'n music 12** (`E12`): the same game-named calls at start-up (and `eemall.check`).
+**pop'n music 12** (`E12`; checked in HIRAKU: a new card registered, a credit saved, the card read
+back with its PIN; `oracle/scripts/popn12-eamuse-on.his`, `popn12-card-new.his`, `popn12-card-again.his`).
+The game-named calls as pop'n 11's, but **no `userdata`**: the player lives in `E12 playerdata`.
 - **The card:** a new pop'n 12 card is `28 25 45 21` (type 0xf, `0x1ad4e4`), and pop'n 12 reads a card
   only with both CRCs right, the data's too (`0x1acbb0`): a fresh card needs the CRC-16 of its blank
-  bytes 5-0x3e at 0x3f. Test mode > CARD R/W CHECK > CARD CHECK says NEW CARD for it.
+  bytes 5-0x3e at 0x3f. Test mode > CARD R/W CHECK > CARD CHECK says NEW CARD for it. After the card,
+  OK and red, the name (a kana/letter grid; the 99 s timer registers what is entered), the PIN twice.
 - **New cards need the network up:** the game takes them only while its pings come back
   (`0x19803c`). It pings 10.2.1.10, or what the `keepalive` service names: `<item name="keepalive"
   url="ping://ADDRESS?t1=interval&amp;t2=wait&amp;rt=retries&amp;pa=router&amp;ga=center"/>`
   (`0x1981b8`; pop'n 10–14 all look `keepalive` up). It sends each ping on a socket it closes at
   once and reads the replies on another.
-- **Not done yet:** after the card's OK and red, the screen stays blank. The game opens a UDP socket
-  and sends the interface board network commands 0x08 (`fd 2, 2, 0`) and then 0x09 (`2, buffer`),
-  RPC numbers 7 and 8 of its board library (board command = RPC number + 1; `bind_bg` is RPC 0xb).
-  Neither Reliquary nor HIRAKU knows them, so they are never answered; answering 0x08 with 0 only
-  moves the wait to 0x09. Next: read them in the sub-board's program (boot record A), which
-  carries out these commands. `HK_PY_NET_LOG` now logs commands left to the emulator. **pop'n music 13** (`E13`): stops after `services.get` with
+- **The interface board's own address:** after a new card's OK the game announces itself on the shop
+  LAN (a 28-byte UDP broadcast to port 5700, `0x19fdc0`), first asking the board its address and
+  netmask: board network commands **0x08** and **0x09** (RPCs 7 and 8 of the board library; board
+  command = RPC number + 1), answered with 4 bytes in the reply's second word. Reliquary doesn't have
+  them; without an answer the game waits there for good.
+- **`playerdata new`** (`card_id card_num name password shop_name pref`) and **`get`** (`card_id`)
+  answer the player's binary record, base64 in `<b>`: `<E12 status="0"><b>...</b></E12>` (`0x1917f8`;
+  decoded at `0x18f860` into `0x1867e68`); `get` of an unknown card: status 109. The record, 0x708 bytes:
+  0x00 the name (Shift-JIS, 13 bytes), 0x1b the puzzle position, 0x1c-0x33 six puzzle pieces
+  (32-bit), 0x34 the password (four digits, a byte each), 0x38 the option and 0x3a the character
+  (16-bit), from 0x3c a 16-bit word per song (2-bit clear marks per chart in bits 0-7, flags
+  0x100-0x800; `0x1b3958`), from about 0x5f0 the network battle's (`0x19ef40`).
+- **`playerdata set`** sends a credit's changes (`0x1919e8`): `card_id name password card_num option
+  chara_num mode_num matching room_num puzzle_now puzzle_piece`, then `<music num sheet data score/>`
+  per song played (`data` is the song's word in the record), `<expert course_num score_0..3/>`,
+  `<netvs .../>`. HIRAKU merges them into the record (`pdata-E12-CARD`) and keeps the best score per
+  chart (`pscore-E12-CARD`).
+- **`playerdata score`** (`card_id music_num sheet_num`, asked before a song): `<E12 status="0"
+  score="N"/>` (`0x192a00`).
+- **`game active`** (`shop_name pref phase active card_use name`, at a credit's start and end):
+  `<E12/>`. **`game get`** reads `phase message` and net battle's `play_enable local_matching_enable
+  matching_sec room_num ojama_msec ojama_gauge cpu_level`.
+- **Not done yet:** `playerdata conv` (a pop'n 11 card's data, read into a 0xa28 record and
+  converted, `0x1a0a38`), `tmp`, `renew`; `cardreis.altercard`; a card left at the OK screen until
+  the timer runs out stays on "カードをお取り下さい" (the card status's 0x40, card at the slot mouth,
+  isn't played).
+
+**pop'n music 13** (`E13`): stops after `services.get` with
 "センターサーバーと通信できません" (5-2007-0000): its services answer needs more. **pop'n music 14**
 (`F14`): uses an IC card reader ("IC CARD R/W UNIT ERROR", 5-1508-000, without one), which HIRAKU
 doesn't play yet.

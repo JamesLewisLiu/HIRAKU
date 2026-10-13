@@ -185,6 +185,16 @@ bool VirtualNet::command(uint32_t ch, const uint32_t *p, uint32_t quads) {
         note(fmt("property %x: %u.%u.%u.%u", arg(1), v[0], v[1], v[2], v[3]));
         return true;
     }
+    case 0x08: case 0x09: {   // the board's own address and netmask, 4 bytes in the reply: pop'n 12
+        // announces itself on the shop LAN with them after a new card's OK (0x19fdc0: RPCs 7 and 8,
+        // read back at 0x1c0550 / 0x1c0840); Reliquary doesn't have them
+        const uint8_t *v = cmd == 0x08 ? BOARD_IP : NETMASK;
+        uint32_t word;
+        std::memcpy(&word, v, 4);
+        respond(ch, 0, word);
+        note(fmt("%s: %u.%u.%u.%u", cmd == 0x08 ? "own address" : "netmask", v[0], v[1], v[2], v[3]));
+        return true;
+    }
     case 0x0b: {   // socket(domain, type, protocol)
         int fd = 0;
         while (sockets_.count(fd)) fd++;

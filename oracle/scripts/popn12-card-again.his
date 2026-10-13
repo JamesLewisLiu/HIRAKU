@@ -1,0 +1,17 @@
+# pop'n music 12, after popn12-card-new.his (same --nvram): the registered card again. E12 playerdata
+# get returns the player's record, OK and red, the PIN 1234, then the player's name, character and
+# options, userid.ctou, and mode select.
+#   hiraku-popn12 --nvram DIR --script oracle/scripts/popn12-card-again.his
+game popn12
+at 4500 press "Coin 1" 8
+at 4540 press "Coin 1" 8
+at 4700 press "P1 Button 5" 8
+at 5050 press "Card" 8
+at 5400 press "P1 Button 5" 10
+at 5650 press "Keypad 1" 8
+at 5680 press "Keypad 2" 8
+at 5710 press "Keypad 3" 8
+at 5740 press "Keypad 4" 8
+at 5770 press "Keypad Enter" 8
+at 6100 snap
+at 7000 quit
