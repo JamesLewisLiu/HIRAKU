@@ -271,9 +271,11 @@ rank_offset rank_num`; `get_gz` has no courses.
   `course="0" music="3" combo="365"` for the first course (3 songs) cleared. A run that clears no
   song sends none.
 - **`register_gz`** sends `gpcb_id prog parts shop_name area_num`, at the end of a credit in
-  event phases 1–3 [game], before that credit's labyrinth walk:
+  event phases 1–3 [game], after that credit's labyrinth (its walk and any boss fight), while the
+  item list shows:
   - `parts` is the labyrinth's items word (below) in 8 hex digits, `prog` the number of its bits set
-    (0–25; `0x188248`). A save with two songs and the first boss sent `prog="4" parts="00084003"`.
+    (0–25; `0x188248`). A save with two songs and the first boss sent `prog="4" parts="00084003"`;
+    a credit that beat the first boss sent `prog="2" parts="00084000"` at its end.
   - Rank shops by `prog` (then `parts`): hiraku-eamuse does.
   - **Gambler Z progress is the shop's, per cabinet.** The labyrinth itself lives in the cabinet's
     own settings; the server only ranks the shops (see below).
@@ -301,7 +303,12 @@ is the cabinet's, not the server's. In event phases 1 and 2 (`0x143c98`), after 
   4 and 6, red to confirm, a 180-frame timer); a treasure cell gives an item; stairs change floor.
 - **Bosses:** from floor index 10, a door cell starts a fight: a song from the floor's table (`0x19e628`),
   whose score deals 1–5 damage (70,000 / 80,000 / 90,000 / 95,000, `0x19e720`) to the boss's 25 HP
-  (50 on floor index 15). Then the walk goes on.
+  (50 on floor index 15). Then the walk goes on. A fight under way (HP saved, nonzero) resumes at
+  the next credit's labyrinth. Seen with --autoplay, from saves set to floor index 10 ("5階 Kフロア")
+  with HP 25, then 5: the boss's challenge, an EX STAGE (テクノポップ "321 STARS" EX), 100,000 and 5
+  damage; at 25 HP the boss stays ("まだまだ…", 20 saved); at 5 it falls ("やーらーれーたー！"),
+  INFORMATION "隠しコース 出現！ すわコース" (selectable in EXPERT from the next play), the bits
+  0x84000 set, and the hero back on "1階 Aフロア" (floor 0, position 0, 0).
 - **Saved** in the settings record (battery RAM, mirrored like the rest of it; the file at +0x10):
 
   | Offset | Field |
