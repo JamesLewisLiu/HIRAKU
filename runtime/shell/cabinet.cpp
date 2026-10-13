@@ -43,6 +43,18 @@ std::vector<Control> make_popn() {
     return c;
 }
 
+// pop'n on Konami Python: the same, plus the e-AMUSEMENT card slot and 10-key
+std::vector<Control> make_pypopn() {
+    std::vector<Control> c = make_popn();
+    c.push_back({"Card", "e-AMUSEMENT card (insert / take back)", "e-AMUSEMENT", false, "key:Insert"});
+    for (int k = 0; k <= 9; k++)
+        c.push_back({"Keypad " + std::to_string(k), "10-key " + std::to_string(k), "e-AMUSEMENT", false, "key:Keypad " + std::to_string(k)});
+    c.push_back({"Keypad Enter", "10-key Enter", "e-AMUSEMENT", false, "key:Keypad Enter"});
+    c.push_back({"Keypad Clear", "10-key Clear", "e-AMUSEMENT", false, "key:Backspace"});
+    c.push_back({"Keypad .", "10-key .", "e-AMUSEMENT", false, "key:Keypad ."});
+    return c;
+}
+
 // ParaParaParadise: the five sensor bars left to right, plus the two buttons
 std::vector<Control> make_ppp() {
     std::vector<Control> c;
@@ -289,7 +301,7 @@ const std::vector<Control> &controls(const std::string &family) {
     static const std::map<std::string, std::vector<Control>> all = {
         {"bm3", make_bm3()}, {"popn", make_popn()}, {"ppp", make_ppp()}, {"kbm", make_kbm()},
         {"djbm", make_djbm()}, {"djpopn", make_djpopn()}, {"djpstage", make_djpstage()}, {"ddr", make_ddr()},
-        {"pypopn", make_popn()}};
+        {"pypopn", make_pypopn()}};
     auto f = all.find(family);
     return f != all.end() ? f->second : all.at("bm3");
 }

@@ -1245,6 +1245,19 @@ Each phase ends with `tools/regress.py check popn9-play` bit-identical, unless i
     - a tool-made MAX save boots at MAX (EVENT OPTIONS), and the mode select then has HITASURA after EXPERT.
   - **Not checked:** what phases 1–3 do without e-AMUSEMENT (the Gambler Z labyrinth needed a card).
   - `tools/unlock.py` gained checksum kind `mirror` (with an optional `inner` record sum) for it. Code macros (`macros.txt`) already run in the Python core, which shares `runtime/main.cpp`; pop'n 9 has no per-credit codes known yet that would need one.
+- **e-AMUSEMENT, 2026-10-13 (owner: "start work on eamusement"):** pop'n 9 is the first pop'n on it. Read with Ghidra 12.1.2 headless (`MIPS:LE:64:64-32addr`, raw binary at 0x100000, `$gp` = 0x25da70, functions seeded at every `addiu sp,sp,-n`; scripts in `$HK_PYTHON_WORK/ghidra/`).
+  - **What the game has:**
+    - an e-AMUSE3 client: DHCP and sockets on the interface board (the board has the Ethernet port, and the game sends it socket commands);
+    - HTTP/1.0 to a host named `services` (User-Agent `EAMUSE.Httpac/1.0`, an `X-Eamuse-Info` header, XML bodies), with services `services.get`, `numbering.assign`, `package.list`/`intend`, user data, rankings, KONAMI ID, p-friend, the coin count, NTP and ee'MALL;
+    - a motorized magnetic card reader/writer and a 10-key, on the board's serial port.
+  - **The card and the server:** the card holds only an ID and a type. Its first 4 bytes plus a CRC-8 give the type (`0x1a28c0`): `28 23 41 01` a new pop'n 9 card, `68 23 41 01` a used one, and others for Konami common, location-test and "death" cards. The ID is 8 bytes, written as 16 hex digits. A new card gets its ID from the server (`numbering`), and is then formatted, written and read back. A used card's player data is read from the server and written back to it. So a card does nothing without a server.
+  - **Step 1, the card unit (done):** `runtime/python/cardunit.{h,cpp}`, behind a new hook in the Reliquary patch (`Hiraku::uart_write`/`uart_reply`, installed for family `pypopn` only).
+    - The bus (driver `0x1a1050`–`0x1a6c00`): 9600 baud, half-duplex. The game reads its own packet back before each answer, which is what Reliquary's stock answer lacked (CARD UNIT ERROR).
+    - Packets are `aa T ADDR CMD LEN [payload] SUM`. Bus commands: 01 address, 02 revision, 03 start. Card commands: 10 reset, 12 status (0x80 card in, 0x20 read done, 0x10 buffer loaded), 14 control (1 open, 2 eject, 4 read, 5 write), 16/18 write/read the 128-byte buffer, 1e format. 10-key: 20 init, 24 status, 26 events (PS/2 set-2 scan codes).
+    - Reliquary delivers 38 received bytes per transfer, so with the hook it now drains longer answers (the card read is 141 bytes).
+    - **Checked:** with e-AMUSEMENT ON, the boot passes CARD R/W CHECK (test mode shows the unit as VER 1.0.0) and 10 KEY CHECK. Test mode's CARD CHECK reads the card: "CHECK IS COMPLETED. NEW CARD" (`oracle/scripts/popn9-eamuse-on.his`, then `popn9-cardcheck.his`). popn9-play and popn9-play-vk are unchanged. With e-AMUSEMENT OFF the game sends the unit no commands (4,000 frames from power-on, `HK_PY_CARD_LOG`).
+    - **Not checked yet:** writing a card (only a new card's creation writes, after the server's numbering), and the 10-key in play.
+  - **Next:** step 2, the board's socket commands to a local connection (Reliquary answers them offline); step 3, a local e-AMUSE3 server, built from the game's own requests.
 - **Tools:**
   - `tools/ab.py`: A/B of two binaries, or of two settings with `--a-args`/`--b-args`;
   - `--pcsx2-set Section/Key=value`: any emulator setting, for experiments;

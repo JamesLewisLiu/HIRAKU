@@ -10,7 +10,7 @@
  #include "SIO/Pad/Pad.h"
  #include "SIO/Sio.h"
  #include "SIO/Sio0.h"
-@@ -3069,8 +3072,59 @@
+@@ -3069,8 +3072,60 @@
  	R5900SymbolImporter.OnElfLoadedInMemory();
  }
  
@@ -61,6 +61,7 @@
 +void (*Hiraku::audio_sample)(float, float) = nullptr;
 +void (*Hiraku::gs_frame)(const u32*, u32, u32) = nullptr;
 +void (*Hiraku::p1io_output)(const u32*, u32) = nullptr;
++bool (*Hiraku::uart_write)(const u8*, u32) = nullptr;
 +
  void VMManager::Internal::VSyncOnCPUThread()
  {
@@ -159,7 +160,29 @@
  #include "FireWire/Devices/KonamiPython1.h"
  
  #include "Common.h"
-@@ -3099,6 +3100,8 @@
+@@ -847,6 +848,8 @@
+ 				bytes[offset] = static_cast<u8>(word >> (24 - ((offset & 3) * 8)));
+ 			}
+ 		}
++		if (Hiraku::uart_write && Hiraku::uart_write(bytes.data(), static_cast<u32>(bytes.size()))) [[unlikely]]
++			return;
+ 		if (bytes.size() >= 4 && bytes[0] == 0xaa && bytes[1] == 0xaa && bytes[2] == 0xaa && bytes[3] == 0x55)
+ 		{
+ 			if (IsPython1B22Mode())
+@@ -2474,6 +2477,12 @@
+ 		bool queued_read_data = false;
+ 		if (subop == 1 && word1 != 0)
+ 			HandleAcioUartWrite(payload, payload_quads, word1, extio_mode);
++		else if (subop == 2 && Hiraku::uart_write) [[unlikely]]
++		{
++			// the host's devices can answer more than one callback's worth: hand it all over
++			while (QueueUartReadData(UART_CALLBACK_BYTE_LIMIT))
++				queued_read_data = true;
++		}
+ 		else if (subop == 2 && (extio_mode || !s_uart_rx_fifo.empty()))
+ 			queued_read_data = QueueUartReadData(UART_CALLBACK_BYTE_LIMIT);
+ 
+@@ -3099,6 +3108,8 @@
  
  			if (command_offset == KONAMI_JAMMA_OUTPUT_COMMAND_OFFSET && payload_quads >= 8)
  			{
@@ -168,6 +191,15 @@
  				if (IsPython1P1IOSerialMode())
  				{
  					const u32 previous_latch = s_p1io_output_latch_byte;
+@@ -3610,3 +3621,8 @@
+ 		return p1io && p1io->DoState(sw);
+ 	}
+ } // namespace FireWire::Devices
++
++void Hiraku::uart_reply(const u8* data, u32 size)
++{
++	QueueUartBytes(data, size);
++}
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
 @@ -96,6 +96,12 @@
@@ -185,7 +217,7 @@
  else()
 --- a/pcsx2/HirakuHooks.h
 +++ b/pcsx2/HirakuHooks.h
-@@ -0,0 +1,26 @@
+@@ -0,0 +1,32 @@
 +// SPDX-License-Identifier: GPL-3.0+
 +// HIRAKU (local patch, not upstream): taps for running this emulator as a HIRAKU
 +// machine core (runtime/python/ in HIRAKU). All are null unless a host sets them.
@@ -211,4 +243,10 @@
 +	// interface board: its output latches (lamps, coin counters) in the payload. The board
 +	// answers each one with an input report, so this is also the game's input poll.
 +	extern void (*p1io_output)(const u32* payload, u32 quads);
++	// CPU thread (IOP time), each write the game makes to the Python 1 interface board's
++	// serial port (the card reader/writer and 10-key bus): true if the host answers it
++	// itself, with uart_reply, instead of the emulator's own devices.
++	extern bool (*uart_write)(const u8* data, u32 size);
++	// Queue bytes for the game to read from that serial port.
++	void uart_reply(const u8* data, u32 size);
 +} // namespace Hiraku

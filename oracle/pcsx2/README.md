@@ -22,6 +22,7 @@ oracle/pcsx2/run.py popn9 --frames 3000 --snap-every 0 --interp          # the s
     - the vsync, before and after it is posted to the GS (`VMManager.cpp`, `Counters.cpp`);
     - the audio output and the displayed picture;
     - the interface board's output command, which carries the lamps and is the input poll (`KonamiPython1.cpp`);
+    - the interface board's serial port (the e-AMUSEMENT card reader/writer and 10-key): the host can answer the game's writes itself, and longer answers are then delivered whole (`KonamiPython1.cpp`);
   - the derived MagicGate keystore is printed only with `PCSX2_PRINT_KEYSTORE` set (stock Reliquary always prints it to stdout);
   - `-DHIRAKU_DIR=<checkout>` in the top `CMakeLists.txt` adds `runtime/python/`.
 - `run.py`: one run of a `.py1` set from the collection (`HK_PYTHON_SETS`, default `~/Downloads/konami-python-1-collection`).

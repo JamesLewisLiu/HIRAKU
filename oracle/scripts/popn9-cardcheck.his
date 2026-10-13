@@ -1,0 +1,21 @@
+# pop'n music 9, e-AMUSEMENT on (popn9-eamuse-on.his): boot (CARD R/W CHECK and 10 KEY CHECK pass),
+# then test mode > CARD R/W CHECK > CARD CHECK, and the card put in. The game reads it and says
+# CHECK IS COMPLETED. NEW CARD (a fresh card.bin), then ejects it.
+#   hiraku-popn9 --nvram DIR --script oracle/scripts/popn9-cardcheck.his
+game popn9
+at 4400 press "Test" 8
+at 4520 press "P1 Button 6" 10
+at 4540 press "P1 Button 6" 10
+at 4560 press "P1 Button 6" 10
+at 4580 press "P1 Button 6" 10
+at 4700 press "P1 Button 5" 10
+at 4900 snap
+at 4950 press "P1 Button 6" 10
+at 5000 press "P1 Button 5" 10
+at 5100 snap
+at 5200 press "Card" 8
+at 5300 snap
+at 5500 snap
+at 5800 snap
+at 6100 snap
+at 6110 quit

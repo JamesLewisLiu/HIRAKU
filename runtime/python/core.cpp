@@ -42,6 +42,7 @@
 #include <fstream>
 #include <functional>
 #include <map>
+#include <memory>
 #include <mutex>
 #include <string>
 #include <thread>
@@ -75,6 +76,7 @@
 #include "pcsx2/SIO/Pad/Pad.h"
 #include "pcsx2/VMManager.h"
 
+#include "python/cardunit.h"
 #include "shell/cabinet.h"
 #include "shell/core.h"
 
@@ -124,6 +126,15 @@ const std::map<std::string, std::string> POPN_INPUTS = {
     {"P1 Button 7", "P2Down"}, {"P1 Button 8", "P2Left"}, {"P1 Button 9", "P2Right"},
     {"Coin 1", "Coin1"},       {"Coin 2", "Coin2"},       {"Test", "Test"},
     {"Service", "Service"},    {"1 Player Start", "P1Start"},
+};
+
+// The e-AMUSEMENT 10-key (cardunit.h): its keys' PS/2 set 2 scan codes, as the game maps them
+// (0x1a54c0). Enter and / are sent without their 0xe0 prefix, which the game skips.
+const std::map<std::string, uint8_t> KEYPAD_SCAN = {
+    {"Keypad 0", 0x70}, {"Keypad 1", 0x69}, {"Keypad 2", 0x72}, {"Keypad 3", 0x7a}, {"Keypad 4", 0x6b},
+    {"Keypad 5", 0x73}, {"Keypad 6", 0x74}, {"Keypad 7", 0x6c}, {"Keypad 8", 0x75}, {"Keypad 9", 0x7d},
+    {"Keypad .", 0x71}, {"Keypad Enter", 0x5a}, {"Keypad Clear", 0x66}, {"Keypad /", 0x4a},
+    {"Keypad *", 0x7c}, {"Keypad -", 0x7b}, {"Keypad +", 0x79},
 };
 
 MemorySettingsInterface s_settings;
@@ -311,6 +322,7 @@ public:
             py1 += std::string(f.ini) + "=" + path + "\n";
         }
         py1_path_ = run_dir_ + "/" + o.game + ".py1";
+        if (family_ == "pypopn") card_ = std::make_unique<hk::py::CardUnit>(run_dir_ + "/card.bin");
         if (!FileSystem::WriteStringToFile(py1_path_.c_str(), py1)) { fprintf(stderr, "python: cannot write %s\n", py1_path_.c_str()); return false; }
 
         const std::string bios = o.data_path(m["bios"]);
@@ -334,6 +346,24 @@ public:
         Hiraku::p1io_output = [](const u32 *payload, u32 quads) { self_->on_p1io_output(payload, quads); };
         if (const char *f = getenv("HK_PY_P1IO_LOG")) p1io_log_ = fopen(f, "w");
         if (!no_picture_) Hiraku::gs_frame = [](const u32 *rgba, u32 w, u32 h) { self_->on_gs_frame(rgba, w, h); };
+        if (const char *f = getenv("HK_PY_CARD_LOG")) card_log_ = fopen(f, "w");
+        if (card_) Hiraku::uart_write = [](const u8 *data, u32 size) {
+            std::vector<uint8_t> reply;
+            if (!self_->card_->write(data, size, reply)) return false;
+            if (FILE *f = self_->card_log_) {   // HK_PY_CARD_LOG: the bus, packet by packet
+                if (!(size == 4 && data[3] == 0x55)) {
+                    fprintf(f, "%llu >", (unsigned long long)self_->frame_);
+                    for (u32 i = 0; i < size; i++) fprintf(f, " %02x", data[i]);
+                    fprintf(f, "\n%llu <", (unsigned long long)self_->frame_);
+                    for (size_t i = size; i < reply.size(); i++) fprintf(f, " %02x", reply[i]);
+                    fprintf(f, "\n");
+                    fflush(f);
+                }
+            }
+            if (!reply.empty()) Hiraku::uart_reply(reply.data(), (u32)reply.size());
+            self_->card_changed();
+            return true;
+        };
 
         if (!VMManager::Internal::CPUThreadInitialize()) fatal("the emulator's CPU thread could not start");
         VMManager::ApplySettings();
@@ -360,7 +390,7 @@ public:
             printf("profile: python: waited for the GS on %llu frames, %.1f ms in all\n", (unsigned long long)gs_waits_, gs_wait_ms_);
     }
     void debug_line(uint64_t f) override {
-        printf("frame %llu: EE pc %08x, cycle %u\n", (unsigned long long)f, cpuRegs.pc, cpuRegs.cycle);
+        printf("frame %llu: EE pc %08x, cycle %llu\n", (unsigned long long)f, cpuRegs.pc, (unsigned long long)cpuRegs.cycle);
     }
 
     double seconds() const override { return (double)frame_ / 59.94; }
@@ -372,6 +402,19 @@ public:
     uint64_t frame_count() const override { return frame_; }
 
     bool set_input(const std::string &name, int value) override {
+        if (card_ && (name == "Card" || KEYPAD_SCAN.count(name))) {
+            int &was = held_[name];
+            const bool edge = (value != 0) != (was != 0);
+            was = value;
+            if (!edge) return true;
+            if (name == "Card") {
+                if (value) card_->card_button();
+                card_changed();
+            } else {
+                card_->key(KEYPAD_SCAN.at(name), value != 0);
+            }
+            return true;
+        }
         auto it = binds_.find(name);
         if (it == binds_.end()) return false;
         FireWire::SetP1IOBindValue(it->second, value ? 1.0f : 0.0f);
@@ -554,6 +597,17 @@ private:
 
     Options opt_;
     std::string family_, run_dir_, py1_path_;
+    std::unique_ptr<hk::py::CardUnit> card_;
+    FILE *card_log_ = nullptr;
+    std::map<std::string, int> held_;   // the card button's and 10-key's last values
+    std::string card_state_;
+    void card_changed() {
+        const std::string s = card_->state();
+        if (s == card_state_) return;
+        card_state_ = s;
+        printf("card: %s (frame %llu)\n", s.empty() ? "back with the player" : s.c_str(), (unsigned long long)frame_);
+        fflush(stdout);
+    }
     GSRendererType renderer_ = GSRendererType::SW;
     bool interp_ = false, pcsx2_log_ = false, no_picture_ = false, picture_now_ = true;
     std::span<const u8> font_data_;   // mapped for the process's life

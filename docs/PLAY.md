@@ -513,6 +513,12 @@ In test mode, blue (buttons 4/6) moves and red (5) selects; I/O CHECK > INPUT CH
 - From a terminal: `tools/unlock.py popn9` lists the phases, and `tools/unlock.py popn9 phase=4` sets MAX. The game must not be running; the old save is kept as a `.bak`.
 - **In the game itself:** test mode > EVENT OPTIONS > PASSWORD, the four codes in order (`unlocks.toml` has them). The tool writes the same bytes the game does.
 
+**e-AMUSEMENT (in progress):** pop'n 9 is the first pop'n with e-AMUSEMENT cards. It is OFF by default (test mode > e-AMUSEMENT OPTIONS), and the game plays normally without it.
+- **What works:** with it ON, the cabinet's card reader/writer and 10-key are emulated. The boot passes CARD R/W CHECK and 10 KEY CHECK, and test mode > CARD R/W CHECK > CARD CHECK reads the card.
+- **What doesn't yet:** using a card in play. The player data lives on Konami's e-AMUSEMENT server, which closed in 2003, so the game says it can't reach the server. HIRAKU's own local server is the next step.
+- **The card:** `card.bin` in the save folder (`~/.local/share/hiraku/popn9`), 128 bytes, created as a fresh pop'n 9 card. Insert puts it in the slot (or takes it back); the reader takes it when the game opens the slot and gives it back when the game ejects it.
+- **The 10-key:** the numeric keypad's 0–9, Enter and `.`, with Backspace as Clear.
+
 **From the launcher:** drop the `.py1` (or the set's folder) on its window; it passes `--renderer vk` for Python games.
 
 **On another PC:** `tools/package.sh` takes the Python binaries along with Reliquary's resources and the libraries built for it; `tools/pack-data.py DEST popn9` copies the game's data, CHD included (2.4 GB).
