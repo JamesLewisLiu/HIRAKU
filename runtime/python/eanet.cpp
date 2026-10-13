@@ -293,7 +293,8 @@ bool VirtualNet::command(uint32_t ch, const uint32_t *p, uint32_t quads) {
         note(fmt("close(%d)", fd));
         return true;
     }
-    default:
+    default:   // left to the emulator: logged, to find what a game needs
+        note(fmt("not handled: %08x %08x %08x %08x %08x", arg(1), arg(2), arg(3), arg(4), arg(5)));
         return false;
     }
 }

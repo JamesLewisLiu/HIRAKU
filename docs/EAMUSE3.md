@@ -502,8 +502,12 @@ the `local` service.
   url="ping://ADDRESS?t1=interval&amp;t2=wait&amp;rt=retries&amp;pa=router&amp;ga=center"/>`
   (`0x1981b8`; pop'n 10–14 all look `keepalive` up). It sends each ping on a socket it closes at
   once and reads the replies on another.
-- **Not done yet:** after the card's OK and red, the screen stays blank (no card or network call
-  pending). **pop'n music 13** (`E13`): stops after `services.get` with
+- **Not done yet:** after the card's OK and red, the screen stays blank. The game opens a UDP socket
+  and sends the interface board network commands 0x08 (`fd 2, 2, 0`) and then 0x09 (`2, buffer`),
+  RPC numbers 7 and 8 of its board library (board command = RPC number + 1; `bind_bg` is RPC 0xb).
+  Neither Reliquary nor HIRAKU knows them, so they are never answered; answering 0x08 with 0 only
+  moves the wait to 0x09. Next: read them in the sub-board's program (boot record A), which
+  carries out these commands. `HK_PY_NET_LOG` now logs commands left to the emulator. **pop'n music 13** (`E13`): stops after `services.get` with
 "センターサーバーと通信できません" (5-2007-0000): its services answer needs more. **pop'n music 14**
 (`F14`): uses an IC card reader ("IC CARD R/W UNIT ERROR", 5-1508-000, without one), which HIRAKU
 doesn't play yet.
