@@ -21,7 +21,13 @@
 // Linking Reliquary (GPL-3.0) makes the hiraku-<python game> binaries GPL-3.0 as a
 // whole; this file is GPL-3.0-or-later like the rest of HIRAKU. The Host:: glue below
 // follows pcsx2-gsrunner (GPL-3.0+).
+#include <cxxabi.h>
+#include <dlfcn.h>
+#include <signal.h>
 #include <stdlib.h>   // on_exit (glibc)
+#include <sys/syscall.h>
+#include <sys/time.h>
+#include <ucontext.h>
 #include <sys/stat.h>
 #include <unistd.h>
 
@@ -62,6 +68,7 @@
 #include "pcsx2/ImGui/ImGuiManager.h"
 #include "pcsx2/Input/InputManager.h"
 #include "pcsx2/MTGS.h"
+#include "pcsx2/Memory.h"
 #include "pcsx2/Memory.h"
 #include "pcsx2/R5900.h"
 #include "pcsx2/SIO/Pad/Pad.h"
@@ -117,6 +124,117 @@ const std::map<std::string, std::string> POPN_INPUTS = {
 
 MemorySettingsInterface s_settings;
 
+// HK_PY_PROFILE=1: a 1 kHz SIGPROF sampler of the host instruction pointer, by thread,
+// printed at exit with each sample attributed to one of PCSX2's code caches (EE, IOP,
+// VU0, VU1, VIF, the software GS's JIT) or to its function. HIRAKU's own sampler
+// (runtime/core/sampler.cpp) can't see into the caches, and dumps from atexit, which
+// this core's exit path skips.
+namespace prof {
+constexpr int MAX = 1 << 20;
+uintptr_t g_rip[MAX];
+pid_t g_tid[MAX];
+std::atomic<int> g_n{0};
+pid_t g_cpu_tid = 0;
+
+void on_sig(int, siginfo_t *, void *uc) {
+    int n = g_n.fetch_add(1, std::memory_order_relaxed);
+    if (n >= MAX) return;
+    g_rip[n] = (uintptr_t) static_cast<ucontext_t *>(uc)->uc_mcontext.gregs[REG_RIP];
+    g_tid[n] = (pid_t)syscall(SYS_gettid);
+}
+void start() {
+    struct sigaction sa {};
+    sa.sa_sigaction = on_sig;
+    sa.sa_flags = SA_SIGINFO | SA_RESTART;
+    sigaction(SIGPROF, &sa, nullptr);
+    itimerval t{{0, 1000}, {0, 1000}};
+    setitimer(ITIMER_PROF, &t, nullptr);
+}
+void report() {
+    itimerval off{};
+    setitimer(ITIMER_PROF, &off, nullptr);
+    const int n = std::min(g_n.load(), MAX);
+    struct Range { const char *name; uintptr_t lo, hi; };
+    const Range ranges[] = {
+        {"[EE JIT code]", (uintptr_t)SysMemory::GetEERec(), (uintptr_t)SysMemory::GetEERecEnd()},
+        {"[IOP JIT code]", (uintptr_t)SysMemory::GetIOPRec(), (uintptr_t)SysMemory::GetIOPRecEnd()},
+        {"[VU0 JIT code]", (uintptr_t)SysMemory::GetVU0Rec(), (uintptr_t)SysMemory::GetVU0RecEnd()},
+        {"[VU1 JIT code]", (uintptr_t)SysMemory::GetVU1Rec(), (uintptr_t)SysMemory::GetVU1RecEnd()},
+    };
+    std::map<std::string, int> cpu, other;
+    std::map<char, std::map<uintptr_t, int>> exe;   // thread class -> executable offset -> samples
+    for (int k = 0; k < n; k++) {
+        const uintptr_t a = g_rip[k];
+        std::string name;
+        for (const Range &r : ranges)
+            if (a >= r.lo && a < r.hi) name = r.name;
+        if (name.empty()) {
+            Dl_info i{};
+            Dl_info self{};
+            dladdr((void *)&report, &self);
+            if (dladdr((void *)a, &i) && i.dli_fbase == self.dli_fbase) {
+                exe[(g_tid[k] == g_cpu_tid ? 'c' : 'o')][a - (uintptr_t)self.dli_fbase]++;   // symbolised below
+                continue;
+            } else if (i.dli_sname) {
+                int st = 0;
+                char *d = abi::__cxa_demangle(i.dli_sname, nullptr, nullptr, &st);
+                name = d ? d : i.dli_sname;
+                free(d);
+                if (size_t p = name.find('('); p != std::string::npos) name.resize(p);
+            } else if (i.dli_fname) {
+                name = std::string("[") + base_name(i.dli_fname) + "]";
+            } else {
+                name = "[anonymous: other JIT code]";
+            }
+        }
+        (g_tid[k] == g_cpu_tid ? cpu : other)[name]++;
+    }
+    auto print = [](const char *title, const std::map<std::string, int> &h, int total_all) {
+        std::vector<std::pair<int, std::string>> v;
+        int total = 0;
+        for (auto &[k, c] : h) v.push_back({c, k}), total += c;
+        std::sort(v.rbegin(), v.rend());
+        fprintf(stderr, "profile: %s: %d samples (%.0f %%)\n", title, total, 100.0 * total / std::max(1, total_all));
+        for (size_t i = 0; i < v.size() && i < 25; i++)
+            fprintf(stderr, "profile:   %5.1f %%  %s\n", 100.0 * v[i].first / std::max(1, total), v[i].second.c_str());
+    };
+    // the executable's own functions: llvm-symbolizer on the offsets, one call for all
+    if (!exe.empty()) {
+        char path[4096];
+        ssize_t len = readlink("/proc/self/exe", path, sizeof path - 1);
+        path[len > 0 ? len : 0] = 0;
+        const std::string in = "/tmp/hk-py-profile-" + std::to_string(getpid()) + ".txt";
+        FILE *f = fopen(in.c_str(), "w");
+        std::vector<std::tuple<char, uintptr_t, int>> order;
+        for (auto &[cls, h] : exe)
+            for (auto &[off, c] : h) fprintf(f, "0x%lx\n", (unsigned long)off), order.emplace_back(cls, off, c);
+        fclose(f);
+        const std::string cmd = "llvm-symbolizer --functions=short --no-inlines --obj='" + std::string(path) + "' < " + in;
+        if (FILE *p = popen(cmd.c_str(), "r")) {
+            char line[4096];
+            size_t k = 0;
+            std::string fn;
+            int state = 0;   // llvm-symbolizer prints: function, file:line, blank
+            while (fgets(line, sizeof line, p) && k < order.size()) {
+                std::string l(line);
+                if (!l.empty() && l.back() == '\n') l.pop_back();
+                if (state == 0) { fn = l; state = 1; }
+                else if (state == 1) {
+                    auto &[cls, off, c] = order[k++];
+                    (cls == 'c' ? cpu : other)[fn] += c;
+                    state = 2;
+                } else state = 0;
+            }
+            pclose(p);
+        }
+        unlink(in.c_str());
+    }
+    print("CPU thread (EE, IOP, VU, SPU2, the interface board)", cpu, n);
+    print("other threads (GS, its workers)", other, n);
+}
+}  // namespace prof
+
+
 class PythonCore final : public hk::Core {
 public:
     bool option(const std::string &name, const std::function<std::string()> &value) override {
@@ -127,12 +245,14 @@ public:
         }
         if (name == "--interp") { interp_ = true; return true; }
         if (name == "--pcsx2-log") { pcsx2_log_ = true; return true; }
+        if (name == "--no-picture") { no_picture_ = true; return true; }
         return false;
     }
     std::string options_help() const override {
         return "  --renderer sw|vk|gl  the GS renderer: software (default: what the oracle runs), Vulkan or OpenGL\n"
                "  --interp             every CPU interpreted (EE, IOP, VU0, VU1), as the oracle's --interp\n"
-               "  --pcsx2-log          the emulator's own log on stderr\n";
+               "  --pcsx2-log          the emulator's own log on stderr\n"
+               "  --no-picture         don't read the GS's pictures back (black frames; for measuring)\n";
     }
 
     bool init(const Options &o) override {
@@ -194,7 +314,7 @@ public:
             self_->audio_.push_back(l);
             self_->audio_.push_back(r);
         };
-        Hiraku::gs_frame = [](const u32 *rgba, u32 w, u32 h) { self_->on_gs_frame(rgba, w, h); };
+        if (!no_picture_) Hiraku::gs_frame = [](const u32 *rgba, u32 w, u32 h) { self_->on_gs_frame(rgba, w, h); };
 
         if (!VMManager::Internal::CPUThreadInitialize()) fatal("the emulator's CPU thread could not start");
         VMManager::ApplySettings();
@@ -312,7 +432,12 @@ private:
         // The shell ends a run with exit() from inside a vsync. PCSX2's static destructors
         // then assert (the VM is still mapped), so leave before them with the same status;
         // the shell has already saved and reported everything by then.
-        on_exit([](int status, void *) { fflush(nullptr); _exit(status); }, nullptr);
+        on_exit([](int status, void *) {
+            if (getenv("HK_PY_PROFILE")) prof::report();
+            fflush(nullptr);
+            _exit(status);
+        }, nullptr);
+        if (getenv("HK_PY_PROFILE")) prof::start();
         if (!EmuFolders::EnsureFoldersExist()) { fprintf(stderr, "python: cannot create %s\n", EmuFolders::DataRoot.c_str()); return false; }
         self_ = this;
         return true;
@@ -345,12 +470,13 @@ private:
 
     // CPU thread, at each vsync: sound so far, the previous vsync's picture, the shell
     void on_vsync() {
+        if (!frame_) prof::g_cpu_tid = (pid_t)syscall(SYS_gettid);
         frame_++;
         if (audio_sink_ && !audio_.empty()) audio_sink_(audio_.data(), (int)(audio_.size() / 2));
         audio_.clear();
         {
             std::unique_lock lock(gs_mutex_);
-            if (frame_ >= 2 && gs_done_ < frame_ - 1) {
+            if (!no_picture_ && frame_ >= 2 && gs_done_ < frame_ - 1) {
                 const auto t0 = std::chrono::steady_clock::now();
                 if (!gs_cv_.wait_for(lock, std::chrono::seconds(10), [&] { return gs_done_ >= frame_ - 1; }))
                     fprintf(stderr, "python: frame %llu: no picture from the GS after 10 s\n", (unsigned long long)frame_);
@@ -373,7 +499,7 @@ private:
     Options opt_;
     std::string family_, run_dir_, py1_path_;
     GSRendererType renderer_ = GSRendererType::SW;
-    bool interp_ = false, pcsx2_log_ = false;
+    bool interp_ = false, pcsx2_log_ = false, no_picture_ = false;
     std::span<const u8> font_data_;   // mapped for the process's life
     std::map<std::string, u32> binds_;
     std::vector<uint8_t> lamps_;

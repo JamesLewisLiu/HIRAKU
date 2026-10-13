@@ -1086,31 +1086,67 @@ The owner asked for the groundwork for a Python core. The facts behind this sect
 
 The efficiency case is weaker than on the 573. There the baseline was an interpreter; here it is PCSX2's mature x86-64 JITs. HIRAKU's gains on Python would come mostly from latency, I/O and the shell, plus whatever the EE recompile and an idle-skip give over the JIT. PY-0 measures this before anything is decided.
 
-### Phases
+### Roadmap (revised 2026-10-13, after PY-1, from a measured profile)
 
-**PY-0. The oracle** (a few days)
-- A local Reliquary patch, kept in the repo as `oracle/pcsx2/` (a patch file plus the runner):
-  - **done:** a per-vsync hook writing EE/IOP RAM hashes every N frames, and a stop frame (`HK_FRAMEHASH`, `HK_STOP_FRAME`; `oracle/pcsx2/reliquary-oracle.patch`). Boot-to-attract already repeats exactly;
-  - P1IO input from HIRAKU's `.his` scripts at vsync (Reliquary's input recording covers SIO2 pads only);
-  - `FW_VERBOSE_LOGS` for a FireWire command trace (the "MMIO trace" of this board);
-  - GS VRAM and SPU2 output taps; a WAV that includes the board's ADPCM.
-- Pinned settings: RTC fixed, MTVU off, game patches off, the CPU modes chosen for lockstep. Pristine media per run (`oracle/pcsx2/run.py` does this already).
-- **Exit:** two runs from the same script give identical hashes on every frame, for pop'n 9 boot-to-attract (done for 3,000 frames at 60-frame spacing) and a scripted song.
+PY-0 (the oracle) and PY-1 (Reliquary hosted, pop'n 9 playable) are done; see Progress below. The phase list written before them had the EE recompile as the main work. A profile of the running core says otherwise.
 
-**PY-1. Reliquary as a HIRAKU core** (1–2 weeks)
-- `runtime/python/`: PCSX2's core library built by HIRAKU's CMake (or prebuilt by `build-reliquary.sh` and linked), `Host::` on the shell. `games/popn9/game.toml`, an ingester for `.py1` sets (`tools/ingest.py`: the boot header, the CHD, the dongles, the BBSRAM).
-- pop'n 9 controls and lamps in `cabinet.cpp` (9 buttons, as on Firebeat pop'n).
-- **Exit:** pop'n 9 plays in `hiraku-popn9`, bit-identical to the oracle (same code); the owner tests it hands-on.
+**Where the host time goes** (pop'n 9, `popn9-play.his`, Vulkan GS, 5700X3D, the core's `HK_PY_PROFILE=1` sampler; ~45,000 samples):
 
-**PY-2. The EE recompiled** (weeks; the main work)
-- R5900 to C from record C: a decoder and generator (128-bit registers, MMI, branch-likely, COP1 with PS2 float rules as PCSX2 implements them, COP2 macro mode), cross-checked against PS2Recomp's tables and PCSX2's interpreter.
-- Cycle accounting that matches PCSX2's EE interpreter, so the devices see the same timing.
-- Shadow mode against the interpreter in the same process.
-- **Exit:** pop'n 9's script in lockstep with the interpreter-mode oracle; host cost measured on N100-class hardware against Reliquary's JIT.
+| Thread | Share of all samples | Inside it |
+|---|---|---|
+| GS | ~63 % | CPU-side texture decoding and swizzling (GSVector ops, `ReadAndExpandBlock16`, ...) ~35 %; texture-cache hashing (XXH3) ~15 %; HIRAKU's picture conversion (`on_gs_frame`) ~9 %; the Vulkan driver ~6 % |
+| CPU (EE, IOP, VU, SPU2, board) | ~37 % | SPU2 mixing ~31 %; EE JIT code ~17 %; libc copies ~14 % (part of it the core's 0.9 MB picture copy per frame); IOP JIT code ~7 %; event and counter scheduling ~5 %; CHD decompression ~2 % |
 
-**PY-3. The rest of Python 1** (ongoing): pop'n 10–14 and Dancing Stage Fusion as media arrive. dstagef needs a clean dump, or a documented repair (boot ROM padding, record A).
+- **The EE recompile is no longer the main work.** EE code is ~6 % of all samples, about 1 % of a desktop core. A static recompile can't win more than that on pop'n 9.
+- **The cost is in the GS, the picture handoff and SPU2.**
+- **Per 100 s of game** (`--no-picture` A/B): Vulkan ~18 % of a core (CPU thread ~9 %, GS ~7 %, picture readback ~2–3 %); software GS ~26 %.
 
-**PY-4. Python 2** (needs media): DDR SuperNOVA 1/2, GuitarFreaks/DrumMania V–V3. P2IO is USB and the disk is DNAS-bound; Reliquary emulates both.
+Each phase ends with `tools/regress.py check popn9-play` bit-identical, unless it says otherwise.
+
+**PY-1b. Finish the playable base** (days)
+1. **The owner's hands-on test**: picture, sound (crackles?), feel. Its findings come first.
+2. **Lamps.** Decode the interface board's JAMMA output command (0x0e0/0xf80 in `KonamiPython1.cpp`) into a Python pop'n lamp family in `cabinet.cpp`. The ground truth is the game's own test mode, I/O CHECK > LAMP CHECK, lamp by lamp. Then the lights socket and HID lamps (docs/LIGHTS.md).
+3. **Launcher.** The game shows from `games/popn9/game.toml`; its "not built" hint must name `oracle/pcsx2/build-reliquary.sh`. Windowed runs get `--renderer vk`.
+4. **NVRAM.** Check that settings, bookkeeping and the disk overlay survive restarts, and that ALL FACTORY SETTINGS in test mode works.
+5. **Packaging** (`tools/package.sh`, the owner's laptop test):
+   - ship `hiraku-popn9`, Reliquary's `resources/` and the three local libraries (ryml, plutosvg, plutovg), with an `$ORIGIN` rpath;
+   - drop the hard FFmpeg dependency (`USE_LINKED_FFMPEG=OFF`, loaded at run time) if the build allows.
+6. **Reliquary updates.** Pin the version (1.9.4) and write down how to re-apply the patch to a new release. Keep the patch small: taps and hooks, no logic.
+
+**PY-2. Measure properly** (1–2 days)
+- An A/B harness (alternating runs, medians), as for the 573; `HK_PY_PROFILE` for the breakdown.
+- **Low-end hardware:** the owner's Haswell laptop (Mesa's `hasvk` Vulkan, or `--renderer gl`), the MacBook pack, an N100 when there is one. Judge by frame-time spikes, not means.
+- **Exit:** a cost table per part, desktop and low-end. It decides how far PY-3 goes.
+
+**PY-3. Efficiency, cheapest first**
+1. **The picture handoff** (~9 % of GS samples, plus copies on the CPU thread):
+   - hand RGBA over as it comes and let the shell's GL upload swizzle it;
+   - swap buffers instead of copying;
+   - keep one download texture instead of creating a render target and a download texture every frame (a patch to `SaveSnapshotToMemory`'s path).
+2. **PGO for Reliquary's core with HIRAKU's**, trained on `popn9-play`, as `tools/pgo.py` does for the other cores (the 573 got 1.44×).
+3. **GS settings that leave the picture unchanged:** texture preloading and hashing levels. Check them with picture digests on a Vulkan regress case, which this needs.
+4. **SPU2:** profile-driven speed-ups that keep the output bit-identical, small and upstreamable. It stays on the CPU thread, because the game reads its state back.
+5. **Only if the readback still shows:** present the GS's picture straight into the shell's window, sharing the texture. That interacts with HIRAKU's picture modes (CRT shaders), so the readback stays the default.
+- **Exit:** a budget set from PY-2, like M11's: a share of an N100 core on average, and no frame over a set host time.
+
+**PY-4. Latency and I/O** (HIRAKU's reasons to exist here)
+- **Input:** find how often the game's IOP driver polls the interface board over FireWire (the board's command trace, `FW_VERBOSE_LOGS`). Then measure key-to-picture with a latency script, as for pop'n 4 and Animelo 2.
+- **Picture:** the picture of vsync N reaches the shell at vsync N+1. Add an option to wait for vsync N itself, trading GS/EE overlap for a frame less latency, and measure both.
+- **Sound:** delivered once per vsync (16.7 ms batches). Deliver per SPU2 chunk for less audio latency.
+
+**PY-5. The rest of Python 1, as media arrive**
+- **pop'n music 10–14:** a `games/<id>/game.toml` each (the ingester prints the EE program's SHA-1), the IoMode, and a play script as a regress case.
+- **Dancing Stage Fusion** needs a clean dump, or a documented repair (the boot ROM's missing 32 bytes, record A's first sector).
+- The non-BEMANI titles only if wanted.
+
+**PY-6. Python 2** (needs media: DDR SuperNOVA 1/2, GuitarFreaks/DrumMania V–V3)
+- `.py2` ingest; P2IO over USB; the DEV9 hard disk bound by DNAS to the HDD ID and the i.LINK ID; the e-amusement card reader stubbed or emulated as Reliquary does.
+- Cabinet families: DDR exists; GuitarFreaks (neck, pick, wailing, effect knob) and DrumMania (pads, pedal) are new.
+
+**PY-7. Optional, only where PY-2/PY-3 measurements show the CPUs matter**
+- **The EE recompiled statically.** The groundwork stands: plain-MIPS program on the disk, a static cost table, PS2Recomp's tables as a cross-check. Upper bound ~6 % of samples on pop'n 9; a heavier 3D Python 2 game could change that.
+- **The IOP on the 573's MIPS recompiler** (the same R3000A): ~7 % of the CPU thread.
+- **The interface board's TX39 firmware run for real**, instead of Reliquary's command-level emulation: only if a game needs behaviour the emulation lacks. It would be a departure from the reference, so it needs a hardware source.
 
 ### Progress (2026-10-13): PY-0 and PY-1
 
@@ -1148,11 +1184,7 @@ The efficiency case is weaker than on the 573. There the baseline was an interpr
   - one 175 ms frame at boot (frame 326);
   - to be measured properly (A/B, median) and on N100-class hardware.
 
-**Next:**
-- the owner's hands-on test;
-- the interface board's lamp outputs;
-- launcher entries;
-- then PY-2 (the EE recompiled), starting from a measured profile of where the time goes.
+**Next:** PY-1b in the roadmap above. The profile behind it was measured with the core's `HK_PY_PROFILE=1` sampler and its `--no-picture` option (both added after PY-1).
 
 ### Decisions (owner, 2026-10-13)
 
