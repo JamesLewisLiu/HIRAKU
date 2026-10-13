@@ -73,6 +73,9 @@ CASES = {
     "ddr2m-boot": ("ddr2m", 24000, ["--rtc", "1791828936", "--script", "oracle/scripts/ddr2m-boot.his"]),
     # ... and a game: coins, mode and song select, a song stepped through to CLEARED, stage 2
     "ddr2m-play": ("ddr2m", 21000, ["--rtc", "1791837575", "--script", "oracle/scripts/ddr2m-play.his"]),
+    # Twinkle (PLAN.md section 21): beatmania IIDX 3rd style's first power-on, E150, 1P Start,
+    # attract; in lockstep with MAME at the pin (out/oracle/bmiidx3/boot)
+    "bmiidx3-boot": ("bmiidx3", 9000, ["--rtc", "1791906310", "--script", "oracle/scripts/bmiidx3-boot.his"]),
 }
 
 # report lines that describe the host, not the machine

@@ -297,7 +297,9 @@ set(HK_573_MAME
 list(APPEND HK_573_MAME
   # the multi-session unit's TX3927 CPU (mips1), and the serial parts between it and the 573
   src/devices/cpu/mips/mips1.cpp src/devices/cpu/mips/mips1dsm.cpp src/emu/diserial.cpp src/devices/machine/ins8250.cpp
-  src/devices/sound/tc9446f.cpp src/mame/konami/k573msu.cpp src/devices/cpu/psx/sio_uart.cpp)
+  src/devices/sound/tc9446f.cpp src/mame/konami/k573msu.cpp src/devices/cpu/psx/sio_uart.cpp
+  # MAME's ATA hard disk (an option of every ATA slot; Twinkle's SPU board has one), on a raw image
+  src/devices/bus/ata/hdd.cpp src/devices/machine/atastorage.cpp shim/imagedev/harddriv.cpp)
 list(TRANSFORM HK_573_MAME PREPEND ${HK_MAME}/)
 # softfloat3 (Berkeley SoftFloat 3, BSD-3): the MIPS CPUs' FPU in mips1; MAME builds it as C++
 file(GLOB_RECURSE HK_SF3_SRC ${HK_MAME}/src/3rdparty/softfloat3/source/*.c)
@@ -360,6 +362,38 @@ function(hiraku_sys573_game id)
   target_link_libraries(hiraku-${id} PRIVATE hiraku_shell hiraku_sys573 hiraku_${id}_blocks)
 endfunction()
 
+# --- the Twinkle core (PLAN.md section 21): beatmania IIDX. The 573's PS1 devices (above), plus the
+# SPU board's 68000 (MAME's generated core: m68000-sdf/sdp are ~4 MB each), SCSI, the super I/O,
+# the dongles and the DVD player's serial port -------------------------------------------------------
+set(HK_TW_MAME
+  src/devices/cpu/m68000/m68kcommon.cpp src/devices/cpu/m68000/m68000.cpp src/devices/cpu/m68000/m68000-decode.cpp
+  src/devices/cpu/m68000/m68000-sdf.cpp src/devices/cpu/m68000/m68000-sdp.cpp src/devices/cpu/m68000/m68kdasm.cpp
+  src/devices/machine/ncr53c90.cpp src/devices/machine/nscsi_bus.cpp src/devices/machine/nscsi_hle.cpp
+  src/devices/bus/nscsi/cd.cpp src/devices/machine/fdc37c665gt.cpp src/devices/machine/i2cmem.cpp
+  src/devices/machine/rtc65271.cpp src/devices/machine/watchdog.cpp src/devices/machine/mb8421.cpp
+  src/devices/sound/rf5c400.cpp src/devices/bus/rs232/rs232.cpp src/devices/bus/rs232/xvd701.cpp
+  shim/stubs/twinkle_stubs.cpp)
+list(TRANSFORM HK_TW_MAME PREPEND ${HK_MAME}/)
+add_library(hiraku_mametw STATIC ${HK_TW_MAME})
+target_link_libraries(hiraku_mametw PUBLIC hiraku_mame573)
+target_compile_options(hiraku_mametw PRIVATE -w -O2)
+
+add_library(hiraku_twinkle STATIC runtime/twinkle/board.cpp runtime/twinkle/core.cpp)
+target_include_directories(hiraku_twinkle PUBLIC runtime)
+target_link_libraries(hiraku_twinkle PUBLIC hiraku_mametw hiraku_cabinet)
+target_compile_options(hiraku_twinkle PRIVATE -O2 -Wno-unused-parameter)
+
+# hiraku_twinkle_game(<id>): a Twinkle game. MAME's devices, both CPUs interpreted (TW-1); the
+# data comes from dumps/<id>/ at run time
+function(hiraku_twinkle_game id)
+  add_executable(hiraku-${id} runtime/main.cpp runtime/core/sampler.cpp)
+  target_compile_definitions(hiraku-${id} PRIVATE HK_GAME_ID="${id}" HK_ROOT="${CMAKE_SOURCE_DIR}")
+  if(TARGET hiraku_host)
+    target_link_libraries(hiraku-${id} PRIVATE hiraku_host)
+  endif()
+  target_link_libraries(hiraku-${id} PRIVATE hiraku_shell hiraku_twinkle)
+endfunction()
+
 # hiraku_djmain_game(<id>): a DJ Main game. No generated code: the program is
 # interpreted, so the binary is the same for every game (the data comes from
 # dumps/<id>/ at run time, written by tools/ingest.py).
@@ -386,6 +420,12 @@ foreach(toml ${HK_GAME_TOMLS})
     get_filename_component(dir ${toml} DIRECTORY)
     get_filename_component(id ${dir} NAME)
     hiraku_sys573_game(${id})
+  endif()
+  file(STRINGS ${toml} twinkle_core REGEX "^core *= *\"twinkle\"")
+  if(twinkle_core)
+    get_filename_component(dir ${toml} DIRECTORY)
+    get_filename_component(id ${dir} NAME)
+    hiraku_twinkle_game(${id})
   endif()
 endforeach()
 

@@ -21,7 +21,8 @@
 #   EXACT_PC=1    run under -debug -debugger none: the PPC recompiler then
 #                 updates PC per instruction, so trace PCs are exact (slower)
 #   MAME_BIN      a MAME binary to run instead of the flatpak (System 573: the
-#                 build at HIRAKU's MAME pin, /run/media/roganis/DATA/mame-pin/k573)
+#                 build at HIRAKU's MAME pin, /run/media/roganis/DATA/mame-pin/k573;
+#                 Twinkle: .../mame-pin/twinkle, from buildtw.sh)
 #   MAME_MEM      memory cap for the run (default 4G): MAME runs in a systemd scope
 #   MAME_ARGS     more MAME options, e.g. a slot option: MAME_ARGS="-cassette install" (ddr3mj's
 #                 install cassette, which HIRAKU's --cassette install matches)
@@ -75,6 +76,9 @@ args=(-rompath "$roms" -homepath "$out"
     -seconds_to_run "${RUN_SECONDS:-900}"
     -autoboot_script "$here/lua/hiraku.lua"
     "$set_name")
+# Twinkle's layout draws the 16-segment display around the screen: snapshot the screen alone
+core="$(python3 -c "import tomllib,sys; print(tomllib.load(open(sys.argv[1],'rb')).get('core',''))" "$toml")"
+[[ "$core" == twinkle ]] && args+=(-snapview native)
 # shellcheck disable=SC2206
 [[ -n "${MAME_ARGS:-}" ]] && args+=(${MAME_ARGS})
 

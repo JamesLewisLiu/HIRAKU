@@ -104,6 +104,7 @@ QList<Game> scanGames() {
         Game g;
         g.id = sub;
         readManifest(manifest, g);
+        if (g.core == "twinkle") continue;   // no Twinkle core yet (PLAN.md section 21, TW-1)
         if (g.title.isEmpty()) g.title = g.id;
         // the binaries folder (Settings), next to the launcher, a copied build's bin/,
         // else where the README's build puts it

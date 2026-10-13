@@ -1,0 +1,13 @@
+# beatmania IIDX 3rd style (Twinkle): first power-on from blank NVRAM. The BIOS boots the
+# program CD over SCSI; the SPU board loads the hard disk into wave RAM; the device check
+# passes everything but the backup RAM (RTC XRAM): E150 BACKUP DATA ERROR by frame ~1500,
+# then "1P START = BACKUP CLEAR" (by ~2100). 1P Start clears it and the game goes on
+# towards attract. Hashes the main RAM every frame and snapshots every 60 frames, to compare
+# HIRAKU's Twinkle core with MAME (PLAN.md section 21, TW-0).
+game bmiidx3
+
+hash ram  0x80000000 0x80400000   # 4 MiB main RAM (KSEG0)
+
+at 2400 press "1 Player Start" 8
+from 0 every 60 snap
+at 9000 quit

@@ -16,3 +16,5 @@ inline void put_u32be(u8 *b, u32 v) { b[0] = u8(v >> 24); b[1] = u8(v >> 16); b[
 inline void put_u16le(u8 *b, u16 v) { b[0] = u8(v); b[1] = u8(v >> 8); }
 inline void put_u24le(u8 *b, u32 v) { b[0] = u8(v); b[1] = u8(v >> 8); b[2] = u8(v >> 16); }
 inline void put_u32le(u8 *b, u32 v) { b[0] = u8(v); b[1] = u8(v >> 8); b[2] = u8(v >> 16); b[3] = u8(v >> 24); }
+inline void put_s16be(u8 *b, s16 v) { put_u16be(b, u16(v)); }
+inline void put_s32be(u8 *b, s32 v) { put_u32be(b, u32(v)); }

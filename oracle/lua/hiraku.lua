@@ -49,7 +49,24 @@ local GROUPS = {
 -- them and recorded at its KUSEG address.
 local MIRRORS = { 0 }
 local AMASK = 0xffffffff
-if cpu.shortname == "cxd8530cq" then
+-- Twinkle (MAME twinkle.cpp): the same PS1 CPU as the 573, told apart by its SCSI controller
+local TWINKLE = mach.devices[":ncr53cf96"] ~= nil
+if TWINKLE then
+    GROUPS = {
+        { id = 21, name = "dpram", lo = 0x1f000000, hi = 0x1f0007ff },  -- CY7C131 mailbox to the SPU board
+        { id = 22, name = "scsi",  lo = 0x1f200000, hi = 0x1f20ffff },  -- NCR 53CF96 (the program CD)
+        { id = 23, name = "superio", lo = 0x1f210000, hi = 0x1f2107ff }, -- FDC37C665GT: UARTs (DVD player), FDC, LPT
+        { id = 24, name = "io",    lo = 0x1f218000, hi = 0x1f28ffff },  -- watchdog, I/O mux, LEDs, keys, dongle
+        { id = 25, name = "rtc",   lo = 0x1f290000, hi = 0x1f2a007f },  -- RTC65271 + XRAM (the backup RAM)
+        { id = 26, name = "mixer", lo = 0x1f2b0000, hi = 0x1f2b00ff },  -- sub board: Bt812 and overlay
+        { id = 15, name = "irq",   lo = 0x1f801070, hi = 0x1f80112f },  -- PS1 IRQ, DMA, root counters
+        { id = 16, name = "gpu",   lo = 0x1f801810, hi = 0x1f801817 },
+        { id = 17, name = "spu",   lo = 0x1f801c00, hi = 0x1f801fff },
+        { id = 18, name = "sio",   lo = 0x1f801040, hi = 0x1f80105f },  -- SIO0/1 (1st style's DVD player is on SIO1)
+    }
+    MIRRORS = { 0x00000000, 0x80000000, 0xa0000000 }
+    AMASK = 0x1fffffff
+elseif cpu.shortname == "cxd8530cq" then
     GROUPS = {
         { id = 11, name = "flash", lo = 0x1f000000, hi = 0x1f3fffff },  -- onboard flash, PCMCIA (banked)
         { id = 12, name = "in",    lo = 0x1f400000, hi = 0x1f40000f },  -- IN0-IN3, OUT0
@@ -64,6 +81,20 @@ if cpu.shortname == "cxd8530cq" then
     AMASK = 0x1fffffff
 end
 
+-- Twinkle's SPU board: the 68000's view (MAME twinkle.cpp sound_map). Wave RAM itself
+-- (0x800000-) is left out: the DMA and the 68000 fill it word by word.
+local AUDIO_GROUPS = {}
+local audio = nil
+if TWINKLE then
+    audio = mach.devices[":audiocpu"]
+    AUDIO_GROUPS = {
+        { id = 31, name = "a_ctrl",  lo = 0x200000, hi = 0x26ffff },  -- DIP switches, LEDs, IRQ control, DMA address, wave bank
+        { id = 32, name = "a_dpram", lo = 0x280000, hi = 0x2807ff },  -- the mailbox, 68000 side
+        { id = 33, name = "a_ata",   lo = 0x300000, hi = 0x34000f },  -- the hard disk
+        { id = 34, name = "a_rf",    lo = 0x400000, hi = 0x400fff },  -- RF5C400
+    }
+end
+
 -- --------------------------------------------------------------------------
 -- State shared by the taps and the frame loop
 -- --------------------------------------------------------------------------
@@ -72,6 +103,7 @@ local now = 0.0               -- emulated seconds, refreshed per frame and per a
 local mmio_buf, mmio_n, mmio_total = {}, 0, 0
 local mmio = assert(io.open(OUT .. "/mmio.bin", "wb"))
 local pc_state = cpu.state["PC"] or cpu.state["pc"] or cpu.state["GENPC"]
+local audio_pc = audio and (audio.state["PC"] or audio.state["GENPC"])
 local taps = {}               -- passthrough handlers must stay referenced
 
 -- Folding. Consecutive accesses with the same (kind, group, addr, mask) become
@@ -106,7 +138,7 @@ local function fnv32(h, v)
     return h
 end
 
-local function record(kind, group, offset, data, mask)
+local function record(kind, group, offset, data, mask, pcs)
     offset, data, mask = offset & 0xffffffff, data & 0xffffffff, mask & 0xffffffff
     if FOLD and not NOFOLD_ID[group] and p_n and p_n < 0xffff and kind == p_kind and offset == p_addr
        and mask == p_mask and group == p_group then
@@ -118,7 +150,7 @@ local function record(kind, group, offset, data, mask)
     emit()
     p_kind, p_group, p_addr, p_mask, p_data, p_n = kind, group, offset, mask, data, 1
     p_hash, p_varied = fnv32(0x811c9dc5, data), false
-    p_frame, p_time, p_pc = frame, mach.time:as_double(), pc_state.value & 0xffffffff
+    p_frame, p_time, p_pc = frame, mach.time:as_double(), (pcs or pc_state).value & 0xffffffff
 end
 
 local function flush_mmio()
@@ -134,6 +166,7 @@ end
 local want = {}
 for g in string.gmatch(os.getenv("HIRAKU_TAPS") or "all", "[^,]+") do want[g] = true end
 for _, g in ipairs(GROUPS) do if NOFOLD[g.name] then NOFOLD_ID[g.id] = true end end
+for _, g in ipairs(AUDIO_GROUPS) do if NOFOLD[g.name] then NOFOLD_ID[g.id] = true end end
 
 -- System 573: the M48T58's clock as MAME set it from the host at power-on, so a
 -- HIRAKU run can start from the same time (--rtc). Registers 0x1ff9-0x1fff (BCD
@@ -145,6 +178,31 @@ local function log_rtc()
     local h, mi, se = bcd(tk(0x1ffb) & 0x3f), bcd(tk(0x1ffa) & 0x7f), bcd(tk(0x1ff9) & 0x7f)
     local t = os.time({ year = (y < 70 and 2000 or 1900) + y, month = mo, day = d, hour = h, min = mi, sec = se })
     say("rtc %04d-%02d-%02d %02d:%02d:%02d at 1 s: power-on time %d (--rtc)", (y < 70 and 2000 or 1900) + y, mo, d, h, mi, se, t - 1)
+end
+
+-- Twinkle: the RTC65271's clock as MAME set it from the host at power-on (--rtc). Its
+-- registers sit behind an index register, so they are read from MAME's save items
+-- rather than through the bus, which would change the index the game left there.
+local function save_item(dev, name)
+    for k, idx in pairs(dev.items) do
+        if k == name or k:match("/" .. name .. "$") then return emu.item(idx) end
+    end
+    error("no save item " .. name .. " in " .. dev.tag)
+end
+local function log_rtc_twinkle()
+    local regs = save_item(mach.devices[":rtc"], "m_regs")
+    local function r(i) return regs:read(i) end
+    local bin = (r(0x0b) & 0x04) ~= 0   -- register B, DM: binary rather than BCD
+    local function v(x) return bin and x or ((x >> 4) * 10 + (x & 15)) end
+    local h = r(4)
+    local pm = (h & 0x80) ~= 0
+    h = v(h & 0x7f)
+    if (r(0x0b) & 0x02) == 0 and pm then h = h + 12 end   -- 12-hour mode, as MAME stores it
+    local y, mo, d, mi, se = v(r(9)), v(r(8)), v(r(7)), v(r(2)), v(r(0) & 0x7f)
+    local yr = (y < 70 and 2000 or 1900) + y
+    local t = os.time({ year = yr, month = mo, day = d, hour = h, min = mi, sec = se })
+    say("rtc %04d-%02d-%02d %02d:%02d:%02d at 1 s (reg B %02x): power-on time %d (--rtc)",
+        yr, mo, d, h, mi, se, r(0x0b), t - 1)
 end
 
 -- Taps must be (re)installed once the machine has reset: a map rebuild drops them.
@@ -160,6 +218,18 @@ local function install_taps()
                     function(offset, data, mask) record(0, id, offset & AMASK, data, mask) end)
                 taps[#taps + 1] = space:install_write_tap(g.lo | m, g.hi | m, "hiraku_w_" .. g.name .. m,
                     function(offset, data, mask) record(1, id, offset & AMASK, data, mask) end)
+            end
+        end
+    end
+    if audio then
+        local aspace = audio.spaces["program"]
+        for _, g in ipairs(AUDIO_GROUPS) do
+            if want.all or want[g.name] then
+                local id = g.id
+                taps[#taps + 1] = aspace:install_read_tap(g.lo, g.hi, "hiraku_r_" .. g.name,
+                    function(offset, data, mask) record(0, id, offset, data, mask, audio_pc) end)
+                taps[#taps + 1] = aspace:install_write_tap(g.lo, g.hi, "hiraku_w_" .. g.name,
+                    function(offset, data, mask) record(1, id, offset, data, mask, audio_pc) end)
             end
         end
     end
@@ -330,7 +400,8 @@ end
 local function on_frame()
     frame = frame + 1
     -- the M48T58 shows its time from its first 1 s tick on: read after it, less that second
-    if frame == 61 and cpu.shortname == "cxd8530cq" then log_rtc() end
+    if frame == 61 and TWINKLE then log_rtc_twinkle()
+    elseif frame == 61 and cpu.shortname == "cxd8530cq" then log_rtc() end
     for f, until_frame in pairs(held) do
         if frame >= until_frame then f:set_value(0); held[f] = nil end
     end

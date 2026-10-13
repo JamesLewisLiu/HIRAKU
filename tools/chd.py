@@ -84,6 +84,14 @@ def info(chd: str) -> ChdInfo:
     return ChdInfo(kind, logical, tracks, sha1)
 
 
+def geometry(chd: str) -> tuple[int, int, int] | None:
+    """A hard disk CHD's geometry from its GDDD metadata: (cylinders, heads, sectors), or None."""
+    out = subprocess.run(chdman_command([os.path.dirname(chd)]) + ["info", "-v", "-i", chd],
+                         capture_output=True, text=True)
+    m = re.search(r"CYLS:(\d+),HEADS:(\d+),SECS:(\d+)", out.stdout + out.stderr)
+    return (int(m.group(1)), int(m.group(2)), int(m.group(3))) if m else None
+
+
 def _run_with_progress(cmd: list[str], label: str) -> str:
     """Run chdman, printing its progress every 10 %; return what it printed."""
     p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)

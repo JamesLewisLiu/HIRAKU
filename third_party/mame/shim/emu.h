@@ -53,7 +53,7 @@ using attoseconds_t = s64;
 #define ATTR_COLD
 #define ATTR_PRINTF(x, y)
 #define FUNC(x) &x
-#define NAME(x) #x
+#define NAME(x) x, #x   // as MAME: the object and its name (save states, lambda handlers)
 #define STRUCT_MEMBER(s, m) #s "." #m
 #define ROM_NAME(name) nullptr
 // ROM declarations (the XT446 glue loads the files itself)
@@ -116,6 +116,9 @@ template <typename T> constexpr std::make_signed_t<T> sext(T value, unsigned wid
     return S(value << sh) >> sh;
 }
 }  // namespace util
+using util::make_bitmask;
+// MAME's read_or_write (emumem.h): which accesses a handler or tap sees
+enum class read_or_write { READ = 1, WRITE = 2, READWRITE = 3 };
 
 // MAME's PAIR: a 32-bit register viewed as bytes and words (little-endian host)
 union PAIR {
@@ -228,6 +231,7 @@ public:
         return attotime((s64)(ticks / frequency), (attoseconds_t)(ticks % frequency) * apt);
     }
     static attotime from_ticks(u64 ticks, u64 frequency) { return from_ticks(ticks, (u32)frequency); }
+    static attotime from_ticks(u64 ticks, int frequency) { return from_ticks(ticks, (u32)frequency); }
     static attotime from_hz(double hz) { return raw((i128)(1e18 / hz)); }
     static attotime from_hz(u32 hz) { return hz > 1 ? raw(HZ_TO_ATTOSECONDS(hz)) : hz == 1 ? attotime(1, 0) : never; }
     static attotime from_hz(int hz) { return hz > 0 ? from_hz(u32(hz)) : never; }
@@ -306,6 +310,7 @@ public:
     running_machine *m_machine = nullptr;
     struct opts_t {
         bool drc_rwx() const { return false; }
+        const char *share_directory() const { return ""; }
     };
     opts_t options() const { return {}; }
 };
@@ -457,6 +462,7 @@ using write16s_delegate = device_delegate<void(offs_t, u16, u16)>;
 using write32smo_delegate = device_delegate<void(u32)>;
 using write32sm_delegate = device_delegate<void(offs_t, u32)>;
 using write32s_delegate = device_delegate<void(offs_t, u32, u32)>;
+using write_line_delegate = device_delegate<void(int)>;
 
 // ---- devcb ----------------------------------------------------------------------------
 template <typename T> class devcb_read_base {
@@ -606,6 +612,21 @@ inline std::pair<std::error_condition, size_t> write(util::write_stream &s, cons
 namespace util {
 using ::read;
 using ::write;
+// MAME's util::ram_read: a read stream over a block of memory (a region as default NVRAM)
+class ram_read_stream : public read_stream {
+public:
+    ram_read_stream(const void *data, size_t size) : m_data((const u8 *)data), m_size(size) {}
+    size_t read_some(void *buf, size_t n) override {
+        n = std::min(n, m_size - m_pos);
+        memcpy(buf, m_data + m_pos, n);
+        m_pos += n;
+        return n;
+    }
+private:
+    const u8 *m_data;
+    size_t m_size, m_pos = 0;
+};
+inline std::unique_ptr<read_stream> ram_read(const void *data, size_t size) { return std::make_unique<ram_read_stream>(data, size); }
 }
 namespace util {
 class disasm_interface {
@@ -633,6 +654,8 @@ public:
     std::string m_name;
     std::vector<u8> m_data;   // the bus-width words, in host order
     u32 bytes() const { return (u32)m_data.size(); }
+    u8 bytewidth() const { return m_bytewidth; }
+    u8 m_bytewidth = 1;
     u8 *base() { return m_data.data(); }
     const char *name() const { return m_name.c_str(); }
     u16 &as_u16(offs_t i = 0) { return reinterpret_cast<u16 *>(m_data.data())[i]; }
@@ -675,6 +698,9 @@ struct device_memory_interface {
     using space_config_vector = ::space_config_vector;
     device_memory_interface() = default;
     device_memory_interface(const machine_config &, device_t &) {}
+    // MAME's default translation (no MMU): the address as it is; static here, as the interface
+    // is folded into device_t
+    static bool memory_translate(int, int, offs_t &, address_space *&) { return true; }
 };
 
 // One map entry. Handlers are normalised to (offset, data, mem_mask) at their own width.
@@ -710,6 +736,15 @@ struct address_map_entry {
     address_map_entry &noprw() { m_rkind = m_wkind = NOP; return *this; }
     address_map_entry &unmaprw() { m_rkind = m_wkind = NONE; return *this; }
     address_map_entry &region(const char *tag, offs_t off) { m_region = tag; m_region_offset = off; m_has_region = true; return *this; }
+    // MAME's wait states for CPUs whose accesses can be redone (cpu_is_interruptible, the 68000):
+    // before_time gives the cycle the access may happen at, after_delay the cycles it then takes
+    template <typename D, typename F> address_map_entry &before_time(D &&dev, F f);
+    template <typename D, typename F> address_map_entry &after_delay(D &&dev, F f);
+    std::function<u64(offs_t, u64)> m_before_time;
+    std::function<u32(offs_t)> m_after_delay;
+    // MAME's share(): the entry's memory, findable by tag (required_shared_ptr) from the map's device
+    address_map_entry &share(const char *tag) { m_share = tag; return *this; }
+    std::string m_share;
 
     // handlers of the map's own device ...
     template <typename RF> address_map_entry &r(RF rf);
@@ -721,6 +756,30 @@ struct address_map_entry {
     template <typename D, typename RF, typename WF> address_map_entry &rw(D &&dev, RF rf, WF wf) { r(dev, rf); return w(dev, wf); }
     // submaps
     template <typename D, class C> address_map_entry &m(D &&dev, void (C::*f)(address_map &));
+    // lambda handlers (MAME's lr8/lw8 and wider): the name is for MAME's debugger only
+    template <typename T, typename F> address_map_entry &lr(const char *, F f) {
+        m_rkind = HANDLER;
+        m_rwidth = sizeof(T) * 8;
+        if constexpr (std::is_invocable_v<F>) m_rh = [f](offs_t, u64) { return u64(T(f())); };
+        else if constexpr (std::is_invocable_v<F, offs_t>) m_rh = [f](offs_t o, u64) { return u64(T(f(o))); };
+        else m_rh = [f](offs_t o, u64 m) { return u64(T(f(o, T(m)))); };
+        return *this;
+    }
+    template <typename T, typename F> address_map_entry &lw(const char *, F f) {
+        m_wkind = HANDLER;
+        m_wwidth = sizeof(T) * 8;
+        if constexpr (std::is_invocable_v<F, T>) m_wh = [f](offs_t, u64 d, u64) { f(T(d)); };
+        else if constexpr (std::is_invocable_v<F, offs_t, T>) m_wh = [f](offs_t o, u64 d, u64) { f(o, T(d)); };
+        else m_wh = [f](offs_t o, u64 d, u64 m) { f(o, T(d), T(m)); };
+        return *this;
+    }
+    // called as MAME's lr8(NAME(lambda)): the lambda, then its name
+    template <typename F> address_map_entry &lr8(F f, const char *n) { return lr<u8>(n, f); }
+    template <typename F> address_map_entry &lr16(F f, const char *n) { return lr<u16>(n, f); }
+    template <typename F> address_map_entry &lr32(F f, const char *n) { return lr<u32>(n, f); }
+    template <typename F> address_map_entry &lw8(F f, const char *n) { return lw<u8>(n, f); }
+    template <typename F> address_map_entry &lw16(F f, const char *n) { return lw<u16>(n, f); }
+    template <typename F> address_map_entry &lw32(F f, const char *n) { return lw<u32>(n, f); }
 
     template <class C, typename F> void set_r(C *obj, F f);
     template <class C, typename F> void set_w(C *obj, F f);
@@ -764,13 +823,17 @@ public:
         if ((mask & full) == full) return read_sized(ba, size);
         if (m_pages[ba >> m_pbits].direct_r) return read_sized(ba, size) & mask;
         u64 sh = lane_shift(ba, size);
-        return (read_bus(ba & ~u64(m_bus_bytes - 1), (mask & full) << sh) >> sh) & mask;
+        const u64 bus = ba & ~u64(m_bus_bytes - 1), bm = (mask & full) << sh;
+        const u64 v = read_bus(bus, bm);
+        if (m_read_tap) [[unlikely]] m_read_tap((offs_t)bus, v & bm, bm);
+        return (v >> sh) & mask;
     }
     void write_masked(offs_t a, int size, u64 d, u64 mask) {
         u64 ba = unit_to_byte(a) & m_byte_mask;
         const u64 full = size == 8 ? ~u64(0) : (u64(1) << (size * 8)) - 1;
         if ((mask & full) == full) { write_sized(ba, size, d); return; }
         u64 sh = lane_shift(ba, size);
+        if (m_write_tap) [[unlikely]] m_write_tap((offs_t)(ba & ~u64(m_bus_bytes - 1)), (d & mask & full) << sh, (mask & full) << sh);
         write_bus(ba & ~u64(m_bus_bytes - 1), (d & mask & full) << sh, (mask & full) << sh);
     }
     u8 read_byte(offs_t a, u8 mask) { return (u8)read_masked(a, 1, mask); }
@@ -783,7 +846,9 @@ public:
         if (mask == 0xffffffffu) return (u32)read_sized(ba, 4);
         page_t &p = m_pages[ba >> m_pbits];
         if (p.direct_r) return (u32)read_sized(ba, 4) & mask;
-        return (u32)read_bus(ba & ~u64(3), mask) & mask;
+        const u32 v = (u32)read_bus(ba & ~u64(3), mask) & mask;
+        if (m_read_tap) [[unlikely]] m_read_tap((offs_t)(ba & ~u64(3)), v, mask);
+        return v;
     }
     void write_dword(offs_t a, u32 d, u32 mask) {
         u64 ba = unit_to_byte(a) & m_byte_mask;
@@ -792,6 +857,13 @@ public:
         write_bus(ba & ~u64(3), d & mask, mask);
     }
 
+    u64 unmap() const { return 0; }   // what an unmapped read gives (MAME's default, 0)
+    // MAME's read_interruptible / write_interruptible: a bus-wide access by a CPU that can redo it.
+    // Wait-state entries (before_time, after_delay) apply to the space's CPU; without any, these
+    // are plain masked accesses.
+    u64 read_interruptible(offs_t a, u64 mask);
+    void write_interruptible(offs_t a, u64 d, u64 mask);
+    bool m_waits = false;   // an entry with wait states is mapped
     template <class C> void cache(C &c) { c.m_space = this; }
     template <class C> void specific(C &c) { c.m_space = this; }
 
@@ -874,6 +946,7 @@ private:
     void write_bus(u64 bus_ba, u64 data, u64 mask);
     u64 unit_to_byte(offs_t a) const { return m_shift < 0 ? (u64)a << (-m_shift) : (u64)a; }
     void collect(address_map &map, offs_t base, offs_t mirror);
+    void collect_units(address_map &sub, const address_map_entry &outer, offs_t base, offs_t mirror);
     u64 lane_shift(u64 ba, int size) const;   // shift of the size-byte lane at ba inside its bus word
 
     int m_bus_bytes;
@@ -946,6 +1019,19 @@ template <int A, int D, int S, endianness_t E> struct memory_access {
         void write_qword(offs_t a, u64 d) { m_space->write_qword(a, d); }
     };
     using specific = cache;
+};
+// the 68000's specifics (MAME's memory_access<24, 1, 0, BIG>::specific) also make interruptible accesses
+template <> class memory_access<24, 1, 0, ENDIANNESS_BIG>::cache {
+public:
+    address_space *m_space = nullptr;
+    u8 read_byte(offs_t a) { return m_space->read_byte(a); }
+    u16 read_word(offs_t a) { return m_space->read_word(a); }
+    u16 read_word(offs_t a, u16 mask) { return m_space->read_word(a, mask); }
+    void write_byte(offs_t a, u8 d) { m_space->write_byte(a, d); }
+    void write_word(offs_t a, u16 d) { m_space->write_word(a, d); }
+    void write_word(offs_t a, u16 d, u16 mask) { m_space->write_word(a, d, mask); }
+    u16 read_interruptible(offs_t a, u16 mask = 0xffff) { return (u16)m_space->read_interruptible(a, mask); }
+    void write_interruptible(offs_t a, u16 d, u16 mask = 0xffff) { m_space->write_interruptible(a, d, mask); }
 };
 
 // ---- shared pointers / region pointers ---------------------------------------------------
@@ -1301,6 +1387,7 @@ public:
 enum class machine_phase { PREINIT, INIT, RESET, RUNNING, EXIT };
 
 // ---- device_t ---------------------------------------------------------------------------
+class validity_checker;
 class device_t {
 public:
     device_t(const machine_config &mconfig, device_type type, const char *tag, device_t *owner, u32 clock);
@@ -1314,6 +1401,11 @@ public:
     u32 clock() const { return m_clock; }
     void set_clock(u32 c) { m_clock = c; }
     void set_clock(const XTAL &x) { m_clock = x.value(); }
+    // MAME's set_unscaled_clock: a clock change at run time, which the device and its interfaces see
+    void set_unscaled_clock(u32 c) {
+        m_clock = c;
+        if (m_started) { device_clock_changed(); for (device_interface *i : m_interfaces) i->interface_clock_changed(false); }
+    }
     // as MAME's device_t: whole seconds exact, the rest in whole attoseconds per clock
     attotime clocks_to_attotime(u64 clocks) const {
         if (!m_clock) return attotime::never;
@@ -1327,6 +1419,7 @@ public:
     }
     template <class T> T *subdevice(const char *tag) const { return dynamic_cast<T *>(hk_find_device(const_cast<device_t *>(this), tag)); }
     device_t *subdevice(const char *tag) const { return hk_find_device(const_cast<device_t *>(this), tag); }
+    device_t *subdevice(const std::string &tag) const { return subdevice(tag.c_str()); }
     bool started() const { return m_started; }
     bool m_started = false;
     running_machine &machine() const { return *m_machine; }
@@ -1348,6 +1441,8 @@ public:
 
     // lifecycle (MAME's device_t interface)
     virtual void device_config_complete() {}
+    virtual void device_validity_check(validity_checker &) const {}
+    virtual void device_resolve_objects() {}   // MAME: once the machine is configured, before any device starts
     virtual void device_start() {}
     virtual void device_reset() {}
     virtual void device_reset_after_children() {}
@@ -1372,6 +1467,13 @@ public:
     address_space &make_space(int spacenum);
     bool has_space(int spacenum = 0) const;
     void set_addrmap(int spacenum, address_map_constructor map);
+    bool has_configured_map(int spacenum = 0) const {
+        for (auto &[n, m] : m_external_maps) if (n == spacenum) return true;
+        return false;
+    }
+    // HIRAKU: after start and after reset (MAME's device_execute_interface work there)
+    virtual void hk_post_start() {}
+    virtual void hk_post_reset() {}
 
     std::vector<device_t *> m_children;
     std::vector<device_interface *> m_interfaces;
@@ -1393,6 +1495,11 @@ private:
     const machine_config *m_mconfig;
     std::vector<std::pair<int, address_map_constructor>> m_external_maps;
     std::vector<std::unique_ptr<address_space>> m_spaces;
+public:
+    // spaces a device interface adds (MAME's device_rom_interface): used when memory_space_config()
+    // doesn't name the space
+    std::vector<std::pair<int, const address_space_config *>> m_hk_interface_spaces;
+private:
     address_space *m_space_by_num[4] = {};
 };
 
@@ -1422,6 +1529,7 @@ public:
     operator T *() const { return target(); }
     explicit operator bool() const { return target() != nullptr; }
     T *lookup() const { return target(); }
+    bool found() const { return target() != nullptr; }
 
 private:
     mutable T *m_target = nullptr;
@@ -1559,6 +1667,7 @@ public:
     void put_int(int out, int index, s32 v, s32 max) { put(out, index, float(double(v) / max)); }
     void put_int_clamp(int out, int index, s32 v, s32 maxclamp) { put_int(out, index, std::clamp(v, -maxclamp, maxclamp - 1), maxclamp); }
     void add(int out, int index, float v) { m_buf[out][index] += v; }
+    void add_int(int out, int index, s32 v, s32 max) { add(out, index, float(double(v) / max)); }
     void fill(int out, float v) { std::fill(m_buf[out].begin(), m_buf[out].begin() + samples(), v); }
     float get(int /*input*/, int /*index*/) const { return 0.0f; }   // no stream inputs are routed here
 
@@ -1637,8 +1746,28 @@ public:
     void adjust_icount(int delta) { *m_icountptr += delta; }
     void eat_cycles(int cycles) { if (m_executing) { if (cycles > *m_icountptr) cycles = *m_icountptr; *m_icountptr -= cycles; } }
     bool executing() const { return m_executing; }
-    bool access_to_be_redone() noexcept { return false; }        // MAME's memory wait states: none here
+    // MAME's redone accesses (devcpu.cpp): only CPUs with interruptible accesses (the 68000) see them
+    bool access_to_be_redone() noexcept { return std::exchange(m_access_to_be_redone, false); }
     bool access_to_be_redone_noeat() noexcept { return false; }
+    bool access_to_be_redone_noclear() noexcept { return m_access_to_be_redone; }
+    bool access_before_time(u64 access_time, u64 current_time) noexcept {
+        s32 delta = s32(access_time - current_time);
+        if (*m_icountptr <= delta) { defer_access(); return true; }
+        *m_icountptr -= delta;
+        return false;
+    }
+    void access_after_delay(u32 cycles) noexcept { *m_icountptr -= cycles; }
+    void defer_access() noexcept { if (*m_icountptr > 0) *m_icountptr = 0; m_access_to_be_redone = true; }
+    void retry_access() noexcept { abort_timeslice(); m_access_to_be_redone = true; }
+    bool m_access_to_be_redone = false;
+    virtual space_config_vector memory_logical_space_config() const { return memory_space_config(); }
+    // MAME's set_periodic_int: a timer, armed at reset, calling cb while the CPU isn't held
+    void set_periodic_int(std::function<void()> cb, const attotime &rate) { m_periodic_cb = std::move(cb); m_periodic_rate = rate; }
+    void hk_post_start() override;
+    void hk_post_reset() override;
+    std::function<void()> m_periodic_cb;
+    attotime m_periodic_rate;
+    emu_timer *m_periodic_timer = nullptr;
     int standard_irq_callback(int, offs_t) { return 0; }
     bool debugger_enabled() const { return false; }
     // HIRAKU: the last instruction's PC, and an optional per-instruction trace
@@ -1646,6 +1775,7 @@ public:
     void debugger_instruction_hook(offs_t pc) { m_hook_pc = pc; if (m_hk_trace) [[unlikely]] m_hk_trace(pc); }
     std::function<void(offs_t)> m_hk_trace;
     void debugger_exception_hook(int) {}
+    void debugger_wait_hook() {}
     void debugger_interrupt_hook(int, offs_t = 0) {}
     bool allow_drc() const { return false; }
     offs_t pc() const { return m_pc_for_log ? m_pc_for_log() : m_hook_pc; }
@@ -1704,7 +1834,13 @@ public:
 
     attotime time() const;
     bool side_effects_disabled() const { return false; }
+    struct hk_side_effects_guard {};   // MAME's disable_side_effects(): the debugger's peeks; none here
+    hk_side_effects_guard disable_side_effects(bool = true) const { return {}; }
     std::string describe_context() const;
+    machine_config::opts_t options() const { return {}; }
+    // MAME's schedule_soft_reset (a watchdog): every device resets at the end of the timeslice
+    void schedule_soft_reset();
+    bool m_soft_reset_pending = false;
     hk_input_manager input() const { return {}; }
     void debug_break() {}
     u32 rand() {
@@ -1843,6 +1979,18 @@ template <typename D, typename WF> address_map_entry &address_map_entry::w(D &&d
     set_w(dynamic_cast<C *>(hk_mame::as_device(dev, m_map.m_device)), wf);
     return *this;
 }
+template <typename D, typename F> address_map_entry &address_map_entry::before_time(D &&dev, F f) {
+    using C = typename hk_mame::fn_traits<F>::cls;
+    C *obj = dynamic_cast<C *>(hk_mame::as_device(dev, m_map.m_device));
+    m_before_time = [obj, f](offs_t o, u64 t) { return u64((obj->*f)(o, t)); };
+    return *this;
+}
+template <typename D, typename F> address_map_entry &address_map_entry::after_delay(D &&dev, F f) {
+    using C = typename hk_mame::fn_traits<F>::cls;
+    C *obj = dynamic_cast<C *>(hk_mame::as_device(dev, m_map.m_device));
+    m_after_delay = [obj, f](offs_t o) { return u32((obj->*f)(o)); };
+    return *this;
+}
 template <typename D, class C> address_map_entry &address_map_entry::m(D &&dev, void (C::*f)(address_map &)) {
     C *obj = dynamic_cast<C *>(hk_mame::as_device(dev, m_map.m_device));
     m_rkind = m_wkind = SUBMAP;
@@ -1851,4 +1999,5 @@ template <typename D, class C> address_map_entry &address_map_entry::m(D &&dev, 
     return *this;
 }
 
+#include "hk_osd.h"
 #include "logmacro.h"

@@ -221,7 +221,7 @@ Durations are rough, assume one person, and are assisted. Each milestone has a c
 | **M12** | Cores: the shell split | The host layer (launcher, window, input, lights, scripts, oracle) talks to the machine through one core interface. Firebeat moves behind it unchanged (bit-identical digests). | **done 2026-10-12** (§17): `runtime/shell/core.h`; Firebeat and DJ Main are cores, each binary links one. Firebeat bit-identical. |
 | **M13** | DJ Main core | beatmania 1st mix → THE FINAL, pop'n 1–3, pop'n stage: interpreted 68EC020 plus MAME's devices, checked against MAME. Analog turntable and lamps. | **in progress** (§17, docs/PLAY.md):<br>• `bm1stmix` and `popn1j` run in **cycle-exact lockstep with MAME**: work RAM, sprites and palette identical on every frame, with sound sample-identical. This holds through boot and a scripted game of each: beatmania (coin, turntable, song select, a song with keys and scratches, game over) and pop'n (all 9 buttons).<br>• In `tools/regress.py`.<br>• All 29 MAME sets have game files; the ATA password lock is ported from MAME (unit-tested).<br>• 2026-10-12: 14 more sets ingested and booted against MAME for 155 s: 2nd and 3rd MIX are cycle-exact like 1st mix. 4th MIX → THE FINAL, complete MIX (AA) and pop'n 2/3 reach attract, but their work RAM leaves MAME's between frames ~4380 and ~4730 (73–79 s in). Sprites and snapshots mostly stay identical: a few bytes at first, a timing offset later (5th, compm2, DCT, cmxaac). 1st–3rd MIX and pop'n 1 don't do this, so look for something the later games do at that time.<br>• **Left:** that divergence; hands-on test; faster drawing. |
 | **M14** | System 573 core | The roadmap is §19. MAME's PS1 devices with an interpreted CPU, in cycle-exact lockstep with MAME on an analog-board game (CD audio). Then the digital board (MP3 + FPGA). Then a static MIPS recompiler if the CPU is what costs most on an N100. | **in progress** (§19):<br>• `ddr3mj` (digital board) runs **in lockstep with MAME at the pin**: main RAM identical on all 3,600 frames of a 60 s boot, all 60 snapshots pixel-identical. That covers the BIOS, the CD boot, the cassette and PC Card checks and ERROR 147 (no install yet). It is a regress case. Host cost ~3.5 ms a frame on the desktop, interpreted.<br>• Every device is MAME's own code on the framework shim, run by a copy of MAME's scheduler.<br>• **`ddr2m` (analog board, 2026-10-12): in lockstep with MAME at the pin for 400 s.** That covers the first boot, the flash install (two Test presses) and attract with its demo and video: main RAM identical on all 24,000 frames, all 400 snapshots pixel-identical. The sound (SPU + CD audio) matches MAME's WAV: lag 0, correlation ≥ 0.998, level 1.00. It is a regress case.<br>• **A whole game too (`oracle/scripts/ddr2m-play.his`, 350 s):** the same first boot, then two coins, Start, NORMAL, How To Play skipped, BOYS played by stepping on all four panels (GOOD/GREAT/BOO, DANGER, CLEARED), stage 2's song select and Ready. Main RAM identical on all 21,000 frames, 350/350 snapshots, the sound lag 0 with correlation ≥ 0.998. Regress case `ddr2m-play`. **This is 573-2's lockstep exit test, met; the hands-on test with a pad remains.**<br>• The board is chosen per game (`io_board`, `cassette`, `pccard2`, `memory_card_reader` in game.toml): the analog GX700-PWB(F) is ported from MAME. DDR controls and lamps are in `cabinet.cpp`. Coin, start, mode and song select, and a stage start work from the installed flash.<br>• Fixed: the shim's CD reader didn't byte-swap little-endian CD audio (noise); the shim's address map took over 12 GB per 573 run (per-byte tables for MAME's unmapped ranges), which got the desktop OOM-killed during a parallel regress run.<br>• **Owner's hands-on test (2026-10-12): "worked nicely", with slight crackles.** Those came from MAME's mix: the SPU and the CD audio summed at 1.0 each peak at 2.0 and clip at the output (~1 % of samples, a third on loud songs; MAME's WAV clips identically). The 573 core now plays the mix at 0.5, which never clips, in MAME's balance. `--mame-mix` restores MAME's level for oracle comparisons. A departure from MAME's output stage only: the machine is unchanged.<br>• **Next:** the install flow for `ddr3mj` (573-3). |
-| **M15** | Twinkle core (beatmania IIDX 1st–8th) | The M14 PS1 core plus Twinkle's SPU (68000 + RF5C400, already in HIRAKU), SCSI CD, ATA hard disk. Then the background video MAME lacks: Video CD (MPEG-1) for early styles, DVD for 6th–8th. | **unblocked 2026-10-12** (§16):<br>• `bmiidx3` (3rd style) is on hand; MAME passes its device check and stops at the normal first-boot backup-RAM error (E150).<br>• MAME ~570 % real time; its driver lists "emulate dvd player and video mixing" as a TODO. |
+| **M15** | Twinkle core (beatmania IIDX 1st–8th) | The M14 PS1 core plus Twinkle's SPU (68000 + RF5C400, already in HIRAKU), SCSI CD, ATA hard disk. Then the background video MAME lacks: Video CD (MPEG-1) for early styles, DVD for 6th–8th. | **in progress** (§21):<br>• **TW-0 done:** oracle (pinned MAME with `twinkle.cpp`, Lua taps on both CPUs), `bmiidx3` and `bmiidx` ingested.<br>• **TW-1, boot and attract done (2026-10-13):** `hiraku-bmiidx3` (MAME's PS1 and MAME's 68000, all of MAME's devices on the shim) runs in lockstep with MAME: main RAM on all 9,000 frames, 150/150 snapshots, all 2.15 M traced device accesses, sound lag 0. Regress case `bmiidx3-boot`.<br>• `bmiidx3` (3rd style, MAME working) is the first set; `bmiidx` (1st style, MAME `NOT_WORKING`) arrived 2026-10-13.<br>• Phases TW-0 (oracle) → TW-1 (lockstep) → TW-2 (playable) → TW-3 (background video, beyond MAME) → TW-4 (N100 budget) → TW-5 (other styles, DVD).<br>• MAME ~570 % real time. |
 
 Rough total to playable BM3 Final is about 4 months. Each later family should cost weeks, not months, if the SDK-signature bet in §3.3 holds.
 
@@ -929,7 +929,7 @@ Each phase has an exit test. Sizes are assisted-effort guesses; DJ Main went fas
 - **Out of scope unless asked:** karaoke (`k573kara`) and the non-BEMANI games (fishing, Bishi Bashi, GunMania).
 - **Later, only if wanted:** PCMCIA edit-data cards and the memory-card reader.
 
-**Then M15, Twinkle.** It reuses 573-1 to 573-4 for the PS1 core. It adds:
+**Then M15, Twinkle** (roadmap: §21). It reuses 573-1 to 573-4 for the PS1 core. It adds:
 - the 68000 + RF5C400 sound board, already in HIRAKU;
 - a SCSI CD and an ATA hard disk;
 - the background video MAME lacks.
@@ -1196,6 +1196,181 @@ queue at its target). The emulated machine is unchanged.
 - **Without Wayland** (X11): the grid runs on the display mode's rate with an unknown phase.
 - Tested with the window on DP-1 (240 Hz) and DP-2 (144 Hz, with `HK_DISPLAY_SYNC_SKEW` to force a
   fit); 60 Hz still to test on a real 60 Hz display (the N100 cabinet).
+
+## 21. Twinkle roadmap (M15, written 2026-10-13)
+
+The approach is the 573's (§19): MAME's devices on the shim, an interpreted CPU, cycle-exact lockstep with MAME first. Then the one thing MAME doesn't do at all, the background video, as a documented departure. Then the N100 budget.
+
+### Media on hand
+
+| Set | Style | MAME config | Program CD | Video CD | HDD | Dongle | MAME status |
+|---|---|---|---|---|---|---|---|
+| `bmiidx3` | 3rd style (GC992 JAC) | `twinklei` | `gc992-jac01` | `gc992-jaa04` | `992hdda01` | `992a02`, M24C02 EEPROM (plain) | **works** (`IMPERFECT_SOUND`); first boot stops at E150, 1P Start clears it (§16) |
+| `bmiidx` | 1st style (863 JAB), downloaded 2026-10-13 | `twinklex` | `gq863-jab01` | `gq863a04` (4 tracks) | `863hdda01` (3.2 GB) | `863a02`, X76F041, `BAD_DUMP` (write and config passwords unrecoverable; the read side is complete) | **`NOT_WORKING`**: the DVD player check needs RTS→CTS on the PS1's SIO1, which MAME's SIO lacks |
+
+- Both carry the BIOS `863a03.7b` (512 KiB) and the SPU program `863a05.2x` (512 KiB).
+- `bmiidx3` is in the rompath and verified (§16). `bmiidx` is only in `~/Downloads` so far: hard-link it into `~/bm3mame/roms-cores/bmiidx/` and run `-verifyroms` first. Its three CHDs have non-zero data SHA-1s.
+- **Disk:** 63 GB free on DATA (2026-10-13). The raw HDD images are ~1.5 and ~3.2 GB before `tools/chd.py` punches holes.
+
+### What MAME has
+
+Sources: MAME master `twinkle.cpp` (1,700 lines, 18 sets plus the BIOS), `bus/rs232/xvd701.cpp`, and the devices it uses. All BSD-3.
+
+**The main board (TWINKLE/MAIN):**
+- The same PS1 chipset as the 573: CXD8530CQ at 33.8688 MHz with 4 MiB of RAM, CXD8561Q GPU with 2 MiB of VRAM, the SPU with 512 KiB.
+- **SCSI, not ATAPI,** for the program CD: an NCR 53CF96 with a Toshiba XM-5401 drive, on the PS1's DMA channel 5.
+- An RTC65271 (as on Firebeat), an LTC1232 watchdog (1.2 s), and an SMC FDC37C665GT super I/O whose second 16550 talks to the DVD player from Substream on.
+- The security dongle, bit-banged through 0x1f270000/0x1f280000: an X76F041 (1st style, Substream, Club Version 2) or an M24C02 (2nd style and later).
+- The I/O mux at 0x1f220000 (an index register, then data), the key LEDs, and the Bt812 video decoder's registers at 0x1f2b0000.
+
+**The SPU board (TWINKLE/SPU) is Firebeat's SPU board.** MAME's two memory maps are the same address for address:
+- a 68000 at 16 MHz running `863a05`, RF5C400, 24 MiB of wave RAM in three 8 MiB banks, a CY7C131 mailbox to the main CPU;
+- an ATA hard disk whose DMA fills the wave RAM.
+- The differences are small: IRQ acknowledges through a control register (bits 7–10), IRQ1 at 60 Hz, and the DMA loop.
+
+**The sub board (TWINKLE/SUB2)** decodes the external player's video (Bt812), buffers it in field memories and overlays the PS1 picture on it. **MAME ignores it:** the register writes go nowhere and nothing is mixed.
+
+**The DVD player:** a JVC XV-D701 on a serial line, modelled by MAME's `xvd701` as far as the game can see (JLIP protocol at 9600 baud, 8O1: power, play, pause, stop, seek chapter, next/previous, status, ID; replies 100 ms later). It produces no picture. 1st style uses the PS1's SIO1 over the mini-DIN; Substream and later use the super I/O's UART on the DSUB.
+
+**Controls and lamps:** 7 keys and a turntable per player (the turntable is an 8-bit position counter), Start ×2, VEFX, Effect, Test, Service, Coin, 5 effector sliders (4 bits each). Lamps: 1P/2P Start, VEFX, Effect, credit, 8 spotlights, neon, 14 key LEDs, a 9-character 16-segment ticker, board LEDs.
+
+**Speed:** `bmiidx3` at 567 % in MAME (§16), about 18 % of a desktop core.
+
+### What HIRAKU already has, and what is new
+
+**Reused:**
+- the 573 core's PS1 on the shim, its exact scheduler, the recompiler (573-4) and its tools;
+- MAME's `x76f041`, `ins8250` (with the TX FIFO fix), `diserial`, `sio_uart`, `cdda`, `ataintf`/`atadev` on the shim;
+- the Firebeat SPU's board logic (`runtime/spu`) and the RF5C400 port;
+- the oracle (`oracle/mame.sh`, `hiraku.lua`, snapcmp, audiosync), regress and PGO;
+- the analog turntable input and the lamps path (docs/LIGHTS.md).
+
+**To port:**
+
+| Part | Lines | Note |
+|---|---|---|
+| `twinkle.cpp` driver class | ~1,700 | memory map, I/O mux, SPU board glue, SCSI DMA |
+| SCSI: `ncr53c90`, `nscsi_bus`, `nscsi_hle`, `nscsi/cd` | ~4,300 | new bus type for the shim |
+| `fdc37c665gt` | ~530 | needs the 16550s; the floppy controller and parallel port can be stubs if the games never touch them (check with a tap) |
+| `i2cmem` (M24C02) | ~620 | 2nd style on |
+| `xvd701` + `rs232` port | ~500 | |
+| `rtc65271` | ~720 | HIRAKU's Firebeat copy runs on its own clock; the shim needs MAME's |
+| `watchdog`, `cy7c131` | ~300 | |
+| **the 68000** | one generated file (~4 MB) | see the decision below |
+
+**Decision for the owner: which 68000.**
+- MAME's SPU 68000 is its new cycle-exact core (`m68000.cpp`, generated by `m68000gen.py`), not Musashi. Firebeat's SPU runs Musashi and only had to match MAME's sound, not its cycles.
+- On Twinkle, the 68000 and the PS1 share the mailbox, so the 68000's timing is visible to the PS1. Lockstep needs MAME's core.
+- **Recommendation:** port MAME's generated 68000 (one variant) onto the shim. It costs one big compile unit (like a `gen573` block file: build it at `-j2`). Firebeat could switch to it later if it ever wants cycle lockstep.
+- **Decided (owner, 2026-10-13): MAME's 68000.**
+
+### Phases
+
+Each phase has an exit test. Sizes are assisted-effort guesses; the 573 went faster than its estimates.
+
+**TW-0. Oracle and media** (a day)
+- `tools/ingest.py` for Twinkle sets: BIOS, SPU ROM, dongle, the program CD and Video CD via `chdman extractcd`, the HDD via `extracthd` (memory-capped, holes punched), and a `game.toml` with `core = "twinkle"`, the dongle type and the DVD port (SIO1 or super I/O).
+- A MAME build at the pin with `twinkle.cpp` (as `build573.sh`).
+- `hiraku.lua`: Twinkle tap groups (I/O mux, SCSI, mailbox, dongle, mixer), the 68000 as a second tapped CPU, the RTC's power-on time.
+- `bmiidx3-boot.his`: first boot, E150, 1P Start, attract. Seeded NVRAM afterwards for the later runs.
+- **Exit:** two MAME runs of `bmiidx3-boot` match, and the reference run is in `out/oracle/bmiidx3/`.
+
+**TW-1. The board, interpreted, in lockstep** (1–2 weeks)
+- `runtime/twinkle/`. First split the PS1 machine out of `runtime/sys573/` into something both cores link, so the recompiler, GPU and scheduler work stay shared.
+- Bring-up order: the BIOS to its SCSI boot, the program CD loading, the SPU board's boot (68000, HDD to wave RAM, mailbox), the device check, E150, attract.
+- The DVD player is MAME's `xvd701`, unchanged.
+- **Exit:** `bmiidx3` boot and attract in lockstep with MAME: main RAM identical every frame, the 68000's RAM and the wave RAM at every snapshot, pixel-identical snapshots, the WAV matching (lag 0, correlation ≥ 0.998). Regress cases `bmiidx3-boot`, `bmiidx3-attract`. Peak RSS (VmHWM) checked before adding them, as for the 573.
+
+**TW-2. Playable** (about a week)
+- An `iidx` family in `cabinet.cpp`: keys, turntables (analog axis, as bm3 and DJ Main), Start, VEFX, Effect, the effector sliders.
+- Lamps: spotlights, neon, key LEDs, Start/VEFX/Effect, and the 16-segment ticker as text (HID, socket, and an on-screen strip).
+- `bmiidx3-play.his`: coins, mode and song select, a song with keys and scratches, the result. In lockstep.
+- Launcher entry, PLAY.md.
+- **Exit:** the scripted song in cycle-exact lockstep with MAME, then the owner's hands-on test with an IIDX controller.
+
+**TW-3. The background video: further than MAME** (2–3 weeks; the main unknown)
+
+The game already tells the player what to play. HIRAKU adds the picture. The machine doesn't change: the player's serial replies stay MAME's, so lockstep holds. `--video off` gives MAME's picture.
+
+1. **The disc:** parse the Video CD (`ENTRIES.VCD`, the MPEG tracks as Mode 2 Form 2 sectors) to map a chapter to a sector. Check that the shim's CD image keeps raw Mode 2 sectors.
+2. **Decode:** MPEG-1 with pl_mpeg (MIT, single header, MPEG-1 only, which is exactly a Video CD), on a worker thread. 352×240 at 29.97 fps costs little.
+3. **Timing:** playback starts at the machine time of the PLAY reply, so it is reproducible and can be checked. Measure the real player's seek and start delays only if footage shows they matter.
+4. **The mix, the open question.** The sub board keys the PS1 picture over the video. Nobody has documented how. Find out from:
+   - the game's writes to the Bt812 and the mixer (0x1f2b0000; MAME's notes: reg 0x08 bit 1 "perform overlay mixing"; HCLOCK 853, ACTIVE_PIXELS 706);
+   - the PS1 frame during a song: what fills the video window (a key colour, black, the mask bit?);
+   - real-cabinet footage of 3rd style, for placement, scaling and colour.
+
+   Write down which source each choice rests on (decision 2 of §19). Where the sources run out, stop and record the gap.
+5. **Exit:** 3rd style's attract and a song show the right clip, in the right place, at the right time, against real-cabinet footage. The audio and the machine stay MAME-exact.
+
+**TW-4. Efficiency** (a week)
+- Record `bmiidx3` runs for the MIPS recompiler (`tools/mipsrec.py`). Its blocks come from code the program CD loads into RAM, as on the 573.
+- Measure the parts with `HK_PROFILE`: the PS1 GPU (already ~45 % of 573 gameplay; IIDX draws more notes than DDR), the RF5C400, the 68000, SCSI.
+- The video decoder and the mix run off the emulation thread.
+- PGO profile `twinkle.profdata`.
+- **Exit:** the N100 budget (§14): average under 25 % of one core, no frame over ~8 ms of host work, bit-identical to the interpreter.
+
+**TW-5. The rest of the catalogue** (weeks, mostly media and per-set config)
+- **1st style (`bmiidx`, on hand), a departure:** add CTS to the PS1's SIO1 (psx-spx documents SIO1's CTS bit), behind a switch, for the DVD check MAME fails. The X76F041 dump lacks only the passwords the game never uses.
+- **Substream, Club Version 2 (`twinklex2`):** X76F041, player on the super I/O UART.
+- **2nd, 4th, 5th style:** `twinklei`, Video CD, like 3rd.
+- **6th, 7th, 8th style: DVD.** An MPEG-2 decoder (libmpeg2, GPL-2+, or FFmpeg's libavcodec, LGPL) and DVD-Video chapter navigation (the IFO tables). 8th style may use a different player (XV-S1100; MAME's code only mentions it).
+- **Club kits (`bmiidxc`, `bmiidxca`):** two program CDs; find out what the second one does.
+- *Ugoke! Purimucho* (touch panel, camera, printer) is out of scope.
+- **Media needed:** every set except `bmiidx3` and `bmiidx`. Recommended next: `bmiidx2` or `bmiidx4` (Video CD, MAME working), then `bmiidx6` for the DVD path.
+
+### Progress (2026-10-13): TW-0
+
+**The oracle:**
+- MAME built at HIRAKU's pin, the Twinkle driver only: `/run/media/roganis/DATA/mame-pin/twinkle`, from `buildtw.sh` (memory-capped, `-j3`). Both sets pass `-verifyroms` (`bmiidx` is "best available": MAME marks its dongle as a bad dump).
+- `oracle/mame.sh` takes snapshots at the screen's own size for Twinkle (`-snapview native`): the set's layout draws the 16-segment display around the screen. Twinkle's screen is 640×240.
+- `oracle/lua/hiraku.lua` knows Twinkle (it tells it from the 573 by its SCSI controller):
+  - tap groups for the main board (mailbox, SCSI, super I/O, I/O, RTC, mixer, and the PS1's own) in all three address mirrors;
+  - tap groups on the SPU board's 68000 (control, mailbox, ATA, RF5C400), recorded with the 68000's PC;
+  - the RTC65271's power-on time ("power-on time N" in `log.txt`), read from MAME's save items: the registers sit behind an index register that a bus read would change.
+
+**The media:** `tools/ingest.py` takes Twinkle sets (`ingest_twinkle`); `games/bmiidx3` and `games/bmiidx` have `core = "twinkle"`, which the launcher hides until the core exists. Both are in `dumps/` (3.9 and 1.7 GB, with holes punched). **The Video CDs have one track per clip:** 38 for 3rd style, 28 for 1st style.
+
+**The reference run** (`oracle/scripts/bmiidx3-boot.his`, 9,000 frames, out/oracle/bmiidx3/boot):
+- First power-on: BIOS, SCSI boot, device check by frame ~1,380 with E150 (backup RAM), "1P START = BACKUP CLEAR"; 1P Start at frame 2,400; "Clear completed", warning, Konami, BEMANI, the title, the How To Play demo.
+- **Two runs started in the same second match exactly:** the RAM hash on all 9,000 frames, all 2,151,643 device accesses, the 150 snapshots, and the NVRAM. Runs started in different seconds differ by the RTC; HIRAKU will take `--rtc` as the 573 does.
+- The cleared NVRAM (`rtc`, `security`) is kept in `out/oracle/bmiidx3/seed/` for later runs (`HIRAKU_NVRAM`).
+- **MAME's speed at the pin:** 480–489 % of real time (`-bench 90` from the cleared NVRAM: boot, device check, attract with the demo). The 567 % of §16 was MAME 0.289 idling at E150.
+
+**1st style** (`oracle/scripts/bmiidx-boot.his`, 3,600 frames, no inputs): MAME stops at the device check with **E600 DVD INIT ERROR**: DVD and backup RAM BAD, SCSI, CD-ROM, security and sound OK. The missing CTS, as the driver says. This is TW-5's starting point.
+
+**Found on the way, for TW-1 and TW-3:**
+- The super I/O is used only for its second UART, at the PC's COM2 address (0x2f8): no floppy controller, parallel port or configuration-mode access during boot and attract. Those parts can be stubs.
+- The mixer gets ~200 writes during boot (Bt812 index/data at 0x00/0x08, a bit-banged serial line at 0x20).
+- The How To Play demo draws the middle of the play field dark: where the video goes.
+
+### Progress (2026-10-13): TW-1, the board in lockstep with MAME
+
+**`runtime/twinkle/`**, `core = "twinkle"`, `hiraku-bmiidx3`: a port of `twinkle.cpp`'s driver class (memory maps, the I/O mux, the SPU board's control register and hard-disk DMA into wave RAM, SCSI DMA on the PS1's channel 5, the dongle's port bits, the DVD player on SIO1 or the super I/O's UART). Every device is MAME's own code on the shim, run by the exact scheduler:
+- the PS1 as on the 573 (shared library `hiraku_mame573`);
+- **MAME's 68000** (the generated cycle-exact core, as decided), the 53CF96 and the XM-5401 on MAME's SCSI bus, the FDC37C665GT, the M24C02 or X76F041 dongle, the RTC65271, the LTC1232 watchdog, the CY7C131 mailbox, the RF5C400, the RS-232 port with MAME's XV-D701, MAME's ATA hard disk on the raw image (`hdd_chs` from the CHD) — library `hiraku_mametw`;
+- the shim's additions for them are listed in third_party/mame/README.md (interruptible accesses and wait states, masked submaps, device ROM regions, shares, the periodic interrupt...).
+
+**Result:** `bmiidx3-boot` (first power-on, device check, E150, 1P Start, attract, the How To Play demo; 9,000 frames, `--rtc` from MAME's log):
+- main RAM identical to MAME on **all 9,000 frames**;
+- **all 150 snapshots pixel-identical**;
+- **all 2,151,644 traced device accesses identical**, PS1 and 68000 sides, at the same emulated times (to the nanosecond the doubles keep).
+- **the sound matches MAME's WAV** (`--wav` against `WAV=1`, same `--rtc`): lag 0 in every window with sound, correlation ≥ 0.997, level 1.00 (the music starts ~61 s in);
+- regress case `bmiidx3-boot`; peak memory ~75 MB early in the run (the 573's runs are ~250 MB).
+- Host cost, interpreted, desktop: ~3.2 ms a frame (MAME at the pin: ~485 %).
+- With the shim's additions, every existing regress case stays identical (the 573's, kbm's and the rest).
+
+**What it took, beyond the port:**
+- The 68000's program needs no byte swap here: the file's little-endian words are already how the shim's big-endian space holds them on this host. With a swap, the 68000 started at 0x8600 and took a Line-F exception at once.
+- **Masked submaps** were the first divergence (frame 1,079): the shim put the 53CF96's 8-bit registers at consecutive bytes, while MAME spreads them over the lanes `umask16(0x00ff)` selects (two to a 32-bit word: register 8 at 0x10). The game's write-and-read-back test of the configuration register then failed.
+- **The effector's sliders start centred in MAME** (frame 1,273): an `IPT_AD_STICK` field whose default is its minimum reads (65536 · (15 ≪ 24) / 131072 + 2²³) ≫ 24 = 8, so the I/O mux gives 0x88, not 0.
+- `--trace` writes the oracle's MMIO format with the same groups and folding; comparing two traces record by record found both divergences in minutes.
+
+### Risks
+- **The mix is undocumented** (TW-3). Fallback: a plain "video behind the PS1 picture where it is black" mode, labelled as a guess.
+- **The 68000 port** is a big generated file; if the shim can't host it cleanly, Musashi with tolerance-based checks on the SPU side, accepting that lockstep stops at the mailbox.
+- **SCSI is a new bus on the shim.** MAME's nscsi uses its own handshake timers and line callbacks; the exact scheduler must reproduce their ordering.
+- **DVD styles** add an MPEG-2 decoder: heavier on an N100, but on its own core.
 
 ## 22. ARM hosts (2026-10-13)
 

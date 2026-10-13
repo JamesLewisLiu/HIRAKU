@@ -119,15 +119,60 @@ void device_t::reset() {
     for (device_t *c : m_children) c->reset();
     device_reset_after_children();
     for (device_interface *i : m_interfaces) i->interface_post_reset();
+    hk_post_reset();
 }
 
 void device_t::start() {
     for (device_interface *i : m_interfaces) i->interface_pre_start();
     device_start();
     for (device_interface *i : m_interfaces) i->interface_post_start();
+    hk_post_start();
     m_started = true;
 }
 
+// MAME's device_execute_interface: the periodic interrupt's timer (interface_pre_start), armed at
+// reset (interface_post_reset); it calls back unless the CPU is halted, held in reset or disabled
+void cpu_device::hk_post_start() {
+    if (m_periodic_cb && !m_periodic_rate.is_zero())
+        m_periodic_timer = machine().alloc_timer([this](s32) {
+            if (!suspended(SUSPEND_REASON_HALT | SUSPEND_REASON_RESET | SUSPEND_REASON_DISABLE | SUSPEND_REASON_CLOCK)) m_periodic_cb();
+        });
+}
+
+void cpu_device::hk_post_reset() {
+    if (m_periodic_timer) m_periodic_timer->adjust(m_periodic_rate, 0, m_periodic_rate);
+}
+
+// MAME's read_interruptible / write_interruptible (emumem_hws.cpp): before_time defers the access
+// to the cycle it gives (or redoes it in the next timeslice), after_delay adds its cycles after
+u64 address_space::read_interruptible(offs_t a, u64 mask) {
+    const u64 ba = unit_to_byte(a) & m_byte_mask & ~u64(m_bus_bytes - 1);
+    const address_map_entry *w = nullptr;
+    if (m_waits) [[unlikely]] {
+        const page_t &p = m_pages[ba >> m_pbits];
+        const u64 pm = (u64(1) << m_pbits) - 1;
+        for (int b = 0; b < m_bus_bytes && !w; b++) {
+            if (!(mask & (u64(0xff) << lane_shift(ba + b, 1)))) continue;
+            const u16 id = p.ridx ? p.ridx[(ba + b) & pm] : p.did_r;
+            if (id && (m_rt[id - 1].e->m_before_time || m_rt[id - 1].e->m_after_delay)) w = m_rt[id - 1].e;
+        }
+        if (w && w->m_before_time) {
+            cpu_device &cpu = dynamic_cast<cpu_device &>(m_device);
+            const u64 tc = cpu.total_cycles();
+            u64 ac = w->m_before_time(a, tc);
+            if (ac < tc) ac = tc;
+            if (cpu.access_before_time(ac, tc)) return 0;
+        }
+    }
+    const u64 v = read_masked(a, m_bus_bytes, mask);
+    if (w && w->m_after_delay) dynamic_cast<cpu_device &>(m_device).access_after_delay(w->m_after_delay(a));
+    return v;
+}
+
+void address_space::write_interruptible(offs_t a, u64 d, u64 mask) {
+    // no write wait states are mapped anywhere here (MAME's autovectors are reads)
+    write_masked(a, m_bus_bytes, d, mask);
+}
 
 device_t *hk_interface_device(device_interface &i) { return &i.device(); }
 
@@ -188,6 +233,8 @@ void device_t::set_addrmap(int spacenum, address_map_constructor map) {
 bool device_t::has_space(int spacenum) const {
     for (auto &[n, c] : memory_space_config())
         if (n == spacenum && c) return true;
+    for (auto &[n, c] : m_hk_interface_spaces)
+        if (n == spacenum && c) return true;
     return false;
 }
 
@@ -197,6 +244,9 @@ address_space &device_t::make_space(int spacenum) {
     const address_space_config *cfg = nullptr;
     for (auto &[n, c] : memory_space_config())
         if (n == spacenum) cfg = c;
+    if (!cfg)
+        for (auto &[n, c] : m_hk_interface_spaces)
+            if (n == spacenum) cfg = c;
     if (!cfg) fatalerror("%s: no address space %d", tag(), spacenum);
     auto sp = std::make_unique<address_space>(*this, *cfg, spacenum);
     for (auto &[n, ctor] : m_external_maps) {
@@ -228,12 +278,51 @@ address_space::address_space(device_t &dev, const address_space_config &cfg, int
     m_pages.resize(size_t(1) << std::max(0, bits - m_pbits));
 }
 
+// A submap installed with a unit mask (MAME's .m(...).umask16(0x00ff) on a wider bus): its
+// offsets count the device's units, as many to a bus word as the mask has groups of lanes
+// (umask16(0x00ff) on 32 bits: two bytes, in lanes 0 and 2). Each unit becomes an entry of its
+// own, at its byte address, with the offset the device's handler expects.
+void address_space::collect_units(address_map &sub, const address_map_entry &outer, offs_t base, offs_t mirror) {
+    const int B = m_bus_bytes;
+    auto lane_on = [&](int b) { return ((outer.m_umask >> (8 * (m_big ? B - 1 - b : b))) & 0xff) != 0; };
+    std::vector<std::pair<int, int>> units;   // (byte offset in the bus word, width in bytes), address order
+    for (int b = 0; b < B;) {
+        if (!lane_on(b)) { b++; continue; }
+        int w = 0;
+        while (b + w < B && lane_on(b + w)) w++;
+        units.emplace_back(b, w);
+        b += w;
+    }
+    auto holder = std::make_unique<address_map>(sub.m_device ? *sub.m_device : m_device);
+    for (auto &ie : sub.m_entries) {
+        if (ie->m_rkind == address_map_entry::SUBMAP || ie->m_rkind == address_map_entry::MEM || ie->m_wkind == address_map_entry::MEM)
+            fatalerror("%s: a masked submap with memory or a submap of its own", m_device.tag());
+        if (ie->m_end - ie->m_start > 0xffff) fatalerror("%s: a masked submap entry too large", m_device.tag());
+        for (u64 x = ie->m_start; x <= ie->m_end; x++) {
+            auto c = std::unique_ptr<address_map_entry>(new address_map_entry(*ie));
+            const auto [off, w] = units[x % units.size()];
+            c->m_start = (offs_t)(base + outer.m_start + (x / units.size()) * B + off);
+            c->m_end = c->m_start + w - 1;
+            c->m_mirror = ie->m_mirror | mirror | outer.m_mirror;
+            c->m_umask = ~u64(0);
+            const offs_t delta = (offs_t)(x - ie->m_start);
+            if (c->m_rh) c->m_rh = [r = ie->m_rh, delta](offs_t o, u64 m) { return r(o + delta, m); };
+            if (c->m_wh) c->m_wh = [wh = ie->m_wh, delta](offs_t o, u64 d, u64 m) { wh(o + delta, d, m); };
+            m_all.push_back(c.get());
+            holder->m_entries.push_back(std::move(c));
+        }
+    }
+    m_maps.push_back(std::move(holder));
+}
+
 void address_space::collect(address_map &map, offs_t base, offs_t mirror) {
     for (auto &e : map.m_entries) {
         if (e->m_rkind == address_map_entry::SUBMAP) {
             auto sub = std::make_unique<address_map>(*e->m_subdev);
             e->m_submap(*sub);
-            collect(*sub, base + e->m_start, mirror | e->m_mirror);
+            const u64 busmask = m_bus_bytes == 8 ? ~u64(0) : (u64(1) << (m_bus_bytes * 8)) - 1;
+            if ((e->m_umask & busmask) != busmask) collect_units(*sub, *e, base, mirror);
+            else collect(*sub, base + e->m_start, mirror | e->m_mirror);
             m_maps.push_back(std::move(sub));
             continue;
         }
@@ -313,6 +402,11 @@ void address_space::apply(address_map_entry &er) {
             if (!r) fatalerror("%s: region %s missing", m_device.tag(), e->m_region.c_str());
             if (e->m_region_offset + len > r->bytes()) fatalerror("%s: region %s too small (%x-%x + %x, %x bytes)", m_device.tag(), e->m_region.c_str(), e->m_start, e->m_end, e->m_region_offset, r->bytes());
             mem = r->base() + e->m_region_offset;
+        } else if (memory_region *own = e->m_rom ? m_device.machine().find_region(m_device.tag()) : nullptr) {
+            // MAME: a ROM entry without a region reads the device's own region, at its address
+            const u64 off = unit_to_byte(e->m_start);
+            if (off + len > own->bytes()) fatalerror("%s: region %s too small for %x-%x", m_device.tag(), m_device.tag(), e->m_start, e->m_end);
+            mem = own->base() + off;
         } else {
             m_owned.push_back(std::make_unique<std::vector<u8>>(len + 8, 0));
             mem = m_owned.back()->data();
@@ -320,6 +414,8 @@ void address_space::apply(address_map_entry &er) {
     }
     if (m_rt.size() >= 0xffff) fatalerror("%s: too many address map entries", m_device.tag());
     m_rt.push_back({e, mem, e->m_start});
+    if (e->m_before_time || e->m_after_delay) m_waits = true;
+    if (!e->m_share.empty() && mem) hk_register_share(e->m_map.m_device->subtag(e->m_share.c_str()), mem, (size_t)((u64)e->m_end - e->m_start + 1));
     const u16 id = (u16)m_rt.size();
     const offs_t extra = e->m_mirror | e->m_select;
     // every combination of the mirror and select bits
@@ -703,6 +799,7 @@ void running_machine::start() {
     }
     m_phase = machine_phase::INIT;
     for (device_t *d : m_devices) { d->device_config_complete(); for (device_interface *i : d->m_interfaces) i->interface_config_complete(); }
+    for (device_t *d : m_devices) d->device_resolve_objects();
     for (device_t *d : m_devices) d->start();
     if (m_exact) {
         // MAME: the NVRAM (a file, or the device's defaults), then the time on battery-backed RTCs
@@ -841,6 +938,14 @@ void running_machine::timeslice() {
         m_basetime = target;
     }
     execute_timers();
+}
+
+// MAME's schedule_soft_reset: a zero-time timer that resets every device, the executing CPU's
+// timeslice cut short (running_machine::soft_reset). Only a watchdog asks for it here.
+void running_machine::schedule_soft_reset() {
+    fprintf(stderr, "hiraku: soft reset (watchdog) at %.6f s\n", time().as_double());
+    synchronize([this](s32) { reset(); });
+    abort_timeslice();
 }
 
 void running_machine::execute_timers() {

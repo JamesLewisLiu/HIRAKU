@@ -652,6 +652,17 @@ def minimp3_h(s):
     return neon(s, 8, 'vst1_lane_s16(out+i  , pcma, 0);', 'minimp3 f32_to_s16 rounding')
 
 
+def rs232_cpp(s):
+    # Twinkle: its RS-232 ports hold the DVD player (xvd701) or nothing. MAME's default option
+    # list names ~20 serial devices (terminals, printers, pty...) that HIRAKU doesn't carry.
+    s = cut(s, '#include "adsp2181ekl.h"', 'void default_rs232_devices(device_slot_interface &device)',
+            '// HIRAKU: no serial devices of MAME\'s default list (the explicit instantiations of\n'
+            '// MAME\'s two-parameter device_finder go too: the shim\'s finder has one)\n\n', 'rs232.cpp includes')
+    s = cut(s, '\tdevice.option_add("adsp2181ekl",', '}',
+            '\t// HIRAKU: none (see above)\n', 'rs232.cpp default devices')
+    return s
+
+
 def main():
     if len(sys.argv) != 2:
         sys.exit(__doc__)
@@ -661,7 +672,8 @@ def main():
                     ('cpu/psx/mdec.cpp', mdec_cpp), ('cpu/psx/mdec.h', mdec_h),
                     ('video/psx.cpp', video_psx_cpp), ('bus/ata/atapihle.cpp', atapihle_cpp),
                     ('machine/ins8250.cpp', ins8250_cpp), ('machine/ins8250.h', ins8250_h),
-                    ('../3rdparty/minimp3/minimp3.h', minimp3_h)]:
+                    ('../3rdparty/minimp3/minimp3.h', minimp3_h),
+                    ('bus/rs232/rs232.cpp', rs232_cpp)]:
         p = root / rel
         text = p.read_text()
         if 'HIRAKU' in text:

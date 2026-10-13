@@ -13,7 +13,7 @@ extracted with MAME's chdman (memory-capped) into dumps/<game>/.
 The game is found by
 - its program, for Firebeat: the CD holding HIKARU.EXE / FIREBEAT.EXE, unpacked
   and matched by SHA-1 against games/*/game.toml;
-- the MAME set's name otherwise (DJ Main, System 573), or a CHD's name.
+- the MAME set's name otherwise (DJ Main, System 573, Twinkle), or a CHD's name.
 Each image gets its role from what it is: a hard disk is beatmania III's sound
 board disk or DJ Main's IDE disk, a DVD pop'n music's, a second CD ParaPara's
 audio disc.
@@ -189,6 +189,60 @@ def ingest_sys573(args) -> int:
     if machine.get("msu") and not machine.get("msu_cd"):
         print(f"ERROR    no multi-session unit CD: add {game['cd'].get('msu_chd')}.chd")
         return 1
+    with open(machine_path, "w") as fh:
+        for k in order:
+            if k in machine:
+                fh.write(f"{k}={machine[k]}\n")
+    print(f"wrote    {os.path.relpath(machine_path, ROOT)}")
+    return 0
+
+
+def ingest_twinkle(args) -> int:
+    """A Twinkle game (beatmania IIDX): the MAME set (BIOS, SPU program, dongle), the program
+    CD on the SCSI bus, the Video CD for the external player, and the SPU board's hard disk."""
+    set_name = set_name_of(args.romset) if args.romset else None
+    game = next((g for g in all_games() if g.get("core") == "twinkle" and g.get("mame") == set_name), None)
+    if game is None:
+        print(f"game     unknown - no Twinkle games/*/game.toml has mame = \"{set_name}\"")
+        return 1
+    gid = game["id"]
+    print(f"game     {gid}: {game['title']} (Twinkle)")
+    outdir = os.path.join(args.out, gid)
+    names = set(copy_romset(args.romset, os.path.join(outdir, "rom")))
+    roms = game["roms"]
+    keys = ("bios", "spu", "dongle")
+    missing = [roms[k] for k in keys if roms.get(k) and roms[k] not in names]
+    if missing:
+        print(f"ERROR    the set lacks {', '.join(missing)}")
+        return 1
+    machine_path = os.path.join(outdir, "machine.txt")
+    machine: dict[str, str] = {}
+    if os.path.exists(machine_path):
+        with open(machine_path) as fh:
+            machine = dict(l.rstrip("\n").split("=", 1) for l in fh if "=" in l)
+    machine.update(core="twinkle", family=game["family"])
+    for k in keys:
+        if roms.get(k):
+            machine[k] = roms[k]
+    board = game.get("board", {})
+    machine["dongle_type"] = board["dongle"]
+    machine["dvd_port"] = board["dvd_port"]
+    for flag, key in (("cd", "cd"), ("video_cd", "video_cd"), ("hdd", "hdd")):
+        if getattr(args, flag, None):
+            machine[key] = media_path(getattr(args, flag), outdir)
+    # the disk's geometry (MAME's IDE disk reports it): the CHD's, else 16 heads and 63 sectors
+    if getattr(args, "hdd_chs", None):
+        machine["hdd_chs"] = ",".join(map(str, args.hdd_chs))
+    elif machine.get("hdd") and not machine.get("hdd_chs"):
+        img = os.path.join(outdir, machine["hdd"]) if not machine["hdd"].startswith("/") else machine["hdd"]
+        machine["hdd_chs"] = f"{os.path.getsize(img) // (16 * 63 * 512)},16,63"
+    for key, what in (("cd", f"the program CD: add {game['cd']['chd']}.chd"),
+                      ("video_cd", f"the Video CD: add {game['cd']['video_chd']}.chd"),
+                      ("hdd", f"the hard disk: add {game['hdd']['chd']}.chd")):
+        if not machine.get(key):
+            print(f"ERROR    no {what}")
+            return 1
+    order = ["core", "family", *keys, "dongle_type", "dvd_port", "cd", "video_cd", "hdd", "hdd_chs"]
     with open(machine_path, "w") as fh:
         for k in order:
             if k in machine:
@@ -407,7 +461,7 @@ def ingest_auto(args, inputs: list[str]) -> int:
             stem = os.path.splitext(os.path.basename(c))[0]
             for g in games:
                 if stem in (g.get("hdd", {}).get("chd"), g.get("cd", {}).get("chd"), g.get("cd", {}).get("msu_chd"),
-                            g.get("cd", {}).get("hdd_chd")):
+                            g.get("cd", {}).get("hdd_chd"), g.get("cd", {}).get("video_chd")):
                     hint = g
     if hint:
         print(f"game     {hint['id']}: {hint['title']} (from {'the set' if romsets else 'the CHD name'})")
@@ -464,6 +518,15 @@ def ingest_auto(args, inputs: list[str]) -> int:
         args.cd = next((p for p in cds if stem(p) == want.get("chd")), None) or \
             next((p for p in cds if p not in (args.msu_cd, args.hdd_cd)), None)
         return ingest_sys573(args)
+    if core == "twinkle":
+        want = hint.get("cd", {})
+        stem = lambda p: os.path.splitext(os.path.basename(p))[0]
+        args.cd = next((p for p in cds if stem(p) == want.get("chd")), None)
+        args.video_cd = next((p for p in cds if stem(p) == want.get("video_chd")), None)
+        args.hdd = args.hdd or next((p for p, k in media if k == "hd"), None)
+        hd_chd = next((c for c in chds if chd.info(c).kind == "hd"), None)
+        args.hdd_chs = chd.geometry(hd_chd) if hd_chd else None
+        return ingest_twinkle(args)
     print(f"ERROR    {hint['id']} is a Firebeat game: its program CD is needed (none of the images holds one)")
     return 1
 

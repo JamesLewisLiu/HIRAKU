@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// HIRAKU: the ATA drive types the System 573 never selects (see stubs/*.h).
+// HIRAKU: the ATA drive types the System 573 never selects (see stubs/*.h). The hard disk is
+// MAME's own (bus/ata/hdd.cpp), for Twinkle.
 #include "emu.h"
 #include "imagedev/cdromimg.h"
 #include "cp2024.h"
-#include "hdd.h"
 #include "px320a.h"
 #include "xm3301.h"
 #include "zip100.h"
@@ -12,10 +12,6 @@
 #include "multitap.h"
 class cp2024_device : public device_t { public: cp2024_device(const machine_config &m, const char *t, device_t *o, u32 c) : device_t(m, CP2024, t, o, c) { fatalerror("%s: not available in HIRAKU", t); } };
 DEFINE_DEVICE_TYPE(CP2024, cp2024_device, "cp2024", "CP2024 (unavailable)")
-class ide_hdd_device : public device_t { public: ide_hdd_device(const machine_config &m, const char *t, device_t *o, u32 c) : device_t(m, IDE_HARDDISK, t, o, c) { fatalerror("%s: not available in HIRAKU", t); } };
-DEFINE_DEVICE_TYPE(IDE_HARDDISK, ide_hdd_device, "ide_hdd", "IDE_HARDDISK (unavailable)")
-class ata_cf_device : public device_t { public: ata_cf_device(const machine_config &m, const char *t, device_t *o, u32 c) : device_t(m, ATA_CF, t, o, c) { fatalerror("%s: not available in HIRAKU", t); } };
-DEFINE_DEVICE_TYPE(ATA_CF, ata_cf_device, "ata_cf", "ATA_CF (unavailable)")
 class px320a_device : public device_t { public: px320a_device(const machine_config &m, const char *t, device_t *o, u32 c) : device_t(m, PX320A, t, o, c) { fatalerror("%s: not available in HIRAKU", t); } };
 DEFINE_DEVICE_TYPE(PX320A, px320a_device, "px320a", "PX320A (unavailable)")
 class xm3301_device : public device_t { public: xm3301_device(const machine_config &m, const char *t, device_t *o, u32 c) : device_t(m, XM3301, t, o, c) { fatalerror("%s: not available in HIRAKU", t); } };
