@@ -41,6 +41,7 @@ pop'n 9 card until the game writes it.
   - `--bind ADDR` (default 0.0.0.0);
   - `--clock "2003-06-01 12:00:00"`: the time `ntp.get` gives, running from there (default: the
     host's clock);
+  - `--tz 9`: with the host's clock, the cabinet's time zone in hours from UTC (default 9, Japan);
   - `--quiet`: don't print the calls.
 
 **What the HIRAKU server keeps** (the save folder's `eamuse/`, or `--data`), plain text, one record
@@ -164,7 +165,10 @@ means that method is never sent. `expire` is seconds.
 <ntp status="0"><time year="2003" month="6" day="1" hour="12" min="0" sec="19"/></ntp>
 ```
 
-The game won't start e-AMUSEMENT until `ntp.get` answers or 40 s pass.
+- **The game won't start e-AMUSEMENT** until `ntp.get` answers or 40 s pass.
+- **The clock:** the game sets its own clock to this time as given (`0x18a138` → `0x1a9598`) and
+  stamps its times "+9". So send the cabinet's local time, Japan time for a Japanese cabinet,
+  not UTC.
 
 **package.list / package.intend** [game / code] (`0x197960`): downloads. An empty answer
 `<package status="0"/>` means none. A list would be `<item url= name= desc= size= pkgtype= sumtype= sum= from= till=/>`;
@@ -213,7 +217,7 @@ offering packages isn't explored.
 
 **rank** (all six: `local`, in the clear):
 
-**`get` / `get_h` / `get_gz`** [game / code / code] (parse `0x19a080`, `0x19a5c8`, `0x19aaf0`): the
+**`get` / `get_h` / `get_gz`** [game] (parse `0x19a080`, `0x19a5c8`, `0x19aaf0`): the
 boards shown in attract mode and after play. The request carries `course_offset course_num
 rank_offset rank_num`; `get_gz` has no courses.
 
@@ -235,7 +239,7 @@ rank_offset rank_num`; `get_gz` has no courses.
   - `area` is the prefecture number;
   - up to 20 courses, 100 entries each.
 
-**`register`** [game], **`register_h` / `register_gz`** [code] (parse `0x1992e8`, `0x1997f0`, `0x199c60`; statuses `0x184f68`): a result.
+**`register`** and **`register_gz`** [game], **`register_h`** [code] (parse `0x1992e8`, `0x1997f0`, `0x199c60`; statuses `0x184f68`): a result.
 
 ```xml
 <rank method="register" card_id= konami_id= gpcb_id= name= course= option= score= cool= great= good= bad= combo= shop_name= area_num=/>
@@ -245,8 +249,13 @@ rank_offset rank_num`; `get_gz` has no courses.
 - **The answer:** the player's place in the course, the number of entries, and whether the
   result is a new best.
 - **`register_h`** sends `music combo`.
-- **`register_gz`** sends `gpcb_id prog parts shop_name area_num`: Gambler Z progress is the
-  shop's, per cabinet.
+- **`register_gz`** sends `gpcb_id prog parts shop_name area_num`, at the end of a credit in
+  event phases 1–3, e.g. `prog="0" parts="00000000"` (parts: 8 hex digits).
+  - **Gambler Z progress is the shop's, per cabinet.** The labyrinth itself lives in the cabinet's
+    own settings (battery RAM, settings record 0x18–0x23: `0x1aa7f0`…, with 0x1000000 in the flags
+    word meaning cleared); the server only ranks the shops.
+- **`get_h`** and **`get_gz`** come at start-up in phases MAX and 1–3. A HITASURA run that clears no
+  song sends no `register_h`.
 - **Other statuses:** 700 and 701 make the game show "not ranked"-style results (meaning
   unconfirmed).
 - **When it's sent:** a course result is registered when a card is in use (`0x1359e8`, from the
@@ -314,9 +323,7 @@ The card holds no player data, only an identity.
 
 ## Not known yet
 
-- `register_h`/`register_gz` and `get_h`/`get_gz` in play, KONAMI ID registration on the cabinet,
+- `register_h` (a HITASURA run with songs cleared), the labyrinth's moves (stages cleared in phases 1–3), KONAMI ID registration on the cabinet,
   `eemall`, `package.intend`, `p_friend.ask`.
 - What 700/701 mean exactly.
-- **The clock:** what time zone `ntp.get` should be in. The game writes "+9" times; HIRAKU gives
-  UTC from its fixed clock.
 - **The Gambler Z labyrinth:** event phases 1–3, its parts and progress per shop.

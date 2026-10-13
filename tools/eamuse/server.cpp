@@ -6,9 +6,11 @@
 // docs/EAMUSE3.md describes the protocol, for running it or for adding pop'n 9 to another
 // server.
 //
-//   hiraku-eamuse [--port 8080] [--bind 0.0.0.0] [--data DIR] [--clock "2003-06-01 12:00:00"] [--quiet]
+//   hiraku-eamuse [--port 8080] [--bind 0.0.0.0] [--data DIR] [--clock "2003-06-01 12:00:00"] [--tz 9] [--quiet]
 //     --data   where it keeps what it must remember (default ./eamuse-data)
-//     --clock  the time ntp.get gives the game, running from this start (default: the host's)
+//     --clock  the time ntp.get gives the game, running from this start (default: the host's clock)
+//     --tz     with the host's clock: the cabinet's time zone, hours from UTC (default 9, Japan: the
+//              game sets its clock to what ntp.get says and stamps its own times "+9")
 //     --quiet  don't print each call
 #include <arpa/inet.h>
 #include <netinet/in.h>
@@ -62,6 +64,7 @@ int main(int argc, char **argv) {
     int port = 8080;
     std::string bind_addr = "0.0.0.0", data = "eamuse-data";
     int64_t clock_start = -1;
+    int tz_hours = 9;
     bool quiet = false;
     for (int i = 1; i < argc; i++) {
         const std::string a = argv[i];
@@ -75,16 +78,20 @@ int main(int argc, char **argv) {
         else if (a == "--clock") {
             clock_start = parse_clock(val());
             if (clock_start < 0) { fprintf(stderr, "--clock: YYYY-MM-DD[ HH:MM:SS]\n"); return 2; }
-        } else if (a == "--quiet") quiet = true;
+        } else if (a == "--tz") tz_hours = atoi(val());
+        else if (a == "--quiet") quiet = true;
         else {
-            fprintf(stderr, "usage: hiraku-eamuse [--port N] [--bind ADDR] [--data DIR] [--clock \"YYYY-MM-DD HH:MM:SS\"] [--quiet]\n");
+            fprintf(stderr, "usage: hiraku-eamuse [--port N] [--bind ADDR] [--data DIR] [--clock \"YYYY-MM-DD HH:MM:SS\"] [--tz H] [--quiet]\n");
             return a == "--help" || a == "-h" ? 0 : 2;
         }
     }
     mkdir(data.c_str(), 0755);
     hk::py::EamuseServer server(data);
     const int64_t started = (int64_t)time(nullptr);
-    server.now = [&] { return clock_start < 0 ? (int64_t)time(nullptr) : clock_start + ((int64_t)time(nullptr) - started); };
+    // the cabinet's wall clock (ntp.get is sent as is, and the game takes it as its local time)
+    server.now = [&] {
+        return clock_start < 0 ? (int64_t)time(nullptr) + tz_hours * 3600 : clock_start + ((int64_t)time(nullptr) - started);
+    };
     if (!quiet) server.log = [](const std::string &s) { printf("%s\n", s.c_str()); fflush(stdout); };
 
     signal(SIGPIPE, SIG_IGN);

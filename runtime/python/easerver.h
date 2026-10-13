@@ -28,8 +28,9 @@ public:
 
     // Each call in clear (request and answer), for HK_PY_NET_LOG.
     std::function<void(const std::string &)> log;
-    // The machine's time, as seconds since 1970 (ntp.get): the core's clock, not the host's,
-    // so runs stay reproducible.
+    // The cabinet's wall clock, as seconds since 1970 read as UTC (ntp.get sends it as is, and the
+    // game sets its clock to it): in the core, the emulated clock (reproducible runs); in
+    // hiraku-eamuse, the host's clock in Japan time unless told otherwise.
     std::function<int64_t()> now;
 
     // The protocol's own pieces, public for tools and tests.

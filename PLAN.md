@@ -1307,7 +1307,13 @@ Each phase ends with `tools/regress.py check popn9-play` bit-identical, unless i
       - `tools/eamuse/corpus.json`: the game's calls, captured or built from its formats, flagged.
       - `tools/eamuse/check.py URL`: the corpus checked against the parsers' rules, then a stateful scenario. hiraku-eamuse passes all of it.
     - **Launcher:** Settings > e-AMUSEMENT > Server (empty = offline) passes `--eamuse`.
-    - **Not done yet:** HITASURA and Gambler Z boards in play (`register_h`, `_gz`: phases MAX and 1–3), KONAMI ID registration on the cabinet, the attract mode's ranking pages, p_friend, eemall in play.
+    - **Phases MAX and 1–3 with the card:**
+      - start-up sends `rank.get_h` (MAX) and `rank.get_gz` (1–3);
+      - a Gambler Z credit (phase 1) ends with `register_gz prog="0" parts="00000000"`, and attract then shows "Gambler Z in progress" pages;
+      - the labyrinth is the cabinet's (settings record 0x18–0x23; `0x1aa7f0`…), and the credit set +0x1c to 0xffff;
+      - a HITASURA run with no song cleared sends no `register_h`.
+    - **The clock:** `ntp.get` is set into the cabinet's clock as given (`0x18a138` → `0x1a9598`), and the game stamps its times "+9". `hiraku-eamuse` sends Japan time (`--tz`); the core sends its emulated clock.
+    - **Not done yet:** `register_h` and the labyrinth's moves (stages cleared), KONAMI ID registration on the cabinet, the attract mode's ranking pages, p_friend and eemall in play; the labyrinth's fields in `tools/unlock.py`.
     - **Seen once:** one `popn9-play` check differed right after a rebuild, then was identical three times running. Where it differed was not captured; watch for it.
   - **Debugging aids:** `HK_PY_WATCH=addr,…` prints EE RAM words when they change. Ghidra headless decompiles (`$HK_PYTHON_WORK/ghidra`: `Decomp.java OUT addr|range:A-B…`, `Refs.java addr…`).
 - **Tools:**

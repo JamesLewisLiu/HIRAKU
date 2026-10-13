@@ -100,19 +100,19 @@
   {
    "name": "rank.register_gz",
    "encrypted": false,
-   "captured": false,
-   "body": "<call srcid=\"01401401000100045FEF\" model=\"C00:J:A:A\"><rank method=\"register_gz\" gpcb_id=\"01401401000100045FEF\" prog=\"3\" parts=\"1f\" shop_name=\"\" area_num=\"13\"/></call>"
+   "captured": true,
+   "body": "<call srcid=\"01401401000100045FEF\" model=\"C00:J:A:A\"><rank method=\"register_gz\" gpcb_id=\"01401401000100045FEF\" prog=\"0\" parts=\"00000000\" shop_name=\"\" area_num=\"255\"/></call>"
   },
   {
    "name": "rank.get_h",
    "encrypted": false,
-   "captured": false,
-   "body": "<call srcid=\"01401401000100045FEF\" model=\"C00:J:A:A\"><rank method=\"get_h\" course_offset=\"0\" course_num=\"1\" rank_offset=\"1\" rank_num=\"100\"/></call>"
+   "captured": true,
+   "body": "<call srcid=\"01401401000100045FEF\" model=\"C00:J:A:A\"><rank method=\"get_h\" course_offset=\"0\" course_num=\"4\" rank_offset=\"1\" rank_num=\"100\"/></call>"
   },
   {
    "name": "rank.get_gz",
    "encrypted": false,
-   "captured": false,
+   "captured": true,
    "body": "<call srcid=\"01401401000100045FEF\" model=\"C00:J:A:A\"><rank method=\"get_gz\" rank_offset=\"1\" rank_num=\"100\"/></call>"
   },
   {
