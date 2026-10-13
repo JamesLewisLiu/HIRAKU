@@ -43,11 +43,55 @@ def default_nvram(game: str) -> str:
     return os.path.join(base, "hiraku", game)
 
 
+def mirror_sum(b: bytes) -> int:
+    """Konami Python's BBSRAM file sum (mirror.c, pop'n 9 0x1ab6f8): little-endian words, each XORed with its index."""
+    return sum(int.from_bytes(b[k:k + 4], "little") ^ (k // 4) for k in range(0, len(b) - 3, 4)) & 0xffffffff
+
+
+def record_sum(c: dict, rec: bytes) -> int:
+    """A record's own sum (checksum.inner): its segments' bytes, each XORed with its index in the
+    segment, plus a constant (pop'n 9's settings: 0x1a9b28)."""
+    s, o = c["add"], 0
+    for n in c["segments"]:
+        s += sum(rec[o + k] ^ k for k in range(n))
+        o += n
+    return s & 0xffffffff
+
+
 def checksum_ok(u: dict, data: bytes) -> bool:
     c = u.get("checksum")
     if not c:
         return True
+    if c.get("kind") == "mirror":
+        # each copy: a header {sum of the next two words, data size, data sum}, the data at +0x10
+        for base in c["files"]:
+            size = int.from_bytes(data[base + 4:base + 8], "little")
+            rec = data[base + 0x10:base + 0x10 + size]
+            if (size != c["size"] or mirror_sum(data[base + 4:base + 12]) != int.from_bytes(data[base:base + 4], "little")
+                    or mirror_sum(rec) != int.from_bytes(data[base + 8:base + 12], "little")):
+                return False
+            i = c.get("inner")
+            if i and record_sum(i, rec) != int.from_bytes(rec[i["at"]:i["at"] + 4], "little"):
+                return False
+        return True
     return sum(data[c["from"]:c["to"]]) & 0xffff == int.from_bytes(data[c["at"]:c["at"] + 2], "big")
+
+
+def seal(u: dict, data: bytearray):
+    """After a change: the checksums, as the game writes them."""
+    c = u.get("checksum")
+    if not c:
+        return
+    if c.get("kind") == "mirror":
+        for base in c["files"]:
+            rec = base + 0x10
+            i = c.get("inner")
+            if i:
+                data[rec + i["at"]:rec + i["at"] + 4] = record_sum(i, data[rec:rec + c["size"]]).to_bytes(4, "little")
+            data[base + 8:base + 12] = mirror_sum(data[rec:rec + c["size"]]).to_bytes(4, "little")
+            data[base:base + 4] = mirror_sum(data[base + 4:base + 12]).to_bytes(4, "little")
+    else:   # a 16-bit sum of the bytes from..to, kept at `at` (big-endian)
+        data[c["at"]:c["at"] + 2] = (sum(data[c["from"]:c["to"]]) & 0xffff).to_bytes(2, "big")
 
 
 def switches(u: dict, nvram: str):
@@ -84,9 +128,7 @@ def apply_switches(game: str, u: dict, nvram: str, changes: dict) -> str:
             data[sw["on_at"]] = 0     # switched off; the code stays entered, as in the game
         else:
             data[sw["code_at"]] = 0
-    c = u.get("checksum")
-    if c:
-        data[c["at"]:c["at"] + 2] = (sum(data[c["from"]:c["to"]]) & 0xffff).to_bytes(2, "big")
+    seal(u, data)
     tmp = path + ".tmp"
     with open(tmp, "wb") as f:
         f.write(data)
@@ -203,9 +245,7 @@ def apply(game: str, u: dict, nvram: str, value: int) -> str:
     shutil.copy2(path, backup)
     for o in u["offsets"]:
         data[o] = value
-    c = u.get("checksum")   # a 16-bit sum of the bytes from..to, kept at `at` (big-endian)
-    if c:
-        data[c["at"]:c["at"] + 2] = (sum(data[c["from"]:c["to"]]) & 0xffff).to_bytes(2, "big")
+    seal(u, data)
     tmp = path + ".tmp"
     with open(tmp, "wb") as f:
         f.write(data)

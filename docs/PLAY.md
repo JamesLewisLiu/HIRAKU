@@ -507,6 +507,12 @@ In test mode, blue (buttons 4/6) moves and red (5) selects; I/O CHECK > INPUT CH
 
 **Lamps:** the 9 button lamps, 5 top lamps and 4 side lamps, through the lights socket and HID lamps (docs/LIGHTS.md), as the game's LAMP CHECK names them.
 
+**pop'n 9 unlocks:** right-click pop'n music 9 > **Unlocks**, pick the event phase, and start the game.
+- **MAX** adds HITASURA mode after EXPERT in the mode select, and everything the phases before it release.
+- Phases 1–3 run the Gambler Z event and release its songs (RemyWiki). On the cabinet the event's labyrinth needed an e-AMUSEMENT card; what it does without one in HIRAKU is not checked yet.
+- From a terminal: `tools/unlock.py popn9` lists the phases, and `tools/unlock.py popn9 phase=4` sets MAX. The game must not be running; the old save is kept as a `.bak`.
+- **In the game itself:** test mode > EVENT OPTIONS > PASSWORD, the four codes in order (`unlocks.toml` has them). The tool writes the same bytes the game does.
+
 **From the launcher:** drop the `.py1` (or the set's folder) on its window; it passes `--renderer vk` for Python games.
 
 **On another PC:** `tools/package.sh` takes the Python binaries along with Reliquary's resources and the libraries built for it; `tools/pack-data.py DEST popn9` copies the game's data, CHD included (2.4 GB).

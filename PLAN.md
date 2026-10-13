@@ -1233,6 +1233,18 @@ Each phase ends with `tools/regress.py check popn9-play` bit-identical, unless i
 
   - Medians of 2 real-time and 3 flat-out runs, alternated. Audio was null in both, and the display ran at 144 Hz, so the core's display sync was off.
   - **The emulation costs the same:** it is the same code. The saving appears only at real-time speed, so it is in how each paces and presents a frame. The split between pcsx2-qt's frame limiter, its presentation and its Qt UI is **not measured**.
+- **Unlocks (§20's system), 2026-10-13:** pop'n 9's event phase, set from the launcher's Unlocks dialog or `tools/unlock.py popn9 phase=0..4`.
+  - **How it was found:** the four RemyWiki codes typed in test mode > EVENT OPTIONS > PASSWORD (`oracle/scripts/popn9-phases.his`), the saves compared, then the program read.
+  - **Where it lives:** the interface board's BBSRAM (`m48t58y.u48`), a small file system (`bbsram0:/settings`, `/book`) written by Konami's `mirror.c`:
+    - each file is kept twice (settings0 at 0x0, settings1 at 0x110);
+    - each copy is a 12-byte header {sum, size, data sum} with the data at +0x10. The sums are of 32-bit LE words, each XORed with its index (`0x1ab6f8`);
+    - the 0x60-byte settings record (RAM `0x1212180`) ends with its own sum at +0x5c (`0x1a9b28`): five segments, each byte XORed with its index in the segment, plus 0x50. A record with a wrong sum is ignored at boot (the phase reads `--`);
+    - the phase is record +0x14, 0–4 (`0x1aa4f0` reads it).
+  - **Checked:**
+    - every phase written by the tool, from phase 0 or from MAX, is byte-identical to the game's own save at that phase;
+    - a tool-made MAX save boots at MAX (EVENT OPTIONS), and the mode select then has HITASURA after EXPERT.
+  - **Not checked:** what phases 1–3 do without e-AMUSEMENT (the Gambler Z labyrinth needed a card).
+  - `tools/unlock.py` gained checksum kind `mirror` (with an optional `inner` record sum) for it. Code macros (`macros.txt`) already run in the Python core, which shares `runtime/main.cpp`; pop'n 9 has no per-credit codes known yet that would need one.
 - **Tools:**
   - `tools/ab.py`: A/B of two binaries, or of two settings with `--a-args`/`--b-args`;
   - `--pcsx2-set Section/Key=value`: any emulator setting, for experiments;
