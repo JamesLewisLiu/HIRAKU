@@ -9,6 +9,7 @@
 #include <memory>
 #include <unordered_map>
 
+#include "../../src/ppc/cycles.h"
 #include "../../src/ppc/decode.h"
 #include "cpu403.h"
 #include "runtime.h"
@@ -150,8 +151,7 @@ void take_exception(hk_ctx *c, uint32_t vector, uint32_t return_pc) {
 }
 
 bool interp_step(hk_ctx *c) {
-    // time: one tick per instruction
-    if (--hk_budget <= 0) {
+    if (hk_budget <= 0) {
         if (shadow_native_active()) hk_budget = 1 << 20;
         else sched_sync();
     }
@@ -164,6 +164,18 @@ bool interp_step(hk_ctx *c) {
     }
     const uint32_t pc = c->pc;
     const Insn i = decode(fetch(c, pc), pc);
+    // time: what MAME charges this instruction (src/ppc/cycles.h)
+    {
+        const uint32_t pp = HK_PHYS(pc - 4);
+        uint32_t prev = 0;
+        bool has_prev = pc >= 4 && pp <= HK_RAM_SIZE - 4;
+        if (has_prev) {
+            memcpy(&prev, hk_ram + pp, 4);
+            prev = hk_bswap32(prev);
+            has_prev = !ppc::ends_sequence(prev);
+        }
+        hk_budget -= ppc::cycles(i.word, pc, has_prev, prev);
+    }
     if (g_interp.trace) fprintf(stderr, "%08x: %08x %s\n", pc, i.word, disasm(i).c_str());
     g_stats.insns++;
     uint32_t next = pc + 4;

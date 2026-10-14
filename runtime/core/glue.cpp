@@ -268,6 +268,9 @@ void run_vector(hk_ctx *c) {
     if (hk_func fn = lookup(c->pc)) {
         g_stats.native_vectors++;
         fn(c);
+        // its rfi returned here: as the interpreter's rfi does, an interrupt already pending is
+        // taken at once, not at the next poll that finds the budget spent (up to the next event)
+        if (cpu403::irq_pending()) sched_kick();
     }
 }
 

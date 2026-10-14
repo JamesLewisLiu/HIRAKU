@@ -234,9 +234,10 @@ build/cmake/hiraku-bm36th --window
   select and the practice stage ("Instant Love" with DJ KONAMI) run with sound and scoring.
   Everything is recompiled: nothing is interpreted.
 - **Against MAME** (`oracle/scripts/<game>-boot.his`): the boot screens match at the same frame
-  numbers. The attract is pixel-identical too, but later than MAME's: bm3 by 89 frames,
-  CORE REMIX by 22, 6th MIX by 53 and 7th MIX by 85, as The Final (95) is. The delay appears
-  between frames 2400 and 3000, while the game loads from the hard disk.
+  numbers, and the attract is pixel-identical, 5–7 frames earlier than MAME's (bm3 5,
+  7th MIX and The Final 7). It was 22–95 frames later until the instructions were charged
+  MAME's cycles and a native exception's return took a pending interrupt at once
+  (PLAN.md section 18).
 - **The dongles:** MAME marks 6th and 7th MIX's dumps BAD_DUMP (0xc0 bytes where the others have
   0xc8), but the games accept them (IBTN: OK).
 - **7th MIX's disk** has few zero runs: it takes 18 GB. If it doesn't fit beside the others,

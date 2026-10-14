@@ -20,6 +20,7 @@
 #include <string>
 #include <vector>
 
+#include "../src/ppc/cycles.h"
 #include "../src/ppc/decode.h"
 
 using namespace hk;
@@ -183,7 +184,7 @@ struct Emitter {
     std::set<uint32_t> body;      // every instruction address in the function
     std::set<uint32_t> labels;    // addresses that need a label
     int problems = 0;
-    int pending = 0;              // instructions not yet charged (HK_TICK)
+    int pending = 0;              // cycles not yet charged (HK_TICK), as MAME counts them (src/ppc/cycles.h)
 
     void flush() {
         if (pending) o << "    HK_TICK(" << pending << ");\n";
@@ -210,8 +211,8 @@ struct Emitter {
             if (inside(hi)) labels.insert(hi);
     }
 
-    // A poll charges virtual time: at a back-edge, the loop body's length in
-    // instructions; at a function entry, a fixed call overhead.
+    // A poll lets due events and interrupts in: at a back-edge and at a function
+    // entry. It charges nothing (HK_TICK does); `cost` is unused.
     void poll(uint32_t at, uint32_t cost) {
         if (!f.nopoll) o << "    HK_POLL(c, " << hex(at) << ", " << cost << ");\n";
     }
@@ -241,7 +242,12 @@ struct Emitter {
     void insn(uint32_t a) {
         Insn i = decode(word_at(a), a);
         if (labels.count(a)) { flush(); o << lbl(a) << ":\n"; }
-        pending++;
+        {
+            uint32_t prev = 0;
+            bool has_prev = a - 4 >= g_base && a - g_base <= g_image.size();
+            if (has_prev) has_prev = !hk::ppc::ends_sequence(prev = word_at(a - 4));
+            pending += hk::ppc::cycles(i.word, a, has_prev, prev);
+        }
         // charge before anything that may leave straight-line code (branches,
         // calls, returns, syscalls) or touch the outside world in time (MMIO)
         if (i.is_branch() || i.op == Op::sc || i.op == Op::rfi || i.op == Op::rfci) flush();

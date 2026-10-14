@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Virtual time. One tick = one PPC403 clock (66 MHz). Interpreted code is
-// charged one tick per instruction; recompiled code is charged at its poll
-// points (back-edges: the loop body's length, function entries: a constant).
+// Virtual time. One tick = one PPC403 clock (66 MHz). Every instruction is
+// charged what MAME charges it (src/ppc/cycles.h: most 1, folded branches 0,
+// multiply 4, divide 33): the interpreter per instruction, recompiled code per
+// straight-line run (HK_TICK).
 // Devices schedule events on this clock, so a run is deterministic: the same
 // inputs at the same ticks give the same machine.
 #pragma once
