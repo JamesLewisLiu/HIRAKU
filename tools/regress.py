@@ -98,11 +98,6 @@ CASES = {
     # the same game with the background video (MAME shows none): Video CD chapter 36 under the stage
     "bmiidx3-video": ("bmiidx3", 10000, ["--rtc", "1791916974", "--script", "oracle/scripts/bmiidx3-play.his"],
                       "bmiidx3-boot"),
-}
-
-# report lines that describe the host, not the machine
-HOST_LINES = ("profile:", "audio:", "nvram:")
-HOST_TIME = re.compile(r" in [0-9.]+ s of host time")   # kbm's synth line
     # beatmania IIDX 1st style, with the DVD player's CTS on SIO1 (TW-5; stock MAME stops at E600):
     # the first boot, test mode's DVD check and backup clear, the reset, attract (out/oracle/bmiidx/clear,
     # a MAME with the same SIO1: oracle/mame-patches); then a game from what it left (.../play)
@@ -112,6 +107,11 @@ HOST_TIME = re.compile(r" in [0-9.]+ s of host time")   # kbm's synth line
     # the same game with the background video and the graffiti layer the game draws over it
     "bmiidx-video": ("bmiidx", 14000, ["--rtc", "1791957993", "--script", "oracle/scripts/bmiidx-play.his"],
                      "bmiidx-clear"),
+}
+
+# report lines that describe the host, not the machine
+HOST_LINES = ("profile:", "audio:", "nvram:")
+HOST_TIME = re.compile(r" in [0-9.]+ s of host time")   # kbm's synth line
 
 
 def after_of(case):

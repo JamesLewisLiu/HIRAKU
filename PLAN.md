@@ -1433,6 +1433,23 @@ Measured on the desktop (Ryzen 5700X3D) with the scripted game from the cleared 
 - **Left: the CD loads.** When the game reads its program CD (screen changes: title, menus, after a stage) about 110 frames cost 13–40 ms on the desktop, so likely 30–100 ms on an N100. The time is MAME's SCSI model, which hands every byte over through zero-delay timers (`nscsi`'s REQ/ACK handshake, the 53CF96's DRQ), and the scheduler round each of them takes. MAME pays it too. Options: a cheaper path through the shim's scheduler and devcb for these events, measured with its own PGO; or a departure, moving whole sectors at the timing MAME's byte steps add up to (a switch, MAME's exact path kept for the oracle).
 - **N100 estimate** (not measured: ~2.5× this desktop): a stage at ~4 ms with the video, a quarter of a frame, within the budget; the CD loads are not.
 
+### Progress (2026-10-14): TW-5, the 1st style (further than MAME)
+
+beatmania IIDX 1st style (`bmiidx`) boots, plays and shows its videos; MAME stops it at E600.
+
+- **Why E600:** the game's routine that sends the player a byte (0x8004d248) sends only while SIO1's status has TX ready (bit 0) **and CTS** (bit 8), and gives up after about 40 frames. MAME's SIO has no CTS input (its `twinkle_dvd_type1` has the line commented out, "CTS isn't implemented in SIO").
+- **The departure:** for the 1st style SIO1 is windyfairy's UART (`sio_uart.*`, already HIRAKU's SIO1 on 573s with the multi-session unit: RTS out, CTS in, the 8-byte receive FIFO), switched in by `hk_psx_sio1_uart`, with the player's CTS wired as MAME's comment has it (the XV-D701 holds it on). The game sets 8 bits, odd parity (the fork reads mode bits 4-5 as psx-spx's "vice versa" note has them; the player's own frame is 8O1), 9,800 baud. Up to the first SIO1 access (frame 1261) the run is MAME's, frame for frame.
+- **The oracle:** a MAME patched the same way (`oracle/mame-patches/twinkle-sio1-cts.patch`, built in a worktree of the pin). Against it, `bmiidx-clear` (first boot, test mode's DVD check and backup clear, TEST EXIT, the watchdog reset, attract; 10,820 frames) and `bmiidx-play` (3 coins, 7KEYS, the stage, STAGE FAILED, game over, attract; 14,000 frames): main RAM on every frame, 180/180 and 233/233 snapshots, every traced device access identical in time and data (2.55 M and 3.54 M runs of accesses; the traces' frame tags differ only where a 68000 burst crosses a frame boundary), sound lag 0, correlation >= 0.998. The NVRAM the clear leaves is byte for byte MAME's.
+- **Bugs found on the way:**
+  - The fork's UART never set `m_baud` (nor three other members): MAME read heap garbage (0x30), HIRAKU 0. Zeroed in its constructor (both).
+  - The shim kept a CPU's cycle count over a reset; MAME's `interface_pre_reset` zeroes it (and resumes the CPU). The 68000 syncs autovectored interrupt acknowledges to its E clock by that count, so after the 1st style's watchdog reset it ran 5 cycles off MAME's. Now as MAME (`cpu_device::hk_pre_reset`), and the soft reset eats the executing CPU's cycles as MAME's `eat_all_cycles` does.
+  - MAME runs the autoboot script again on every reset: `hiraku.lua` restarted from frame 0 mid-run, truncating its own files. It arms once now.
+  - The exit report's 68000 PC was always 0 (the shim's PC hook only runs under a debugger): a `hk_pc()` accessor.
+- **Differences from 3rd style:** no 1P Start backup clear (test mode's BACKUP CLEAR); a credit is 3 coins; mode select (4KEYS/5KEYS/7KEYS/EXPERT) by the turntable. The stage videos are masked to the play field's shape on the disc, and the game draws its own graffiti layer (the song's letters, spray-painted) over them, in white: the full-frame scaling lines up with the play field exactly, which supports TW-3's placement.
+- **Speed:** with its R3000 blocks recorded (6,907, from `bmiidx-clear` and `bmiidx-play`; exact against MAME), the scripted game takes 1.55 ms a frame on the desktop with the video, a stage 1.78 ms (p99 2.3).
+- **The Video CD from a cold disk:** the emulation waits for the frame it needs, and the decoder thread read the disc a sector at a time; on a busy disk (another session's runs, swap) single frames took 0.9 to 3 s, and TW-3's "host contention" stall was this. Each chapter is now asked of the kernel whole when it starts (`POSIX_FADV_WILLNEED`): from a cold cache the worst frame is 47 ms, as with the disc cached.
+- **Open:** a hands-on test. The other sets on the same SIO1 wiring (`bmiidxa`, the club kit's `bmiidxc` and `bmiidxca`) aren't on hand.
+
 ### Risks
 - **The mix is undocumented** (TW-3). Fallback: a plain "video behind the PS1 picture where it is black" mode, labelled as a guess.
 - **The 68000 port** is a big generated file; if the shim can't host it cleanly, Musashi with tolerance-based checks on the SPU side, accepting that lockstep stops at the mailbox.
@@ -1454,23 +1471,6 @@ C++, not x86 code, and neither guest CPU has an FPU, so the work was in the host
 - The profiler's ticks (`cntvct_el0`) and sampled PC; a NEON copy of the K057714 blit.
 - `cmake/aarch64-linux-gnu.cmake` cross-builds with clang on Arch's `aarch64-linux-gnu-gcc`,
   statically linked, so qemu-aarch64 runs the binaries (and the build's own `hiraku-recomp`).
-
-### Progress (2026-10-14): TW-5, the 1st style (further than MAME)
-
-beatmania IIDX 1st style (`bmiidx`) boots, plays and shows its videos; MAME stops it at E600.
-
-- **Why E600:** the game's routine that sends the player a byte (0x8004d248) sends only while SIO1's status has TX ready (bit 0) **and CTS** (bit 8), and gives up after about 40 frames. MAME's SIO has no CTS input (its `twinkle_dvd_type1` has the line commented out, "CTS isn't implemented in SIO").
-- **The departure:** for the 1st style SIO1 is windyfairy's UART (`sio_uart.*`, already HIRAKU's SIO1 on 573s with the multi-session unit: RTS out, CTS in, the 8-byte receive FIFO), switched in by `hk_psx_sio1_uart`, with the player's CTS wired as MAME's comment has it (the XV-D701 holds it on). The game sets 8 bits, odd parity (the fork reads mode bits 4-5 as psx-spx's "vice versa" note has them; the player's own frame is 8O1), 9,800 baud. Up to the first SIO1 access (frame 1261) the run is MAME's, frame for frame.
-- **The oracle:** a MAME patched the same way (`oracle/mame-patches/twinkle-sio1-cts.patch`, built in a worktree of the pin). Against it, `bmiidx-clear` (first boot, test mode's DVD check and backup clear, TEST EXIT, the watchdog reset, attract; 10,820 frames) and `bmiidx-play` (3 coins, 7KEYS, the stage, STAGE FAILED, game over, attract; 14,000 frames): main RAM on every frame, 180/180 and 233/233 snapshots, every traced device access identical in time and data (2.55 M and 3.54 M runs of accesses; the traces' frame tags differ only where a 68000 burst crosses a frame boundary), sound lag 0, correlation >= 0.998. The NVRAM the clear leaves is byte for byte MAME's.
-- **Bugs found on the way:**
-  - The fork's UART never set `m_baud` (nor three other members): MAME read heap garbage (0x30), HIRAKU 0. Zeroed in its constructor (both).
-  - The shim kept a CPU's cycle count over a reset; MAME's `interface_pre_reset` zeroes it (and resumes the CPU). The 68000 syncs autovectored interrupt acknowledges to its E clock by that count, so after the 1st style's watchdog reset it ran 5 cycles off MAME's. Now as MAME (`cpu_device::hk_pre_reset`), and the soft reset eats the executing CPU's cycles as MAME's `eat_all_cycles` does.
-  - MAME runs the autoboot script again on every reset: `hiraku.lua` restarted from frame 0 mid-run, truncating its own files. It arms once now.
-  - The exit report's 68000 PC was always 0 (the shim's PC hook only runs under a debugger): a `hk_pc()` accessor.
-- **Differences from 3rd style:** no 1P Start backup clear (test mode's BACKUP CLEAR); a credit is 3 coins; mode select (4KEYS/5KEYS/7KEYS/EXPERT) by the turntable. The stage videos are masked to the play field's shape on the disc, and the game draws its own graffiti layer (the song's letters, spray-painted) over them, in white: the full-frame scaling lines up with the play field exactly, which supports TW-3's placement.
-- **Speed:** with its R3000 blocks recorded (6,907, from `bmiidx-clear` and `bmiidx-play`; exact against MAME), the scripted game takes 1.55 ms a frame on the desktop with the video, a stage 1.78 ms (p99 2.3).
-- **The Video CD from a cold disk:** the emulation waits for the frame it needs, and the decoder thread read the disc a sector at a time; on a busy disk (another session's runs, swap) single frames took 0.9 to 3 s, and TW-3's "host contention" stall was this. Each chapter is now asked of the kernel whole when it starts (`POSIX_FADV_WILLNEED`): from a cold cache the worst frame is 47 ms, as with the disc cached.
-- **Open:** a hands-on test. The other sets on the same SIO1 wiring (`bmiidxa`, the club kit's `bmiidxc` and `bmiidxca`) aren't on hand.
 
 **Result:** the recompiler's output on ARM is byte-identical to x86's, and all 17 regress cases
 give the same digests on the ARM build (under qemu) as on x86. Not measured yet: speed on real
