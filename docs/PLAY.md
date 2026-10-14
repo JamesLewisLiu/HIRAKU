@@ -547,7 +547,7 @@ The unit is a box of its own: a second CPU (a TX3927), a CD drive, four MP3 deco
 
 From there on the unit answers, which MAME's can't.
 
-The regress cases are `drmn10m-install`, `drmn10m-boot` (now on to attract), `drmn10m-play` (a game: the first stage of 花火), `drmn10m-hdd` (the network unit's whole install) and `drmn10m-npu` (a boot with the unit and its disk, to attract).
+The regress cases are `drmn10m-install`, `drmn10m-boot` (now on to attract), `drmn10m-play` (a game: the first stage of 花火), `drmn10m-hdd` (the network unit's whole install), `drmn10m-npu` (a boot with the unit and its disk, to attract), `drmn10m-eaon` (e-AMUSEMENT turned ON) and `drmn10m-net` (a boot with it ON, then NETWORK CHECK).
 
 **The network PCB unit (e-AMUSEMENT), started:** the e-AMUSEMENT cabinet's network unit, with its hard disk as the save folder's `npu_hdd/` folder (runtime/sys573/npu.h). Ingest the unit's installer CD as well:
 
@@ -557,7 +557,18 @@ tools/ingest.py drmn10m.7z d40jaa02.chd d40jba02.chd d40jca02.chd
 
 1. **Install its data:** `hiraku-drmn10m --cd hdd`. The game formats the disk and installs about 400 MB, about 20 minutes of game time, until **INSTALLATION COMPLETED**. Then quit.
 2. **Play with it:** `hiraku-drmn10m --npu`. The boot reads the disk's songs.
-3. **e-AMUSEMENT** is OFF by default (test mode > NETWORK OPTIONS > e-AMUSEMENT OPTIONS; hold Start and press Left/Right to change it). With it ON the game tries the network, finds none (センターサーバーと通信できません) and goes on in standby with Service (9).
+3. **e-AMUSEMENT** is OFF by default (test mode > NETWORK OPTIONS > e-AMUSEMENT OPTIONS; hold Start and press Left/Right to change it, then SAVE AND EXIT). With it ON the game connects to HIRAKU's e-AMUSEMENT server: test mode's NETWORK OPTIONS > NETWORK CHECK says **CONNECTED**. Out of test mode it then asks for the card reader (拡張カードユニットが見つかりません), which isn't there yet: set e-AMUSEMENT OFF again to play.
+
+**The e-AMUSEMENT server:**
+
+| | How | What for |
+|---|---|---|
+| **Offline** (default) | nothing to do | one cabinet; the server runs in the core, its data in the save folder's `eamuse/`; runs are reproducible |
+| **Online, HIRAKU's server** | on the server machine, `hiraku-eamuse --port 8080 --data DIR`; on each cabinet, `hiraku-drmn10m --npu --eamuse http://server:8080/` | several cabinets (a session's two, say) sharing one server |
+
+- **The cabinet's network is virtual:** it sees a LAN (192.168.50.2, its router and server 192.168.50.1) and HIRAKU answers its DNS, pings and NTP itself. Online, only the game's HTTP calls go out, unchanged (encrypted as the game encrypts them).
+- **`hiraku-eamuse` options:** `--bind ADDR` (default 0.0.0.0), `--clock "2003-06-01 12:00:00"` (the time it gives, running from there; default the host's clock), `--tz 9` (with the host's clock, the cabinets' time zone), `--quiet`.
+- **`HK_573_NET_LOG=FILE`** logs every socket call, and every call and answer in clear.
 
 With the unit fitted the 573 has more to do, and the multi-session unit's link once lost bytes ("Please call attendant") until SIO1 got the PS1's 8-byte receive FIFO. It now boots to attract, and sessions with GuitarFreaks work with it fitted. Without `--npu` the game is as before. `HK_573_NPU_LOG=1` prints the unit's calls (2: their words, 3: every register access).
 
@@ -586,6 +597,8 @@ ninja -C build/cmake hiraku-gtfrk11m
 
 The effect knob is an analog axis (a joystick's first axis). Coin is 5; Test and Service are F2 and 9.
 
+**The network unit (e-AMUSEMENT)** works as DrumMania's (above): `hiraku-gtfrk11m --cd hdd` installs its data (about 15 minutes of game time, to INSTALLATION COMPLETED), then `--npu` fits it, and `--eamuse` picks the server. In its test mode, P1 R/B moves and **P2 R/B changes a value**. Both cabinets of a session can share one `hiraku-eamuse`.
+
 **Session play.** DrumMania 10th Mix and GuitarFreaks 11th Mix play together through DrumMania's multi-session unit, each in its own process, joined by a session cable:
 
 ```bash
@@ -602,7 +615,7 @@ hiraku-gtfrk11m --session-join /tmp/gfdm.sock
 - **Check the cable** in test mode: SESSION NETWORK CHECK says PORT 1 (DrumMania) and PORT 2 (GuitarFreaks), OK.
 - **The session music** comes from the unit, in the DrumMania process. It goes over the cable to the GuitarFreaks side too, so both windows play it, in time with their own sounds.
 
-The regress cases are `gtfrk11m-install`, `gtfrk11m-boot`, and `drmn10m-session` + `gtfrk11m-session` (a session game: both cabinets play the first stage of 花火).
+The regress cases are `gtfrk11m-install`, `gtfrk11m-boot`, `gtfrk11m-hdd`, `gtfrk11m-eaon` and `gtfrk11m-net` (the network unit, as drmn10m's), and `drmn10m-session` + `gtfrk11m-session` (a session game: both cabinets play the first stage of 花火).
 
 ## Twinkle: beatmania IIDX 3rd style (in progress, M15)
 

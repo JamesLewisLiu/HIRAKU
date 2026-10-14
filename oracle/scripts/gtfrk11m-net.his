@@ -1,0 +1,23 @@
+# GuitarFreaks 11th Mix with e-AMUSEMENT ON (from gtfrk11m-eaon): the boot's calls to the server
+# in the core (model D39), then test mode, NETWORK OPTIONS > NETWORK CHECK: CONNECTED
+game gtfrk11m
+
+from 600 every 1800 snap
+at 12000 press "Test" 8
+at 12360 press "P1 Button B" 8
+at 12420 press "P1 Button B" 8
+at 12480 press "P1 Button B" 8
+at 12540 press "P1 Button B" 8
+at 12600 press "P1 Button B" 8
+at 12660 press "P1 Button B" 8
+at 12720 press "P1 Button B" 8
+at 12780 press "P1 Button B" 8
+at 12840 press "P1 Button B" 8
+at 12900 press "P1 Button B" 8
+at 12960 press "P1 Button B" 8
+at 13060 press "1 Player Start" 8
+# NETWORK CHECK, the second item
+at 13300 press "P1 Button B" 8
+at 13380 press "1 Player Start" 8
+from 13500 every 300 snap
+at 15000 quit

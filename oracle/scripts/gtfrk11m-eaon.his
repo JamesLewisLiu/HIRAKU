@@ -1,0 +1,31 @@
+# GuitarFreaks 11th Mix with the network unit (from gtfrk11m-hdd): test mode, NETWORK OPTIONS >
+# e-AMUSEMENT OPTIONS, e-AMUSEMENT ON (P2 R/B changes a value here), SAVE AND EXIT
+game gtfrk11m
+
+at 12000 press "Test" 8
+# the main menu starts on GAME MODE: NETWORK OPTIONS is eleven down (P1 B)
+at 12360 press "P1 Button B" 8
+at 12420 press "P1 Button B" 8
+at 12480 press "P1 Button B" 8
+at 12540 press "P1 Button B" 8
+at 12600 press "P1 Button B" 8
+at 12660 press "P1 Button B" 8
+at 12720 press "P1 Button B" 8
+at 12780 press "P1 Button B" 8
+at 12840 press "P1 Button B" 8
+at 12900 press "P1 Button B" 8
+at 12960 press "P1 Button B" 8
+at 13060 press "1 Player Start" 8
+at 13300 press "1 Player Start" 8
+at 13620 press "P2 Button B" 8
+at 13680 snap
+# ON adds ee'MALL, SHOP NAME SETTINGS and PREFECTURE: SAVE AND EXIT is five down
+at 13700 press "P1 Button B" 8
+at 13760 press "P1 Button B" 8
+at 13820 press "P1 Button B" 8
+at 13880 press "P1 Button B" 8
+at 13940 press "P1 Button B" 8
+at 13990 snap
+at 14000 press "1 Player Start" 8
+at 14300 snap
+at 14310 quit

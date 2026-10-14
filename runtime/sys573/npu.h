@@ -8,7 +8,8 @@
 // 45e5eaa1, BSD-3-Clause): the 573 game drives the unit through a 16-bit FIFO in the card's
 // memory window, with remote calls (PLAN.md section 19, "e-AMUSEMENT"):
 //   - 0x00/0x01/0x37/0x38, 0x80-0x82: the unit's start-up (its id, MAC address, code upload);
-//   - 0x22-0x2e: BSD sockets (the game does HTTP and the e-AMUSEMENT protocol itself);
+//   - 0x22-0x2e: BSD sockets (the game does HTTP and the e-AMUSEMENT protocol itself), on the
+//     virtual LAN of runtime/eamuse/lan.h;
 //   - 0x3a: the network settings (address, gateway, DNS, the local domain);
 //   - 0x40-0x54: files on the hard disk ("atam:...") or a RAM disk ("ram:..."), much like the
 //     PS2's iomanX.
@@ -23,6 +24,7 @@
 
 #include "emu.h"
 #include "bus/pccard/pccard.h"
+#include "eamuse/lan.h"
 
 #include <cstdint>
 #include <memory>
@@ -35,6 +37,8 @@ public:
 
     // where the hard disk and the RAM disk live ("" = no hard disk)
     void set_dirs(std::string hdd, std::string ram) { m_hdd_dir = std::move(hdd); m_ram_dir = std::move(ram); }
+    // the network its Ethernet port is on (none: every socket call fails)
+    void set_lan(hk::ea::Lan *lan) { m_lan = lan; }
 
     uint16_t read_memory(offs_t offset, uint16_t mem_mask = ~0) override;
     void write_memory(offs_t offset, uint16_t data, uint16_t mem_mask = ~0) override;
@@ -76,11 +80,24 @@ private:
     void log_call(const char *fmt, ...) __attribute__((format(printf, 2, 3)));   // HK_573_NPU_LOG
     void reply(uint16_t code, const std::vector<uint8_t> &payload);   // header and payload
     void reply32(int32_t v) { std::vector<uint8_t> p(4); for (int i = 0; i < 4; i++) p[i] = uint8_t(v >> (8 * i)); reply(0, p); }
+    void socket_call(int op, Args &a);
+    bool recv_reply(int fd, uint32_t max);   // false: the answer isn't there yet
+    void poll_network(s32);
     Disk *disk_for_path(const std::string &path);
     Disk *disk_for_fd(int32_t fd);
 
     std::string m_hdd_dir, m_ram_dir;
     std::unique_ptr<Disk> m_hdd, m_ram;
+    hk::ea::Lan *m_lan = nullptr;
+    // recvs waiting for an online server's answer: the call's id, the socket, the most it takes.
+    // The unit answers when the data comes, as its recv blocks; the 573 waits on the call's id.
+    struct Waiting {
+        uint16_t id;
+        int fd;
+        uint32_t max;
+    };
+    std::vector<Waiting> m_waiting;
+    emu_timer *m_poll_timer = nullptr;
     bool m_log = false, m_log_packets = false, m_log_regs = false;
 
     // registers (windyfairy's names)

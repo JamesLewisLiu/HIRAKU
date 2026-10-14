@@ -1,0 +1,26 @@
+# DrumMania 10th Mix with e-AMUSEMENT ON (from drmn10m-eaon), on HIRAKU's virtual LAN and the
+# e-AMUSEMENT server in the core (runtime/eamuse, runtime/sys573/eagfdm.h): at boot it looks up
+# "services", then services.get, pcbtracker.alive, posevent and gamedata.dataget. Then test mode,
+# NETWORK OPTIONS > NETWORK CHECK: CONNECTED, the router, center and server answering its pings.
+# (Out of test mode it stops at "the card unit is not found": the card reader isn't there yet.)
+game drmn10m
+
+from 600 every 1800 snap
+at 11100 press "Test" 8
+at 11500 press "Select R" 8
+at 11560 press "Select R" 8
+at 11620 press "Select R" 8
+at 11680 press "Select R" 8
+at 11740 press "Select R" 8
+at 11800 press "Select R" 8
+at 11860 press "Select R" 8
+at 11920 press "Select R" 8
+at 11980 press "Select R" 8
+at 12040 press "Select R" 8
+at 12100 press "Select R" 8
+at 12190 press "1 Player Start" 8
+# NETWORK CHECK, the second item
+at 12420 press "Select R" 8
+at 12500 press "1 Player Start" 8
+from 12600 every 300 snap
+at 14100 quit

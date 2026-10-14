@@ -1,0 +1,134 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// hiraku-eamuse: HIRAKU's e-AMUSE3 server on the network (runtime/eamuse/server.h). The same
+// server the cores run inside themselves offline, here behind a plain HTTP/1.0 listener, so
+// several cabinets (HIRAKU with --eamuse http://host:port/) can share cards, player data and
+// rankings: the System 573 GuitarFreaks and DrumMania (runtime/sys573/eagfdm.h), such as the
+// two cabinets of a session. From the Python core's (python-groundwork branch).
+//
+//   hiraku-eamuse [--port 8080] [--bind 0.0.0.0] [--data DIR] [--clock "2003-06-01 12:00:00"] [--tz 9] [--quiet]
+//     --data   where it keeps what it must remember (default ./eamuse-data)
+//     --clock  the cabinets' time, running from this start (default: the host's clock)
+//     --tz     with the host's clock: the cabinets' time zone, hours from UTC (default 9, Japan)
+//     --quiet  don't print each call
+#include <arpa/inet.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
+#include <sys/stat.h>
+#include <sys/time.h>
+#include <unistd.h>
+
+#include <cctype>
+#include <csignal>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <ctime>
+#include <string>
+
+#include "eamuse/server.h"
+#include "sys573/eagfdm.h"
+
+namespace {
+
+// One HTTP/1.0 request from a connection: the head and Content-Length bytes of body
+bool read_request(int fd, std::string &req) {
+    char buf[4096];
+    for (;;) {
+        const size_t he = req.find("\r\n\r\n");
+        if (he != std::string::npos) {
+            std::string head = req.substr(0, he);
+            for (char &c : head) c = (char)std::tolower((unsigned char)c);
+            size_t body = 0;
+            if (const size_t cl = head.find("\r\ncontent-length:"); cl != std::string::npos)
+                body = std::strtoul(head.c_str() + cl + 17, nullptr, 10);
+            if (body > (1u << 20)) return false;
+            if (req.size() >= he + 4 + body) return true;
+        }
+        if (req.size() > (1u << 21)) return false;
+        const ssize_t n = recv(fd, buf, sizeof buf, 0);
+        if (n <= 0) return false;
+        req.append(buf, (size_t)n);
+    }
+}
+
+int64_t parse_clock(const char *s) {
+    struct tm tm {};
+    if (!strptime(s, "%Y-%m-%d %H:%M:%S", &tm) && !strptime(s, "%Y-%m-%d", &tm)) return -1;
+    return (int64_t)timegm(&tm);
+}
+
+}  // namespace
+
+int main(int argc, char **argv) {
+    int port = 8080;
+    std::string bind_addr = "0.0.0.0", data = "eamuse-data";
+    int64_t clock_start = -1;
+    int tz_hours = 9;
+    bool quiet = false;
+    for (int i = 1; i < argc; i++) {
+        const std::string a = argv[i];
+        auto val = [&]() -> const char * {
+            if (i + 1 >= argc) { fprintf(stderr, "%s needs a value\n", a.c_str()); exit(2); }
+            return argv[++i];
+        };
+        if (a == "--port") port = atoi(val());
+        else if (a == "--bind") bind_addr = val();
+        else if (a == "--data") data = val();
+        else if (a == "--clock") {
+            clock_start = parse_clock(val());
+            if (clock_start < 0) { fprintf(stderr, "--clock: YYYY-MM-DD[ HH:MM:SS]\n"); return 2; }
+        } else if (a == "--tz") tz_hours = atoi(val());
+        else if (a == "--quiet") quiet = true;
+        else {
+            fprintf(stderr, "usage: hiraku-eamuse [--port N] [--bind ADDR] [--data DIR] [--clock \"YYYY-MM-DD HH:MM:SS\"] [--tz H] [--quiet]\n");
+            return a == "--help" || a == "-h" ? 0 : 2;
+        }
+    }
+    mkdir(data.c_str(), 0755);
+    // the game's own modules, by its model (GuitarFreaks xx39, DrumMania xx40: "D40:J:A:A")
+    hk::ea::Server server(data, [](hk::ea::Server &s, const hk::ea::Call &c, const hk::ea::Request &r, const std::string &host) {
+        const std::string g = c.model.substr(1, 2);
+        if (g == "39" || g == "40") return hk::k573::Eamuse::answer(s, c, r, host);
+        return std::string();
+    });
+    const int64_t started = (int64_t)time(nullptr);
+    // the cabinets' wall clock
+    server.now = [&] {
+        return clock_start < 0 ? (int64_t)time(nullptr) + tz_hours * 3600 : clock_start + ((int64_t)time(nullptr) - started);
+    };
+    if (!quiet) server.log = [](const std::string &s) { printf("%s\n", s.c_str()); fflush(stdout); };
+
+    signal(SIGPIPE, SIG_IGN);
+    const int ls = socket(AF_INET, SOCK_STREAM, 0);
+    const int one = 1;
+    setsockopt(ls, SOL_SOCKET, SO_REUSEADDR, &one, sizeof one);
+    sockaddr_in sa{};
+    sa.sin_family = AF_INET;
+    sa.sin_port = htons((uint16_t)port);
+    if (inet_pton(AF_INET, bind_addr.c_str(), &sa.sin_addr) != 1) { fprintf(stderr, "--bind: an IPv4 address\n"); return 2; }
+    if (bind(ls, (sockaddr *)&sa, sizeof sa) != 0 || listen(ls, 16) != 0) {
+        fprintf(stderr, "hiraku-eamuse: %s:%d: %s\n", bind_addr.c_str(), port, strerror(errno));
+        return 1;
+    }
+    printf("hiraku-eamuse: e-AMUSE3 on %s:%d, data in %s\n", bind_addr.c_str(), port, data.c_str());
+    fflush(stdout);
+    for (;;) {   // one connection at a time: the game makes one request per connection (HTTP/1.0)
+        sockaddr_in peer{};
+        socklen_t pl = sizeof peer;
+        const int fd = accept(ls, (sockaddr *)&peer, &pl);
+        if (fd < 0) continue;
+        timeval tv{10, 0};
+        setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof tv);
+        setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof tv);
+        std::string req;
+        if (read_request(fd, req)) {
+            const std::string answer = server.handle(req);
+            for (size_t sent = 0; sent < answer.size();) {
+                const ssize_t n = send(fd, answer.data() + sent, answer.size() - sent, 0);
+                if (n <= 0) break;
+                sent += (size_t)n;
+            }
+        }
+        close(fd);
+    }
+}

@@ -1,0 +1,7 @@
+# GuitarFreaks 11th Mix with the network unit's data installer CD (--cd hdd, d39jba02), from
+# gtfrk11m-boot: the game formats the unit's disk and installs its data to INSTALLATION
+# COMPLETED (about 57,000 frames)
+game gtfrk11m
+
+from 0 every 6000 snap
+at 60000 quit

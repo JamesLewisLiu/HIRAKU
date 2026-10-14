@@ -37,6 +37,9 @@ struct Config {
     std::string cd;                        // the CD image (.cue or .iso)
     std::string pccard1;                   // "32mb": a Fujitsu 32 MiB flash card in slot 1 (GuitarFreaks)
     std::string pccard2;                   // "32mb": a Fujitsu 32 MiB flash card in slot 2; "npu": the network unit (npu.h)
+    // the network unit's e-AMUSEMENT server (eagfdm.h): "local" (in the core, its data in the save
+    // folder's eamuse/) or http://host[:port][/path]; HK_573_NET_LOG=FILE logs the traffic
+    std::string eamuse = "local";
     bool memory_card_reader = false;       // the JVS memory card reader (ddr3m)
     // The output's gain. MAME sums the SPU and the CD audio at 1.0 each and clips the sum at full
     // scale: DDR's mix peaks at 2.0 and crackles. The board mixes them in analog; 0.5 keeps MAME's

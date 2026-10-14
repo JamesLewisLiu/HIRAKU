@@ -62,9 +62,22 @@ CASES = {
                     "drmn10m-boot"),
     "drmn10m-npu": ("drmn10m", 14400, ["--rtc", "1791889000", "--npu", "--script", "oracle/scripts/drmn10m-npu.his"],
                     "drmn10m-hdd"),
+    # e-AMUSEMENT (PLAN.md section 19): turned ON in test mode; then a boot on the virtual LAN and the
+    # server in the core, and test mode's NETWORK CHECK (CONNECTED)
+    "drmn10m-eaon": ("drmn10m", 13360, ["--rtc", "1791890000", "--npu", "--script", "oracle/scripts/drmn10m-eaon.his"],
+                     "drmn10m-npu"),
+    "drmn10m-net": ("drmn10m", 14100, ["--rtc", "1791891000", "--npu", "--script", "oracle/scripts/drmn10m-net.his"],
+                    "drmn10m-eaon"),
     "gtfrk11m-install": ("gtfrk11m", 28800, ["--rtc", "1791884700", "--script", "oracle/scripts/gtfrk11m-install.his"]),
     "gtfrk11m-boot": ("gtfrk11m", 10800, ["--rtc", "1791885700", "--script", "oracle/scripts/gtfrk11m-boot.his"],
                       "gtfrk11m-install"),
+    # ... its network unit: the data install, e-AMUSEMENT ON, and NETWORK CHECK (as drmn10m's)
+    "gtfrk11m-hdd": ("gtfrk11m", 60000, ["--rtc", "1791892000", "--cd", "hdd", "--script", "oracle/scripts/gtfrk11m-hdd.his"],
+                     "gtfrk11m-boot"),
+    "gtfrk11m-eaon": ("gtfrk11m", 14310, ["--rtc", "1791893000", "--npu", "--script", "oracle/scripts/gtfrk11m-eaon.his"],
+                      "gtfrk11m-hdd"),
+    "gtfrk11m-net": ("gtfrk11m", 15000, ["--rtc", "1791894000", "--npu", "--script", "oracle/scripts/gtfrk11m-net.his"],
+                     "gtfrk11m-eaon"),
     # session play: two processes on one session cable (runtime/sys573/link.h), each case naming
     # its partner (run together, in parallel chains)
     "drmn10m-session": ("drmn10m", 16800, ["--rtc", "1791884700", "--script", "oracle/scripts/drmn10m-session.his",

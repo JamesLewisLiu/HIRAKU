@@ -327,6 +327,10 @@ add_library(hiraku_sys573 STATIC runtime/sys573/board.cpp runtime/sys573/core.cp
   runtime/sys573/eagfdm.cpp runtime/eamuse/protocol.cpp runtime/eamuse/lan.cpp runtime/eamuse/server.cpp runtime/eamuse/remote.cpp)
 target_include_directories(hiraku_sys573 PUBLIC runtime)
 target_link_libraries(hiraku_sys573 PUBLIC hiraku_mame573 hiraku_cabinet)
+# hiraku-eamuse: the e-AMUSEMENT server on the network, for several cabinets (tools/eamuse/server.cpp)
+add_executable(hiraku-eamuse tools/eamuse/server.cpp runtime/sys573/eagfdm.cpp runtime/eamuse/protocol.cpp
+  runtime/eamuse/lan.cpp runtime/eamuse/server.cpp runtime/eamuse/remote.cpp)
+target_include_directories(hiraku-eamuse PRIVATE runtime)
 target_compile_options(hiraku_sys573 PRIVATE -O2 -Wno-unused-parameter)
 hk_pgo(sys573 hiraku_mame573)
 

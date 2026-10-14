@@ -25,6 +25,7 @@
 #include "bus/pccard/pccard.h"
 #include "bus/pccard/linflash.h"
 #include "sys573/link.h"
+#include "sys573/eagfdm.h"
 #include "sys573/npu.h"
 #include "imagedev/cdromimg.h"
 #include "k573cass.h"
@@ -97,6 +98,7 @@ sys573_jvs_host::sys573_jvs_host(const machine_config &mconfig, const char *tag,
 // device is constructed, before init() can hand the board its cfg.
 const Config *g_build = nullptr;
 SessionLink g_link;   // the session cable to another cabinet's process (link.h), when there is one
+Eamuse g_eamuse;      // the network unit's network and e-AMUSEMENT server (eagfdm.h), with the unit
 
 // MAME's ioport output field: the write callback runs when its bits change
 // (dynamic_field::write), with the active-low inversion of the field's default.
@@ -345,7 +347,9 @@ void sys573_state::device_add_mconfig(machine_config &config) {
         m_pccard2->set_default_option("npu");
         const std::string nv = c.nvram_dir;
         m_pccard2->set_option_machine_config("npu", [nv](device_t *d) {
-            static_cast<k573npu_hle_device *>(d)->set_dirs(nv.empty() ? "" : nv + "/npu_hdd", nv.empty() ? "" : nv + "/npu_ram");
+            auto *npu = static_cast<k573npu_hle_device *>(d);
+            npu->set_dirs(nv.empty() ? "" : nv + "/npu_hdd", nv.empty() ? "" : nv + "/npu_ram");
+            npu->set_lan(g_eamuse.lan());
         });
     }
     // the cassette: konami573() adds cassx(); ddr3m's cassyyi() replaces it
@@ -757,6 +761,13 @@ bool init(const Config &cfg) {
         m.add_region(":k573msu:tmpr3927", std::move(fw));
         m.add_region(":k573msu:m48t58y", std::move(rtc));
         m.add_region(":k573msu:digital_id", std::move(id));
+    }
+    if (cfg.pccard2 == "npu") {
+        // the server's clock: the timekeeper's, as it was set at power-on and has run since
+        const char *log = getenv("HK_573_NET_LOG");
+        if (!g_eamuse.open(cfg.eamuse, cfg.nvram_dir.empty() ? "" : cfg.nvram_dir + "/eamuse", log ? log : "",
+                           [] { return g.cfg.rtc_time + (int64_t)g.machine->time().as_double(); }))
+            return false;
     }
     hk_psx_sio1_uart = cfg.msu || !cfg.session_join.empty();
     if (!cfg.session_host.empty() && !cfg.msu) {

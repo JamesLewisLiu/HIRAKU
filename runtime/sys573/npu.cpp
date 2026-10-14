@@ -349,6 +349,7 @@ void k573npu_hle_device::device_start() {
     m_log_regs = level >= 3;
     m_hdd = std::make_unique<Disk>(m_hdd_dir, FD_HDD, false);
     m_ram = std::make_unique<Disk>(m_ram_dir, FD_RAM, true);   // power-on: an empty RAM disk
+    m_poll_timer = timer_alloc(&k573npu_hle_device::poll_network, this);
 }
 
 void k573npu_hle_device::device_reset() {
@@ -362,6 +363,8 @@ void k573npu_hle_device::device_reset() {
     m_packet_id = 0;
     m_in.clear();
     m_out.clear();
+    m_waiting.clear();
+    m_poll_timer->adjust(attotime::never);
 }
 
 uint16_t k573npu_hle_device::read_memory(offs_t offset, uint16_t mem_mask) {
@@ -531,25 +534,9 @@ void k573npu_hle_device::call() {
         break;
     }
 
-    // sockets: no network yet (PLAN.md section 19, e-AMUSEMENT step 2); every call fails
-    case 0x22: case 0x28: case 0x2a: case 0x2c: case 0x2e:
-        log("socket call %02x: no network", op);
-        reply32(-1);
+    case 0x22: case 0x23: case 0x28: case 0x29: case 0x2a: case 0x2b: case 0x2c: case 0x2e:
+        socket_call(op, a);
         break;
-    case 0x23: case 0x2b: {   // connect, sendto: the result and a word
-        std::vector<uint8_t> p(8);
-        put32(p, 0, uint32_t(-1));
-        log("socket call %02x: no network", op);
-        reply(0, p);
-        break;
-    }
-    case 0x29: {   // recvfrom: the result and the address length
-        std::vector<uint8_t> p(8);
-        put32(p, 0, uint32_t(-1));
-        put32(p, 4, 16);
-        reply(0, p);
-        break;
-    }
 
     case 0x3a: {   // a network setting: the LAN of npu.h's step 2 (192.168.50.0/24)
         const uint32_t addr = a.u32(), len = a.u32();
@@ -734,6 +721,142 @@ void k573npu_hle_device::call() {
         break;
     }
 #undef log
+}
+
+// The sockets (windyfairy's formats). An address comes as the game's sockaddr_in: family, then
+// the port and the address in network byte order, two and four bytes as the words carry them.
+void k573npu_hle_device::socket_call(int op, Args &a) {
+    auto ip_of = [](uint32_t raw) { return __builtin_bswap32(raw); };
+    auto port_of = [](uint16_t raw) { return uint16_t(raw >> 8 | raw << 8); };
+    auto payload = [&](uint32_t n) {
+        std::string d = a.bytes((n + 1) & ~1u);   // two bytes a word
+        d.resize(n);
+        return d;
+    };
+    if (!m_lan) {   // no network: every call fails, as with the cable out
+        std::vector<uint8_t> p(op == 0x23 || op == 0x2b || op == 0x29 ? 8 : 4);
+        put32(p, 0, uint32_t(-1));
+        if (op == 0x29) put32(p, 4, 16);
+        log_call("socket call %02x: no network", op);
+        reply(0, p);
+        return;
+    }
+    switch (op) {
+    case 0x2e: {   // socket(domain, type, protocol): 1/0 or 1/1 TCP, 2/3 UDP, 3/2 ICMP
+        a.u32();
+        const uint32_t type = a.u32(), protocol = a.u32();
+        const int fd = type == 1 ? m_lan->socket(hk::ea::Lan::STREAM)
+                     : type == 2 ? m_lan->socket(hk::ea::Lan::DATAGRAM)
+                     : type == 3 ? m_lan->socket(hk::ea::Lan::RAW) : -1;
+        log_call("socket(%u, %u) = %d", type, protocol, fd);
+        reply32(fd);
+        break;
+    }
+    case 0x22: {   // close(fd)
+        const int fd = int(a.u32());
+        reply32(m_lan->close(fd));
+        break;
+    }
+    case 0x23: {   // connect(fd, length, sockaddr): the result and a word
+        const int fd = int(a.u32());
+        a.u32();
+        a.u16();
+        const uint16_t port = port_of(a.u16());
+        const uint32_t ip = ip_of(a.u32());
+        std::vector<uint8_t> p(8);
+        put32(p, 0, uint32_t(m_lan->connect(fd, ip, port)));
+        reply(0, p);
+        break;
+    }
+    case 0x2a: {   // send(fd, length, flags, data)
+        const int fd = int(a.u32());
+        const uint32_t n = a.u32();
+        a.u32();
+        const std::string d = payload(n);
+        reply32(m_lan->send(fd, reinterpret_cast<const uint8_t *>(d.data()), d.size()));
+        break;
+    }
+    case 0x2b: {   // sendto(fd, length, flags, address length, sockaddr, data): the result and a word
+        const int fd = int(a.u32());
+        const uint32_t n = a.u32();
+        a.u32();
+        a.u32();
+        a.u16();
+        const uint16_t port = port_of(a.u16());
+        const uint32_t ip = ip_of(a.u32());
+        for (int i = 0; i < 4; i++) a.u16();   // sin_zero
+        const std::string d = payload(n);
+        std::vector<uint8_t> p(8);
+        put32(p, 0, uint32_t(m_lan->sendto(fd, reinterpret_cast<const uint8_t *>(d.data()), d.size(), ip, port)));
+        reply(0, p);
+        break;
+    }
+    case 0x28: {   // recv(fd, length, flags): the count, then the data
+        const int fd = int(a.u32());
+        const uint32_t max = a.u32();
+        if (!recv_reply(fd, max)) {
+            m_waiting.push_back({m_packet_id, fd, max});
+            if (m_waiting.size() == 1) m_poll_timer->adjust(attotime::from_msec(1), 0, attotime::from_msec(1));
+        }
+        break;
+    }
+    case 0x29: {   // recvfrom(fd, length, flags): the count, the address length, the address, the data
+        const int fd = int(a.u32());
+        const uint32_t max = a.u32();
+        std::string d;
+        uint32_t ip = 0;
+        uint16_t port = 0;
+        std::vector<uint8_t> p(8);
+        put32(p, 4, 16);
+        if (m_lan->recvfrom(fd, max, &d, &ip, &port) != hk::ea::Lan::DATA) {
+            put32(p, 0, uint32_t(-1));   // nothing: as the unit's receive timeout
+        } else {
+            put32(p, 0, uint32_t(d.size()));
+            put32(p, 8, 16);
+            p.resize(28);
+            p[12] = 2;   // AF_INET
+            p[14] = uint8_t(port >> 8); p[15] = uint8_t(port);
+            p[16] = uint8_t(ip >> 24); p[17] = uint8_t(ip >> 16); p[18] = uint8_t(ip >> 8); p[19] = uint8_t(ip);
+            p.insert(p.end(), d.begin(), d.end());
+            if (p.size() & 1) p.push_back(0);
+        }
+        reply(0, p);
+        break;
+    }
+    case 0x2c: {   // setsockopt(fd, level, name, length, value): nothing to set
+        const int fd = int(a.u32());
+        const uint32_t level = a.u32(), name = a.u32();
+        log_call("setsockopt(%d, %x, %x)", fd, level, name);
+        reply32(0);
+        break;
+    }
+    }
+}
+
+// A recv's answer, if there is one to give: the bytes there are, or 0 when the server has closed
+bool k573npu_hle_device::recv_reply(int fd, uint32_t max) {
+    std::string d;
+    const hk::ea::Lan::Status st = m_lan->recv(fd, max, &d);
+    if (st == hk::ea::Lan::WAIT) return false;
+    std::vector<uint8_t> p(4);
+    put32(p, 0, st == hk::ea::Lan::DATA ? uint32_t(d.size()) : st == hk::ea::Lan::END ? 0 : uint32_t(-1));
+    p.insert(p.end(), d.begin(), d.end());
+    if (p.size() & 1) p.push_back(0);
+    reply(0, p);
+    return true;
+}
+
+// Every millisecond while a recv waits: the answers that came in
+void k573npu_hle_device::poll_network(s32) {
+    if (!m_lan->poll()) return;
+    const uint16_t id = m_packet_id;
+    for (size_t i = 0; i < m_waiting.size();) {
+        m_packet_id = m_waiting[i].id;
+        if (recv_reply(m_waiting[i].fd, m_waiting[i].max)) m_waiting.erase(m_waiting.begin() + ptrdiff_t(i));
+        else i++;
+    }
+    m_packet_id = id;
+    if (m_waiting.empty()) m_poll_timer->adjust(attotime::never);
 }
 
 void k573npu_hle_device::log_call(const char *fmt, ...) {

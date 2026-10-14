@@ -37,6 +37,7 @@ public:
         if (name == "--session-join") { session_join_ = value(); return true; }
         if (name == "--session-quantum") { session_quantum_ = std::stoi(value()); return true; }
         if (name == "--cd") { cd_ = value(); return true; }
+        if (name == "--eamuse") { eamuse_ = value(); return true; }
         return false;
     }
     std::string options_help() const override {
@@ -47,6 +48,9 @@ public:
                "                    with one, ddr3mj: when it says so, power off and boot again without)\n"
                "  --npu             fit the network PCB unit (e-AMUSEMENT GuitarFreaks and DrumMania): its hard\n"
                "                    disk is the save folder's npu_hdd/\n"
+               "  --eamuse local|URL  with the unit, when the game has e-AMUSEMENT on: the server in the core\n"
+               "                    (default, offline; its data in the save folder's eamuse/) or a server at\n"
+               "                    http://host[:port][/path] (online)\n"
                "  --cd hdd          boot the unit's data installer CD (implies --npu): it installs the\n"
                "                    e-AMUSEMENT data on the unit's disk; power off when it says it is done\n"
                "  --session-host SOCKET  session play: this cabinet (the one with the multi-session unit,\n"
@@ -106,6 +110,7 @@ public:
                 return false;
             }
             cfg.pccard2 = "npu";
+            cfg.eamuse = eamuse_;
         }
         cfg.nvram_dir = o.nvram_dir;
         cfg.session_host = session_host_;
@@ -158,6 +163,7 @@ private:
     bool mame_mix_ = false;
     std::string cassette_slot_;
     bool npu_ = false;
+    std::string eamuse_ = "local";
     std::string cd_;
     std::string session_host_, session_join_;
     int session_quantum_ = 500;

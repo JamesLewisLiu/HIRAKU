@@ -834,6 +834,22 @@ Each phase has an exit test. Sizes are assisted-effort guesses; DJ Main went fas
   - **Not yet:**
     - Hands-on play.
     - Two machines over TCP, not tried.
+- **Progress (2026-10-13): e-AMUSEMENT, step 2: the network and the server.** With e-AMUSEMENT ON, drmn10m and gtfrk11m now connect: test mode's NETWORK CHECK says CONNECTED, the router, center and server answering 100%.
+  - **Shared code, `runtime/eamuse/`** (from the Python core's, python-groundwork branch, which isn't on main yet):
+    - `protocol`: the e-AMUSE3 pieces (MD5, RC4 key from X-Eamuse-Info, the `<call>` parser, record files);
+    - `lan`: the network a cabinet sees, with no host sockets of its own. Socket calls in neutral form; DNS ("services..." is 192.168.50.1, other names get addresses of their own), ICMP echo for every raw socket, NTP (UDP 123, new), and HTTP/1.0 requests handed to a handler that answers at once or later;
+    - `server`: the modules games share (numbering, KONAMI ID `userid`, posevent, pcbtracker, the owner's message), each game adding its own;
+    - `remote`: online, the game's requests forwarded unchanged to a real server.
+    The Python core can move onto it when its branch merges (its `eanet`/`easerver`/`eaclient` are the originals).
+  - **The unit's sockets** (`npu.cpp`, windyfairy's formats): socket, connect, send, recv, sendto, recvfrom, setsockopt, close on the LAN. Addresses come in the game's sockaddr_in (network byte order). A recv whose answer isn't in yet (online) is answered later: the unit polls each millisecond and replies to that call's id, as its blocking recv would. Offline, the answer is there at once, so runs stay reproducible.
+  - **GuitarFreaks and DrumMania's server** (`runtime/sys573/eagfdm.{h,cpp}`):
+    - `services.get`: the game looks up `posevent`, `pcbtracker`, `numbering`, `userid` and `local` (everything else). It also reads two addresses (drmn10m 0x8003caa8): `keepalive` (`ping://`, `pa=`, `ga=`: the hosts the NETWORK CHECK pings) and `ntp` (`ntp://`). They are kept in its settings; ours are all 192.168.50.1.
+    - At boot: `services.get`, `pcbtracker.alive`, `posevent` (income, sales, sale), then `gamedata.dataget` (sent in clear, `sid="020304050607"`) asking for the favourites (128) and the shop ranking (20). Its answer is a tree (the parser's tables at 0x80133190): `system` (status), `favorite`, `shoprank` (`shop`, `prefshop`, from/to), `ir`, `landdata` (`land`). An empty `<gamedata status="0"/>` is accepted; what they hold shows only in attract and play.
+  - **Options:** `--eamuse local` (default: the server in the core, its data in the save folder's `eamuse/`) or `--eamuse http://host[:port][/path]` (online). `HK_573_NET_LOG=FILE` logs each socket call and each call and answer in clear.
+  - **`hiraku-eamuse`** (`tools/eamuse/server.cpp`): the same server on the network, for several cabinets (a session's two, say), dispatching by the game's model (xx39 GuitarFreaks, xx40 DrumMania). Checked: drmn10m against it on 127.0.0.1 boots, makes the same calls, and NETWORK CHECK says CONNECTED.
+  - **GuitarFreaks 11th Mix** makes the same calls (model `D39:J:A:A`) and connects the same way. Its unit's installer (`d39jba02`, `--cd hdd`) installs 366 MB to INSTALLATION COMPLETED in about 57,000 frames. In its test mode P2 R/B changes a value (DrumMania: hold Start + Left/Right).
+  - **Regress:** `drmn10m-eaon` (test mode: e-AMUSEMENT ON, after `drmn10m-npu`) and `drmn10m-net` (the boot's calls, then NETWORK CHECK); `gtfrk11m-hdd` (the unit's install, after `gtfrk11m-boot`), `gtfrk11m-eaon` and `gtfrk11m-net`, the same for GuitarFreaks.
+  - **Out of test mode, the game now stops at 拡張カードユニットが見つかりません** (the card unit isn't found; DEVICE 7 NOT FOUND at boot). With e-AMUSEMENT ON it requires the card reader. That is step 3, and with it the card's `gamedata` calls (gametop, cardcheck, cardregist, gameend, autoir, rend) and the KONAMI ID's.
 
 **573-4. Efficiency** (sized by the measurements in 573-1)
 - **Measured (2026-10-12, `HK_PROFILE=1`, ddr2m 150 s from the installed flash, 21,600 samples):**
