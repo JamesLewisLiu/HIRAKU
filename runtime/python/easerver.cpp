@@ -104,6 +104,42 @@ size_t read_attrs(const std::string &x, size_t at, std::map<std::string, std::st
     return x.size();
 }
 
+// pop'n 13's compression for player records (f_compress, the game's 0x1810140): LZSS with a 4 KiB
+// window that starts at 0xfee, a flag byte per 8 items (1 = a literal byte, 0 = a match: 12-bit
+// window position and 4-bit length - 3, so 3 to 18 bytes), after the length in 4 bytes. The game
+// answers in kind only with the data small enough for its HTTP reader: 0xd6c bytes in clear are
+// refused, compressed they are a few hundred.
+std::string lzss(const std::string &in) {
+    const size_t n = in.size();
+    std::string out;
+    for (int k = 0; k < 4; k++) out += (char)(n >> (8 * k) & 255);
+    size_t i = 0;
+    while (i < n) {
+        const size_t flags_at = out.size();
+        out += '\0';
+        uint8_t flags = 0;
+        for (int bit = 0; bit < 8 && i < n; bit++) {
+            size_t best = 0, from = 0;
+            for (size_t q = i > 4078 ? i - 4078 : 0; q < i; q++) {   // earlier output, overlap allowed
+                size_t len = 0;
+                while (len < 18 && i + len < n && in[q + len] == in[i + len]) len++;
+                if (len > best) { best = len; from = q; }
+            }
+            if (best >= 3) {
+                const unsigned at = (unsigned)(0xfee + from) & 0xfff;
+                out += (char)(at & 255);
+                out += (char)(((at >> 4) & 0xf0) | (best - 3));
+                i += best;
+            } else {
+                flags |= (uint8_t)(1 << bit);
+                out += in[i++];
+            }
+        }
+        out[flags_at] = (char)flags;
+    }
+    return out;
+}
+
 std::string base64(const std::string &in) {
     static const char *T = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     std::string o;
@@ -372,22 +408,8 @@ std::string EamuseServer::answer(const Call &c, const Request &r, const std::str
     // and anything not handled there go on below
     if (const std::string game = c.model.substr(0, 3); !game.empty() && game != "C00")
         if (std::string a = answer_later(game, r, host); !a.empty()) return a;
-    if (m == "numbering" && f == "assign") {   // a new card's number (0x197530): 16 digits
-        uint64_t next = 1;
-        if (std::string n = read_file("numbering"); !n.empty()) next = std::strtoull(n.c_str(), nullptr, 10);
-        write_file("numbering", std::to_string(next + 1) + "\n");
-        char digits[17];
-        snprintf(digits, sizeof digits, "200301%09llu", (unsigned long long)next);   // 15 digits
-        int sum = 0;   // a Luhn check digit ("card16m10")
-        for (int i = 14, k = 0; i >= 0; i--, k++) {
-            int d = digits[i] - '0';
-            if (k % 2 == 0) { d *= 2; if (d > 9) d -= 9; }
-            sum += d;
-        }
-        digits[15] = (char)('0' + (10 - sum % 10) % 10);
-        digits[16] = 0;
-        return std::string("<numbering status=\"0\" number=\"") + digits + "\"/>";
-    }
+    if (m == "numbering" && f == "assign")   // a new card's number (0x197530): 16 digits
+        return "<numbering status=\"0\" number=\"" + next_number() + "\"/>";
     if (m == "userdata" && f == "read") {   // 109: not registered (0x184ca0)
         const std::string card = attr(r.attrs, "card");
         const std::string data = safe_name(card) ? read_file("userdata-" + card) : "";
@@ -497,13 +519,69 @@ std::string EamuseServer::answer(const Call &c, const Request &r, const std::str
 
 // pop'n music 10 on (docs/EAMUSE3.md, "Later games"): game is the model's first three
 // characters. "" leaves the call to pop'n 9's answers (services, numbering, userid, posevent, ...).
+std::string EamuseServer::next_number() {
+    uint64_t next = 1;
+    if (std::string n = read_file("numbering"); !n.empty()) next = std::strtoull(n.c_str(), nullptr, 10);
+    write_file("numbering", std::to_string(next + 1) + "\n");
+    char digits[17];
+    snprintf(digits, sizeof digits, "200301%09llu", (unsigned long long)next);   // 15 digits
+    int sum = 0;   // a Luhn check digit ("card16m10")
+    for (int i = 14, k = 0; i >= 0; i--, k++) {
+        int d = digits[i] - '0';
+        if (k % 2 == 0) { d *= 2; if (d > 9) d -= 9; }
+        sum += d;
+    }
+    digits[15] = (char)('0' + (10 - sum % 10) % 10);
+    digits[16] = 0;
+    return digits;
+}
+
 std::string EamuseServer::answer_later(const std::string &game, const Request &r, const std::string &host) {
     const std::string &m = r.module, &f = r.method;
     if (m == "services" && f == "get") {   // as pop'n 9, and eemall/shopinf look up their own names
-        static const char *modules[] = {"posevent", "pcbtracker", "numbering", "package", "userdata", "userid", "local", "eemall", "shopinf"};
+        // message: pop'n 13 fails its start-up without it (the library looks a call's URL up by its
+        // module, 0x17d94c0: -10 when missing); cardmng, cardreis: pop'n 13's cards
+        static const char *modules[] = {"posevent", "pcbtracker", "numbering", "package", "userdata", "userid", "local",
+                                        "eemall", "shopinf", "message", "cardmng", "cardreis"};
         std::string items;
         for (const char *mod : modules) items += std::string("<item name=\"") + mod + "\" url=\"http://" + esc(host) + "/\"/>";
         return "<services expire=\"600\" status=\"0\">" + items + "</services>";
+    }
+    if (m == "cardmng") {   // pop'n 13: a card has an id (written on it) and its player a ref id, in "cards"
+        const std::string cardtype = attr(r.attrs, "cardtype");
+        std::vector<Record> cards = from_lines(read_file("cards"));
+        auto add = [&](const std::string &id) {   // a new card and its player
+            uint64_t n = 1;
+            if (std::string c = read_file("refid"); !c.empty()) n = std::strtoull(c.c_str(), nullptr, 10);
+            write_file("refid", std::to_string(n + 1) + "\n");
+            char ref[17];
+            snprintf(ref, sizeof ref, "48524B%010llX", (unsigned long long)n);   // "HRK" and a count
+            cards.push_back({{"cardid", id}, {"refid", ref}, {"cardtype", cardtype}});
+            std::string out;
+            for (const Record &c : cards) out += to_line(c);
+            write_file("cards", out);
+            return std::string(ref);
+        };
+        auto refid_of = [&](const std::string &id) {
+            for (const Record &c : cards)
+                if (attr(c, "cardid") == id) return attr(c, "refid");
+            return std::string();
+        };
+        if (f == "getnewid") {   // cardtype newflag: a new card's id and ref id
+            const std::string id = next_number();
+            return "<cardmng status=\"0\" cardid=\"" + id + "\" refid=\"" + add(id) + "\"/>";
+        }
+        if (f == "inquire") {   // cardtype cardid update: the card's ref id; newflag 1 when the server didn't know it
+            const std::string id = attr(r.attrs, "cardid");
+            if (!safe_name(id)) return "<cardmng status=\"1\"/>";
+            std::string ref = refid_of(id);
+            const bool fresh = ref.empty();
+            if (fresh) ref = add(id);
+            return "<cardmng status=\"0\" refid=\"" + ref + "\" newflag=\"" + (fresh ? "1" : "0") + "\"/>";
+        }
+        if (f == "gettmpid")   // cardtype oldid: a new id for an older card's player
+            return "<cardmng status=\"0\" newid=\"" + next_number() + "\"/>";
+        if (f == "rebind") return "<cardmng status=\"0\"/>";   // cardtype newid
     }
     if (m == "userdata") {   // as pop'n 9, kept per game: userdata-<game>-<card>
         const std::string card = attr(r.attrs, "card");
@@ -621,10 +699,18 @@ std::string EamuseServer::answer_game(const std::string &game, const Request &r)
 // flags in 0x100-0x800: 0x1b3958), from about 0x5f0 the network battle's. Scores are kept apart
 // (playerdata score asks one chart's).
 std::string EamuseServer::answer_playerdata(const std::string &game, const Request &r) {
-    constexpr size_t RECORD = 0x708, SONGS_END = 0x5f0;
+    // each game's record (docs/EAMUSE3.md): its size, the password's, option's and character's
+    // places, and the songs' clear words (16 bits each in pop'n 12, 32 in pop'n 13)
+    struct Layout { size_t record, password, option, chara, songs, song_bytes, songs_end; };
+    const bool p13 = game == "E13";
+    const Layout L = p13 ? Layout{0xd6c, 0x1c, 0x20, 0x22, 0x28, 4, 0xd6c}     // 0x166daa8, 0x1810e60
+                         : Layout{0x708, 0x34, 0x38, 0x3a, 0x3c, 2, 0x5f0};
+    const size_t RECORD = L.record;
     const std::string &f = r.method;
     const std::string open = "<" + game + " status=\"0\"";
-    std::string card = attr(r.attrs, "card_id");
+    // the player's key: pop'n 13's ref id (cardmng), else pop'n 12's card
+    std::string card = attr(r.attrs, "ref_id");
+    if (card.empty()) card = attr(r.attrs, "card_id");
     if (card.empty()) card = attr(r.attrs, "new_card_id");
     if (!safe_name(card)) return "<" + game + " status=\"1\"/>";
     const std::string file = "pdata-" + game + "-" + card, scores_file = "pscore-" + game + "-" + card;
@@ -635,9 +721,13 @@ std::string EamuseServer::answer_playerdata(const std::string &game, const Reque
         for (size_t i = 0; i < 13; i++) rec[i] = i < name.size() && i < 12 ? name[i] : 0;
     };
     auto set_password = [&](const std::string &pw) {
-        for (size_t i = 0; i < 4; i++) rec[0x34 + i] = i < pw.size() && std::isdigit((unsigned char)pw[i]) ? (char)(pw[i] - '0') : 0;
+        for (size_t i = 0; i < 4; i++) rec[L.password + i] = i < pw.size() && std::isdigit((unsigned char)pw[i]) ? (char)(pw[i] - '0') : 0;
     };
-    auto with_record = [&] { return open + "><b>" + base64(rec) + "</b></" + game + ">"; };
+    // pop'n 13: f_compress (0x17f83c0), the record compressed (lzss)
+    auto with_record = [&] {
+        return p13 ? open + " f_compress=\"1\"><b>" + base64(lzss(rec)) + "</b></" + game + ">"
+                   : open + "><b>" + base64(rec) + "</b></" + game + ">";
+    };
 
     if (f == "new") {   // a new card: its record (name, password; the rest zero)
         rec.assign(RECORD, 0);
@@ -654,10 +744,10 @@ std::string EamuseServer::answer_playerdata(const std::string &game, const Reque
         if (rec.size() != RECORD) rec.assign(RECORD, 0);
         if (r.attrs.count("name")) set_name(attr(r.attrs, "name"));
         if (r.attrs.count("password")) set_password(attr(r.attrs, "password"));
-        if (r.attrs.count("option")) put16(0x38, num(r.attrs, "option"));
-        if (r.attrs.count("chara_num")) put16(0x3a, num(r.attrs, "chara_num"));
-        if (r.attrs.count("puzzle_now")) rec[0x1b] = (char)num(r.attrs, "puzzle_now");
-        if (r.attrs.count("puzzle_piece")) {
+        if (r.attrs.count("option")) put16(L.option, num(r.attrs, "option"));
+        if (r.attrs.count("chara_num")) put16(L.chara, num(r.attrs, "chara_num"));
+        if (!p13 && r.attrs.count("puzzle_now")) rec[0x1b] = (char)num(r.attrs, "puzzle_now");
+        if (!p13 && r.attrs.count("puzzle_piece")) {
             const std::string pp = attr(r.attrs, "puzzle_piece");
             size_t at = 0;
             for (int k = 0; k < 6 && at <= pp.size(); k++) {
@@ -675,8 +765,11 @@ std::string EamuseServer::answer_playerdata(const std::string &game, const Reque
             read_attrs(r.inner, at + 6, m, &sc);
             const long n = num(m, "num");
             if (n < 0) continue;
-            const size_t word = 0x3c + 2 * (size_t)n;
-            if (word + 2 <= SONGS_END) put16(word, num(m, "data"));
+            const size_t word = L.songs + L.song_bytes * (size_t)n;
+            if (word + L.song_bytes <= L.songs_end) {
+                if (L.song_bytes == 4) put32(word, num(m, "data"));
+                else put16(word, num(m, "data"));
+            }
             const std::string sheet = attr(m, "sheet");
             bool found = false;
             for (Record &e : scores)

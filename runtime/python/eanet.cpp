@@ -138,7 +138,9 @@ void VirtualNet::deliver(Socket &s, uint32_t ch, uint32_t buf, uint32_t len) {
         if (log) log(fmt("ch%u 16 recv = 0", ch));
         return;
     }
-    const uint32_t n = (uint32_t)std::min<size_t>(s.pending.size(), len);
+    // at most a TCP segment's worth (1460 bytes, Ethernet's MSS), as the board's network gave it:
+    // pop'n 13's HTTP reader fails on a 2.5 KB answer handed over at once (0x17ddb28: -22)
+    const uint32_t n = (uint32_t)std::min<size_t>({s.pending.size(), (size_t)len, (size_t)1460});
     io_.write(buf, reinterpret_cast<const uint8_t *>(s.pending.data()), n);
     s.pending.erase(0, n);
     respond(ch, (int32_t)n);

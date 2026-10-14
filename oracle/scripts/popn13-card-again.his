@@ -1,0 +1,15 @@
+# pop'n music 13, after popn13-card-new.his (same --nvram): the registered card again. cardmng.inquire
+# gives the card's ref id, E13 playerdata get the record; the PIN 1234, then the player's name and
+# mode select.
+#   hiraku-popn13 --nvram DIR --script oracle/scripts/popn13-card-again.his
+game popn13
+at 4500 press "Coin 1" 8
+at 4540 press "Coin 1" 8
+at 4700 press "P1 Button 5" 8
+at 5050 press "Card" 8
+at 5500 press "Keypad 1" 8
+at 5530 press "Keypad 2" 8
+at 5560 press "Keypad 3" 8
+at 5590 press "Keypad 4" 8
+at 5620 press "Keypad Enter" 8
+at 7500 quit

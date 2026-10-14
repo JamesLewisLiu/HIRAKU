@@ -1,0 +1,31 @@
+# pop'n music 13 Carnival: test mode > NETWORK OPTIONS (item 8) > e-AMUSEMENT OPTIONS > e-AMUSEMENT ON,
+# SAVE AND EXIT (the menus open slowly and start the cursor on EXIT). Then power cycle; run
+# oracle/scripts/popn13-card-new.his with the same --nvram.
+#   hiraku-popn13 --nvram DIR --script oracle/scripts/popn13-eamuse-on.his
+game popn13
+at 3000 press "Test" 10
+at 3300 press "P1 Button 6" 10
+at 3320 press "P1 Button 6" 10
+at 3340 press "P1 Button 6" 10
+at 3360 press "P1 Button 6" 10
+at 3380 press "P1 Button 6" 10
+at 3400 press "P1 Button 6" 10
+at 3420 press "P1 Button 6" 10
+at 3440 press "P1 Button 6" 10
+at 3520 press "P1 Button 5" 10
+at 3720 press "P1 Button 6" 10
+at 3760 press "P1 Button 5" 10
+at 4160 snap
+at 4170 press "P1 Button 6" 10
+at 4200 hold "P1 Button 5"
+at 4220 press "P1 Button 6" 10
+at 4250 release "P1 Button 5"
+at 4280 snap
+at 4300 press "P1 Button 6" 10
+at 4330 press "P1 Button 6" 10
+at 4360 press "P1 Button 6" 10
+at 4390 press "P1 Button 6" 10
+at 4420 snap
+at 4440 press "P1 Button 5" 10
+at 4700 snap
+at 4710 quit

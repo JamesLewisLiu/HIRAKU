@@ -375,7 +375,7 @@ public:
             io.read = [](uint32_t addr, uint8_t *d, uint32_t n) { return Hiraku::iop_read(addr, d, n); };
             net_ = std::make_unique<hk::py::VirtualNet>(io, [this](const hk::py::VirtualNet::Target &t, std::string req,
                                                                    std::function<void(std::string)> done) {
-                if (std::string answer = on_call(req); !answer.empty()) { done(std::move(answer)); return; }
+                if (std::string answer = on_call(req, done); !answer.empty()) { done(std::move(answer)); return; }
                 if (!remote_) { done(server_->handle(req)); return; }
                 // online: off the emulator's thread; the recv waits for the answer
                 std::thread([this, t, req, done = std::move(done)] {
@@ -664,6 +664,22 @@ private:
         if (net_) net_->poll();   // online answers that arrived
         if (autoplay_) apply_autoplay();
         if (card_ && ea_.autocard[0]) autocard();
+        // HK_PY_EE_DUMP=FRAME[-LAST]:FILE: EE RAM (32 MiB) at that frame (FILE), or at each frame
+        // to LAST (FILE.FRAME), for reading a game that only exists in RAM (pop'n 13 and 14 load
+        // theirs from a second stage)
+        static const char *dump = getenv("HK_PY_EE_DUMP");
+        if (dump) {
+            char *e;
+            const uint64_t first = strtoull(dump, &e, 10), last = *e == '-' ? strtoull(e + 1, nullptr, 10) : first;
+            if (frame_ >= first && frame_ <= last) {
+                std::string path = strchr(dump, ':') ? strchr(dump, ':') + 1 : "ee.bin";
+                if (last != first) path += "." + std::to_string(frame_);
+                if (FILE *f = fopen(path.c_str(), "wb")) {
+                    fwrite(eeMem->Main, 1, Ps2MemSize::MainRam, f);
+                    fclose(f);
+                }
+            }
+        }
         for (auto &[addr, last] : watch_) {
             uint32_t v;
             memcpy(&v, eeMem->Main + (addr & 0x1fffffc), 4);
@@ -746,17 +762,39 @@ private:
     uint64_t autocard_wait_ = 0;
     // A call from the game, as it goes out: the PCBID put in (-p). The answer, when the core
     // gives it itself: a new card's number (-card0), so the server never numbers a card that
-    // won't carry its number. "": the server answers.
-    std::string on_call(std::string &req) {
-        bool numbering = false;
+    // won't carry its number. "": the server answers (through done, which this may wrap).
+    std::string on_call(std::string &req, std::function<void(std::string)> &done) {
+        bool numbering = false, getnewid = false;
+        const std::string &number = ea_.card[0];
         hk::py::EamuseServer::edit(req, [&](std::string &xml) {
             if (!ea_.pcbid.empty()) {
                 hk::py::EamuseServer::set_attr(xml, "srcid", ea_.pcbid);
                 hk::py::EamuseServer::set_attr(xml, "gpcb_id", ea_.pcbid);
             }
             numbering = xml.find("<numbering") != std::string::npos && xml.find("method=\"assign\"") != std::string::npos;
+            // pop'n 13 numbers a new card with cardmng.getnewid (a card id and its player's ref id):
+            // with -card0 it asks the server about that number instead (inquire registers a card
+            // it doesn't know), and the answer gets the number as the card id
+            static const std::string method = "method=\"getnewid\"";
+            const size_t at = xml.find(method);
+            getnewid = !number.empty() && xml.find("<cardmng") != std::string::npos && at != std::string::npos;
+            if (getnewid) xml.replace(at, method.size(), "method=\"inquire\" cardid=\"" + number + "\" update=\"1\"");
         });
-        if (!numbering || ea_.card[0].empty()) return "";
+        if (getnewid) {
+            if (net_log_) {
+                std::lock_guard<std::mutex> l(net_log_mutex_);
+                fprintf(net_log_, "%llu cardmng.getnewid: inquire about the card's own number, %s (-card0)\n", (unsigned long long)frame_, number.c_str());
+                fflush(net_log_);
+            }
+            done = [done = std::move(done), number](std::string answer) {
+                hk::py::EamuseServer::edit(answer, [&](std::string &xml) {
+                    if (const size_t at = xml.find("<cardmng"); at != std::string::npos) xml.insert(at + 8, " cardid=\"" + number + "\"");
+                });
+                done(std::move(answer));
+            };
+            return "";
+        }
+        if (!numbering || number.empty()) return "";
         if (net_log_) {
             std::lock_guard<std::mutex> l(net_log_mutex_);
             fprintf(net_log_, "%llu numbering.assign: the card's own number, %s (-card0)\n", (unsigned long long)frame_, ea_.card[0].c_str());

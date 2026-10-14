@@ -146,7 +146,7 @@ SettingsDialog::SettingsDialog(QWidget *parent) : QDialog(parent) {
     v->addWidget(lights);
 
     // as spicecfg's Network page, with its option names, so a spice2x setup carries over
-    auto *ea = new QGroupBox("e-AMUSEMENT (Konami Python: pop'n music 9-12)");
+    auto *ea = new QGroupBox("e-AMUSEMENT (Konami Python: pop'n music 9-13)");
     auto *fe = new QFormLayout(ea);
     m_eaUrl = new QLineEdit(s.value("eamuse/url", s.value("eamuse/server")).toString());
     m_eaUrl->setPlaceholderText("empty: the server inside HIRAKU (-ea)");

@@ -113,7 +113,7 @@ a line, tab-separated `key=value` fields:
   answers only. Then the body, then **close the connection**: the game reads until the end of
   the stream. Any status but 200 fails the call.
 - **No compression and no binary XML:** the body is XML text. Unlike later games, there is no
-  `X-Compress` and no KBinXML.
+  `X-Compress` and no KBinXML. (pop'n 13 compresses one thing inside the XML: its player records.)
 
 ## Encryption
 
@@ -554,10 +554,56 @@ The game-named calls as pop'n 11's, but **no `userdata`**: the player lives in `
   the timer runs out stays on "カードをお取り下さい" (the card status's 0x40, card at the slot mouth,
   isn't played).
 
-**pop'n music 13** (`E13`): stops after `services.get` with
-"センターサーバーと通信できません" (5-2007-0000): its services answer needs more. **pop'n music 14**
-(`F14`): uses an IC card reader ("IC CARD R/W UNIT ERROR", 5-1508-000, without one), which HIRAKU
-doesn't play yet.
+**pop'n music 13** (`E13`; checked in HIRAKU: a new card registered, a credit saved, the card read
+back with its PIN, also with `-card0`; `oracle/scripts/popn13-eamuse-on.his`, `popn13-card-new.his`,
+`popn13-card-again.his`). Its game program exists only in RAM (a second stage loads it at
+0x1730000-0x1820000, data to about 0x1940000; the addresses below are there). The game-named calls as
+pop'n 12's, keyed by a **ref id** from a new module, `cardmng`.
+- **The services list needs `message`, `cardmng` and `cardreis`:** the library looks a call's URL up
+  by its module's name in the services list (`0x17d94c0`) and fails the call at once, without
+  sending it, when the name is missing (-10). Without `message` the start-up fails right after
+  `services.get` with "センターサーバーと通信できません" (5-2007-0000: the status check `0x17e6798`
+  sees `message.get` failed), and without `cardmng` a new card is given back after the PIN.
+- **The card:** a new pop'n 13 card is `28 25 45 31` (type 0x13 of the header builder `0x180b498`;
+  a used one `68 25 45 31`). Both CRCs are checked, as in pop'n 12. The game confirms the card by
+  itself (no OK to press), then the name and the PIN twice, as in pop'n 12.
+- **`cardmng`** (`0x17f66fc`...; answers parsed into the call's fields at `0x1497c8`...):
+
+  | Call | Answer | When |
+  |---|---|---|
+  | `getnewid cardtype newflag` | `<cardmng status="0" cardid="16 digits" refid="..."/>` | a new card: its id (written on the card, as `numbering`'s number was) and its player's ref id |
+  | `inquire cardtype cardid update` | `<cardmng status="0" refid="..." newflag="0\|1"/>` | a card read back |
+  | `gettmpid cardtype oldid` | `<cardmng status="0" newid="..."/>` | an older card's player on a new id (not seen yet) |
+  | `rebind cardtype newid` | `<cardmng status="0"/>` | (not seen yet) |
+
+  `cardtype` is 0 for the magnetic card. HIRAKU keeps the cards in `cards` (cardid, refid) and gives
+  ref ids `48524B` and 10 hex digits; `inquire` registers a card it doesn't know (newflag 1).
+  `userid.ctou` gets the ref id as its `card`.
+- **`playerdata`** as pop'n 12's, with `ref_id` in every call (`new` and `get` also send `card_id`);
+  HIRAKU keys the player by it (`pdata-E13-REFID`, `pscore-E13-REFID`).
+- **The record is compressed:** `new` and `get` answer `<E13 status="0" f_compress="1"><b>...</b></E13>`
+  (`0x17f83c0`, `0x17f74d0`). With `f_compress` not 0 the game decompresses the `<b>` data
+  (`0x1810240`): 4 bytes, the record's length (little-endian), then LZSS: a flag byte per 8 items, bit
+  set = a literal byte, clear = a match of 2 bytes, `p0 | (p1 & 0xf0) << 4` a position in a 4 KiB
+  window (starting at 0xfee, zero-filled) and `(p1 & 15) + 3` bytes. Uncompressed, the record (0xd6c
+  bytes, about 4.6 KB in base64) makes the answer too big for the game's HTTP reader, and the call
+  fails. With `f_compress` 0, `get` answers for an older card take a pop'n 12 record (0x708 bytes,
+  `0x17e9dd8`), converted by the game (`conv`).
+- **The record** (0xd6c bytes, at `0x166daa8`): 0x00 the name (Shift-JIS), 0x1c the password (four
+  digits, a byte each), 0x20 the option and 0x22 the character (16-bit), from 0x28 a 32-bit word per
+  song (the clear marks; `set`'s `data`, `0x1810e60`). The rest is not known yet.
+- **`playerdata set`** (`ref_id name password card_num option chara_num mode_num music_num sheet_num
+  category_num rare_ojama event_chara matching room_num`, then `<music num sheet data score/>` per
+  song, `<netvs .../>`) and **`score`** (`ref_id music_num sheet_num s_challenge`) as pop'n 12's.
+- **The network:** answers reach the game in pieces of at most 1460 bytes, as TCP over Ethernet
+  delivers them; HIRAKU's virtual network hands them over that way (pop'n 13's reader fails on a
+  2.5 KB answer handed over in one piece, `0x17ddb28`).
+- **Not done yet:** `playerdata conv`, `tmp_set`, `tmp_ref` (a pop'n 12 card's player brought to
+  pop'n 13), `cardreis.altercard`, `gettmpid`, `rebind`; the ranking tables (`rank get` answers
+  compressed data, `f_compress`, `0x17f71a8`).
+
+**pop'n music 14** (`F14`): uses an IC card reader ("IC CARD R/W UNIT ERROR", 5-1508-000, without
+one), which HIRAKU doesn't play yet.
 
 ## Not known yet
 
