@@ -11,6 +11,11 @@ per-frame digest (--digest): a hash of the picture and a running hash of the
 sound. A change that is meant to be invisible (a faster renderer, idle skipping,
 cheaper fibers) must leave every line identical. Baselines live in
 out/regress/baseline/ (out/ is never committed: the digests derive from the game).
+
+Each case starts as soon as the case it comes after has finished (cases from the same one run at
+once; the longest ways first, by the last run's times), and is reported as it finishes, with its
+wall time. At the end: the run's time and its critical path, and out/regress/times.txt with each
+case's start, end and wall time in the last run.
 """
 import concurrent.futures as cf
 import os
@@ -19,6 +24,7 @@ import resource
 import shutil
 import subprocess
 import sys
+import threading
 import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -133,6 +139,7 @@ CASES = {
 # report lines that describe the host, not the machine
 HOST_LINES = ("profile:", "audio:", "nvram:")
 HOST_TIME = re.compile(r" in [0-9.]+ s of host time")   # kbm's synth line
+RUN_FILES = re.compile(r", run files in \S+")   # the Python core's: where this checkout keeps them
 
 
 def after_of(case):
@@ -152,7 +159,10 @@ def chain(case):
     return c
 
 
-def run(case, digest_path):
+def run(case, digest_path, take=False, nice=0):
+    """take: the case it comes after has no other case to start, so its NVRAM directory is moved
+    here rather than copied (the 573's, with an installed hard disk, are ~400 MB). nice: run it at
+    that lower priority (what it computes is the same; only how soon)"""
     game, frames, extra = CASES[case][:3]
     exe = os.path.join(BIN, "hiraku-" + game)
     work = os.path.join(OUT, "work", case)
@@ -163,7 +173,11 @@ def run(case, digest_path):
         nv = os.path.join(work, "nvram")
         shutil.rmtree(nv, ignore_errors=True)
         if after_of(case):
-            shutil.copytree(os.path.join(OUT, "work", after_of(case), "nvram"), nv)
+            src = os.path.join(OUT, "work", after_of(case), "nvram")
+            if take:
+                os.rename(src, nv)
+            else:
+                shutil.copytree(src, nv)
         else:
             os.makedirs(nv)
         cmd += ["--nvram", nv]
@@ -171,11 +185,11 @@ def run(case, digest_path):
         cmd += ["--digest", digest_path]
     t0 = time.monotonic()
     before = resource.getrusage(resource.RUSAGE_CHILDREN)
-    p = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True)
+    p = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True, preexec_fn=(lambda: os.nice(nice)) if nice else None)
     after = resource.getrusage(resource.RUSAGE_CHILDREN)
     wall = time.monotonic() - t0
     cpu = (after.ru_utime - before.ru_utime) + (after.ru_stime - before.ru_stime)
-    stats = [HOST_TIME.sub("", l) for l in p.stdout.splitlines()
+    stats = [RUN_FILES.sub("", HOST_TIME.sub("", l)) for l in p.stdout.splitlines()
              if not l.startswith(HOST_LINES) and not l.startswith("frametime")]
     return p.returncode, stats, wall, cpu, p.stdout + p.stderr
 
@@ -193,58 +207,142 @@ def record_or_check(names, record):
     cur = os.path.join(OUT, "current")
     os.makedirs(base, exist_ok=True)
     os.makedirs(cur, exist_ok=True)
+    t_start = time.monotonic()
+    lock = threading.Lock()   # each case's lines printed together, as it finishes
+    times = []   # (case, start, end) in seconds from the start, for the summary
+    bad = 0
+
+    def report(case, rc, wall, log, asked):
+        nonlocal bad
+        took = f" [{wall:.0f} s]"
+        with lock:
+            if rc != 0:
+                print(f"{case}: exit {rc}{took}\n{log[-2000:]}")
+                bad += 1
+            elif not asked:
+                print(f"{case}: run to set up the next{took}")
+            elif record:
+                print(f"{case}: recorded{took}")
+            else:
+                bad += compare(case, base, cur, took)
+            sys.stdout.flush()
 
     def one(case):
-        d = os.path.join(base if record else cur, case + ".digest")
-        rc, stats, wall, cpu, log = run(case, d)
-        with open(d.replace(".digest", ".stats"), "w") as f:
-            f.write("\n".join(stats) + "\n")
-        return case, rc, wall, log
+        asked = case in names   # the others only set up a case that starts from them
+        d = os.path.join(base if record else cur, case + ".digest") if asked else None
+        t0 = time.monotonic() - t_start
+        # the only case to start from its parent takes the parent's NVRAM directory
+        rc, stats, _, _, log = run(case, d, take=bool(after_of(case)) and children[after_of(case)] == [case],
+                                   nice=0 if case in critical else 10)
+        if asked:
+            with open(d.replace(".digest", ".stats"), "w") as f:
+                f.write("\n".join(stats) + "\n")
+        t1 = time.monotonic() - t_start   # with its setup (the NVRAM directory)
+        with lock:
+            times.append((case, t0, t1))
+        report(case, rc, t1 - t0, log, asked)
+        return rc
 
-    def group(cases):
-        # cases that run after one another, in order; the ones not asked for only set up the next
-        out = []
-        for c in cases:
-            if c in names:
-                out.append(one(c))
-            else:
-                rc, _, wall, _, log = run(c, None)
-                if rc != 0:
-                    out.append((c, rc, wall, log))
-                    break
-        return out
-
-    groups = []
+    # Every case to run, and each one as soon as the case it starts after has finished: the
+    # cases that start from the same one run at once. A session case starts with its partner.
+    todo = []
     for n in names:
-        ch = chain(n)
-        g = next((g for g in groups if set(g) & set(ch)), None)
-        if g is None:
-            groups.append(ch)
-        else:
-            g.extend(c for c in ch if c not in g)
-            g.sort(key=lambda c: len(chain(c)))
-    bad = 0
-    with cf.ThreadPoolExecutor(max_workers=min(len(groups), os.cpu_count() or 4)) as ex:
-        for case, rc, wall, log in (r for rs in ex.map(group, groups) for r in rs):
-            if rc != 0:
-                print(f"{case}: exit {rc}\n{log[-2000:]}")
-                bad += 1
-                continue
-            if record:
-                print(f"{case}: recorded ({wall:.1f} s)")
-                continue
-            bad += compare(case, base, cur)
+        todo += [c for c in chain(n) if c not in todo]
+    children = {c: [k for k in todo if after_of(k) == c] for c in todo}
+    last = last_times()
+
+    def cost(c):   # the longest way to the end through c: what to start first
+        own = last.get(c, CASES[c][1] / 60)
+        return own + max((cost(k) for k in children[c]), default=0)
+
+    # the critical path (the run's length, as far as the last run's times tell): it runs at normal
+    # priority, everything else lower, so the others take what CPU it leaves rather than slow it
+    critical = set()
+    c = max((k for k in todo if after_of(k) is None), key=cost, default=None)
+    while c:
+        critical.add(c)
+        c = max(children[c], key=cost, default=None)
+
+    # half the CPUs by default: the cores run several threads each, and with every CPU busy the
+    # longest chain (the run's length) slows down more than the rest gains (HK_REGRESS_JOBS: other)
+    jobs = int(os.environ.get("HK_REGRESS_JOBS") or max(2, (os.cpu_count() or 4) // 2))
+    done, failed, running = set(), set(), {}
+    with cf.ThreadPoolExecutor(max_workers=jobs + 1) as ex:   # + 1: a session pair when jobs is 1
+        while len(done) + len(failed) < len(todo):
+            for c in sorted(todo, key=cost, reverse=True):
+                if c in done or c in failed or c in running.values():
+                    continue
+                p = partner_of(c)
+                why = next((k for k in (after_of(c), p, p and after_of(p)) if k and k in failed), None)
+                if why:
+                    failed.add(c)   # what it starts from (or its partner) didn't run
+                    with lock:
+                        print(f"{c}: not run ({why} failed)")
+                    bad += 1
+                    continue
+                ready = lambda k: after_of(k) is None or after_of(k) in done
+                if not ready(c) or (p and (p not in todo or not ready(p))):
+                    continue
+                start = [c] + ([p] if p else [])
+                # no more than `jobs` at once, picked here (longest way first) rather than queued in
+                # the pool, so a case that becomes ready later doesn't wait behind shorter ones
+                if running and len(running) + len(start) > jobs:
+                    continue
+                for k in start:
+                    running[ex.submit(one, k)] = k
+            if not running:
+                break
+            finished, _ = cf.wait(list(running), return_when=cf.FIRST_COMPLETED)
+            for f in finished:
+                k = running.pop(f)
+                (done if f.result() == 0 else failed).add(k)
+    for c in todo:
+        if c not in done and c not in failed:
+            print(f"{c}: not run (what it starts from never ran)")
+            bad += 1
+    total = time.monotonic() - t_start
     if not record:
         print("all identical" if bad == 0 else f"{bad} case(s) differ")
+    write_times(times, total, "record" if record else "check", jobs)
     return 1 if bad else 0
 
 
-def compare(case, base, cur):
+def last_times():
+    """each case's wall time in the last run (out/regress/times.txt), for running the long ways first"""
+    t = {}
+    try:
+        for line in open(os.path.join(OUT, "times.txt")):
+            f = line.split("\t")
+            if not line.startswith("#") and len(f) == 4:
+                t[f[0]] = float(f[3])
+    except FileNotFoundError:
+        pass
+    return t
+
+
+def write_times(times, total, what, jobs):
+    """How long the run took and where: each case's wall time (out/regress/times.txt, the last run's),
+    and the run's critical path: the cases that ended last, one starting from the other."""
+    lines = [f"# tools/regress.py {what}, {time.strftime('%Y-%m-%d %H:%M')}: {total:.0f} s, {len(times)} cases "
+             f"({jobs} at once, on {os.cpu_count()} CPUs)",
+             "# case  start s  end s  wall s"]
+    for case, t0, t1 in sorted(times, key=lambda t: t[1]):
+        lines.append(f"{case}\t{t0:.0f}\t{t1:.0f}\t{t1 - t0:.0f}")
+    with open(os.path.join(OUT, "times.txt"), "w") as f:
+        f.write("\n".join(lines) + "\n")
+    wall = {case: t1 - t0 for case, t0, t1 in times}
+    path = chain(max(times, key=lambda t: t[2])[0]) if times else []
+    print(f"took {total:.0f} s; the critical path: " + " > ".join(f"{c} {wall.get(c, 0):.0f}" for c in path) + " s")
+    print(f"each case's times: {os.path.relpath(os.path.join(OUT, 'times.txt'), ROOT)}")
+
+
+def compare(case, base, cur, took=""):
+    """1 if the case differs from its baseline (printed, `took` after the verdict), else 0"""
     try:
         a = open(os.path.join(base, case + ".digest")).read().splitlines()
         sa = open(os.path.join(base, case + ".stats")).read()
     except FileNotFoundError:
-        print(f"{case}: no baseline (run: tools/regress.py record {case})")
+        print(f"{case}: no baseline (run: tools/regress.py record {case}){took}")
         return 1
     b = open(os.path.join(cur, case + ".digest")).read().splitlines()
     sb = open(os.path.join(cur, case + ".stats")).read()
@@ -253,18 +351,18 @@ def compare(case, base, cur):
             fa, pa, aa = a[k].split()
             _, pb, ab = b[k].split()
             what = " and ".join(w for w, d in (("picture", pa != pb), ("sound", aa != ab)) if d)
-            print(f"{case}: DIFFERS from frame {fa} ({what})")
+            print(f"{case}: DIFFERS from frame {fa} ({what}){took}")
             return 1
     if len(a) != len(b):
-        print(f"{case}: DIFFERS: {len(a)} frames in the baseline, {len(b)} now")
+        print(f"{case}: DIFFERS: {len(a)} frames in the baseline, {len(b)} now{took}")
         return 1
     if sa != sb:
-        print(f"{case}: frames and sound identical, run statistics DIFFER:")
+        print(f"{case}: frames and sound identical, run statistics DIFFER:{took}")
         for la, lb in zip(sa.splitlines(), sb.splitlines()):
             if la != lb:
                 print(f"  was: {la}\n  now: {lb}")
         return 1
-    print(f"{case}: identical ({len(a)} frames)")
+    print(f"{case}: identical ({len(a)} frames){took}")
     return 0
 
 
