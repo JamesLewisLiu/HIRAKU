@@ -293,6 +293,17 @@ public:
 	uint32_t read(offs_t offset, uint32_t mem_mask);
 	void write(offs_t offset, uint32_t data, uint32_t mem_mask);
 
+	// HIRAKU: the tick timer stops while a tick would change nothing, keeping its phase, and a
+	// register write or CTS wakes it, if a tick would then do something, for the tick it would
+	// have had next. (With the fork's transmit FIFO never written, every tick after the first
+	// changes nothing.)
+	bool tick_does_nothing() const;
+	void wake();
+	attotime tick_period() const;
+	void write_regs(offs_t offset, uint32_t data, uint32_t mem_mask);
+	bool m_parked = false;
+	attotime m_park_at, m_park_period;
+
 private:
 	enum : u32 {
 		SIFCR_SWRST = 15, // Software Reset

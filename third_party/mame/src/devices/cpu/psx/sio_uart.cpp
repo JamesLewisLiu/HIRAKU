@@ -151,7 +151,31 @@ void psxsio1_uart_device::sio_timer_adjust()
 		LOGGENERAL("sio_timer_adjust( %s ) invalid baud rate ( %d x %d )\n", tag(), m_br_factor, m_baud);
 	}
 
+	m_parked = false;
 	m_timer->adjust(n_time);
+}
+
+
+// HIRAKU: what the next tick would do, if nothing is written before it: send a bit, or raise the
+// TX interrupt (transmit_clock); nothing else depends on the ticks
+bool psxsio1_uart_device::tick_does_nothing() const
+{
+	return is_transmit_register_empty() && !(!(m_status & SIO_STATUS_IRQ) && (m_status & SIO_STATUS_TX_EMPTY) &&
+		(m_status & SIO_STATUS_TX_RDY) && BIT(m_control, SIO_CONTROL_BIT_TX_IENA));
+}
+
+// HIRAKU: after a register write (or CTS), a stopped timer restarts, if a tick would now do
+// something, for the next of the ticks it would have had (those before now changed nothing; one at
+// now would have come before the write)
+void psxsio1_uart_device::wake()
+{
+	if (!m_parked || tick_does_nothing())
+		return;
+	m_parked = false;
+	const attotime now = machine().time();
+	const attotime::i128 p = m_park_period.raw_value();
+	const attotime::i128 k = (now - m_park_at).raw_value() / p + 1;
+	m_timer->adjust(attotime::raw(m_park_at.raw_value() + p * k) - now);
 }
 
 
@@ -159,6 +183,14 @@ TIMER_CALLBACK_MEMBER(psxsio1_uart_device::sio_tick)
 {
 	transmit_clock();
 	sio_timer_adjust();
+	if (tick_does_nothing() && m_baud != 0 && m_br_factor != 0)
+	{
+		// HIRAKU: stop until a write could change that (wake())
+		m_parked = true;
+		m_park_at = machine().time();
+		m_park_period = attotime::from_hz(44100 * 768) * (m_br_factor * m_baud);
+		m_timer->adjust(attotime::never);
+	}
 }
 
 /*-------------------------------------------------
@@ -490,6 +522,12 @@ uint32_t psxsio1_uart_device::read(offs_t offset, uint32_t mem_mask)
 
 void psxsio1_uart_device::write(offs_t offset, uint32_t data, uint32_t mem_mask)
 {
+	write_regs(offset, data, mem_mask);
+	wake();   // HIRAKU
+}
+
+void psxsio1_uart_device::write_regs(offs_t offset, uint32_t data, uint32_t mem_mask)
+{
 	switch (offset % 4)
 	{
 	case 0:
@@ -564,6 +602,7 @@ void psxsio1_uart_device::write_cts(int state)
 	if (started())
 	{
 		check_for_tx_start();
+		wake();   // HIRAKU: a byte to send now
 	}
 }
 

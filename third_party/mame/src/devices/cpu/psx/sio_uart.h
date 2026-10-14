@@ -98,6 +98,14 @@ private:
 	u8 m_data_bits_count;
 
 	emu_timer* m_timer;
+	// HIRAKU: the tick timer stops while a tick would change nothing (nothing to send, the TX
+	// interrupt raised or not enabled), keeping the phase it had, and a register write wakes it
+	// for the tick it would have had next (as the fork's continuous ticks would)
+	bool m_parked = false;
+	attotime m_park_at, m_park_period;
+	bool tick_does_nothing() const;
+	void wake();
+	void write_regs(offs_t offset, uint32_t data, uint32_t mem_mask);
 };
 
 

@@ -2477,6 +2477,27 @@ TIMER_CALLBACK_MEMBER(tx3927_sio::sio_tick)
 	sio_timer_adjust();
 }
 
+// HIRAKU: what the next tick would do, if nothing is written before it (transmit_clock): load the
+// transmit register from the FIFO, or move the bit phase on at 0 (where it sends) or 15
+bool tx3927_sio::tick_does_nothing() const
+{
+	const bool load = is_transmit_register_empty() && m_sitfifo_len > 0 && !BIT(m_siflcr, SIFLCR_TSDE);
+	return !load && m_transmit_bit != 0 && m_transmit_bit != 15;
+}
+
+// HIRAKU: a stopped timer restarts, when a tick would now do something, for the next of the ticks
+// it would have had (those before now changed nothing; one at now came before this)
+void tx3927_sio::wake()
+{
+	if (!m_parked || tick_does_nothing())
+		return;
+	m_parked = false;
+	const attotime now = machine().time();
+	const attotime::i128 p = m_park_period.raw_value();
+	const attotime::i128 k = (now - m_park_at).raw_value() / p + 1;
+	m_timer->adjust(attotime::raw(m_park_at.raw_value() + p * k) - now);
+}
+
 void tx3927_sio::transmit_clock(bool is_cts)
 {
 	// TODO: Support transmit enable select where CTS* hardware signal is used
@@ -2599,9 +2620,12 @@ void tx3927_sio::write_cts(int state)
 	m_cts = state;
 	m_siscisr |= 1 << SISCISR_CTSS;
 	transmit_clock(true);
+	wake();   // HIRAKU
 }
 
-void tx3927_sio::sio_timer_adjust()
+// HIRAKU: the fork's sio_timer_adjust period: the baud rate generator's (16 ticks a bit), or the
+// internal/external clock
+attotime tx3927_sio::tick_period() const
 {
 	constexpr int clock_divs[4] = { 2, 8, 32, 128 };
 	const auto clock_div = clock_divs[BIT(m_sibgr, 8, 2)];
@@ -2610,25 +2634,27 @@ void tx3927_sio::sio_timer_adjust()
 	const auto sclk = attotime::from_hz(133000000.0 / 4);
 	const auto target_clock = BIT(m_clock_sel, 1) ? sclk : imclk;
 
-	if (BIT(m_clock_sel, 0)) {
-		attotime n_time = attotime::never;
+	if (!BIT(m_clock_sel, 0))
+		return target_clock;   // internal/external clock
+	if (clock_div != 0 && brd_div != 0)
+		return attotime::from_hz(target_clock.as_hz() / clock_div / brd_div / 16);
+	return attotime::never;   // invalid baud rate
+}
 
-		// Baud rate generator
-		if (clock_div != 0 && brd_div != 0)
-		{
-			n_time = attotime::from_hz(target_clock.as_hz() / clock_div / brd_div / 16);
-			//LOGMASKED(LOG_TX39_SIO, "sio_timer_adjust( %s ) = %s ( %d x %d )\n", tag(), n_time.as_string(), clock_div, brd_div);
-		}
-		else {
-			//LOGMASKED(LOG_TX39_SIO, "sio_timer_adjust( %s ) invalid baud rate ( %d x %d )\n", tag(), clock_div, brd_div);
-		}
-
-		m_timer->adjust(n_time);
+void tx3927_sio::sio_timer_adjust()
+{
+	const attotime n_time = tick_period();
+	if (tick_does_nothing() && !n_time.is_never())
+	{
+		// HIRAKU: stopped until a tick would do something (wake())
+		m_parked = true;
+		m_park_at = machine().time();
+		m_park_period = n_time;
+		m_timer->adjust(attotime::never);
+		return;
 	}
-	else {
-		// Internal/external clock
-		m_timer->adjust(target_clock);
-	}
+	m_parked = false;
+	m_timer->adjust(n_time);
 }
 
 uint32_t tx3927_sio::read(offs_t offset, uint32_t mem_mask)
@@ -2810,6 +2836,12 @@ uint32_t tx3927_sio::read(offs_t offset, uint32_t mem_mask)
 }
 
 void tx3927_sio::write(offs_t offset, uint32_t data, uint32_t mem_mask)
+{
+	write_regs(offset, data, mem_mask);
+	wake();   // HIRAKU
+}
+
+void tx3927_sio::write_regs(offs_t offset, uint32_t data, uint32_t mem_mask)
 {
 	auto sio_offset = (offset & 0x3f) * 4;
 
