@@ -686,8 +686,18 @@ reader with its own 10-key; the PIN is checked by the server.
   answers 0xdb8 bytes (at `0x16506b8`); `new` is read as 0xd6c, and a pop'n 13 player's record
   (0xd6c, `conv`) too. 0x00 the name, 0x1c the option and 0x1e the character (16-bit), from 0x24 a
   32-bit word per song (`0x17fdfa0`); no password.
+- **`F14 game get`** also reads `net_event`, `ir_ranking` and `shop_event_ranking` (`0x17e9308`).
+  `net_event` 1 means the internet ranking runs (`0x17fdc78`): the attract mode then shows the course
+  boards, and courses' results and high scores go online. HIRAKU answers `net_event="1"`.
+- **`F14 rank get`:** 13 EXPERT courses of 0x1e4 bytes as pop'n 12's (the prefecture before the
+  place), a 0x1894-byte table (`0x17db420`, at `0x15f28f8`), and no shop board.
+- **`F14 rank exp`** sends `ref_id course_num chara_num option stage_score cool great good bad combo
+  shop_name pref`: no name and no score. HIRAKU ranks the player by ref id, scores the course as the
+  four stages' scores added up, and takes the name from the player's record (`pdata-F14-REF`).
+- **`F14 rank shop`** sends `stage item robo shop_name pref` after a credit (the SHOP EVENT's story,
+  its counter, FEVER ROBO's gauge): `<F14/>`; HIRAKU keeps the latest per shop.
 - **Not done yet:** `playerdata conv` (a pop'n 13 player brought over), `expire`, `bindcard`,
-  `cardreis.altercard`, the rankings.
+  `cardreis.altercard`.
 
 ## Not known yet
 

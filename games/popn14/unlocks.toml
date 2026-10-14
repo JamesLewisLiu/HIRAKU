@@ -1,0 +1,157 @@
+# pop'n music 14 FEVER!: what the operator can unlock (tools/unlock.py; launcher: right-click > Unlocks).
+#
+# Operator codes (in the program in RAM at 0x1923d5b), typed in test mode > EVENT OPTIONS: as in
+# pop'n 13 the menu shows only EXIT, and blue right then red opens PHASE PASSWORD (0x17be8b8); the
+# nine codes in order, each moving the phase on by one. The settings file in the battery RAM
+# (m48t58y.u48) is kept twice as pop'n 9's (mirror.c: copies at 0x0 and 0x110, a header {sum,
+# size 0x7c, data sum}, the data at +0x10). In the data (0x164c840 in RAM): +0x0e the phase
+# (0x17f6b18), +0x54 the SHOP EVENT's record (below), and at +0x78 its own sum (0x17f61b8): six
+# segments, plus 0x70. Found by typing the codes in HIRAKU (oracle/scripts/popn14-phases.his),
+# comparing the saves, and reading the program.
+
+[[unlock]]
+id = "phase"
+title = "Event phase"
+nvram = "m48t58y.u48"
+offsets = [0x1e, 0x12e]
+checksum = { kind = "mirror", files = [0x0, 0x110], size = 0x7c, inner = { at = 0x78, segments = [4, 0xc, 4, 8, 0x38, 0x24], add = 0x70 } }
+how = "In the game: test mode > EVENT OPTIONS, blue right then red (PHASE PASSWORD), the codes in order (the wheel: blue moves, red enters)."
+
+[[unlock.level]]
+value = 0
+name = "--"
+text = "No event: the songs of a new cabinet."
+
+[[unlock.level]]
+value = 1
+name = "1. SHOP EVENT + SECRET DATA RELEASE"
+code = "L5FFXMAL5U"
+text = "Starts the SHOP EVENT's first story (event progress, below), and releases the secret songs."
+
+[[unlock.level]]
+value = 2
+name = "2. SHOP EVENT SECOND STORY"
+code = "UQ45ZAC4GM"
+text = "The second story."
+
+[[unlock.level]]
+value = 3
+name = "3. SHOP EVENT THIRD STORY + FIRST STORY DATA RELEASE"
+code = "KMCZS67SW5"
+text = "The third story; the first story's songs are released."
+
+[[unlock.level]]
+value = 4
+name = "4. SHOP EVENT FOURTH STORY + SECOND STORY DATA RELEASE"
+code = "LSPDJMGS85"
+text = "The fourth story; the second story's released."
+
+[[unlock.level]]
+value = 5
+name = "5. SHOP EVENT FIFTH STORY + THIRD STORY DATA RELEASE"
+code = "X7VBLVFKNQ"
+text = "The fifth story; the third story's released."
+
+[[unlock.level]]
+value = 6
+name = "6. SHOP EVENT SIXTH STORY + FOURTH STORY DATA RELEASE"
+code = "86XQTFDSHX"
+text = "The sixth story; the fourth story's released."
+
+[[unlock.level]]
+value = 7
+name = "7. SHOP EVENT FINAL STORY + FIFTH STORY DATA RELEASE"
+code = "JRS9K47DGB"
+text = "The final story; the fifth story's released."
+
+[[unlock.level]]
+value = 8
+name = "8. SHOP EVENT END + SIXTH STORY DATA RELEASE"
+code = "7QWVGWFTHJ"
+text = "The event ends; the sixth story's released."
+
+[[unlock.level]]
+value = 9
+name = "MAX. ALL DATA RELEASE + ee'MALL MUSIC RELEASE"
+code = "Q2KWRWXHSN"
+text = "Everything, and the ee'MALL songs."
+
+# The SHOP EVENT (phases 1-7, フィーバー戦士ポップン14): the shop's. Its record, in the settings (both
+# copies; little-endian, 0x164c894 in RAM): from +0x54 a counter per story (six), then at +0x6c the
+# final story's (checked against 100,000,000: in practice only reached online or by DATA RELEASE)
+# and at +0x70 FEVER ROBO's gauge, up to 10,000 (rank shop's robo; full, it gives フィーバーロボ).
+# A credit's points go to the phase's story until its last mark, then to the gauge (0x17f22e0). Each story's four songs open at their marks (0x17f2b38, the table
+# at 0x19a9678); story n's are released from phase n+2, the rest at MAX. The attract mode shows the
+# stories' songs ("君たちが救出した楽曲たちだ!!"). Songs named by their genres.
+[[progress]]
+id = "story"
+title = "SHOP EVENT"
+kind = "thresholds"
+nvram = "m48t58y.u48"
+checksum_of = "phase"
+copies = [0x10, 0x120]
+offset = 0x54
+
+[[progress.areas]]
+name = "1st story"
+active = [1]
+released = [3, 4, 5, 6, 7, 8, 9]
+songs = [
+  { counter = 0, charts = [{ at = 125000, bit = 0, gives = "ディスコ ア ゴーゴー" }, { at = 250000, bit = 1, gives = "フィーバーヒーロー" }, { at = 350000, bit = 2, gives = "ネオクラシカル・ヘヴィメタル" }, { at = 500000, bit = 3, gives = "フィーバーヒーローエンディング" }] },
+]
+
+[[progress.areas]]
+name = "2nd story"
+active = [2]
+released = [4, 5, 6, 7, 8, 9]
+songs = [
+  { counter = 1, charts = [{ at = 125, bit = 0, gives = "ビタースウィートポップ" }, { at = 250, bit = 1, gives = "ホケンラップ" }, { at = 350, bit = 2, gives = "クラシック１１" }, { at = 500, bit = 3, gives = "オウエンカ" }] },
+]
+
+[[progress.areas]]
+name = "3rd story"
+active = [3]
+released = [5, 6, 7, 8, 9]
+songs = [
+  { counter = 2, charts = [{ at = 125000, bit = 0, gives = "チビッコアイドル" }, { at = 250000, bit = 1, gives = "エレクトロポップ" }, { at = 350000, bit = 2, gives = "ユルポップ" }, { at = 500000, bit = 3, gives = "ヴイエスサウンド" }] },
+]
+
+[[progress.areas]]
+name = "4th story"
+active = [4]
+released = [6, 7, 8, 9]
+songs = [
+  { counter = 3, charts = [{ at = 125, bit = 0, gives = "フレンチメルヘン" }, { at = 250, bit = 1, gives = "タイキョクケン" }, { at = 350, bit = 2, gives = "コンテンポラリーネイション２" }, { at = 500, bit = 3, gives = "ブルガリアンリズム" }] },
+]
+
+[[progress.areas]]
+name = "5th story"
+active = [5]
+released = [7, 8, 9]
+songs = [
+  { counter = 4, charts = [{ at = 7500, bit = 0, gives = "グラディウス２" }, { at = 15000, bit = 1, gives = "ブロークンバンビート" }, { at = 21000, bit = 2, gives = "ポップデスコ" }, { at = 30000, bit = 3, gives = "サイケデリックトランス" }] },
+]
+
+[[progress.areas]]
+name = "6th story"
+active = [6]
+released = [8, 9]
+songs = [
+  { counter = 5, charts = [{ at = 75000, bit = 0, gives = "サイバーフラメンコ" }, { at = 150000, bit = 1, gives = "ケンカドラム" }, { at = 210000, bit = 2, gives = "エンゼツ" }, { at = 300000, bit = 3, gives = "プログレッシブバロック" }] },
+]
+
+[[progress.areas]]
+name = "Final story"
+active = [7]
+released = [9]
+songs = [
+  { counter = 6, charts = [{ at = 100000000, bit = 0, gives = "サイバーフラメンコ EX" }, { at = 100000000, bit = 1, gives = "エンゼツ EX" }, { at = 100000000, bit = 2, gives = "プログレッシブバロック EX" }, { at = 100000000, bit = 3, gives = "ケンカドラム EX" }] },
+]
+
+[[progress.areas]]
+name = "FEVER ROBO"
+active = [1, 2, 3, 4, 5, 6, 7, 8]
+released = [9]
+songs = [
+  { counter = 7, charts = [{ at = 10000, bit = 0, gives = "フィーバーロボ" }] },
+]

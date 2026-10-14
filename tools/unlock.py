@@ -365,8 +365,9 @@ def thresholds_fields(p: dict, data: bytes) -> list[int]:
 
 
 def thresholds_words(area: dict, counters: list[int]) -> int:
-    """What an area's counters reach, as the game works it out (pop'n 13 0x17fb208): a chart once
-    its song's counter reaches the chart's mark."""
+    """What an area's counters reach, as the game works it out (pop'n 13 0x17fb208, pop'n 14
+    0x17f2b38): a chart once its song's counter reaches the chart's mark. Where the game keeps no
+    words (pop'n 14), `bit` only numbers the area's items."""
     word = 0
     for song in area["songs"]:
         for ch in song["charts"]:
@@ -409,9 +410,9 @@ def apply_thresholds(game: str, p: dict, unlocks: dict, nvram: str, value: str) 
     for c in p["copies"]:
         for k, n in enumerate(counters):
             data[c + p["offset"] + 4 * k:c + p["offset"] + 4 * k + 4] = n.to_bytes(4, "little")
-        for a in p["areas"]:
+        for a in p["areas"]:   # pop'n 14 keeps no words: the game reads the counters
             word = thresholds_words(a, counters)
-            for w, at in enumerate(a["words"]):
+            for w, at in enumerate(a.get("words", [])):
                 data[c + p["offset"] + at:c + p["offset"] + at + 4] = (word >> (32 * w) & 0xffffffff).to_bytes(4, "little")
     seal(u, data)
     tmp = path + ".tmp"

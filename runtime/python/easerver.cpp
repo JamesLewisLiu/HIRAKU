@@ -346,11 +346,35 @@ EamuseServer::Entered EamuseServer::enter(const Board &b, const Request &r) {
     // pop'n 12 on name the course course_num
     const char *course_key = attr(r.attrs, "course").empty() && !attr(r.attrs, "course_num").empty() ? "course_num" : "course";
     const std::string course = b.file == BOARD_GZ.file ? "0" : std::to_string(num(r.attrs, course_key));
-    const std::string who = attr(r.attrs, b.who);
+    std::string who = attr(r.attrs, b.who);
+    if (who.empty()) who = attr(r.attrs, "ref_id");   // pop'n 13 on: the player's ref id
     std::vector<Record> all = from_lines(read_file(b.file));
     Record mine{{"course", course}, {"who", who}};
     for (const char *k : b.keep) mine[k] = attr(r.attrs, k);
     if (mine.count("area_num") && mine["area_num"].empty()) mine["area_num"] = attr(r.attrs, "pref");   // pop'n 12 on
+    // pop'n 14 sends neither a score nor a name: the stages' scores added up, and the player's
+    // name from the record the server keeps (pdata-F14-REF, the name at 0x00, hex as the others)
+    if (mine.count("score") && mine["score"].empty() && r.attrs.count("stage_score")) {
+        long total = 0;
+        const std::string ss = attr(r.attrs, "stage_score");
+        for (size_t at = 0; at < ss.size();) {
+            total += std::strtol(ss.c_str() + at, nullptr, 10);
+            const size_t comma = ss.find(',', at);
+            if (comma == std::string::npos) break;
+            at = comma + 1;
+        }
+        mine["score"] = std::to_string(total);
+    }
+    if (mine.count("name") && mine["name"].empty() && safe_name(who)) {
+        const std::string rec = read_file("pdata-" + std::string(b.file).substr(0, 3) + "-" + who);
+        std::string hex;
+        for (size_t i = 0; i < 12 && i < rec.size() && rec[i]; i++) {
+            char h[3];
+            snprintf(h, sizeof h, "%02X", (unsigned char)rec[i]);
+            hex += h;
+        }
+        mine["name"] = hex;
+    }
     bool update = true;
     bool found = false;
     for (Record &e : all) {
@@ -522,7 +546,7 @@ std::string EamuseServer::answer(const Call &c, const Request &r, const std::str
 
 // pop'n music 10 on (docs/EAMUSE3.md, "Later games"): game is the model's first three
 // characters. "" leaves the call to pop'n 9's answers (services, numbering, userid, posevent, ...).
-// pop'n 10-13's rankings, as rank.get's <b>. pop'n 10 (0x187be4 copies it to 0x18287c8,
+// pop'n 10-14's rankings, as rank.get's <b>. pop'n 10 (0x187be4 copies it to 0x18287c8,
 // 0x1f30 bytes): 15 EXPERT courses of {count, 20 entries of 0x18: name (Shift-JIS, 13 bytes),
 // place, prefecture, score, cool} (0x12b218 draws them; the score only with the game's score
 // display on), then the shops by HOSHI NI NEGAIO wishes: {count, 20 entries of 0x24: shop name
@@ -534,10 +558,11 @@ std::string EamuseServer::answer(const Call &c, const Request &r, const std::str
 // scrolls drawn per bit). pop'n 13 (0x17eaed8, 0x22a4 bytes, at 0x160fb20): the same courses, then
 // two shop boards (POP'N LAND's, POP'N WORLD's: 0x17eb010) of {count, 20 entries of 0x28: shop
 // name (24 bytes), place, prefecture, stage, the area's words (low, high) at 0x20 and 0x24: the
-// attractions built, drawn per bit}. Little-endian.
+// attractions built, drawn per bit}. pop'n 14 (0x17db420, 0x1894 bytes, at 0x15f28f8): 13 such
+// courses, no shop board. Little-endian.
 std::string EamuseServer::rank_table(const std::string &game) {
-    const bool p11 = game == "D11", p13 = game == "E13", pref_first = game != "C20";
-    std::string t(p11 ? 0x1f80 : p13 ? 0x22a4 : 0x1f30, '\0');
+    const bool p11 = game == "D11", p13 = game == "E13", p14 = game == "F14", pref_first = game != "C20";
+    std::string t(p11 ? 0x1f80 : p13 ? 0x22a4 : p14 ? 0x1894 : 0x1f30, '\0');
     auto put32 = [&](size_t at, uint32_t v) { for (int k = 0; k < 4; k++) t[at + k] = (char)(v >> (8 * k) & 255); };
     auto bytes = [](const std::string &v) {   // the requests send names as hex Shift-JIS
         std::string out;
@@ -553,7 +578,7 @@ std::string EamuseServer::rank_table(const std::string &game) {
     };
     const Board b{nullptr, "card_id", EXP_KEEP, "score", "cool", 10};
     const std::vector<Record> all = from_lines(read_file(game + "-rank-exp"));
-    for (int course = 0; course < 15; course++) {
+    for (int course = 0; course < (p14 ? 13 : 15); course++) {
         std::vector<Record> board;
         for (const Record &e : all)
             if (attr(e, "course") == std::to_string(course)) board.push_back(e);
@@ -568,6 +593,10 @@ std::string EamuseServer::rank_table(const std::string &game) {
             put32(e + 0x10, (uint32_t)num(board[i], "score"));
             put32(e + 0x14, (uint32_t)num(board[i], "cool"));
         }
+    }
+    if (p14) {   // no shop board
+        while (!t.empty() && t.back() == '\0') t.pop_back();
+        return t;
     }
     std::vector<Record> shops = from_lines(read_file(game + "-rank-shop"));
     // the shops' event words, as sent: signed decimal ("%d"); pop'n 10's first records named them
@@ -859,12 +888,13 @@ std::string EamuseServer::answer_later(const std::string &game, const Request &r
 std::string EamuseServer::answer_game(const std::string &game, const Request &r) {
     const std::string type = attr(r.attrs, "type"), &f = r.method;
     const std::string open = "<" + game + " status=\"0\"";
-    const bool ranked = game == "D11" || game == "E12" || game == "E13";   // the games whose table is worked out
+    const bool ranked = game == "D11" || game == "E12" || game == "E13" || game == "F14";   // the games whose table is worked out
     if (type == "rank" && ranked && f == "get") return open + ">" + rank_b(game) + "</" + game + ">";
     // item: the shop's POPN TOURIST finds (pop'n 11, with extra) or NINPOUCHO word (pop'n 12);
     // item_lo/item_hi: POP'N LAND's or WORLD's (pop'n 13)
     if (type == "rank" && ranked && f == "shop") {
         if (game == "E13") rank_shop(game, r, "item_lo", "item_hi");
+        else if (game == "F14") rank_shop(game, r, "item", "robo");   // kept; pop'n 14 shows no shop board
         else rank_shop(game, r, "item", "extra");
         return open + "/>";
     }
@@ -891,7 +921,10 @@ std::string EamuseServer::answer_game(const std::string &game, const Request &r)
     if (type == "game" && f == "get") {   // phase: as pop'n 10's message.get (-1: the cabinet's own)
         const std::string ph = read_file("phase-" + game);
         const long phase = ph.empty() ? -1 : std::strtol(ph.c_str(), nullptr, 10);
-        return open + " phase=\"" + std::to_string(phase) + "\" message=\"" + esc(message()) + "\"/>";
+        // pop'n 14 also reads net_event (0x17e9308): 1, the internet ranking running (0x17fdc78:
+        // the attract mode's course boards, the courses' results and high scores online)
+        const std::string flags = game == "F14" ? " net_event=\"1\"" : "";
+        return open + " phase=\"" + std::to_string(phase) + "\"" + flags + " message=\"" + esc(message()) + "\"/>";
     }
     if (type == "player") {   // mileage and 9 tickets per card (player_set sends them); course: 4 numbers
         const std::string card = attr(r.attrs, "card_id");
