@@ -130,6 +130,7 @@ SHA1s of every file are in `Python-work/notes/media-survey.md` §6. The `keys/` 
   - `pcsx2/FireWire/Devices/KonamiPython1.cpp` (3,612 lines): **the interface board, as a command-level HLE**. The TX39 firmware never runs. Commands are FireWire block writes; `offset & 0xfff` selects CF (0x390), ATA (0x3a0), ADPCM (0x0d0), UART (0x100), Dallas (0x120), BBSRAM (0x140), boot ROM (0x150), MAC (0x160), JAMMA (0x0e0/0xf80). Dispatcher: `TryHleKonamiCommand`;
   - disk reads complete after a modelled 24 MiB/s plus 0.5 ms, in IOP cycles, so they are deterministic;
   - the M48T58 is plain SRAM, with no clock;
+  - the clock is the PS2's RTC, which Reliquary keeps in Japan time (the manual time plus 9 hours), but pop'n 11-14 read it as UTC and add 9 hours themselves (pop'n 12 `0x1a8468`). HIRAKU and the oracle set it so that the games see 2003-06-01 12:00 JST at start (manual time 2003-05-31 18:00): pop'n 12's NINPOUCHO only runs between 10:55 and 23:05;
   - `pcsx2/ChdHddImage.cpp` (527): CHD disks with a write overlay under `hdd-overlays/`.
 - **Python 2:** `pcsx2/USB/usb-python2/` (P2IO, ACIO, card reader, DDR EXTIO, Thrill Drive, Toy's March), the HDD on DEV9 ATA with SCE security.
 - **Security:** KELF decryption and MagicGate in `pcsx2/CDVD/CDVD.cpp` and `pcsx2/SIO/Memcard/MemoryCardProtocol.cpp`.

@@ -423,7 +423,7 @@ public:
             }
             if (!ea_.pcbid.empty()) printf("e-AMUSEMENT: PCBID %s\n", ea_.pcbid.c_str());
             server_ = std::make_unique<hk::py::EamuseServer>(run_dir_ + "/eamuse");
-            // the emulated RTC's start (init_emulator: 2003-06-01 12:00) plus the machine's own time
+            // the cabinet's clock (init_emulator: 2003-06-01 12:00 JST) plus the machine's own time
             server_->now = [this] { return (int64_t)1054468800 + (int64_t)seconds(); };
         }
         if (!FileSystem::WriteStringToFile(py1_path_.c_str(), py1)) { fprintf(stderr, "python: cannot write %s\n", py1_path_.c_str()); return false; }
@@ -584,11 +584,15 @@ private:
         si.SetBoolValue("EmuCore", "EnablePatches", false);
         si.SetBoolValue("EmuCore", "EnableCheats", false);
         si.SetBoolValue("EmuCore", "EnablePINE", false);
+        // The cabinet's clock: 2003-06-01 12:00 JST, the time HIRAKU's server gives. The board's RTC
+        // keeps UTC (pop'n 11-14 add 9 hours to what they read, pop'n 12 0x1a8468), and Reliquary
+        // stores the manual time plus 9 hours (CDVD.cpp: the PS2's RTC is JST), so this is 9 hours
+        // before 03:00 UTC. pop'n 12's NINPOUCHO only runs from 10:55 to 23:05 JST (0x1a2058).
         si.SetBoolValue("EmuCore", "ManuallySetRealTimeClock", true);
         si.SetIntValue("EmuCore", "RtcYear", 3);
-        si.SetIntValue("EmuCore", "RtcMonth", 6);
-        si.SetIntValue("EmuCore", "RtcDay", 1);
-        si.SetIntValue("EmuCore", "RtcHour", 12);
+        si.SetIntValue("EmuCore", "RtcMonth", 5);
+        si.SetIntValue("EmuCore", "RtcDay", 31);
+        si.SetIntValue("EmuCore", "RtcHour", 18);
         si.SetIntValue("EmuCore", "RtcMinute", 0);
         si.SetIntValue("EmuCore", "RtcSecond", 0);
         si.SetBoolValue("EmuCore/Speedhacks", "vuThread", false);

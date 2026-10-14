@@ -188,6 +188,8 @@ def progress(p: dict, nvram: str, unlocks: dict) -> dict | None:
         return wishes(p, data, active, matches(p.get("released")))
     if p.get("kind") == "eventmask":
         return eventmask(p, data, active, matches(p.get("released")))
+    if p.get("kind") == "points":
+        return points(p, data, active, matches(p.get("released")))
     stage, unl, missed, pos, lap = (field(p[k]) for k in ("stage", "unlocked", "missed", "position", "lap"))
     st = p["stages"][min(stage, len(p["stages"]) - 1)]
     goal = st["goal"]
@@ -286,6 +288,68 @@ def eventmask(p: dict, data: bytes, active: bool, released: bool) -> dict:
     return {"active": active, "released": released, "word": word, "count": len(p["bits"]),
             "found": [b["gives"] for b in p["bits"] if word >> b["bit"] & 1],
             "missing": [b["gives"] for b in p["bits"] if not word >> b["bit"] & 1]}
+
+
+def points_fields(p: dict, data: bytes) -> list[int]:
+    """kind = "points": the groups' counters (32-bit words from `offset`), the copies agreeing."""
+    vals = {tuple(int.from_bytes(data[c + p["offset"] + 4 * g:c + p["offset"] + 4 * g + 4], "little")
+                  for g in range(len(p["groups"]))) for c in p["copies"]}
+    if len(vals) != 1:
+        raise Error(f"the copies of {p['id']} disagree: not a save this tool knows")
+    return list(vals.pop())
+
+
+def points_word(p: dict, counters: list[int]) -> int:
+    """What the counters reach, as the game works it out (pop'n 12 0x1a21d8): in each group, the
+    items in order while the points left cover each one's cost."""
+    word = 0
+    for g, left in zip(p["groups"], counters):
+        for item in g["items"]:
+            if left < item["cost"]:
+                break
+            left -= item["cost"]
+            word |= 1 << item["bit"]
+    return word
+
+
+def points(p: dict, data: bytes, active: bool, released: bool) -> dict:
+    """An event whose groups each earn points, reaching their items in order (pop'n 12's NINPOUCHO)."""
+    counters = points_fields(p, data)
+    word = points_word(p, counters)
+    groups = []
+    for g, n in zip(p["groups"], counters):
+        reached = [i for i in g["items"] if word >> i["bit"] & 1]
+        nxt = g["items"][len(reached)] if len(reached) < len(g["items"]) else None
+        groups.append({"name": g["name"], "points": n, "of": sum(i["cost"] for i in g["items"]),
+                       "reached": [i["gives"] for i in reached], "count": len(g["items"]),
+                       "next": nxt and nxt["gives"],
+                       "next_in": nxt and sum(i["cost"] for i in g["items"][:len(reached) + 1]) - n})
+    return {"active": active, "released": released, "groups": groups,
+            "reached": sum(len(g["reached"]) for g in groups), "count": sum(g["count"] for g in groups)}
+
+
+def apply_points(game: str, p: dict, unlocks: dict, nvram: str, value: str) -> str:
+    """all (every group's points cover all its items) or none (a new event)."""
+    path = os.path.join(nvram, p["nvram"])
+    if not os.path.exists(path):
+        raise Error(f"{path}: no save yet. Start {game} once (with its first-boot setup), quit it, then unlock.")
+    u = unlocks[p["checksum_of"]]
+    current(u, nvram)
+    data = bytearray(open(path, "rb").read())
+    points_fields(p, data)
+    backup = backup_name(path)
+    shutil.copy2(path, backup)
+    counters = [sum(i["cost"] for i in g["items"]) if value == "all" else 0 for g in p["groups"]]
+    for c in p["copies"]:
+        for g, n in enumerate(counters):
+            data[c + p["offset"] + 4 * g:c + p["offset"] + 4 * g + 4] = n.to_bytes(4, "little")
+        data[c + p["word"]:c + p["word"] + 4] = points_word(p, counters).to_bytes(4, "little")
+    seal(u, data)
+    tmp = path + ".tmp"
+    with open(tmp, "wb") as f:
+        f.write(data)
+    os.replace(tmp, path)
+    return backup
 
 
 def ticket_files(p: dict, nvram: str) -> list[str]:
@@ -388,6 +452,17 @@ def describe_progress(p: dict, s: dict) -> str:
         if s["missing"]:
             lines.append("still to find: " + "; ".join(s["missing"]))
         return "\n".join(lines)
+    if p.get("kind") == "points":
+        lines = [] if s["active"] else [f"the event is not running ({p.get('runs', 'see its phase')})"]
+        if s["released"]:
+            lines.append("DATA RELEASE: everything it gives is playable anyway")
+        lines.append(f"reached: {s['reached']} of {s['count']}")
+        for g in s["groups"]:
+            line = f"{g['name']}: {g['points']} of {g['of']} points, {len(g['reached'])} of {g['count']}"
+            if g["next"]:
+                line += f"; next: {g['next']} in {g['next_in']} points"
+            lines.append(line)
+        return "\n".join(lines)
     if p.get("kind") == "tickets":
         if not s["cards"]:
             return "no card yet on the server inside HIRAKU (the save folder's eamuse/)"
@@ -489,7 +564,7 @@ def main() -> int:
         owner = {sw["id"]: u for u in unlocks.values() for sw in u.get("switch", [])}
         pending: dict[str, dict] = {}
         wishes_sets: list[tuple[str, str]] = []
-        wish_ids = {p["id"] for p in spec.get("progress", []) if p.get("kind") in ("wishes", "eventmask", "tickets")}
+        wish_ids = {p["id"] for p in spec.get("progress", []) if p.get("kind") in ("wishes", "eventmask", "points", "tickets")}
         for s in a.set:
             uid, _, v = s.partition("=")
             if uid in wish_ids and v in ("all", "none"):
@@ -511,6 +586,8 @@ def main() -> int:
             kind = progresses[uid].get("kind")
             if kind == "eventmask":
                 backup = apply_eventmask(a.game, progresses[uid], unlocks, nvram, v)
+            elif kind == "points":
+                backup = apply_points(a.game, progresses[uid], unlocks, nvram, v)
             elif kind == "tickets":
                 backup = apply_tickets(progresses[uid], nvram, v)
             else:
@@ -538,6 +615,9 @@ def main() -> int:
             elif p.get("kind") == "eventmask":
                 entry["choices"] = [{"value": "none", "name": "A new event: nothing found"},
                                     {"value": "all", "name": "Everything found"}]
+            elif p.get("kind") == "points":
+                entry["choices"] = [{"value": "none", "name": "A new event: no points"},
+                                    {"value": "all", "name": "Everything reached"}]
             elif p.get("kind") == "tickets":
                 entry["choices"] = [{"value": "all", "name": f"Every card: {p['max']} tickets of each kind"},
                                     {"value": "none", "name": "Every card: no tickets"}]

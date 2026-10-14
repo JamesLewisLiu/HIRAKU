@@ -576,6 +576,15 @@ The game-named calls as pop'n 11's, but **no `userdata`**: the player lives in `
 - **`game active`** (`shop_name pref phase active card_use name`, at a credit's start and end):
   `<E12/>`. **`game get`** reads `phase message` and net battle's `play_enable local_matching_enable
   matching_sec room_num ojama_msec ojama_gauge cpu_level`.
+- **`E12 rank get`:** the rankings in `<b>` pieces, as pop'n 10's `rank.get`, into a 0x1f30-byte
+  table (`0x1974a8`, at `0x181c360`): pop'n 10's sizes, but the prefecture before the place, in the
+  courses (0x0d, 0x0e) and in the shops (0x19, 0x1a). Then (at 0x1c5c) NINPOUCHO's shop board,
+  "ポップン秘伝忍法帖": a count, then 20 entries of 0x24 bytes: 0x00 the shop's name, 0x19 the
+  prefecture, 0x1a the place, 0x20 the shop's NINPOUCHO word (its 26 bits drawn as scrolls, all of
+  them as 免許皆伝; `0x1a5778` copies the board). The attract mode shows the courses at phase 1 and
+  on, the shop board at phase 3. HIRAKU ranks the shops by scrolls, then by the earlier date.
+- **`E12 rank shop`** sends `item shop_name pref`: the shop's NINPOUCHO word (`0x197380`). Answer
+  `<E12/>`; HIRAKU keeps the latest per shop (`E12-rank-shop`).
 - **Not done yet:** `playerdata conv` (a pop'n 11 card's data, read into a 0xa28 record and
   converted, `0x1a0a38`), `tmp`, `renew`; `cardreis.altercard`; a card left at the OK screen until
   the timer runs out stays on "カードをお取り下さい" (the card status's 0x40, card at the slot mouth,

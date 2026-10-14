@@ -75,7 +75,7 @@ private:
     Entered enter(const Board &b, const Request &r);
     std::string rank_register(const Board &b, const Request &r);
     std::string next_number();   // a new card's number (numbering.assign, cardmng)
-    // pop'n 10's and 11's rank.get tables (15 courses, then the shops' board); as <b> pieces
+    // pop'n 10-12's rank.get tables (15 courses, then the shops' board); as <b> pieces
     std::string rank_table(const std::string &game);
     std::string rank_b(const std::string &game);
     void rank_shop(const std::string &game, const Request &r, const char *mask, const char *mask_hi);

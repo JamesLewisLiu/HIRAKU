@@ -82,7 +82,8 @@ def prepare(game, data, interp, slot, renderer=13):
     S(lines, "EmuCore", "PINESlot", str(slot))
     S(lines, "EmuCore", "EnablePatches", "false")
     S(lines, "EmuCore", "ManuallySetRealTimeClock", "true")
-    for k, v in (("RtcYear", 3), ("RtcMonth", 6), ("RtcDay", 1), ("RtcHour", 12), ("RtcMinute", 0), ("RtcSecond", 0)):
+    # HIRAKU's cabinet clock (runtime/python/core.cpp): 2003-06-01 12:00 JST to the games
+    for k, v in (("RtcYear", 3), ("RtcMonth", 5), ("RtcDay", 31), ("RtcHour", 18), ("RtcMinute", 0), ("RtcSecond", 0)):
         S(lines, "EmuCore", k, str(v))
     S(lines, "EmuCore", "SavestateCompressionType", "0")   # plain zip entries: quick to read back
     S(lines, "EmuCore/Speedhacks", "vuThread", "false")

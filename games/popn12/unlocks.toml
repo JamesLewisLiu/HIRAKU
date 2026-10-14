@@ -1,0 +1,126 @@
+# pop'n music 12 Iroha: what the operator can unlock (tools/unlock.py; launcher: right-click > Unlocks).
+#
+# Operator codes (in the EE program at 0x2ed600), typed in test mode > EVENT OPTIONS > PASSWORD,
+# in order: each moves the event phase on by one (0x17b61c the screen; 0x1a9158 reads the phase).
+# The settings file in the battery RAM (m48t58y.u48) is kept twice as pop'n 9's (mirror.c: copies
+# at 0x0 and 0x110, a header {sum, size 0x74, data sum}, the data at +0x10). In the data
+# (0x1863d40 in RAM): +0x0c the phase, +0x54 NINPOUCHO's record (below), and at +0x70 its own sum
+# (0x1a8740): six segments, plus 0x68. Found by typing the codes in HIRAKU
+# (oracle/scripts/popn12-phases.his), comparing the saves, and reading the program.
+
+[[unlock]]
+id = "phase"
+title = "Event phase"
+nvram = "m48t58y.u48"
+offsets = [0x1c, 0x12c]
+checksum = { kind = "mirror", files = [0x0, 0x110], size = 0x74, inner = { at = 0x70, segments = [4, 0xc, 4, 8, 0x38, 0x1c], add = 0x68 } }
+how = "In the game: test mode > EVENT OPTIONS > PASSWORD, the codes in order (the wheel: blue moves, red enters)."
+
+[[unlock.level]]
+value = 0
+name = "--"
+text = "No event: the songs of a new cabinet."
+
+[[unlock.level]]
+value = 1
+name = "1. INTERNET RANKING"
+code = "46CFEEZRKD"
+text = "The internet ranking event."
+
+[[unlock.level]]
+value = 2
+name = "2. NET TAISEN MODE RELEASE"
+code = "YXF8YJ6P8R"
+text = "Opens NET TAISEN, the online battle mode."
+
+[[unlock.level]]
+value = 3
+name = "3. NINPOUCHO + SECRET DATA RELEASE"
+code = "V3TXGCJZYD"
+text = "Starts NINPOUCHO, whose progress releases songs and a course (event progress, below), and releases the secret songs."
+
+[[unlock.level]]
+value = 4
+name = "4. NINPOUCHO DATA RELEASE"
+code = "AU8UL24QTT"
+text = "Also releases everything NINPOUCHO gives, reached or not."
+
+[[unlock.level]]
+value = 5
+name = "MAX. ALL DATA RELEASE"
+code = "9YDGFAJTUS"
+text = "Everything."
+
+# NINPOUCHO (ポップン秘伝忍法帖, phase 3): the shop's. After each credit the player stops a wheel of
+# seasons (CHOOSE SEASON) and the credit's points go to that season (0x1a2500). Its record, in the
+# settings (both copies; little-endian, 0x1863d94 in RAM): six counters from +0x54 (spring,
+# summer, autumn, winter, then two that only grow once 12 and then all 25 songs are reached), and
+# at +0x6c the word of what they reach. A counter reaches its group's items in order, each when
+# the points left cover its cost (0x1a21d8; the table at 0x34dc00). At phase 3 a NINPOUCHO song is
+# playable once reached (0x1b45a8), course 7 once bit 25 is (0x1b44f8); at phase 4 or MAX all are.
+# It only runs from 10:55 to 23:05 Japan time (0x1a2058), on a cabinet not in event mode. The songs
+# named by their genres (song 0x252's isn't in the program's table).
+[[progress]]
+id = "ninpoucho"
+title = "NINPOUCHO"
+kind = "points"
+nvram = "m48t58y.u48"
+checksum_of = "phase"
+copies = [0x10, 0x120]
+offset = 0x54
+word = 0x6c
+runs = "it runs at phase 3, from 10:55 to 23:05 Japan time"
+active = { unlock = "phase", values = [3] }
+released = { unlock = "phase", values = [4, 5] }
+
+[[progress.groups]]
+name = "Spring (春)"
+items = [
+  { bit = 0, cost = 6048, gives = "トイボックス" },
+  { bit = 1, cost = 12096, gives = "レイニー" },
+  { bit = 2, cost = 24192, gives = "Ｊ−ソウル" },
+  { bit = 3, cost = 30240, gives = "ハイパーロッケンローレ" },
+  { bit = 4, cost = 24192, gives = "ヴィヴァーチェ" },
+  { bit = 5, cost = 36288, gives = "ＵＦＯテクノ" },
+]
+
+[[progress.groups]]
+name = "Summer (夏)"
+items = [
+  { bit = 6, cost = 6048, gives = "タッキュウブギ" },
+  { bit = 7, cost = 30240, gives = "タナバタ" },
+  { bit = 8, cost = 30240, gives = "ビーチ" },
+  { bit = 9, cost = 6048, gives = "ナーサリー" },
+  { bit = 10, cost = 30240, gives = "ハッピーキュートコア" },
+  { bit = 11, cost = 36288, gives = "ケイロウパンク" },
+]
+
+[[progress.groups]]
+name = "Autumn (秋)"
+items = [
+  { bit = 12, cost = 18144, gives = "ガムラン" },
+  { bit = 13, cost = 12096, gives = "クラシック９" },
+  { bit = 14, cost = 24192, gives = "ニョロロック" },
+  { bit = 15, cost = 30240, gives = "ラメント" },
+  { bit = 16, cost = 12096, gives = "song 0x252" },
+  { bit = 17, cost = 36288, gives = "ハロウィン" },
+]
+
+[[progress.groups]]
+name = "Winter (冬)"
+items = [
+  { bit = 18, cost = 6048, gives = "ソツギョウ" },
+  { bit = 19, cost = 24192, gives = "クリスマスプレゼントＡＣ" },
+  { bit = 20, cost = 18144, gives = "トゥイート" },
+  { bit = 21, cost = 30240, gives = "Ｊ−ジャズ" },
+  { bit = 22, cost = 36288, gives = "オオミソカ" },
+  { bit = 23, cost = 30240, gives = "セツブン" },
+]
+
+[[progress.groups]]
+name = "After 12 songs"
+items = [{ bit = 24, cost = 36288, gives = "ヒナマツリ" }]
+
+[[progress.groups]]
+name = "After all 25"
+items = [{ bit = 25, cost = 108864, gives = "course 7" }]
