@@ -1,0 +1,23 @@
+# beatmania III APPEND 7th MIX (GCB07 JC-A), Konami 2002
+id = "bm37th"
+title = "beatmania III APPEND 7th MIX"
+family = "bm3"          # bm3 | popn | ppp | kbm  - selects the board variant
+mame = "bm37th"         # MAME set name, used by the oracle
+
+[program]
+exe = "HIKARU.EXE"
+sha1 = "957c81bed31a0620432caf384b98491dc613e11f"   # unpacked image, not the packed exe
+size = 0x100000
+load = 0x80000000
+entry = 0x80003000
+
+[board]
+dongle = "gcb07-jc"   # DS1991 image inside the MAME ROM set (MAME: BAD_DUMP, 0xc0 bytes)
+
+[spu]
+rom = "a21jca03.3q"     # 68000 program, from the MAME set
+
+[recomp]
+# Functions Ghidra cannot find: their addresses are built in code (lis/addi),
+# not stored in data. Found by the runtime's interpreter-fallback log.
+extra_entries = [0x800c6f6c, 0x800c7780]

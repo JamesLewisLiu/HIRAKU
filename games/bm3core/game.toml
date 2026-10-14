@@ -1,0 +1,23 @@
+# beatmania III APPEND CORE REMIX (GCA05 JC-A), Konami 2000
+id = "bm3core"
+title = "beatmania III APPEND CORE REMIX"
+family = "bm3"          # bm3 | popn | ppp | kbm  - selects the board variant
+mame = "bm3core"        # MAME set name, used by the oracle
+
+[program]
+exe = "HIKARU.EXE"
+sha1 = "22ae5ffde5d46df8aae17c8b29b7781254f59a23"   # unpacked image, not the packed exe
+size = 0x100000
+load = 0x80000000
+entry = 0x80003000
+
+[board]
+dongle = "gca05-jc.bin"   # DS1991 image inside the MAME ROM set
+
+[spu]
+rom = "972spua01.3q"     # 68000 program, from the MAME set
+
+[recomp]
+# Functions Ghidra cannot find: their addresses are built in code (lis/addi),
+# not stored in data. Found by the runtime's interpreter-fallback log.
+extra_entries = [0x80099d00, 0x800994ec]

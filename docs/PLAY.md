@@ -21,7 +21,8 @@ sections below give each game's files, and the manual form with the roles spelle
 (`--romset`, `--hdd`, `--dvd`, `--cd2`).
 
 CHDs need room once unpacked:
-- beatmania III's hard disk: 21 GB;
+- beatmania III's hard disk: 8–21 GB (1st MIX 8 GB, the others 21 GB); stored with its zero runs
+  as holes, 3.4 GB (1st), 6–7 GB (CORE REMIX, 6th, The Final) or 18 GB (7th);
 - a pop'n music DVD: 4.6 GB;
 - a CD: under 700 MB.
 
@@ -210,6 +211,36 @@ refreshes; at 240 Hz about one frame in ten stays up 5 refreshes instead of 4.
 build/cmake/hiraku-bm3final --script oracle/scripts/bm3final-practice.his --wav out/practice.wav   # scripted, headless
 build/cmake/hiraku-bm3final --frames 3600 --snap-every 300                                         # PPM snapshots
 ```
+
+## beatmania III, APPEND CORE REMIX, 6th MIX and 7th MIX (M6)
+
+The other four beatmania III games run like The Final: the same board, controls and options.
+Each needs its MAME ROM set and its two CHDs, the program CD (`01`) and the sound hard disk (`02`):
+
+| Game | Set | CHDs | Startup code |
+|---|---|---|---|
+| beatmania III | `bm3` | `gc97201`, `gc97202` | GQ972-JA-B |
+| beatmania III APPEND CORE REMIX | `bm3core` | `a05jca01`, `a05jca02` | GCA05-JC-A |
+| beatmania III APPEND 6th MIX | `bm36th` | `a21jca01`, `a21jca02` | GCA21-JC-A |
+| beatmania III APPEND 7th MIX | `bm37th` | `gcb07jca01`, `gcb07jca02` | GCB07-JC-A |
+
+```bash
+tools/ingest.py bm36th.7z bm36th/                 # the set and the folder with its CHDs
+analyze/ghidra.sh bm36th && analyze/prep.py bm36th && ninja -C build/cmake hiraku-bm36th
+build/cmake/hiraku-bm36th --window
+```
+
+- **Where they are (2026-10-14):** all four boot to attract and play. Coins, mode select, sound
+  select and the practice stage ("Instant Love" with DJ KONAMI) run with sound and scoring.
+  Everything is recompiled: nothing is interpreted.
+- **Against MAME** (`oracle/scripts/<game>-boot.his`): the boot screens match at the same frame
+  numbers. The attract is pixel-identical too, but later than MAME's: bm3 by 89 frames,
+  CORE REMIX by 22, 6th MIX by 53 and 7th MIX by 85, as The Final (95) is. The delay appears
+  between frames 2400 and 3000, while the game loads from the hard disk.
+- **The dongles:** MAME marks 6th and 7th MIX's dumps BAD_DUMP (0xc0 bytes where the others have
+  0xc8), but the games accept them (IBTN: OK).
+- **7th MIX's disk** has few zero runs: it takes 18 GB. If it doesn't fit beside the others,
+  unpack it on another drive and give its path with `--hdd`: `machine.txt` takes any path.
 
 ## pop'n music 4–8, Animelo 1/2 and Mickey Tunes! (in progress, M7)
 

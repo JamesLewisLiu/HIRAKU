@@ -1,0 +1,8 @@
+# Boot beatmania III to the attract loop. No input.
+# The first check of the game against MAME (M6), as bm3final-boot.his.
+game bm3
+
+at 600   snap
+at 1200  snap
+from 1800 every 600 snap
+at 3600  quit

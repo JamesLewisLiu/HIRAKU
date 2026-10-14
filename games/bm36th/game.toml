@@ -1,0 +1,23 @@
+# beatmania III APPEND 6th MIX (GCA21 JC-A), Konami 2001
+id = "bm36th"
+title = "beatmania III APPEND 6th MIX"
+family = "bm3"          # bm3 | popn | ppp | kbm  - selects the board variant
+mame = "bm36th"         # MAME set name, used by the oracle
+
+[program]
+exe = "HIKARU.EXE"
+sha1 = "40dc028e86400368778933d99f671f40ea7d41c1"   # unpacked image, not the packed exe
+size = 0x100000
+load = 0x80000000
+entry = 0x80003000
+
+[board]
+dongle = "gca21-jc"   # DS1991 image inside the MAME ROM set (MAME: BAD_DUMP, 0xc0 bytes)
+
+[spu]
+rom = "a21jca03.3q"     # 68000 program, from the MAME set
+
+[recomp]
+# Functions Ghidra cannot find: their addresses are built in code (lis/addi),
+# not stored in data. Found by the runtime's interpreter-fallback log.
+extra_entries = [0x800b41fc, 0x800b4a10]
