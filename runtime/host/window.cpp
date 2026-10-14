@@ -180,6 +180,12 @@ void steer_audio() {
     if (std::fabs(r - g_ratio) > 1e-6) SDL_SetAudioStreamFrequencyRatio(g_audio, (float)r), g_ratio = r;
 }
 
+// The shape a frame is shown at: the core's monitor, or the frame's own with square pixels
+static double display_aspect(int w, int h) {
+    const double a = core().display_aspect();
+    return a > 0 ? a : (double)w / h;
+}
+
 bool window_frame(const uint32_t *rgb, int w, int h, double vsec) {
     const double period = g_last_vsec < 0 || g_fast ? 0.0 : vsec - g_last_vsec;
     g_last_vsec = vsec;
@@ -188,9 +194,12 @@ bool window_frame(const uint32_t *rgb, int w, int h, double vsec) {
         prof::Scope ps(prof::PRESENT);
         int ww = 0, wh = 0;
         SDL_GetWindowSizeInPixels(g_win, &ww, &wh);
-        // letterboxed at the picture's aspect, as SDL_LOGICAL_PRESENTATION_LETTERBOX does
-        float s = std::min((float)ww / w, (float)wh / h);
-        int vw = std::max(1, (int)std::lround(w * s)), vh = std::max(1, (int)std::lround(h * s));
+        // letterboxed at the monitor's shape (Core::display_aspect), as SDL_LOGICAL_PRESENTATION_LETTERBOX
+        // does: a 512x480 menu fills the same 4:3 as a 320x240 game
+        const double aspect = display_aspect(w, h);
+        int vw = ww, vh = (int)std::lround(ww / aspect);
+        if (vh > wh) vh = wh, vw = (int)std::lround(wh * aspect);
+        vw = std::max(1, vw), vh = std::max(1, vh);
         picture::Mode shown = picture::draw(rgb, w, h, (ww - vw) / 2, (wh - vh) / 2, vw, vh, ww, wh, g_mode);
         if (sync) {
             if (g_glFlush) g_glFlush();   // the GPU draws while we wait for the commit time
@@ -207,7 +216,9 @@ bool window_frame(const uint32_t *rgb, int w, int h, double vsec) {
         if (g_tex) SDL_DestroyTexture(g_tex);
         g_tex = SDL_CreateTexture(g_ren, SDL_PIXELFORMAT_XRGB8888, SDL_TEXTUREACCESS_STREAMING, w, h);
         SDL_SetTextureScaleMode(g_tex, SDL_SCALEMODE_NEAREST);
-        SDL_SetRenderLogicalPresentation(g_ren, w, h, SDL_LOGICAL_PRESENTATION_LETTERBOX);
+        // the logical size at the monitor's shape: the texture stretches to it (as above)
+        SDL_SetRenderLogicalPresentation(g_ren, std::max(1, (int)std::lround(h * display_aspect(w, h))), h,
+                                         SDL_LOGICAL_PRESENTATION_LETTERBOX);
         g_tw = w;
         g_th = h;
     }
