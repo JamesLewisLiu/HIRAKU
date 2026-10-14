@@ -1,0 +1,8 @@
+# pop'n music Mickey Tunes! (popnmt2): power-on from a blank NVRAM, the 976 boot program's checks
+# (the security dongle, memory, SPU), WARMING UP NOW, then attract: the Disney Interactive logo,
+# the cast, the title (insert coin) and How to Play. A rental cabinet (cabinet bits 0x6, MAME's
+# init_popn_rental).
+game popnmt2
+
+from 0 every 600 snap
+at 9000 quit

@@ -43,6 +43,8 @@ OUT = os.path.join(ROOT, "out", "regress")
 CASES = {
     "bm3final-practice": ("bm3final", 12000, ["--script", "oracle/scripts/bm3final-practice.his"]),
     "popn7-attract": ("popn7", 3600, []),
+    # pop'n music Mickey Tunes! from a blank NVRAM: the boot checks, the warm-up, attract to How to Play
+    "popnmt2-attract": ("popnmt2", 9000, ["--script", "oracle/scripts/popnmt2-attract.his"]),
     "ppp-attract": ("ppp", 3600, []),
     "kbm-attract": ("kbm", 3600, []),
     # DJ Main: power-on, self-test, disk load, attract (in lockstep with MAME, PLAN.md §17)

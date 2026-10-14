@@ -211,7 +211,7 @@ build/cmake/hiraku-bm3final --script oracle/scripts/bm3final-practice.his --wav 
 build/cmake/hiraku-bm3final --frames 3600 --snap-every 300                                         # PPM snapshots
 ```
 
-## pop'n music 4–8 and Animelo 1/2 (in progress, M7)
+## pop'n music 4–8, Animelo 1/2 and Mickey Tunes! (in progress, M7)
 
 Each game needs its program CD (Disc 1), its data DVD (Disc 2) and its MAME ROM set (`popn4` … `popn7`). The ROM set holds three things:
 - the dongle image;
@@ -229,6 +229,8 @@ build/cmake/hiraku-popn4 --window
 **pop'n 6, first boot:** it installs SPU data to flash, which takes about 14 minutes of game time (hold **Tab** to fast-forward). Then it boots normally.
 
 Animelo 1 and 2 ingest the same way: `--dvd` takes the `extractdvd` ISO of the `02` CHD.
+
+**pop'n music Mickey Tunes!** (`popnmt2`, GQ976 JBA): MAME's set and its two CHDs, `976jba01` (the program CD) and `976jaa02` (the DVD), ingest as they are (`tools/ingest.py popnmt2.7z popnmt2/`). It's a rental cabinet (MAME's `init_popn_rental`: `[board] cabinet = 6`). It boots to attract: the 976 boot program's checks, WARMING UP NOW, the Disney Interactive logo, the cast, the title and How to Play, as in MAME. The first Mickey Tunes (`popnmt`) needs its own program CD, `976jaa01`, which isn't on hand.
 
 | Key | Action |
 |---|---|

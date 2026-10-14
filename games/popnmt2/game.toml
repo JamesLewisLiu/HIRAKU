@@ -1,0 +1,22 @@
+# pop'n music Mickey Tunes! (GQ976 JBA), Konami 2000: the update of Mickey Tunes with NET@MANIA
+id = "popnmt2"
+title = "pop'n music Mickey Tunes!"
+family = "popn"
+mame = "popnmt2"
+
+[program]
+exe = "FIREBEAT.EXE"
+sha1 = "5e9cbd89884a04ce0ecb0b46c7bbc6f2c5ae44a6"   # unpacked image, not the packed exe
+size = 0x100000
+load = 0x80000000
+entry = 0x80002018
+
+[board]
+dongle = "gq976"       # DS1991 image inside the MAME ROM set
+cabinet = 6            # MAME init_popn_rental: a rental cabinet (bits 1-2), the region bit 0 (JP)
+
+[spu]
+rom = "a02jaa04.3q"     # 68000 program, from the MAME set
+
+[recomp]
+extra_entries = [0x8003e438]   # called through a pointer Ghidra did not follow (boot)
