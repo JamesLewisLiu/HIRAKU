@@ -25,6 +25,7 @@
 #include "bus/pccard/pccard.h"
 #include "bus/pccard/linflash.h"
 #include "sys573/link.h"
+#include "sys573/cardunit.h"
 #include "sys573/eagfdm.h"
 #include "sys573/npu.h"
 #include "imagedev/cdromimg.h"
@@ -99,6 +100,7 @@ sys573_jvs_host::sys573_jvs_host(const machine_config &mconfig, const char *tag,
 const Config *g_build = nullptr;
 SessionLink g_link;   // the session cable to another cabinet's process (link.h), when there is one
 Eamuse g_eamuse;      // the network unit's network and e-AMUSEMENT server (eagfdm.h), with the unit
+CardUnit g_cards;     // the e-AMUSEMENT card units (cardunit.h), with the network unit
 
 // MAME's ioport output field: the write callback runs when its bits change
 // (dynamic_field::write), with the active-low inversion of the field's default.
@@ -260,11 +262,24 @@ void sys573_state::device_add_mconfig(machine_config &config) {
         m_cassette->dsr_handler().set(sio1, &psxsio1_uart_device::write_dsr);
         auto &msu = KONAMI_573_MULTI_SESSION_UNIT(config, "k573msu", 0);
         ns16550_device &uart = msu.link_uart();
-        sio1.txd_handler().set(uart, &ins8250_uart_device::rx_w);
+        if (g_cards.fitted()) {
+            // SIO1 switched between the unit and the card units by the cassette's d7 (the game's
+            // swuart: EXTIO or MSU); the side switched out sends into nothing and hears idle. SIO1's
+            // CTS is the switched-in side's: the unit's RTS, or ready for the card units (the 573
+            // waits on it to send: at boot, while the unit starts, its RTS held the card check's
+            // bytes back)
+            static int unit_rts = 0;
+            sio1.txd_handler().set([&uart](int s) { if (g_cards.selected()) g_cards.txd(s); else uart.rx_w(s); });
+            uart.out_tx_callback().set([&sio1](int s) { if (!g_cards.selected()) sio1.write_rxd(s); });
+            uart.out_rts_callback().set([&sio1](int s) { unit_rts = s; if (!g_cards.selected()) sio1.write_cts(s); });
+            g_cards.on_select = [&sio1](bool extio) { sio1.write_cts(extio ? 0 : unit_rts); };
+        } else {
+            sio1.txd_handler().set(uart, &ins8250_uart_device::rx_w);
+            uart.out_tx_callback().set(sio1, &psxsio1_uart_device::write_rxd);
+            uart.out_rts_callback().set(sio1, &psxsio1_uart_device::write_cts);
+        }
         sio1.dtr_handler().set(uart, &ins8250_uart_device::dsr_w);
         sio1.rts_handler().set(uart, &ins8250_uart_device::cts_w);
-        uart.out_tx_callback().set(sio1, &psxsio1_uart_device::write_rxd);
-        uart.out_rts_callback().set(sio1, &psxsio1_uart_device::write_cts);
         // not the unit's DTR: SIO1's DSR is the cassette's presence (the fork wires both to it, and
         // the unit's firmware drops DTR as it sets up its UARTs, so the game lost its cassette:
         // ERROR 120)
@@ -287,13 +302,23 @@ void sys573_state::device_add_mconfig(machine_config &config) {
         // cassette's, as above)
         auto &sio1 = *m_maincpu->subdevice<psxsio1_uart_device>("sio1");
         m_cassette->dsr_handler().set(sio1, &psxsio1_uart_device::write_dsr);
-        sio1.txd_handler().set([](int s) { g_link.out(SessionLink::TXD, s); });
+        sio1.txd_handler().set([](int s) {
+            if (g_cards.selected()) g_cards.txd(s);   // the card units switched in (d7), as above
+            else g_link.out(SessionLink::TXD, s);
+        });
         sio1.dtr_handler().set([](int s) { g_link.out(SessionLink::DTR, s); });
         sio1.rts_handler().set([](int s) { g_link.out(SessionLink::RTS, s); });
+        static int link_rts = 0;   // the far unit's RTS: SIO1's CTS while the card units are switched out (as above)
         g_link.in = [&sio1](SessionLink::Line l, int s) {
-            if (l == SessionLink::TXD) sio1.write_rxd(s);
-            else if (l == SessionLink::RTS) sio1.write_cts(s);
+            if (l == SessionLink::TXD) { if (!g_cards.selected()) sio1.write_rxd(s); }
+            else if (l == SessionLink::RTS) { link_rts = s; if (!g_cards.selected()) sio1.write_cts(s); }
         };
+        g_cards.on_select = [&sio1](bool extio) { sio1.write_cts(extio ? 0 : link_rts); };
+    } else if (g_cards.fitted()) {
+        // the card units alone on SIO1 (no session)
+        auto &sio1 = *m_maincpu->subdevice<psxsio1_uart_device>("sio1");
+        m_cassette->dsr_handler().set(sio1, &psxsio1_uart_device::write_dsr);
+        sio1.txd_handler().set([](int s) { if (g_cards.selected()) g_cards.txd(s); });
     } else {
         m_cassette->dsr_handler().set(*m_maincpu->subdevice<psxsio1_device>("sio1"), &psxsio1_device::write_dsr);
     }
@@ -380,7 +405,10 @@ void sys573_state::device_add_mconfig(machine_config &config) {
         {0x10, false, [this](int s) { m_cassette->write_line_d4(s); }},
         {0x20, false, [this](int s) { m_cassette->write_line_d5(s); }},
         {0x40, false, [this](int s) { m_cassette->write_line_d6(s); }},
-        {0x80, false, [this](int s) { m_cassette->write_line_d7(s); }},
+        {0x80, false, [this](int s) {
+            m_cassette->write_line_d7(s);
+            g_cards.select(s != 0);   // on the e-AMUSEMENT cabinets d7 also switches SIO1 to the card units (the fork's toggle_serial)
+        }},
     };
     m_out2_fields = {
         {0x40, true, [this](int s) { m_cassette->write_line_zs01_sda(s); }},
@@ -769,7 +797,8 @@ bool init(const Config &cfg) {
                            [] { return g.cfg.rtc_time + (int64_t)g.machine->time().as_double(); }))
             return false;
     }
-    hk_psx_sio1_uart = cfg.msu || !cfg.session_join.empty();
+    g_cards.configure(cfg.card_readers, cfg.nvram_dir);
+    hk_psx_sio1_uart = cfg.msu || !cfg.session_join.empty() || cfg.card_readers > 0;
     if (!cfg.session_host.empty() && !cfg.msu) {
         fprintf(stderr, "--session-host: %s has no multi-session unit (start the DrumMania side as the host)\n", cfg.game.c_str());
         return false;
@@ -825,7 +854,12 @@ bool init(const Config &cfg) {
     };
     m.start();
     g_link.attach(m);
+    if (g_cards.fitted()) {
+        auto *sio1 = st.m_maincpu->subdevice<psxsio1_uart_device>("sio1");
+        g_cards.attach(m, [sio1](int b) { sio1->write_rxd(b); });
+    }
     m.reset();
+    g_cards.reset();
 
     // HK_573_ITRACE=file,from,to: every instruction of frames [from, to) as "totalcycles pc"
     // (to compare with MAME's debugger trace, oracle/lua/itrace573.lua)
@@ -950,6 +984,7 @@ void set_audio_sink(AudioSink s) { g.audio_sink = std::move(s); }
 
 void save_nvram() {
     if (g.machine) g.machine->nvram_save();
+    g_cards.save();
     mips::finish();
 }
 
@@ -958,6 +993,7 @@ uint64_t frame_count() { return g.frames; }
 const std::string &family() { return g.cfg.family; }
 
 bool set_input(const std::string &name, int value) {
+    if (g_cards.set_input(name, value)) return true;   // the card units' slots and 10-keys
     sys573_state &st = *g.state;
     auto bit = [&](u32 &port, u32 mask) { if (value) port &= ~mask; else port |= mask; return true; };   // active low
     static const std::map<std::string, std::pair<int, u32>> names = {

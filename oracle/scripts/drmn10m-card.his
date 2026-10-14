@@ -1,0 +1,28 @@
+# DrumMania 10th Mix with e-AMUSEMENT ON and the card unit (from drmn10m-net): two coins, Start,
+# ENTRY CARD; a blank card in the slot. The server in the core numbers it (numbering.assign) and
+# finds it new (cardcheck status 1): the name (A, END), the password on the 10-key twice (1234),
+# cardregist, gametop; then the first stage played with no input to GAME OVER, gameend, the
+# roulette, the card written and given back (EJECT CARD: saved), and attract.
+game drmn10m
+
+at 13000 press "Coin 1" 8
+at 13040 press "Coin 1" 8
+at 13200 press "1 Player Start" 8
+at 13500 press "Card" 8
+# the name: A, then END (one to the left)
+at 13800 press "1 Player Start" 8
+at 13880 press "Select L" 8
+at 13940 press "1 Player Start" 8
+# the password, then again
+at 14040 press "Keypad 1" 8
+at 14080 press "Keypad 2" 8
+at 14120 press "Keypad 3" 8
+at 14160 press "Keypad 4" 8
+at 14260 press "Keypad 1" 8
+at 14300 press "Keypad 2" 8
+at 14340 press "Keypad 3" 8
+at 14380 press "Keypad 4" 8
+# mode and music select, the stage
+from 15200 every 300 press "1 Player Start" 8
+from 13200 every 600 snap
+at 24000 quit

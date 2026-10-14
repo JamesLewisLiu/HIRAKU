@@ -1,0 +1,15 @@
+# DrumMania 10th Mix: the same card again (from drmn10m-card): read, cardcheck status 2 (the
+# server knows it), its password on the 10-key, "authenticated" with the player's name, gametop,
+# CAUTION and the mode select.
+game drmn10m
+
+at 13000 press "Coin 1" 8
+at 13040 press "Coin 1" 8
+at 13200 press "1 Player Start" 8
+at 13500 press "Card" 8
+at 13900 press "Keypad 1" 8
+at 13940 press "Keypad 2" 8
+at 13980 press "Keypad 3" 8
+at 14020 press "Keypad 4" 8
+from 13200 every 300 snap
+at 15400 quit

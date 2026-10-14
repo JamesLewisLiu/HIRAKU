@@ -35,6 +35,13 @@ struct Call {
     std::vector<Request> requests;
 };
 bool parse(const std::string &xml, Call &c);
+// Every element inside some XML (a request's `inner`), in order, flat: its name and attributes
+// (<card id="..."/> -> {"card", {{"id", "..."}}}).
+struct Element {
+    std::string name;
+    std::map<std::string, std::string> attrs;
+};
+std::vector<Element> elements(const std::string &xml);
 
 // Attribute helpers
 std::string esc(const std::string &v);   // XML-escaped

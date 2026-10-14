@@ -40,6 +40,9 @@ struct Config {
     // the network unit's e-AMUSEMENT server (eagfdm.h): "local" (in the core, its data in the save
     // folder's eamuse/) or http://host[:port][/path]; HK_573_NET_LOG=FILE logs the traffic
     std::string eamuse = "local";
+    // the e-AMUSEMENT card units (cardunit.h) on SIO1, switched with the multi-session unit by the
+    // cassette's d7: 1 (DrumMania) or 2 (GuitarFreaks); 0 = none
+    int card_readers = 0;
     bool memory_card_reader = false;       // the JVS memory card reader (ddr3m)
     // The output's gain. MAME sums the SPU and the CD audio at 1.0 each and clips the sum at full
     // scale: DDR's mix peaks at 2.0 and crackles. The board mixes them in analog; 0.5 keeps MAME's

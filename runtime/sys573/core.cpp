@@ -111,6 +111,8 @@ public:
             }
             cfg.pccard2 = "npu";
             cfg.eamuse = eamuse_;
+            // the card units come with it: one on DrumMania, one per guitar on GuitarFreaks
+            cfg.card_readers = machine["family"] == "gtrf" ? 2 : 1;
         }
         cfg.nvram_dir = o.nvram_dir;
         cfg.session_host = session_host_;

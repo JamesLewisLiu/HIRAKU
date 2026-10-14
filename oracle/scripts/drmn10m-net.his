@@ -6,21 +6,21 @@
 game drmn10m
 
 from 600 every 1800 snap
-at 11100 press "Test" 8
-at 11500 press "Select R" 8
-at 11560 press "Select R" 8
-at 11620 press "Select R" 8
-at 11680 press "Select R" 8
-at 11740 press "Select R" 8
-at 11800 press "Select R" 8
-at 11860 press "Select R" 8
-at 11920 press "Select R" 8
-at 11980 press "Select R" 8
-at 12040 press "Select R" 8
-at 12100 press "Select R" 8
-at 12190 press "1 Player Start" 8
+at 12600 press "Test" 8
+at 13000 press "Select R" 8
+at 13060 press "Select R" 8
+at 13120 press "Select R" 8
+at 13180 press "Select R" 8
+at 13240 press "Select R" 8
+at 13300 press "Select R" 8
+at 13360 press "Select R" 8
+at 13420 press "Select R" 8
+at 13480 press "Select R" 8
+at 13540 press "Select R" 8
+at 13600 press "Select R" 8
+at 13690 press "1 Player Start" 8
 # NETWORK CHECK, the second item
-at 12420 press "Select R" 8
-at 12500 press "1 Player Start" 8
-from 12600 every 300 snap
-at 14100 quit
+at 13920 press "Select R" 8
+at 14000 press "1 Player Start" 8
+from 14100 every 300 snap
+at 15600 quit

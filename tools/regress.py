@@ -64,10 +64,15 @@ CASES = {
                     "drmn10m-hdd"),
     # e-AMUSEMENT (PLAN.md section 19): turned ON in test mode; then a boot on the virtual LAN and the
     # server in the core, and test mode's NETWORK CHECK (CONNECTED)
-    "drmn10m-eaon": ("drmn10m", 13360, ["--rtc", "1791890000", "--npu", "--script", "oracle/scripts/drmn10m-eaon.his"],
+    "drmn10m-eaon": ("drmn10m", 14860, ["--rtc", "1791890000", "--npu", "--script", "oracle/scripts/drmn10m-eaon.his"],
                      "drmn10m-npu"),
-    "drmn10m-net": ("drmn10m", 14100, ["--rtc", "1791891000", "--npu", "--script", "oracle/scripts/drmn10m-net.his"],
+    "drmn10m-net": ("drmn10m", 15600, ["--rtc", "1791891000", "--npu", "--script", "oracle/scripts/drmn10m-net.his"],
                     "drmn10m-eaon"),
+    # the card unit (step 3): a new card registered and a game played with it; then the card again
+    "drmn10m-card": ("drmn10m", 24000, ["--rtc", "1791892000", "--npu", "--script", "oracle/scripts/drmn10m-card.his"],
+                     "drmn10m-net"),
+    "drmn10m-card2": ("drmn10m", 15400, ["--rtc", "1791893000", "--npu", "--script", "oracle/scripts/drmn10m-card2.his"],
+                      "drmn10m-card"),
     "gtfrk11m-install": ("gtfrk11m", 28800, ["--rtc", "1791884700", "--script", "oracle/scripts/gtfrk11m-install.his"]),
     "gtfrk11m-boot": ("gtfrk11m", 10800, ["--rtc", "1791885700", "--script", "oracle/scripts/gtfrk11m-boot.his"],
                       "gtfrk11m-install"),

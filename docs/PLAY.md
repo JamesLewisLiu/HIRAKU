@@ -547,7 +547,7 @@ The unit is a box of its own: a second CPU (a TX3927), a CD drive, four MP3 deco
 
 From there on the unit answers, which MAME's can't.
 
-The regress cases are `drmn10m-install`, `drmn10m-boot` (now on to attract), `drmn10m-play` (a game: the first stage of 花火), `drmn10m-hdd` (the network unit's whole install), `drmn10m-npu` (a boot with the unit and its disk, to attract), `drmn10m-eaon` (e-AMUSEMENT turned ON) and `drmn10m-net` (a boot with it ON, then NETWORK CHECK).
+The regress cases are `drmn10m-install`, `drmn10m-boot` (now on to attract), `drmn10m-play` (a game: the first stage of 花火), `drmn10m-hdd` (the network unit's whole install), `drmn10m-npu` (a boot with the unit and its disk, to attract), `drmn10m-eaon` (e-AMUSEMENT turned ON), `drmn10m-net` (a boot with it ON, then NETWORK CHECK), `drmn10m-card` (a new card registered, a game played and saved to it) and `drmn10m-card2` (the card again, its password).
 
 **The network PCB unit (e-AMUSEMENT), started:** the e-AMUSEMENT cabinet's network unit, with its hard disk as the save folder's `npu_hdd/` folder (runtime/sys573/npu.h). Ingest the unit's installer CD as well:
 
@@ -557,7 +557,8 @@ tools/ingest.py drmn10m.7z d40jaa02.chd d40jba02.chd d40jca02.chd
 
 1. **Install its data:** `hiraku-drmn10m --cd hdd`. The game formats the disk and installs about 400 MB, about 20 minutes of game time, until **INSTALLATION COMPLETED**. Then quit.
 2. **Play with it:** `hiraku-drmn10m --npu`. The boot reads the disk's songs.
-3. **e-AMUSEMENT** is OFF by default (test mode > NETWORK OPTIONS > e-AMUSEMENT OPTIONS; hold Start and press Left/Right to change it, then SAVE AND EXIT). With it ON the game connects to HIRAKU's e-AMUSEMENT server: test mode's NETWORK OPTIONS > NETWORK CHECK says **CONNECTED**. Out of test mode it then asks for the card reader (拡張カードユニットが見つかりません), which isn't there yet: set e-AMUSEMENT OFF again to play.
+3. **e-AMUSEMENT** is OFF by default (test mode > NETWORK OPTIONS > e-AMUSEMENT OPTIONS; hold Start and press Left/Right to change it, then SAVE AND EXIT). With it ON the game connects to HIRAKU's e-AMUSEMENT server: test mode's NETWORK OPTIONS > NETWORK CHECK says **CONNECTED**.
+4. **The card:** Insert puts a card in the slot (or takes it back); the numeric keypad is the 10-key (Backspace is Clear). With e-AMUSEMENT ON, coins and Start open ENTRY CARD. A new card is numbered by the server; you then enter a name (Left/Right and Start; END finishes) and a 4-digit password twice. Next time, insert the same card and type its password. At the end of a game the card is written (EJECT CARD) and given back. It is the save folder's `card1.bin` (128 bytes). The server keeps the cards in `eamuse/gfdm-cards` and each player's results in `eamuse/gfdm-<game>-<number>`: the best percentage, skill, score and combo per song and difficulty. The skill point is the best 25 songs' sum, and attract's HIT CHART [全国版] lists the songs played most. The puzzle isn't kept.
 
 **The e-AMUSEMENT server:**
 
@@ -597,7 +598,7 @@ ninja -C build/cmake hiraku-gtfrk11m
 
 The effect knob is an analog axis (a joystick's first axis). Coin is 5; Test and Service are F2 and 9.
 
-**The network unit (e-AMUSEMENT)** works as DrumMania's (above): `hiraku-gtfrk11m --cd hdd` installs its data (about 15 minutes of game time, to INSTALLATION COMPLETED), then `--npu` fits it, and `--eamuse` picks the server. In its test mode, P1 R/B moves and **P2 R/B changes a value**. Both cabinets of a session can share one `hiraku-eamuse`.
+**The network unit (e-AMUSEMENT)** works as DrumMania's (above): `hiraku-gtfrk11m --cd hdd` installs its data (about 15 minutes of game time, to INSTALLATION COMPLETED), then `--npu` fits it, and `--eamuse` picks the server. In its test mode, P1 R/B moves and **P2 R/B changes a value**. Each guitar has a card unit: Insert and the numeric keypad for the first, "P2 Card" (Delete) for the second, whose 10-key you bind yourself. Both cabinets of a session can share one `hiraku-eamuse`.
 
 **Session play.** DrumMania 10th Mix and GuitarFreaks 11th Mix play together through DrumMania's multi-session unit, each in its own process, joined by a session cable:
 

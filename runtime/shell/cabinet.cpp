@@ -104,10 +104,26 @@ std::vector<Control> make_ddr() {
     return c;
 }
 
+// The e-AMUSEMENT card unit's slot and 10-key (System 573 GuitarFreaks and DrumMania with the
+// network unit, runtime/sys573/cardunit.h; the names as pop'n's on Konami Python). `prefix`: ""
+// for the first reader, "P2 " for GuitarFreaks' second, whose 10-key has no keys by default.
+void add_card_unit(std::vector<Control> &c, const std::string &prefix, const std::string &card_key) {
+    const std::string g = prefix.empty() ? "e-AMUSEMENT" : "e-AMUSEMENT (player 2)";
+    const bool keys = prefix.empty();
+    c.push_back({prefix + "Card", "e-AMUSEMENT card (insert / take back)", g, false, "key:" + card_key});
+    for (int k = 0; k <= 9; k++)
+        c.push_back({prefix + "Keypad " + std::to_string(k), "10-key " + std::to_string(k), g, false,
+                     keys ? "key:Keypad " + std::to_string(k) : ""});
+    c.push_back({prefix + "Keypad Enter", "10-key Enter", g, false, keys ? "key:Keypad Enter" : ""});
+    c.push_back({prefix + "Keypad Clear", "10-key Clear", g, false, keys ? "key:Backspace" : ""});
+    c.push_back({prefix + "Keypad .", "10-key .", g, false, keys ? "key:Keypad ." : ""});
+}
+
 // DrumMania (System 573, MAME ksys573.cpp "drmn"): five pads, the bass pedal, the select buttons
-// and Start. On the keyboard the pads sit left to right as on the kit.
+// and Start. On the keyboard the pads sit left to right as on the kit. With the network unit, the
+// card unit.
 std::vector<Control> make_drmn() {
-    return {
+    std::vector<Control> c = {
         {"Hi-Hat", "Hi-hat", "Drums", false, "key:S, joy0:button0"},
         {"Snare", "Snare", "Drums", false, "key:D, joy0:button1"},
         {"High Tom", "High tom", "Drums", false, "key:J, joy0:button2"},
@@ -121,6 +137,8 @@ std::vector<Control> make_drmn() {
         {"Test", "Test", "Cabinet", false, "key:F2"},
         {"Service", "Service", "Cabinet", false, "key:9"},
     };
+    add_card_unit(c, "", "Insert");
+    return c;
 }
 
 // GuitarFreaks (System 573, MAME ksys573.cpp "gtrfrks"): per guitar the neck's R, G and B, the
@@ -142,6 +160,8 @@ std::vector<Control> make_gtrf() {
     c.push_back({"Coin 1", "Coin", "Cabinet", false, "key:5, joy0:button8"});
     c.push_back({"Test", "Test", "Cabinet", false, "key:F2"});
     c.push_back({"Service", "Service", "Cabinet", false, "key:9"});
+    add_card_unit(c, "", "Insert");   // one card unit per guitar
+    add_card_unit(c, "P2 ", "Delete");
     return c;
 }
 

@@ -32,12 +32,15 @@ size_t read_attrs(const std::string &x, size_t at, std::map<std::string, std::st
         }
         const size_t eq = x.find('=', at);
         if (eq == std::string::npos || eq + 1 >= x.size()) break;
-        const char q = x[eq + 1];
-        const size_t end = x.find(q, eq + 2);
+        size_t v = eq + 1;   // GuitarFreaks and DrumMania write some as name = "value"
+        while (v < x.size() && std::isspace((unsigned char)x[v])) v++;
+        if (v >= x.size()) break;
+        const char q = x[v];
+        const size_t end = x.find(q, v + 1);
         if (end == std::string::npos) break;
         std::string name = x.substr(at, eq - at);
         while (!name.empty() && std::isspace((unsigned char)name.back())) name.pop_back();
-        out[name] = x.substr(eq + 2, end - eq - 2);
+        out[name] = x.substr(v + 1, end - v - 1);
         at = end + 1;
     }
     return x.size();
@@ -165,6 +168,21 @@ bool parse(const std::string &x, Call &c) {
         c.requests.push_back(std::move(r));
     }
     return !c.requests.empty();
+}
+
+std::vector<Element> elements(const std::string &x) {
+    std::vector<Element> out;
+    for (size_t at = x.find('<'); at != std::string::npos && at + 1 < x.size(); at = x.find('<', at)) {
+        if (x[at + 1] == '/' || x[at + 1] == '?' || x[at + 1] == '!') { at++; continue; }
+        size_t e = at + 1;
+        while (e < x.size() && !std::isspace((unsigned char)x[e]) && x[e] != '/' && x[e] != '>') e++;
+        Element el;
+        el.name = x.substr(at + 1, e - at - 1);
+        bool sc = false;
+        at = read_attrs(x, e, el.attrs, &sc);
+        out.push_back(std::move(el));
+    }
+    return out;
 }
 
 std::string esc(const std::string &v) {
