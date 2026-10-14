@@ -190,6 +190,8 @@ def progress(p: dict, nvram: str, unlocks: dict) -> dict | None:
         return eventmask(p, data, active, matches(p.get("released")))
     if p.get("kind") == "points":
         return points(p, data, active, matches(p.get("released")))
+    if p.get("kind") == "thresholds":
+        return thresholds(p, data, unlocks, nvram)
     stage, unl, missed, pos, lap = (field(p[k]) for k in ("stage", "unlocked", "missed", "position", "lap"))
     st = p["stages"][min(stage, len(p["stages"]) - 1)]
     goal = st["goal"]
@@ -352,6 +354,73 @@ def apply_points(game: str, p: dict, unlocks: dict, nvram: str, value: str) -> s
     return backup
 
 
+def thresholds_fields(p: dict, data: bytes) -> list[int]:
+    """kind = "thresholds": every song's counter (32-bit words from `offset`), the copies agreeing."""
+    n = max(song["counter"] for a in p["areas"] for song in a["songs"]) + 1
+    vals = {tuple(int.from_bytes(data[c + p["offset"] + 4 * k:c + p["offset"] + 4 * k + 4], "little")
+                  for k in range(n)) for c in p["copies"]}
+    if len(vals) != 1:
+        raise Error(f"the copies of {p['id']} disagree: not a save this tool knows")
+    return list(vals.pop())
+
+
+def thresholds_words(area: dict, counters: list[int]) -> int:
+    """What an area's counters reach, as the game works it out (pop'n 13 0x17fb208): a chart once
+    its song's counter reaches the chart's mark."""
+    word = 0
+    for song in area["songs"]:
+        for ch in song["charts"]:
+            if counters[song["counter"]] >= ch["at"]:
+                word |= 1 << ch["bit"]
+    return word
+
+
+def thresholds(p: dict, data: bytes, unlocks: dict, nvram: str) -> dict:
+    """An event whose songs each earn points, opening their charts at marks (pop'n 13's POP'N
+    LAND and POP'N WORLD)."""
+    counters = thresholds_fields(p, data)
+    phase = current(unlocks[p["checksum_of"]], nvram)
+    areas = []
+    for a in p["areas"]:
+        word = thresholds_words(a, counters)
+        charts = [ch for song in a["songs"] for ch in song["charts"]]
+        nxt = sorted(((ch["at"] - counters[song["counter"]], ch["gives"]) for song in a["songs"]
+                      for ch in song["charts"] if not word >> ch["bit"] & 1))
+        areas.append({"name": a["name"], "active": phase in a["active"], "released": phase in a["released"],
+                      "reached": [ch["gives"] for ch in charts if word >> ch["bit"] & 1], "count": len(charts),
+                      "next": nxt[0][1] if nxt else None, "next_in": nxt[0][0] if nxt else None})
+    return {"areas": areas, "reached": sum(len(a["reached"]) for a in areas), "count": sum(a["count"] for a in areas)}
+
+
+def apply_thresholds(game: str, p: dict, unlocks: dict, nvram: str, value: str) -> str:
+    """all (every song's counter at its last mark) or none (a new event)."""
+    path = os.path.join(nvram, p["nvram"])
+    if not os.path.exists(path):
+        raise Error(f"{path}: no save yet. Start {game} once (with its first-boot setup), quit it, then unlock.")
+    u = unlocks[p["checksum_of"]]
+    current(u, nvram)
+    data = bytearray(open(path, "rb").read())
+    counters = thresholds_fields(p, data)
+    backup = backup_name(path)
+    shutil.copy2(path, backup)
+    for a in p["areas"]:
+        for song in a["songs"]:
+            counters[song["counter"]] = max(ch["at"] for ch in song["charts"]) if value == "all" else 0
+    for c in p["copies"]:
+        for k, n in enumerate(counters):
+            data[c + p["offset"] + 4 * k:c + p["offset"] + 4 * k + 4] = n.to_bytes(4, "little")
+        for a in p["areas"]:
+            word = thresholds_words(a, counters)
+            for w, at in enumerate(a["words"]):
+                data[c + p["offset"] + at:c + p["offset"] + at + 4] = (word >> (32 * w) & 0xffffffff).to_bytes(4, "little")
+    seal(u, data)
+    tmp = path + ".tmp"
+    with open(tmp, "wb") as f:
+        f.write(data)
+    os.replace(tmp, path)
+    return backup
+
+
 def ticket_files(p: dict, nvram: str) -> list[str]:
     folder = os.path.join(nvram, p["store"])
     if not os.path.isdir(folder):
@@ -463,6 +532,15 @@ def describe_progress(p: dict, s: dict) -> str:
                 line += f"; next: {g['next']} in {g['next_in']} points"
             lines.append(line)
         return "\n".join(lines)
+    if p.get("kind") == "thresholds":
+        lines = [f"reached: {s['reached']} of {s['count']}"]
+        for a in s["areas"]:
+            state = "running" if a["active"] else "DATA RELEASE: all playable anyway" if a["released"] else "not running"
+            line = f"{a['name']} ({state}): {len(a['reached'])} of {a['count']}"
+            if a["next"]:
+                line += f"; nearest: {a['next']} in {a['next_in']} points"
+            lines.append(line)
+        return "\n".join(lines)
     if p.get("kind") == "tickets":
         if not s["cards"]:
             return "no card yet on the server inside HIRAKU (the save folder's eamuse/)"
@@ -564,7 +642,7 @@ def main() -> int:
         owner = {sw["id"]: u for u in unlocks.values() for sw in u.get("switch", [])}
         pending: dict[str, dict] = {}
         wishes_sets: list[tuple[str, str]] = []
-        wish_ids = {p["id"] for p in spec.get("progress", []) if p.get("kind") in ("wishes", "eventmask", "points", "tickets")}
+        wish_ids = {p["id"] for p in spec.get("progress", []) if p.get("kind") in ("wishes", "eventmask", "points", "thresholds", "tickets")}
         for s in a.set:
             uid, _, v = s.partition("=")
             if uid in wish_ids and v in ("all", "none"):
@@ -588,6 +666,8 @@ def main() -> int:
                 backup = apply_eventmask(a.game, progresses[uid], unlocks, nvram, v)
             elif kind == "points":
                 backup = apply_points(a.game, progresses[uid], unlocks, nvram, v)
+            elif kind == "thresholds":
+                backup = apply_thresholds(a.game, progresses[uid], unlocks, nvram, v)
             elif kind == "tickets":
                 backup = apply_tickets(progresses[uid], nvram, v)
             else:
@@ -615,7 +695,7 @@ def main() -> int:
             elif p.get("kind") == "eventmask":
                 entry["choices"] = [{"value": "none", "name": "A new event: nothing found"},
                                     {"value": "all", "name": "Everything found"}]
-            elif p.get("kind") == "points":
+            elif p.get("kind") in ("points", "thresholds"):
                 entry["choices"] = [{"value": "none", "name": "A new event: no points"},
                                     {"value": "all", "name": "Everything reached"}]
             elif p.get("kind") == "tickets":

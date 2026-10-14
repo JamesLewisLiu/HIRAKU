@@ -1,0 +1,128 @@
+# pop'n music 13 Carnival: what the operator can unlock (tools/unlock.py; launcher: right-click > Unlocks).
+#
+# Operator codes (in the program in RAM at 0x1929e00), typed in test mode > EVENT OPTIONS: the
+# menu shows only EXIT, but blue right then red opens PHASE PASSWORD (the four codes, in order,
+# each moving the phase on by one) and blue left then red EXTRA PASSWORD (0x17cdd48). The
+# settings file in the battery RAM (m48t58y.u48) is kept twice as pop'n 9's (mirror.c: copies at
+# 0x0 and 0x110, a header {sum, size 0xd8, data sum}, the data at +0x10). In the data (0x1669a80
+# in RAM): +0x0c the phase (0x1806fc0), +0x0d EXTRA (0x1806fe0), +0x54 POP'N LAND's and POP'N
+# WORLD's record (below), and at +0xd4 its own sum (0x1806620): six segments, plus 0xcc. Found by
+# typing the codes in HIRAKU (oracle/scripts/popn13-phases.his), comparing the saves, and
+# reading the program.
+
+[[unlock]]
+id = "phase"
+title = "Event phase"
+nvram = "m48t58y.u48"
+offsets = [0x1c, 0x12c]
+checksum = { kind = "mirror", files = [0x0, 0x110], size = 0xd8, inner = { at = 0xd4, segments = [4, 0xc, 4, 8, 0x38, 0x80], add = 0xcc } }
+how = "In the game: test mode > EVENT OPTIONS, blue right then red (PHASE PASSWORD), the codes in order (the wheel: blue moves, red enters)."
+
+[[unlock.level]]
+value = 0
+name = "--"
+text = "No event: the songs of a new cabinet."
+
+[[unlock.level]]
+value = 1
+name = "1. POP'N LAND + SECRET DATA RELEASE"
+code = "H83J8W6Q4C"
+text = "Starts POP'N LAND, whose points open songs, charts and course 6 (event progress, below), and releases the secret songs."
+
+[[unlock.level]]
+value = 2
+name = "2. POP'N WORLD + POP'N LAND DATA RELEASE"
+code = "QXTDCF7KTU"
+text = "Starts POP'N WORLD (songs, charts and course 7), and releases everything POP'N LAND gives."
+
+[[unlock.level]]
+value = 3
+name = "3. POP'N WORLD DATA RELEASE"
+code = "PLREGPRLTJ"
+text = "Also releases everything POP'N WORLD gives."
+
+[[unlock.level]]
+value = 4
+name = "MAX. ALL DATA RELEASE"
+code = "QYCWFXLVKA"
+text = "Everything (but BEMANI EXPO's, below)."
+
+[[unlock]]
+id = "extra"
+title = "EXTRA"
+nvram = "m48t58y.u48"
+offsets = [0x1d, 0x12d]
+checksum = { kind = "mirror", files = [0x0, 0x110], size = 0xd8, inner = { at = 0xd4, segments = [4, 0xc, 4, 8, 0x38, 0x80], add = 0xcc } }
+how = "In the game: test mode > EVENT OPTIONS, blue left then red (EXTRA PASSWORD), the code."
+
+[[unlock.level]]
+value = 0
+name = "--"
+text = "Not released."
+
+[[unlock.level]]
+value = 1
+name = "MAX. BEMANI EXPO RELEASE"
+code = "9JXWF5CFKJ"
+text = "Releases the BEMANI EXPO songs: アジアンミクスチャー, ピアノトロニカ, クイズマジックアカデミー (the music table's flag 0x10000000; 0x17a2148)."
+
+# POP'N LAND (phase 1) and POP'N WORLD (phase 2): the shop's. Their record, in the settings (both
+# copies; little-endian, 0x1669ad4 in RAM): from +0x54 a points counter per song (28: LAND's 14,
+# then WORLD's), and at +0xc4/+0xcc (LAND) and +0xc8/+0xd0 (WORLD) the words of what they reach.
+# A credit's points go to one song (0x17fb798); each of its charts opens once its counter reaches
+# the chart's mark, and the words are worked out again (0x17fb208; the table at 0x190e800, the
+# bits at 0x199e860). A chart is playable while its area runs once its bit is set (0x17fa470); an
+# area's last entry opens a course (0x1811b58). LAND's everything is released from phase 2, WORLD's
+# from phase 3. Songs named by their genres; "HYPER" and "EX" are the charts an older song gains.
+[[progress]]
+id = "land"
+title = "POP'N LAND and POP'N WORLD"
+kind = "thresholds"
+nvram = "m48t58y.u48"
+checksum_of = "phase"
+copies = [0x10, 0x120]
+offset = 0x54
+
+[[progress.areas]]
+name = "POP'N LAND"
+active = [1]
+released = [2, 3, 4]
+words = [0x70, 0x78]
+songs = [
+  { counter = 0, charts = [{ at = 379, bit = 0, gives = "ＳＦポップ" }, { at = 496, bit = 1, gives = "ＳＦポップ HYPER" }, { at = 583, bit = 2, gives = "ＳＦポップ EX" }] },
+  { counter = 1, charts = [{ at = 408, bit = 3, gives = "トイブレークコア" }, { at = 513, bit = 4, gives = "トイブレークコア HYPER" }, { at = 583, bit = 5, gives = "トイブレークコア EX" }] },
+  { counter = 2, charts = [{ at = 338, bit = 6, gives = "シンフォニックメタル２" }, { at = 525, bit = 7, gives = "シンフォニックメタル２ HYPER" }, { at = 583, bit = 8, gives = "シンフォニックメタル２ EX" }] },
+  { counter = 3, charts = [{ at = 97, bit = 9, gives = "カリブ HYPER" }, { at = 194, bit = 10, gives = "カリブ EX" }] },
+  { counter = 4, charts = [{ at = 276, bit = 11, gives = "トゥインクルダンス" }, { at = 342, bit = 12, gives = "トゥインクルダンス HYPER" }, { at = 389, bit = 13, gives = "トゥインクルダンス EX" }] },
+  { counter = 5, charts = [{ at = 39, bit = 14, gives = "サンバ HYPER" }, { at = 194, bit = 15, gives = "サンバ EX" }] },
+  { counter = 6, charts = [{ at = 156, bit = 16, gives = "フレンチポップ HYPER" }, { at = 194, bit = 17, gives = "フレンチポップ EX" }] },
+  { counter = 7, charts = [{ at = 455, bit = 18, gives = "マージャンカクトウクラブ" }, { at = 531, bit = 19, gives = "マージャンカクトウクラブ HYPER" }, { at = 583, bit = 20, gives = "マージャンカクトウクラブ EX" }] },
+  { counter = 8, charts = [{ at = 338, bit = 21, gives = "ランブルローズ" }, { at = 531, bit = 22, gives = "ランブルローズ HYPER" }, { at = 583, bit = 23, gives = "ランブルローズ EX" }] },
+  { counter = 9, charts = [{ at = 379, bit = 24, gives = "カクゲー" }, { at = 525, bit = 25, gives = "カクゲー HYPER" }, { at = 583, bit = 26, gives = "カクゲー EX" }] },
+  { counter = 10, charts = [{ at = 414, bit = 27, gives = "ダークオペラ" }, { at = 490, bit = 28, gives = "ダークオペラ HYPER" }, { at = 583, bit = 29, gives = "ダークオペラ EX" }] },
+  { counter = 11, charts = [{ at = 367, bit = 30, gives = "ハードＰｆ" }, { at = 490, bit = 31, gives = "ハードＰｆ HYPER" }, { at = 583, bit = 32, gives = "ハードＰｆ EX" }] },
+  { counter = 12, charts = [{ at = 518, bit = 33, gives = "Ｊハウスポップ" }, { at = 583, bit = 34, gives = "Ｊハウスポップ HYPER" }, { at = 648, bit = 35, gives = "Ｊハウスポップ EX" }] },
+  { counter = 13, charts = [{ at = 518, bit = 36, gives = "course 6" }] },
+]
+
+[[progress.areas]]
+name = "POP'N WORLD"
+active = [2]
+released = [3, 4]
+words = [0x74, 0x7c]
+songs = [
+  { counter = 14, charts = [{ at = 408, bit = 0, gives = "レーシング" }, { at = 525, bit = 1, gives = "レーシング HYPER" }, { at = 583, bit = 2, gives = "レーシング EX" }] },
+  { counter = 15, charts = [{ at = 350, bit = 3, gives = "ロープレバトル" }, { at = 554, bit = 4, gives = "ロープレバトル HYPER" }, { at = 583, bit = 5, gives = "ロープレバトル EX" }] },
+  { counter = 16, charts = [{ at = 467, bit = 6, gives = "トレインシミュ" }, { at = 537, bit = 7, gives = "トレインシミュ HYPER" }, { at = 583, bit = 8, gives = "トレインシミュ EX" }] },
+  { counter = 17, charts = [{ at = 65, bit = 9, gives = "ブリットポップ HYPER" }, { at = 130, bit = 10, gives = "ブリットポップ EX" }] },
+  { counter = 18, charts = [{ at = 414, bit = 11, gives = "コンテンポラリーネーション" }, { at = 531, bit = 12, gives = "コンテンポラリーネーション HYPER" }, { at = 583, bit = 13, gives = "コンテンポラリーネーション EX" }] },
+  { counter = 19, charts = [{ at = 253, bit = 14, gives = "クラシック１０" }, { at = 350, bit = 15, gives = "クラシック１０ HYPER" }, { at = 389, bit = 16, gives = "クラシック１０ EX" }] },
+  { counter = 20, charts = [{ at = 373, bit = 17, gives = "カイゾク" }, { at = 537, bit = 18, gives = "カイゾク HYPER" }, { at = 583, bit = 19, gives = "カイゾク EX" }] },
+  { counter = 21, charts = [{ at = 408, bit = 20, gives = "カーニバル" }, { at = 467, bit = 21, gives = "カーニバル HYPER" }, { at = 583, bit = 22, gives = "カーニバル EX" }] },
+  { counter = 22, charts = [{ at = 353, bit = 23, gives = "カジノ" }, { at = 518, bit = 24, gives = "カジノ HYPER" }] },
+  { counter = 23, charts = [{ at = 420, bit = 25, gives = "カンランシャ" }, { at = 518, bit = 26, gives = "カンランシャ HYPER" }] },
+  { counter = 24, charts = [{ at = 65, bit = 27, gives = "アンセム EX" }] },
+  { counter = 25, charts = [{ at = 385, bit = 28, gives = "フォーチュンテイルビート" }, { at = 507, bit = 29, gives = "フォーチュンテイルビート HYPER" }, { at = 583, bit = 30, gives = "フォーチュンテイルビート EX" }] },
+  { counter = 26, charts = [{ at = 518, bit = 31, gives = "ジャングルゴーゴー" }, { at = 583, bit = 32, gives = "ジャングルゴーゴー HYPER" }, { at = 648, bit = 33, gives = "ジャングルゴーゴー EX" }] },
+  { counter = 27, charts = [{ at = 454, bit = 34, gives = "course 7" }] },
+]

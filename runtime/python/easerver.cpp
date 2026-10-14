@@ -522,7 +522,7 @@ std::string EamuseServer::answer(const Call &c, const Request &r, const std::str
 
 // pop'n music 10 on (docs/EAMUSE3.md, "Later games"): game is the model's first three
 // characters. "" leaves the call to pop'n 9's answers (services, numbering, userid, posevent, ...).
-// pop'n 10's, 11's and 12's rankings, as rank.get's <b>. pop'n 10 (0x187be4 copies it to 0x18287c8,
+// pop'n 10-13's rankings, as rank.get's <b>. pop'n 10 (0x187be4 copies it to 0x18287c8,
 // 0x1f30 bytes): 15 EXPERT courses of {count, 20 entries of 0x18: name (Shift-JIS, 13 bytes),
 // place, prefecture, score, cool} (0x12b218 draws them; the score only with the game's score
 // display on), then the shops by HOSHI NI NEGAIO wishes: {count, 20 entries of 0x24: shop name
@@ -531,10 +531,13 @@ std::string EamuseServer::answer(const Call &c, const Request &r, const std::str
 // POPN TOURIST finds: {count, 20 entries of 0x28: shop name (24 bytes), place, prefecture, the month (4-6), day, hour and minute it got there, the
 // finds word, extra} (0x129240). pop'n 12 (0x1974a8, 0x1f30 bytes, at 0x181c360): pop'n 10's
 // sizes, the prefecture before the place in both, and the shops' NINPOUCHO word at 0x20 (the
-// scrolls drawn per bit). Little-endian.
+// scrolls drawn per bit). pop'n 13 (0x17eaed8, 0x22a4 bytes, at 0x160fb20): the same courses, then
+// two shop boards (POP'N LAND's, POP'N WORLD's: 0x17eb010) of {count, 20 entries of 0x28: shop
+// name (24 bytes), place, prefecture, stage, the area's words (low, high) at 0x20 and 0x24: the
+// attractions built, drawn per bit}. Little-endian.
 std::string EamuseServer::rank_table(const std::string &game) {
-    const bool p11 = game == "D11", pref_first = game != "C20";
-    std::string t(p11 ? 0x1f80 : 0x1f30, '\0');
+    const bool p11 = game == "D11", p13 = game == "E13", pref_first = game != "C20";
+    std::string t(p11 ? 0x1f80 : p13 ? 0x22a4 : 0x1f30, '\0');
     auto put32 = [&](size_t at, uint32_t v) { for (int k = 0; k < 4; k++) t[at + k] = (char)(v >> (8 * k) & 255); };
     auto bytes = [](const std::string &v) {   // the requests send names as hex Shift-JIS
         std::string out;
@@ -577,32 +580,50 @@ std::string EamuseServer::rank_table(const std::string &game) {
     // pop'n 10's wishes are 64 bits; pop'n 11 counts its finds word only (0x12b250; extra is not
     // finds), pop'n 12 its NINPOUCHO word
     auto finds = [&](const Record &e) {
-        return __builtin_popcountll(word(e, "mask") | (game == "C20" ? (uint64_t)word(e, "mask_hi") << 32 : 0));
+        return __builtin_popcountll(word(e, "mask") | (game == "C20" || p13 ? (uint64_t)word(e, "mask_hi") << 32 : 0));
     };
     std::stable_sort(shops.begin(), shops.end(), [&](const Record &x, const Record &y) {
         if (finds(x) != finds(y)) return finds(x) > finds(y);
         return attr(x, "when") < attr(y, "when");   // the earlier there first
     });
-    const size_t base = 15 * 0x1e4, n = std::min<size_t>(shops.size(), 20), size = p11 ? 0x28 : 0x24;
-    put32(base, (uint32_t)n);
-    for (size_t i = 0; i < n; i++) {
-        const size_t e = base + 4 + i * size;
-        name_at(e, attr(shops[i], "shop_name"), p11 ? 0x18 : 0x19);
-        if (p11) {
-            const std::string w = attr(shops[i], "when");   // MMDDhhmm
-            t[e + 0x18] = (char)(i + 1);
-            t[e + 0x19] = (char)num(shops[i], "area_num");
-            for (int k = 0; k < 4 && w.size() == 8; k++) t[e + 0x1a + k] = (char)std::strtol(w.substr(2 * k, 2).c_str(), nullptr, 10);
-            put32(e + 0x20, word(shops[i], "mask"));
-            put32(e + 0x24, word(shops[i], "mask_hi"));
-        } else {
-            t[e + (pref_first ? 0x1a : 0x19)] = (char)(i + 1);
-            t[e + (pref_first ? 0x19 : 0x1a)] = (char)num(shops[i], "area_num");
-            if (game == "E12") {   // NINPOUCHO's word
-                put32(e + 0x20, word(shops[i], "mask"));
+    // pop'n 13: POP'N LAND's board, then POP'N WORLD's (each shop's record names its board)
+    const int boards = p13 ? 2 : 1;
+    for (int bd = 0; bd < boards; bd++) {
+        std::vector<Record> mine;
+        for (const Record &e : shops)
+            if (!p13 || num(e, "board") == bd) mine.push_back(e);
+        const size_t size = p11 || p13 ? 0x28 : 0x24, base = 15 * 0x1e4 + (size_t)bd * (4 + 20 * size);
+        const size_t n = std::min<size_t>(mine.size(), 20);
+        put32(base, (uint32_t)n);
+        for (size_t i = 0; i < n; i++) {
+            const Record &shop = mine[i];
+            const size_t e = base + 4 + i * size;
+            if (p13) {
+                name_at(e, attr(shop, "shop_name"), 0x18);
+                t[e + 0x18] = (char)(i + 1);
+                t[e + 0x19] = (char)num(shop, "area_num");
+                t[e + 0x1a] = (char)num(shop, "stage");
+                put32(e + 0x20, word(shop, "mask"));
+                put32(e + 0x24, word(shop, "mask_hi"));
+                continue;
+            }
+            name_at(e, attr(shop, "shop_name"), p11 ? 0x18 : 0x19);
+            if (p11) {
+                const std::string w = attr(shop, "when");   // MMDDhhmm
+                t[e + 0x18] = (char)(i + 1);
+                t[e + 0x19] = (char)num(shop, "area_num");
+                for (int k = 0; k < 4 && w.size() == 8; k++) t[e + 0x1a + k] = (char)std::strtol(w.substr(2 * k, 2).c_str(), nullptr, 10);
+                put32(e + 0x20, word(shop, "mask"));
+                put32(e + 0x24, word(shop, "mask_hi"));
             } else {
-                put32(e + 0x1c, word(shops[i], "mask"));
-                put32(e + 0x20, word(shops[i], "mask_hi"));
+                t[e + (pref_first ? 0x1a : 0x19)] = (char)(i + 1);
+                t[e + (pref_first ? 0x19 : 0x1a)] = (char)num(shop, "area_num");
+                if (game == "E12") {   // NINPOUCHO's word
+                    put32(e + 0x20, word(shop, "mask"));
+                } else {
+                    put32(e + 0x1c, word(shop, "mask"));
+                    put32(e + 0x20, word(shop, "mask_hi"));
+                }
             }
         }
     }
@@ -620,8 +641,9 @@ std::string EamuseServer::rank_b(const std::string &game) {
     return out;
 }
 
-// A shop's event report (pop'n 10 rank.shop praystar_lo/hi; pop'n 11 rank_shop item/extra), kept
-// per shop with when its finds last grew (the server's clock: MMDDhhmm, for pop'n 11's board)
+// A shop's event report (pop'n 10 rank.shop praystar_lo/hi; pop'n 11 and 12 rank shop item/extra;
+// pop'n 13 item_lo/item_hi and stage), kept per shop (and board) with when its finds last grew
+// (the server's clock: MMDDhhmm, for pop'n 11's board)
 void EamuseServer::rank_shop(const std::string &game, const Request &r, const char *mask, const char *mask_hi) {
     std::vector<Record> shops = from_lines(read_file(game + "-rank-shop"));
     const std::string name = attr(r.attrs, "shop_name");
@@ -633,13 +655,19 @@ void EamuseServer::rank_shop(const std::string &game, const Request &r, const ch
     const std::string area = attr(r.attrs, "area_num").empty() ? attr(r.attrs, "pref") : attr(r.attrs, "area_num");   // pop'n 12 on: pref
     Record mine{{"shop_name", name}, {"area_num", area}, {"mask", attr(r.attrs, mask)},
                 {"mask_hi", attr(r.attrs, mask_hi)}, {"when", when}};
+    if (r.attrs.count("stage")) mine["stage"] = attr(r.attrs, "stage");
+    if (game == "E13") {   // the board of the shop's area (answer_game: game active); a shop has one per board
+        mine["board"] = "0";
+        for (const Record &e : from_lines(read_file(game + "-shop-phase")))
+            if (attr(e, "shop_name") == name && num(e, "phase") == 2) mine["board"] = "1";
+    }
     auto bits = [&](const Record &e) {
         return __builtin_popcountll((uint32_t)std::strtoll(attr(e, "mask").c_str(), nullptr, 10) |
-                                    (game == "C20" ? (uint64_t)(uint32_t)std::strtoll(attr(e, "mask_hi").c_str(), nullptr, 10) << 32 : 0));
+                                    (game == "C20" || game == "E13" ? (uint64_t)(uint32_t)std::strtoll(attr(e, "mask_hi").c_str(), nullptr, 10) << 32 : 0));
     };
     bool found = false;
     for (Record &e : shops) {
-        if (attr(e, "shop_name") != name) continue;
+        if (attr(e, "shop_name") != name || attr(e, "board") != attr(mine, "board")) continue;
         if (bits(mine) <= bits(e)) mine["when"] = attr(e, "when");   // no more found: the date stays
         e = mine;
         found = true;
@@ -831,11 +859,26 @@ std::string EamuseServer::answer_later(const std::string &game, const Request &r
 std::string EamuseServer::answer_game(const std::string &game, const Request &r) {
     const std::string type = attr(r.attrs, "type"), &f = r.method;
     const std::string open = "<" + game + " status=\"0\"";
-    const bool ranked = game == "D11" || game == "E12";   // the games whose table is worked out
+    const bool ranked = game == "D11" || game == "E12" || game == "E13";   // the games whose table is worked out
     if (type == "rank" && ranked && f == "get") return open + ">" + rank_b(game) + "</" + game + ">";
-    // item: the shop's POPN TOURIST finds (pop'n 11, with extra) or NINPOUCHO word (pop'n 12)
+    // item: the shop's POPN TOURIST finds (pop'n 11, with extra) or NINPOUCHO word (pop'n 12);
+    // item_lo/item_hi: POP'N LAND's or WORLD's (pop'n 13)
     if (type == "rank" && ranked && f == "shop") {
-        rank_shop(game, r, "item", "extra");
+        if (game == "E13") rank_shop(game, r, "item_lo", "item_hi");
+        else rank_shop(game, r, "item", "extra");
+        return open + "/>";
+    }
+    // pop'n 13: a shop's phase (game active, at a credit's start and end), so its rank shop goes
+    // on that area's board (phase 1 POP'N LAND, 2 POP'N WORLD)
+    if (game == "E13" && type == "game" && f == "active" && r.attrs.count("phase")) {
+        std::vector<Record> shops = from_lines(read_file(game + "-shop-phase"));
+        bool found = false;
+        for (Record &e : shops)
+            if (attr(e, "shop_name") == attr(r.attrs, "shop_name")) { e["phase"] = attr(r.attrs, "phase"); found = true; }
+        if (!found) shops.push_back({{"shop_name", attr(r.attrs, "shop_name")}, {"phase", attr(r.attrs, "phase")}});
+        std::string out;
+        for (const Record &e : shops) out += to_line(e);
+        write_file(game + "-shop-phase", out);
         return open + "/>";
     }
     if (type == "rank" && f == "exp") {   // as pop'n 10's rank.exp, on the game's element

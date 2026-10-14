@@ -634,9 +634,17 @@ pop'n 12's, keyed by a **ref id** from a new module, `cardmng`.
 - **The network:** answers reach the game in pieces of at most 1460 bytes, as TCP over Ethernet
   delivers them; HIRAKU's virtual network hands them over that way (pop'n 13's reader fails on a
   2.5 KB answer handed over in one piece, `0x17ddb28`).
+- **`E13 rank get`:** the rankings in `<b>` pieces into a 0x22a4-byte table (`0x17eaed8`, at
+  `0x160fb20`; `f_compress` may be left out): the 15 courses as pop'n 12's, then two shop boards,
+  POP'N LAND's (shown at phase 1, "ポップランド") and POP'N WORLD's (phase 2), each a count and 20
+  entries of 0x28 bytes (`0x17eb010`): 0x00 the shop's name (24 bytes), 0x18 the place, 0x19 the
+  prefecture, 0x1a the stage, 0x20 and 0x24 the area's words, low and high (the attractions built,
+  drawn per bit, COMPLETE!! for all). pop'n 13's attract mode shows no course boards.
+- **`E13 rank shop`** sends `stage item_hi item_lo shop_name pref` after a credit (`0x17ead80`): the
+  area of the cabinet's phase. Answer `<E13/>`. HIRAKU puts it on that area's board, from the phase
+  the shop's last `game active` sent (`E13-shop-phase`), and keeps the latest per shop and board.
 - **Not done yet:** `playerdata conv`, `tmp_set`, `tmp_ref` (a pop'n 12 card's player brought to
-  pop'n 13), `cardreis.altercard`, `gettmpid`, `rebind`; the ranking tables (`rank get` answers
-  compressed data, `f_compress`, `0x17f71a8`).
+  pop'n 13), `cardreis.altercard`, `gettmpid`, `rebind`.
 
 **pop'n music 14** (`F14`; checked in HIRAKU: a new e-AMUSEMENT PASS registered, a credit saved, the
 card read back with its PIN; `oracle/scripts/popn14-eamuse-on.his`, `popn14-card-new.his`,
