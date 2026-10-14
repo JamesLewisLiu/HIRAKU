@@ -12,12 +12,18 @@ sound. A change that is meant to be invisible (a faster renderer, idle skipping,
 cheaper fibers) must leave every line identical. Baselines live in
 out/regress/baseline/ (out/ is never committed: the digests derive from the game).
 
-Each case starts as soon as the case it comes after has finished (cases from the same one run at
-once; the longest ways first, by the last run's times), and is reported as it finishes, with its
-wall time. At the end: the run's time and its critical path, and out/regress/times.txt with each
-case's start, end and wall time in the last run.
+A case that comes after another starts from the NVRAM that one left. It starts at once from the
+copy kept from the last run (out/regress/cache/, a few GB with the 573's hard disks), and when
+its parent ends, the parent's new NVRAM is checked against that copy: the same, and the result
+stands; else the case runs again from the new one ("run again"). The runs are deterministic, so
+a chain's cases mostly run side by side. HK_REGRESS_SPECULATE=0: each case waits for its parent.
+The longest ways run first, by the last run's times, the critical one at normal priority and the
+rest lower (HK_REGRESS_JOBS: how many at once, default half the CPUs). Each case is reported as
+it finishes, with its wall time; at the end the run's time and critical path, and
+out/regress/times.txt with each case's start, end and wall time.
 """
 import concurrent.futures as cf
+import hashlib
 import os
 import re
 import resource
@@ -159,10 +165,11 @@ def chain(case):
     return c
 
 
-def run(case, digest_path, take=False, nice=0):
+def run(case, digest_path, take=False, nice=0, src=None):
     """take: the case it comes after has no other case to start, so its NVRAM directory is moved
     here rather than copied (the 573's, with an installed hard disk, are ~400 MB). nice: run it at
-    that lower priority (what it computes is the same; only how soon)"""
+    that lower priority (what it computes is the same; only how soon). src: start from this NVRAM
+    directory (the cached one the case it comes after left last time) instead of that case's"""
     game, frames, extra = CASES[case][:3]
     exe = os.path.join(BIN, "hiraku-" + game)
     work = os.path.join(OUT, "work", case)
@@ -173,7 +180,7 @@ def run(case, digest_path, take=False, nice=0):
         nv = os.path.join(work, "nvram")
         shutil.rmtree(nv, ignore_errors=True)
         if after_of(case):
-            src = os.path.join(OUT, "work", after_of(case), "nvram")
+            src = src or os.path.join(OUT, "work", after_of(case), "nvram")
             if take:
                 os.rename(src, nv)
             else:
@@ -227,84 +234,201 @@ def record_or_check(names, record):
                 bad += compare(case, base, cur, took)
             sys.stdout.flush()
 
-    def one(case):
-        asked = case in names   # the others only set up a case that starts from them
-        d = os.path.join(base if record else cur, case + ".digest") if asked else None
-        t0 = time.monotonic() - t_start
-        # the only case to start from its parent takes the parent's NVRAM directory
-        rc, stats, _, _, log = run(case, d, take=bool(after_of(case)) and children[after_of(case)] == [case],
-                                   nice=0 if case in critical else 10)
-        if asked:
-            with open(d.replace(".digest", ".stats"), "w") as f:
-                f.write("\n".join(stats) + "\n")
-        t1 = time.monotonic() - t_start   # with its setup (the NVRAM directory)
-        with lock:
-            times.append((case, t0, t1))
-        report(case, rc, t1 - t0, log, asked)
-        return rc
-
-    # Every case to run, and each one as soon as the case it starts after has finished: the
-    # cases that start from the same one run at once. A session case starts with its partner.
+    # Every case to run. A case starts from the NVRAM its parent left: from the parent's
+    # directory once the parent has run, or at once from the copy the parent left the last time
+    # (out/regress/cache/), which the parent's new one is checked against when it ends: the same,
+    # and the case started from what it would have; else it runs again from the new one. The runs
+    # are deterministic, so the parents mostly leave what they left before and the cases of a
+    # chain run at once. HK_REGRESS_SPECULATE=0: each case waits for its parent, as before.
     todo = []
     for n in names:
         todo += [c for c in chain(n) if c not in todo]
     children = {c: [k for k in todo if after_of(k) == c] for c in todo}
     last = last_times()
+    spec = os.environ.get("HK_REGRESS_SPECULATE", "1") != "0"
+    cache = os.path.join(OUT, "cache")
+    cached = {c: read_hash(c) for c in todo if children[c]} if spec else {}
 
     def cost(c):   # the longest way to the end through c: what to start first
         own = last.get(c, CASES[c][1] / 60)
-        return own + max((cost(k) for k in children[c]), default=0)
+        return own + max((cost(k) for k in children[c] if not cached.get(c)), default=0)
 
     # the critical path (the run's length, as far as the last run's times tell): it runs at normal
     # priority, everything else lower, so the others take what CPU it leaves rather than slow it
     critical = set()
-    c = max((k for k in todo if after_of(k) is None), key=cost, default=None)
+    c = max(todo, key=cost, default=None)
     while c:
         critical.add(c)
-        c = max(children[c], key=cost, default=None)
+        c = max((k for k in children[c] if not cached.get(c)), key=cost, default=None)
+
+    # a case: its state (wait, run, ran = done but its start not yet confirmed, ok, failed), what
+    # it started from (None, "parent" or "cache"), its result to report once confirmed, and the
+    # hash of the NVRAM it left (for its children)
+    state = {c: "wait" for c in todo}
+    started_from, result, left = {}, {}, {}
+    redo = set()   # running, but started from a cache that turned out stale: run again when it ends
+
+    def one(case, src):
+        asked = case in names   # the others only set up a case that starts from them
+        d = os.path.join(base if record else cur, case + ".digest") if asked else None
+        t0 = time.monotonic() - t_start
+        # the only case to start from its parent takes the parent's NVRAM directory (not when
+        # caching: the parent's is kept to check and cache)
+        take = not spec and bool(after_of(case)) and children[after_of(case)] == [case]
+        rc, stats, _, _, log = run(case, d, take=take, nice=0 if case in critical else 10, src=src)
+        if asked:
+            with open(d.replace(".digest", ".stats"), "w") as f:
+                f.write("\n".join(stats) + "\n")
+        h = nvram_hash(case) if children[case] and rc == 0 else None
+        t1 = time.monotonic() - t_start   # with its setup (the NVRAM directory)
+        with lock:
+            times.append((case, t0, t1))
+        return rc, t1 - t0, log, asked, h
+
+    def confirmed_start(g):
+        """g started from what its parent leaves now: no parent, the parent's own directory, or a
+        cache the parent's new NVRAM matches"""
+        q = after_of(g)
+        if q is None:
+            return True
+        if started_from.get(g) == "parent":
+            return state[q] == "ok"
+        return state[q] == "ok" and left.get(q) is not None and left[q] == cached.get(q)
+
+    def confirm(c):
+        """c's start is confirmed: report it, then deal with its children that started from the cache"""
+        rc = result[c][0]
+        state[c] = "ok" if rc == 0 else "failed"
+        report(c, *result[c])
+        for k in children[c]:
+            if started_from.get(k) != "cache" or state[k] not in ("run", "ran"):
+                continue
+            group = [k] + ([partner_of(k)] if partner_of(k) else [])
+            if state[c] == "ok" and left.get(c) == cached.get(c):
+                if all(state[g] == "ran" and confirmed_start(g) for g in group):
+                    for g in group:
+                        confirm(g)
+                continue   # still running: confirmed when it ends
+            for g in group:   # its start is gone (the parent failed, or left another NVRAM): again
+                if state[c] == "ok":
+                    with lock:
+                        print(f"{g}: run again ({after_of(g)} left another NVRAM than the cached one)")
+                if state[g] == "run":
+                    redo.add(g)
+                elif state[g] == "ran":
+                    state[g] = "wait"
+                started_from[g] = "parent"
+
+    def finished(c, rc, wall, log, asked, h):
+        if c in redo:   # what it started from is gone: it waits for its parent (or is not run)
+            redo.discard(c)
+            state[c] = "wait"
+            return
+        result[c] = (rc, wall, log, asked)
+        left[c] = h
+        state[c] = "ran"
+        group = [c] + ([partner_of(c)] if partner_of(c) else [])
+        if all(state[g] == "ran" and confirmed_start(g) for g in group):
+            for g in group:
+                confirm(g)
 
     # half the CPUs by default: the cores run several threads each, and with every CPU busy the
     # longest chain (the run's length) slows down more than the rest gains (HK_REGRESS_JOBS: other)
     jobs = int(os.environ.get("HK_REGRESS_JOBS") or max(2, (os.cpu_count() or 4) // 2))
-    done, failed, running = set(), set(), {}
+    running = {}
     with cf.ThreadPoolExecutor(max_workers=jobs + 1) as ex:   # + 1: a session pair when jobs is 1
-        while len(done) + len(failed) < len(todo):
+        while any(state[c] not in ("ok", "failed") for c in todo):
             for c in sorted(todo, key=cost, reverse=True):
-                if c in done or c in failed or c in running.values():
+                if state[c] != "wait":
                     continue
                 p = partner_of(c)
-                why = next((k for k in (after_of(c), p, p and after_of(p)) if k and k in failed), None)
+                group = [c] + ([p] if p else [])
+                why = next((after_of(g) for g in group if after_of(g) and state[after_of(g)] == "failed"), None)
                 if why:
-                    failed.add(c)   # what it starts from (or its partner) didn't run
-                    with lock:
-                        print(f"{c}: not run ({why} failed)")
-                    bad += 1
+                    for g in group:
+                        state[g] = "failed"
+                        with lock:
+                            print(f"{g}: not run ({why} failed)")
+                        bad += 1
                     continue
-                ready = lambda k: after_of(k) is None or after_of(k) in done
-                if not ready(c) or (p and (p not in todo or not ready(p))):
+                srcs = {}   # where each starts from: nothing, its parent's NVRAM once it has run, or the cache
+                for g in group:
+                    q = after_of(g)
+                    if q is None:
+                        srcs[g] = (None, None)
+                    elif state[q] == "ok":
+                        srcs[g] = (None, "parent")
+                    elif cached.get(q) and started_from.get(g) != "parent" and state[q] != "failed":
+                        srcs[g] = (os.path.join(cache, q), "cache")
+                if len(srcs) < len(group) or (p and p not in todo):
                     continue
-                start = [c] + ([p] if p else [])
                 # no more than `jobs` at once, picked here (longest way first) rather than queued in
                 # the pool, so a case that becomes ready later doesn't wait behind shorter ones
-                if running and len(running) + len(start) > jobs:
+                if running and len(running) + len(group) > jobs:
                     continue
-                for k in start:
-                    running[ex.submit(one, k)] = k
+                for g in group:
+                    started_from[g] = srcs[g][1]
+                    state[g] = "run"
+                    running[ex.submit(one, g, srcs[g][0])] = g
             if not running:
                 break
-            finished, _ = cf.wait(list(running), return_when=cf.FIRST_COMPLETED)
-            for f in finished:
-                k = running.pop(f)
-                (done if f.result() == 0 else failed).add(k)
-    for c in todo:
-        if c not in done and c not in failed:
-            print(f"{c}: not run (what it starts from never ran)")
+            done_now, _ = cf.wait(list(running), return_when=cf.FIRST_COMPLETED)
+            for f in done_now:
+                finished(running.pop(f), *f.result())
+    for c in todo:   # in chain order: a case after a case not run is not run either
+        if state[c] not in ("ok", "failed"):
+            q = after_of(c) if after_of(c) and state.get(after_of(c)) == "failed" else None
+            print(f"{c}: not run ({q} failed)" if q else f"{c}: not run (what it starts from never ran)")
+            state[c] = "failed"
             bad += 1
+    # what the parents left, kept for the next run
+    if spec:
+        for c in todo:
+            if children[c] and state[c] == "ok" and left.get(c) and left[c] != cached.get(c):
+                save_cache(c, left[c])
     total = time.monotonic() - t_start
     if not record:
         print("all identical" if bad == 0 else f"{bad} case(s) differ")
     write_times(times, total, "record" if record else "check", jobs)
     return 1 if bad else 0
+
+
+def nvram_hash(case):
+    """a hash of the NVRAM directory a case left (its files' names and contents)"""
+    h = hashlib.sha1()
+    top = os.path.join(OUT, "work", case, "nvram")
+    for d, dirs, files in sorted(os.walk(top)):
+        dirs.sort()
+        for f in sorted(files):
+            path = os.path.join(d, f)
+            h.update(os.path.relpath(path, top).encode() + b"\0")
+            with open(path, "rb") as fh:
+                for chunk in iter(lambda: fh.read(1 << 20), b""):
+                    h.update(chunk)
+            h.update(b"\0")
+    return h.hexdigest()
+
+
+def read_hash(case):
+    """the hash of the cached NVRAM a case left last time, or None (no cache)"""
+    try:
+        h = open(os.path.join(OUT, "cache", case + ".sha1")).read().strip()
+    except FileNotFoundError:
+        return None
+    return h if os.path.isdir(os.path.join(OUT, "cache", case)) else None
+
+
+def save_cache(case, h):
+    """keep the NVRAM a case left (out/regress/cache/CASE, and its hash) for the next run's children"""
+    cdir = os.path.join(OUT, "cache")
+    os.makedirs(cdir, exist_ok=True)
+    tmp = os.path.join(cdir, case + ".tmp")
+    shutil.rmtree(tmp, ignore_errors=True)
+    shutil.copytree(os.path.join(OUT, "work", case, "nvram"), tmp)
+    shutil.rmtree(os.path.join(cdir, case), ignore_errors=True)
+    os.rename(tmp, os.path.join(cdir, case))
+    with open(os.path.join(cdir, case + ".sha1"), "w") as f:
+        f.write(h + "\n")
 
 
 def last_times():
@@ -330,9 +454,12 @@ def write_times(times, total, what, jobs):
         lines.append(f"{case}\t{t0:.0f}\t{t1:.0f}\t{t1 - t0:.0f}")
     with open(os.path.join(OUT, "times.txt"), "w") as f:
         f.write("\n".join(lines) + "\n")
-    wall = {case: t1 - t0 for case, t0, t1 in times}
-    path = chain(max(times, key=lambda t: t[2])[0]) if times else []
-    print(f"took {total:.0f} s; the critical path: " + " > ".join(f"{c} {wall.get(c, 0):.0f}" for c in path) + " s")
+    if times:
+        # the run's length: its longest case (no run is shorter), and the case that ended last
+        longest = max(times, key=lambda t: t[2] - t[1])
+        last = max(times, key=lambda t: t[2])
+        print(f"took {total:.0f} s; the longest case: {longest[0]} {longest[2] - longest[1]:.0f} s; "
+              f"the last to end: {last[0]} (at {last[2]:.0f} s)")
     print(f"each case's times: {os.path.relpath(os.path.join(OUT, 'times.txt'), ROOT)}")
 
 
