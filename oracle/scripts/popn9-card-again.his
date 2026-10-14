@@ -1,0 +1,22 @@
+# pop'n music 9, after popn9-card-new.his (same --nvram): the registered card again. The server
+# returns the player data (userdata.read), the game skips the name and asks the PIN; 1234 shows
+# the player's name, character and options, then p_friend.get and userid.ctou.
+#   hiraku-popn9 --nvram DIR --script oracle/scripts/popn9-card-again.his
+game popn9
+at 4500 press "Coin 1" 8
+at 4540 press "Coin 1" 8
+at 4700 press "P1 Button 5" 8
+at 5050 press "Card" 8
+at 5400 press "Keypad 1" 8
+at 5430 press "Keypad 2" 8
+at 5460 press "Keypad 3" 8
+at 5490 press "Keypad 4" 8
+at 5520 press "Keypad Enter" 8
+at 5570 snap
+at 5700 snap
+at 5850 snap
+at 6050 snap
+at 6350 snap
+at 6750 snap
+at 7250 snap
+at 7260 quit

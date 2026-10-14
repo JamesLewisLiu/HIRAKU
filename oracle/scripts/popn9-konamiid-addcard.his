@@ -1,0 +1,213 @@
+# pop'n music 9, a second card added to a KONAMI ID, with --autoplay. After
+# popn9-konamiid-new.his (same --nvram), with DIR/card.bin deleted, so the reader holds a fresh
+# card: it is registered as in popn9-card-new.his (name, PIN 1234 twice; numbering gives
+# 2003010000000028), a credit is played by the game, and at its end カードへ登録 (blue 4 once):
+# the ID "hiraku09", the password 5678 once -> userid.addcard user="hiraku09" pass="5678"
+# card="2003010000000028", and "ポップンミュージックカードの登録が完了しました！". The server's users
+# file then lists both cards for hiraku09.
+#   hiraku-popn9 --autoplay --nvram DIR --script oracle/scripts/popn9-konamiid-addcard.his
+game popn9
+watch mode u32 0x25a0d8
+at 4500 press "Coin 1" 8
+at 4540 press "Coin 1" 8
+at 4700 press "P1 Button 5" 8
+at 5050 press "Card" 8
+at 5500 press "P1 Button 5" 8
+at 5560 press "P1 Button 5" 8
+at 5620 press "P1 Button 5" 8
+at 9150 press "Keypad 1" 8
+at 9180 press "Keypad 2" 8
+at 9210 press "Keypad 3" 8
+at 9240 press "Keypad 4" 8
+at 9270 press "Keypad Enter" 8
+at 9550 press "Keypad 1" 8
+at 9580 press "Keypad 2" 8
+at 9610 press "Keypad 3" 8
+at 9640 press "Keypad 4" 8
+at 9670 press "Keypad Enter" 8
+at 10100 press "P1 Button 5" 8 # mode select: NORMAL
+at 10700 press "P1 Button 5" 8 # song select: this song
+at 10900 press "P1 Button 5" 8 # confirm
+at 11140 press "P1 Button 5" 8
+at 11380 press "P1 Button 5" 8
+at 11620 press "P1 Button 5" 8
+at 11860 press "P1 Button 5" 8
+at 12100 press "P1 Button 5" 8
+at 12340 press "P1 Button 5" 8
+at 12580 press "P1 Button 5" 8
+at 12820 press "P1 Button 5" 8
+at 13060 press "P1 Button 5" 8
+at 13300 press "P1 Button 5" 8
+at 13540 press "P1 Button 5" 8
+at 13780 press "P1 Button 5" 8
+at 14020 press "P1 Button 5" 8
+at 14260 press "P1 Button 5" 8
+at 14500 press "P1 Button 5" 8
+at 14740 press "P1 Button 5" 8
+at 14980 press "P1 Button 5" 8
+at 15220 press "P1 Button 5" 8
+at 15460 press "P1 Button 5" 8
+at 15700 press "P1 Button 5" 8
+at 15940 press "P1 Button 5" 8
+at 16180 press "P1 Button 5" 8
+at 16420 press "P1 Button 5" 8
+at 16660 press "P1 Button 5" 8
+at 16900 press "P1 Button 5" 8
+at 17140 press "P1 Button 5" 8
+at 17380 press "P1 Button 5" 8
+at 17620 press "P1 Button 5" 8
+at 17860 press "P1 Button 5" 8
+at 18100 press "P1 Button 5" 8
+at 18340 press "P1 Button 5" 8
+at 18580 press "P1 Button 5" 8
+at 18820 press "P1 Button 5" 8
+at 19060 press "P1 Button 5" 8
+at 19300 press "P1 Button 5" 8
+at 19540 press "P1 Button 5" 8
+at 19780 press "P1 Button 5" 8
+at 20020 press "P1 Button 5" 8
+at 20260 press "P1 Button 5" 8
+at 20500 press "P1 Button 5" 8
+at 20740 press "P1 Button 5" 8
+at 20980 press "P1 Button 5" 8
+at 21220 press "P1 Button 5" 8
+at 21460 press "P1 Button 5" 8
+at 21700 press "P1 Button 5" 8
+at 21940 press "P1 Button 5" 8
+at 22180 press "P1 Button 5" 8
+at 22420 press "P1 Button 5" 8
+at 22660 press "P1 Button 5" 8
+at 22900 press "P1 Button 5" 8
+at 23140 press "P1 Button 5" 8
+at 23380 press "P1 Button 5" 8
+at 23620 press "P1 Button 5" 8
+at 23860 press "P1 Button 5" 8
+at 24100 press "P1 Button 5" 8
+at 24340 press "P1 Button 5" 8
+at 24580 press "P1 Button 5" 8
+at 24820 press "P1 Button 5" 8
+at 25060 press "P1 Button 5" 8
+at 25300 press "P1 Button 5" 8
+at 25540 press "P1 Button 5" 8
+at 25780 press "P1 Button 5" 8
+at 26020 press "P1 Button 5" 8
+at 26260 press "P1 Button 5" 8
+at 26500 press "P1 Button 5" 8
+at 26740 press "P1 Button 5" 8
+at 26980 press "P1 Button 5" 8
+at 27220 press "P1 Button 5" 8
+at 27460 press "P1 Button 5" 8
+at 27700 press "P1 Button 5" 8
+at 27940 press "P1 Button 5" 8
+at 28180 press "P1 Button 5" 8
+at 28420 press "P1 Button 5" 8
+at 28660 press "P1 Button 5" 8
+at 28900 press "P1 Button 5" 8
+at 29140 press "P1 Button 5" 8
+at 29380 press "P1 Button 5" 8
+at 29620 press "P1 Button 5" 8
+at 29860 press "P1 Button 5" 8
+at 30100 press "P1 Button 5" 8
+at 30340 press "P1 Button 5" 8
+at 30580 press "P1 Button 5" 8
+at 30820 press "P1 Button 5" 8
+at 31060 press "P1 Button 5" 8
+at 31300 press "P1 Button 5" 8
+at 31540 press "P1 Button 5" 8
+at 31780 press "P1 Button 5" 8
+at 32020 press "P1 Button 5" 8
+at 32260 press "P1 Button 5" 8
+at 40950 snap
+at 40950 press "P1 Button 4" 4
+at 40992 press "P1 Button 5" 8
+at 41124 press "P1 Button 6" 3
+at 41136 press "P1 Button 6" 3
+at 41148 press "P1 Button 6" 3
+at 41160 press "P1 Button 6" 3
+at 41172 press "P1 Button 6" 3
+at 41184 press "P1 Button 6" 3
+at 41196 press "P1 Button 6" 3
+at 41214 press "P1 Button 5" 4
+at 41236 press "P1 Button 6" 3
+at 41254 press "P1 Button 5" 4
+at 41276 press "P1 Button 6" 3
+at 41288 press "P1 Button 6" 3
+at 41300 press "P1 Button 6" 3
+at 41312 press "P1 Button 6" 3
+at 41324 press "P1 Button 6" 3
+at 41336 press "P1 Button 6" 3
+at 41348 press "P1 Button 6" 3
+at 41360 press "P1 Button 6" 3
+at 41372 press "P1 Button 6" 3
+at 41390 press "P1 Button 5" 4
+at 41412 press "P1 Button 4" 3
+at 41424 press "P1 Button 4" 3
+at 41436 press "P1 Button 4" 3
+at 41448 press "P1 Button 4" 3
+at 41460 press "P1 Button 4" 3
+at 41472 press "P1 Button 4" 3
+at 41484 press "P1 Button 4" 3
+at 41496 press "P1 Button 4" 3
+at 41508 press "P1 Button 4" 3
+at 41520 press "P1 Button 4" 3
+at 41532 press "P1 Button 4" 3
+at 41544 press "P1 Button 4" 3
+at 41556 press "P1 Button 4" 3
+at 41568 press "P1 Button 4" 3
+at 41580 press "P1 Button 4" 3
+at 41592 press "P1 Button 4" 3
+at 41604 press "P1 Button 4" 3
+at 41622 press "P1 Button 5" 4
+at 41644 press "P1 Button 6" 3
+at 41656 press "P1 Button 6" 3
+at 41668 press "P1 Button 6" 3
+at 41680 press "P1 Button 6" 3
+at 41692 press "P1 Button 6" 3
+at 41704 press "P1 Button 6" 3
+at 41716 press "P1 Button 6" 3
+at 41728 press "P1 Button 6" 3
+at 41740 press "P1 Button 6" 3
+at 41752 press "P1 Button 6" 3
+at 41770 press "P1 Button 5" 4
+at 41792 press "P1 Button 6" 3
+at 41804 press "P1 Button 6" 3
+at 41816 press "P1 Button 6" 3
+at 41828 press "P1 Button 6" 3
+at 41840 press "P1 Button 6" 3
+at 41852 press "P1 Button 6" 3
+at 41864 press "P1 Button 6" 3
+at 41876 press "P1 Button 6" 3
+at 41888 press "P1 Button 6" 3
+at 41900 press "P1 Button 6" 3
+at 41918 press "P1 Button 5" 4
+at 41940 press "P1 Button 6" 3
+at 41952 press "P1 Button 6" 3
+at 41964 press "P1 Button 6" 3
+at 41976 press "P1 Button 6" 3
+at 41988 press "P1 Button 6" 3
+at 42000 press "P1 Button 6" 3
+at 42018 press "P1 Button 5" 4
+at 42040 press "P1 Button 6" 3
+at 42052 press "P1 Button 6" 3
+at 42064 press "P1 Button 6" 3
+at 42076 press "P1 Button 6" 3
+at 42088 press "P1 Button 6" 3
+at 42100 press "P1 Button 6" 3
+at 42112 press "P1 Button 6" 3
+at 42124 press "P1 Button 6" 3
+at 42136 press "P1 Button 6" 3
+at 42154 press "P1 Button 5" 4
+at 42176 press "P1 Button 6" 3
+at 42188 press "P1 Button 6" 3
+at 42200 press "P1 Button 6" 3
+at 42212 press "P1 Button 6" 3
+at 42224 press "P1 Button 6" 3
+at 42236 press "P1 Button 6" 3
+at 42248 press "P1 Button 6" 3
+at 42270 press "P1 Button 5" 8
+at 42402 press "Keypad 5" 8
+at 42434 press "Keypad 6" 8
+at 42466 press "Keypad 7" 8
+at 42498 press "Keypad 8" 8
+at 43200 snap
+at 44420 quit

@@ -5,6 +5,7 @@
     tools/ingest.py FILE_OR_FOLDER...            (the usual way: everything you have for the game)
     tools/ingest.py DISC [--romset SET.zip] [--hdd IMG] [--dvd ISO] [--cd2 CUE]   (roles given)
     tools/ingest.py --exe FIREBEAT.EXE           (a loose program, Firebeat)
+    tools/ingest.py SET.py1 [--bios DIR] [--keys DIR]   (Konami Python: Reliquary's descriptor)
 
 Files can be MAME ROM sets (.zip, .7z), MAME CHDs, and disc or disk images
 (.cue/.bin, .iso, .img); a folder stands for the files in it. CHDs are
@@ -13,7 +14,8 @@ extracted with MAME's chdman (memory-capped) into dumps/<game>/.
 The game is found by
 - its program, for Firebeat: the CD holding HIKARU.EXE / FIREBEAT.EXE, unpacked
   and matched by SHA-1 against games/*/game.toml;
-- the MAME set's name otherwise (DJ Main, System 573, Twinkle), or a CHD's name.
+- the MAME set's name otherwise (DJ Main, System 573, Twinkle), or a CHD's name;
+- for Konami Python, the EE program on the disk (boot record C, tools/pythonfs.py).
 Each image gets its role from what it is: a hard disk is beatmania III's sound
 board disk or DJ Main's IDE disk, a DVD pop'n music's, a second CD ParaPara's
 audio disc.
@@ -350,6 +352,118 @@ def ingest_firebeat(args) -> int:
 
 
 
+PY1_FILES = (   # .py1 key -> machine.txt key; the disk is linked, the rest copied to rom/
+    ("HddImagePath", "hdd"), ("CfImagePath", "cf"), ("BbsRamPath", "bbsram"),
+    ("IoBootRomPath", "io_bootrom"), ("IoConfigRomPath", "io_config_rom"),
+    ("InternalDonglePath", "internal_dongle"), ("ExternalDonglePath", "external_dongle"),
+    ("MemoryCardDonglePath", "memcard"), ("MemoryCardIdPath", "memcard_id"))
+PY_KEYS = ("civ", "cks", "eks", "kek", "arcade_kelf_override_kbit", "arcade_kelf_override_kc")
+
+
+def find_near(start: str, rel: str, levels: int = 3) -> str | None:
+    """rel under start or one of its parents (a collection keeps bios/ and keys/ beside the sets)."""
+    d = os.path.abspath(start)
+    for _ in range(levels):
+        if os.path.exists(os.path.join(d, rel)):
+            return os.path.join(d, rel)
+        d = os.path.dirname(d)
+    return None
+
+
+def link_or_copy(src: str, dst: str) -> str:
+    """A hard link where the filesystems allow it, else a symlink: disks are gigabytes."""
+    if os.path.lexists(dst):
+        os.remove(dst)
+    try:
+        os.link(src, dst)
+        return "linked"
+    except OSError:
+        os.symlink(os.path.abspath(src), dst)
+        return "symlinked"
+
+
+def ingest_python(args, py1: str) -> int:
+    """A Konami Python 1 game, from its .py1 descriptor (PCSX2 Reliquary's format)."""
+    import configparser
+    import pythonfs
+    ini = configparser.ConfigParser(interpolation=None, strict=False, comment_prefixes=(";", "#"))
+    ini.optionxform = str
+    ini.read(py1, encoding="utf-8")
+    if "Game" not in ini:
+        print(f"ERROR    {py1}: no [Game] section")
+        return 1
+    g = ini["Game"]
+    base = os.path.dirname(os.path.abspath(py1))
+    files = {}
+    for key, name in PY1_FILES:
+        v = g.get(key, "").strip()
+        if v:
+            files[name] = os.path.normpath(v if os.path.isabs(v) else os.path.join(base, v))
+            if not os.path.exists(files[name]):
+                print(f"ERROR    {key} = {v}: no such file")
+                return 1
+    disk = files.get("hdd") or files.get("cf")
+    if not disk:
+        print("ERROR    the .py1 names no disk (HddImagePath / CfImagePath)")
+        return 1
+    try:
+        img = pythonfs.open_image(disk)
+        off, size, _ = pythonfs.records(img)["C"]
+        ee_sha1 = hashlib.sha1(pythonfs.lz_decode(img.read(off, size))).hexdigest()
+    except OSError as e:
+        print(f"ERROR    reading {disk}: {e}")
+        return 1
+    game = next((x for x in all_games() if x.get("core") == "python"
+                 and x.get("python", {}).get("ee_sha1") == ee_sha1), None)
+    if game is None:
+        print(f"game     unknown - no Python games/*/game.toml has ee_sha1 = \"{ee_sha1}\"")
+        return 1
+    gid = game["id"]
+    print(f"game     {gid}: {game['title']} (Konami Python, EE program {ee_sha1[:12]})")
+    outdir = os.path.join(args.out, gid)
+    for sub in ("rom", "bios", "keys"):
+        os.makedirs(os.path.join(outdir, sub), exist_ok=True)
+    machine = {"core": "python", "family": game["family"], "name": g.get("Name", game["title"]),
+               "io_mode": g.get("IoMode", game.get("python", {}).get("io_mode", "JVS")).upper(),
+               "game_id": g.get("GameId", "")}
+    for name, src in files.items():
+        if name in ("hdd", "cf"):
+            how = link_or_copy(src, os.path.join(outdir, os.path.basename(src)))
+            machine[name] = os.path.basename(src)
+            print(f"disk     {os.path.basename(src)} ({how})")
+        else:
+            shutil.copy2(src, os.path.join(outdir, "rom", os.path.basename(src)))
+            machine[name] = "rom/" + os.path.basename(src)
+    bios = args.bios or find_near(base, "bios")
+    bios_bin = sorted(glob.glob(os.path.join(bios, "*.BIN")) + glob.glob(os.path.join(bios, "*.bin"))) if bios else []
+    if not bios_bin:
+        print("ERROR    no arcade BIOS (COH-H31000.BIN with its .NVM and .MEC): give --bios DIR")
+        return 1
+    stem = os.path.splitext(bios_bin[0])[0]
+    for f in glob.glob(stem + ".*"):
+        if not f.lower().endswith(".txt"):
+            shutil.copy2(f, os.path.join(outdir, "bios", os.path.basename(f)))
+    machine["bios"] = "bios/" + os.path.basename(bios_bin[0])
+    keys = args.keys or find_near(base, "keys")
+    missing = [k for k in PY_KEYS if not keys or not os.path.exists(os.path.join(keys, k + ".bin"))]
+    if missing:
+        print(f"ERROR    MagicGate key files missing ({', '.join(k + '.bin' for k in missing)}): give --keys DIR")
+        return 1
+    for k in PY_KEYS:
+        shutil.copy2(os.path.join(keys, k + ".bin"), os.path.join(outdir, "keys", k + ".bin"))
+    machine["keys"] = "keys"
+    print(f"bios     {os.path.basename(bios_bin[0])}, keys copied (dumps/ is gitignored: they stay out of the repo)")
+    machine_path = os.path.join(outdir, "machine.txt")
+    order = ["core", "family", "name", "io_mode", "game_id", "hdd", "cf", "bbsram", "io_bootrom", "io_config_rom",
+             "internal_dongle", "external_dongle", "memcard", "memcard_id", "bios", "keys"]
+    with open(machine_path, "w") as fh:
+        for k in order:
+            if machine.get(k):
+                fh.write(f"{k}={machine[k]}\n")
+    print(f"wrote    {os.path.relpath(machine_path, ROOT)}")
+    return 0
+
+
 def media_path(path: str, outdir: str) -> str:
     """A path for machine.txt: relative to dumps/<game>/ when the file is in it."""
     full = os.path.abspath(path)
@@ -541,12 +655,22 @@ def main() -> int:
     ap.add_argument("--hdd", metavar="IMG", help="raw HDD image: on the SPU's ATA bus (beatmania III), or DJ Main's IDE disk")
     ap.add_argument("--dvd", metavar="ISO", help="DVD image on the SPU's ATA bus (pop'n music)")
     ap.add_argument("--cd2", metavar="CUE", help="second disc on the main ATA bus (ParaParaParadise audio CD)")
+    ap.add_argument("--bios", metavar="DIR", help="Konami Python: the folder with the arcade BIOS (default: a bios/ near the .py1)")
+    ap.add_argument("--keys", metavar="DIR", help="Konami Python: the folder with the MagicGate key files (default: a keys/ near the .py1)")
     args = ap.parse_args()
     args.disc = None
     if args.exe:
         return ingest_firebeat(args)
     if not args.inputs and not args.romset:
         ap.error("give the game's files (ROM set, CHDs, images), or --exe")
+    # Konami Python: a .py1, or a set's folder (Reliquary's collections keep <set>.py1 beside it)
+    py1 = [f for f in args.inputs if f.lower().endswith(".py1")]
+    for f in args.inputs:
+        if os.path.isdir(f):
+            near = os.path.normpath(f) + ".py1"
+            py1 += sorted(glob.glob(os.path.join(f, "*.py1"))) + ([near] if os.path.exists(near) else [])
+    if py1:
+        return ingest_python(args, py1[0])
     return ingest_auto(args, args.inputs)
 
 

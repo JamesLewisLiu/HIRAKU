@@ -846,7 +846,7 @@ Each phase has an exit test. Sizes are assisted-effort guesses; DJ Main went fas
     - `services.get`: the game looks up `posevent`, `pcbtracker`, `numbering`, `userid` and `local` (everything else). It also reads two addresses (drmn10m 0x8003caa8): `keepalive` (`ping://`, `pa=`, `ga=`: the hosts the NETWORK CHECK pings) and `ntp` (`ntp://`). They are kept in its settings; ours are all 192.168.50.1.
     - At boot: `services.get`, `pcbtracker.alive`, `posevent` (income, sales, sale), then `gamedata.dataget` (sent in clear, `sid="020304050607"`) asking for the favourites (128) and the shop ranking (20). Its answer is a tree (the parser's tables at 0x80133190): `system` (status), `favorite`, `shoprank` (`shop`, `prefshop`, from/to), `ir`, `landdata` (`land`). An empty `<gamedata status="0"/>` is accepted; what they hold shows only in attract and play.
   - **Options:** `--eamuse local` (default: the server in the core, its data in the save folder's `eamuse/`) or `--eamuse http://host[:port][/path]` (online). `HK_573_NET_LOG=FILE` logs each socket call and each call and answer in clear.
-  - **`hiraku-eamuse`** (`tools/eamuse/server.cpp`): the same server on the network, for several cabinets (a session's two, say), dispatching by the game's model (xx39 GuitarFreaks, xx40 DrumMania). Checked: drmn10m against it on 127.0.0.1 boots, makes the same calls, and NETWORK CHECK says CONNECTED.
+  - **`hiraku-eamuse`** (`tools/eamuse/server.cpp`): the same server on the network, for several cabinets (a session's two, say), dispatching by the game's model (xx39 GuitarFreaks, xx40 DrumMania; any other to the Python core's pop'n server, §23, in the same data folder). Checked: drmn10m against it on 127.0.0.1 boots, makes the same calls, and NETWORK CHECK says CONNECTED.
   - **GuitarFreaks 11th Mix** makes the same calls (model `D39:J:A:A`) and connects the same way. Its unit's installer (`d39jba02`, `--cd hdd`) installs 366 MB to INSTALLATION COMPLETED in about 57,000 frames. In its test mode P2 R/B changes a value (DrumMania: hold Start + Left/Right).
   - **Regress:** `drmn10m-eaon` (test mode: e-AMUSEMENT ON, after `drmn10m-npu`) and `drmn10m-net` (the boot's calls, then NETWORK CHECK); `gtfrk11m-hdd` (the unit's install, after `gtfrk11m-boot`), `gtfrk11m-eaon` and `gtfrk11m-net`, the same for GuitarFreaks.
   - **Out of test mode, the game now stops at 拡張カードユニットが見つかりません** (the card unit isn't found; DEVICE 7 NOT FOUND at boot). With e-AMUSEMENT ON it requires the card reader. That is step 3, and with it the card's `gamedata` calls (gametop, cardcheck, cardregist, gameend, autoir, rend) and the KONAMI ID's.
@@ -1506,6 +1506,328 @@ C++, not x86 code, and neither guest CPU has an FPU, so the work was in the host
 give the same digests on the ARM build (under qemu) as on x86. Not measured yet: speed on real
 ARM hardware (qemu says nothing about it). Android itself (GLES renderer, frame pacing,
 launcher, packaging of the per-dump game code) is still to decide.
+
+## 23. Konami Python 1/2 (M16, started 2026-10-13)
+
+The owner asked for the groundwork for a Python core. The facts behind this section are in docs/PYTHON.md. The work files (sources, the Reliquary build, oracle outputs, survey notes, decoded boot records) live in `/run/media/roganis/DATA/Python-work/`, outside the repo; the oracle build and runner are in `oracle/pcsx2/`.
+
+### What is different from every core so far
+
+- **Python is a PlayStation 2.** EE (R5900 + VU0/VU1), GS, IOP (R3000A), SPU2, IPU, DMAC/VIF/GIF. PCSX2's core is ~365,000 lines; MAME's whole 573 port was ~16,000. Porting a PS2 into HIRAKU device by device, as was done for DJ Main and the 573, is not a few-week job.
+- **There is no MAME oracle.** Every Python 1 and Python 2 set in MAME is a NOT_WORKING skeleton. The only emulator that runs these games is **PCSX2 Reliquary**, a GPL-3.0+ PCSX2 fork. "Match MAME first" becomes "match Reliquary first", with two caveats:
+  - PCSX2 is not cycle-exact hardware; its timing model is its own. Lockstep against it means matching *its* model, as HIRAKU matched MAME's.
+  - Reliquary emulates the Python 1 interface board (a TX39 MIPS with its own firmware) at the FireWire command level; the board's CPU never runs. So below that layer the reference is an HLE, not hardware truth.
+- **The game program is easy to get at.** Each disk carries the EE program as plain MIPS, only LZ-compressed (docs/PYTHON.md §4). The offline decode of pop'n 9's equals Reliquary's EE RAM byte for byte in its code. So a static recompiler has its input without any decryption; only the memory-card boot loader is a KELF.
+
+### Measured (2026-10-13, Ryzen 5700X3D, pop'n 9 attract, Reliquary built here)
+
+- **Reliquary builds on Linux** with system packages plus six small local dependencies: 83 s, 1.3 GB peak (`oracle/pcsx2/build-reliquary.sh`).
+- **pop'n 9 boots to attract in it:** device checks, warning, title, How To Play, looping every ~100 s.
+- **Host cost at real-time speed**, whole process, from 30 s to 150 s of attract:
+
+  | CPU mode | GS renderer | Host CPU |
+  |---|---|---|
+  | JITs (default) | software | 44 % of one core |
+  | JITs | Vulkan | 34 % of one core (plus the GPU) |
+  | interpreters | software | 78 %, and still **below real time**: ~0.75× (3,000 frames in ~66 s unlimited) |
+
+  - Unlimited, the JITs run 3,000 frames in ~7 s including start-up: 7× real time or more.
+  - For comparison, HIRAKU's bm3final takes 10–13 % of a core and ddr2m ~10 %. pop'n 9 in Reliquary is 3–4× that, before any N100 discount (×2 or worse per core).
+- **Runs repeat exactly.** Same settings and CPU mode: EE and IOP RAM identical at all 50 checkpoints over 3,000 frames, frame-limited or not (the `HK_FRAMEHASH` hook). JIT and interpreter runs differ from frame 60 on, so the oracle pins its CPU mode.
+- **PCSX2's EE timing is a static table:** each opcode has a cost in 1/8 cycles (`R5900OpcodeTables.cpp`; 9 by default, 2×8 for MULT, 14×8 for DIV), summed per block and scaled at the block's end (`Interpreter.cpp:31-52, 214`). A recompiled block can carry its cost as a constant, as on the 573.
+- **pop'n 9's EE program** decoded offline equals Reliquary's EE RAM in all its code; 1.4 MB, ~13,000 `jal`.
+
+### Options for the core
+
+1. **Host Reliquary's emulation core inside HIRAKU** (`runtime/python/`, `core = "python"`). Link PCSX2's `pcsx2` core library, which doesn't need Qt (checked: `pcsx2-gsrunner` builds against it with no Qt library linked), and implement its `Host::` interface on HIRAKU's shell: window, audio, input scripts, cabinet controls, lamps, NVRAM.
+   - Playable soonest. Identical to the oracle by construction.
+   - HIRAKU then owns a fork of a ~365,000-line emulator that its upstream re-syncs monthly; efficiency is PCSX2's, not better.
+2. **Port the PS2 into HIRAKU piece by piece**, the 573 way.
+   - Matches the codebase's style. Months of work before anything boots, against a reference that isn't cycle-exact anyway.
+3. **Both, in order (recommended).** Start from (1), then replace parts behind the same seams only where a measurement says it pays:
+   - **the EE game program by static recompilation**, the Firebeat pipeline on MIPS: Ghidra manifest (Ghidra has no R5900 language; it needs an extension or HIRAKU's own decoder), one C function per guest function, PCSX2's EE interpreter as the fallback and as the shadow-mode reference in the same process;
+   - the interface board's I/O replaced by HIRAKU's cabinet layer (pop'n buttons, lamps, latency);
+   - the GS: Reliquary's software renderer for the oracle, its Vulkan renderer for play, unless the N100 numbers say otherwise.
+   - Each replacement is checked in lockstep against the unmodified Reliquary path, as the 573 is against MAME.
+
+The efficiency case is weaker than on the 573. There the baseline was an interpreter; here it is PCSX2's mature x86-64 JITs. HIRAKU's gains on Python would come mostly from latency, I/O and the shell, plus whatever the EE recompile and an idle-skip give over the JIT. PY-0 measures this before anything is decided.
+
+### Roadmap (revised 2026-10-13, after PY-1, from a measured profile)
+
+PY-0 (the oracle) and PY-1 (Reliquary hosted, pop'n 9 playable) are done; see Progress below. The phase list written before them had the EE recompile as the main work. A profile of the running core says otherwise.
+
+**Where the host time goes** (pop'n 9, `popn9-play.his`, Vulkan GS, 5700X3D, the core's `HK_PY_PROFILE=1` sampler; ~45,000 samples):
+
+| Thread | Share of all samples | Inside it |
+|---|---|---|
+| GS | ~63 % | CPU-side texture decoding and swizzling (GSVector ops, `ReadAndExpandBlock16`, ...) ~35 %; texture-cache hashing (XXH3) ~15 %; HIRAKU's picture conversion (`on_gs_frame`) ~9 %; the Vulkan driver ~6 % |
+| CPU (EE, IOP, VU, SPU2, board) | ~37 % | SPU2 mixing ~31 %; EE JIT code ~17 %; libc copies ~14 % (part of it the core's 0.9 MB picture copy per frame); IOP JIT code ~7 %; event and counter scheduling ~5 %; CHD decompression ~2 % |
+
+- **The EE recompile is no longer the main work.** EE code is ~6 % of all samples, about 1 % of a desktop core. A static recompile can't win more than that on pop'n 9.
+- **The cost is in the GS, the picture handoff and SPU2.**
+- **Per 100 s of game** (`--no-picture` A/B): Vulkan ~18 % of a core (CPU thread ~9 %, GS ~7 %, picture readback ~2–3 %); software GS ~26 %.
+
+Each phase ends with `tools/regress.py check popn9-play` bit-identical, unless it says otherwise.
+
+**PY-1b. Finish the playable base** (days)
+1. **The owner's hands-on test**: picture, sound (crackles?), feel. Its findings come first.
+2. **Lamps.** Decode the interface board's JAMMA output command (0x0e0/0xf80 in `KonamiPython1.cpp`) into a Python pop'n lamp family in `cabinet.cpp`. The ground truth is the game's own test mode, I/O CHECK > LAMP CHECK, lamp by lamp. Then the lights socket and HID lamps (docs/LIGHTS.md).
+3. **Launcher.** The game shows from `games/popn9/game.toml`; its "not built" hint must name `oracle/pcsx2/build-reliquary.sh`. Windowed runs get `--renderer vk`.
+4. **NVRAM.** Check that settings, bookkeeping and the disk overlay survive restarts, and that ALL FACTORY SETTINGS in test mode works.
+5. **Packaging** (`tools/package.sh`, the owner's laptop test):
+   - ship `hiraku-popn9`, Reliquary's `resources/` and the three local libraries (ryml, plutosvg, plutovg), with an `$ORIGIN` rpath;
+   - drop the hard FFmpeg dependency (`USE_LINKED_FFMPEG=OFF`, loaded at run time) if the build allows.
+6. **Reliquary updates.** Pin the version (1.9.4) and write down how to re-apply the patch to a new release. Keep the patch small: taps and hooks, no logic.
+
+**PY-2. Measure properly** (1–2 days)
+- An A/B harness (alternating runs, medians), as for the 573; `HK_PY_PROFILE` for the breakdown.
+- **Low-end hardware:** the owner's Haswell laptop (Mesa's `hasvk` Vulkan, or `--renderer gl`), the MacBook pack, an N100 when there is one. Judge by frame-time spikes, not means.
+- **Exit:** a cost table per part, desktop and low-end. It decides how far PY-3 goes.
+
+**PY-3. Efficiency, cheapest first**
+1. **The picture handoff** (~9 % of GS samples, plus copies on the CPU thread):
+   - hand RGBA over as it comes and let the shell's GL upload swizzle it;
+   - swap buffers instead of copying;
+   - keep one download texture instead of creating a render target and a download texture every frame (a patch to `SaveSnapshotToMemory`'s path).
+2. **PGO for Reliquary's core with HIRAKU's**, trained on `popn9-play`, as `tools/pgo.py` does for the other cores (the 573 got 1.44×).
+3. **GS settings that leave the picture unchanged:** texture preloading and hashing levels. Check them with picture digests on a Vulkan regress case, which this needs.
+4. **SPU2:** profile-driven speed-ups that keep the output bit-identical, small and upstreamable. It stays on the CPU thread, because the game reads its state back.
+5. **Only if the readback still shows:** present the GS's picture straight into the shell's window, sharing the texture. That interacts with HIRAKU's picture modes (CRT shaders), so the readback stays the default.
+- **Exit:** a budget set from PY-2, like M11's: a share of an N100 core on average, and no frame over a set host time.
+
+**PY-4. Latency and I/O** (HIRAKU's reasons to exist here)
+- **Input:** find how often the game's IOP driver polls the interface board over FireWire (the board's command trace, `FW_VERBOSE_LOGS`). Then measure key-to-picture with a latency script, as for pop'n 4 and Animelo 2.
+- **Picture:** the picture of vsync N reaches the shell at vsync N+1. Add an option to wait for vsync N itself, trading GS/EE overlap for a frame less latency, and measure both.
+- **Sound:** delivered once per vsync (16.7 ms batches). Deliver per SPU2 chunk for less audio latency.
+
+**PY-5. The rest of Python 1, as media arrive**
+- **pop'n music 10–14:** a `games/<id>/game.toml` each (the ingester prints the EE program's SHA-1), the IoMode, and a play script as a regress case.
+- **Dancing Stage Fusion** needs a clean dump, or a documented repair (the boot ROM's missing 32 bytes, record A's first sector).
+- The non-BEMANI titles only if wanted.
+
+**PY-6. Python 2** (needs media: DDR SuperNOVA 1/2, GuitarFreaks/DrumMania V–V3)
+- `.py2` ingest; P2IO over USB; the DEV9 hard disk bound by DNAS to the HDD ID and the i.LINK ID; the e-amusement card reader stubbed or emulated as Reliquary does.
+- Cabinet families: DDR exists; GuitarFreaks (neck, pick, wailing, effect knob) and DrumMania (pads, pedal) are new.
+
+**PY-7. Optional, only where PY-2/PY-3 measurements show the CPUs matter**
+- **The EE recompiled statically.** The groundwork stands: plain-MIPS program on the disk, a static cost table, PS2Recomp's tables as a cross-check. Upper bound ~6 % of samples on pop'n 9; a heavier 3D Python 2 game could change that.
+- **The IOP on the 573's MIPS recompiler** (the same R3000A): ~7 % of the CPU thread.
+- **The interface board's TX39 firmware run for real**, instead of Reliquary's command-level emulation: only if a game needs behaviour the emulation lacks. It would be a departure from the reference, so it needs a hardware source.
+
+### Progress (2026-10-13): PY-0 and PY-1
+
+**The oracle, `oracle/pcsx2/`:**
+- **The patch** (`reliquary-oracle.patch`, six files):
+  - the RAM-hash hook;
+  - `pcsx2/HirakuHooks.h`: taps for the vsync, the audio output after the interface board's ADPCM, and the displayed picture;
+  - the keystore printout made opt-in (`PCSX2_PRINT_KEYSTORE`);
+  - a CMake entry point (`-DHIRAKU_DIR`) that builds HIRAKU's Python core inside Reliquary's tree. Reliquary's CMake assumes it is top-level in ~50 places, so it can't go inside HIRAKU's.
+- **Memory-card slot 2 is off** in the oracle as in the core: a Python cabinet has only the dongle, in slot 1. With slot 2 on, the BIOS probes it and the runs part at frame ~180.
+- **Dropped from PY-0:** scripted P1IO input in `pcsx2-qt`. The core runs Reliquary's own code, and HIRAKU's script runner drives its inputs, so the oracle only has to confirm that the core matches it from power-on. It does, below.
+
+**The core, `runtime/python/` (`core = "python"`, `hiraku-popn9`):**
+- **Built by** `oracle/pcsx2/build-reliquary.sh` against Reliquary's `PCSX2` library. The binary sits next to Reliquary's resources and is linked into `build/cmake/`.
+  - HIRAKU's shell sources are compiled there too, with `-fexceptions`: PCSX2 builds without exceptions.
+- **`Host::`:** implemented after `pcsx2-gsrunner`. The GS runs surfaceless.
+- **Pictures:** the GS thread hands each presented frame over (native size: 512×448 on pop'n 9). At vsync N the CPU thread waits for frame N−1, so pictures are deterministic and the GS still overlaps the EE.
+- **Sound:** 48 kHz, gathered per vsync.
+- **The run's files:** the BBSRAM, dongles, boot ROM and memory card are copied into the NVRAM folder (or a fresh folder per scripted run); the CHD gets Reliquary's write overlay there.
+- **Exit:** the shell's `exit()` ends through glibc `on_exit` → `_exit`. PCSX2's static destructors assert while the VM is still mapped.
+- **Settings stay out of `~/.config/PCSX2`.** `EmuFolders::SetDataDirectory()` would create it, so the core sets the folders itself.
+- **`tools/ingest.py <set>.py1`:**
+  - identifies the game by the SHA-1 of its decoded EE program (`games/popn9/game.toml [python] ee_sha1`);
+  - copies the board's files, the BIOS and the keys into `dumps/popn9/`, and links the CHD.
+
+**Results (pop'n 9):**
+- **Matches the oracle:** EE and IOP RAM hashes identical to `pcsx2-qt`'s at all 50 checkpoints up to frame 3,000 (JITs, software GS).
+- **Repeatable:** picture and sound digests identical over 6,000 frames.
+- **Plays:** `oracle/scripts/popn9-play.his` goes from power-on through coins, NORMAL and song select to "Requiem", scored, and CLEARED. It is the regress case `popn9-play` (14,000 frames, ~850 MB peak).
+- **Buttons checked in test mode:** I/O CHECK > INPUT CHECK lights SW1–SW9 for buttons 1–9; Service lights SERVICE. Coins count.
+- **The window works:** the shell's OpenGL picture beside PCSX2's surfaceless Vulkan device. The Vulkan GS (`--renderer vk`) gives the same game, with the same scores.
+- **Host cost** (headless, 100 s of game, this desktop, noisy):
+  - software GS ~30 % of a core; Vulkan ~18–27 %;
+  - the CPU thread's own work 1.9–2.3 ms a frame on average;
+  - one 175 ms frame at boot (frame 326);
+  - to be measured properly (A/B, median) and on N100-class hardware.
+
+**PY-1b (2026-10-13), done but for the owner's test:**
+- **Lamps:** the patch taps the interface board's JAMMA output command (`Hiraku::p1io_output`). Word 8 holds the lamps.
+  - The bits were read off the game's LAMP CHECK, item by item: SW-LAMP 1–9 = bits 0–8, HI-LAMP 1–5 = bits 14–10, LEFT-LAMP 1–2 = 15–16, RIGHT-LAMP 1–2 = 17–18.
+  - They form the cabinet family `pypopn`: pop'n's controls, Firebeat pop'n's lamp names. All 18 lamps light through the lights socket.
+  - `HK_PY_P1IO_LOG=<file>` logs the command's payload changes.
+- **The input poll:** the game sends that command, and gets the input report back, **exactly once per frame**. This is the fact PY-4 starts from.
+- **Launcher:**
+  - accepts a `.py1`;
+  - the ingester also takes a set's folder (the `.py1` beside it);
+  - Python games get `--renderer vk`, a `pypopn` family name and icon, and Python-specific install and build hints.
+- **NVRAM:**
+  - Reliquary rewrites the BBSRAM file in the NVRAM folder on every write; the core copies the dump's files there only when they're missing.
+  - pop'n 9 writes nothing in normal play: bookkeeping is OFF by default, and a factory reset rewrites identical bytes.
+  - A scripted change of a saved setting is still to do. Test-mode submenus miss 6-frame presses (10 work), and the hold-red-and-press-blue change didn't take in a script. The owner's hands-on test covers it meanwhile.
+- **Packaging:**
+  - Reliquary is built with `$ORIGIN/lib` in the run path and FFmpeg loaded at run time (the binaries no longer need it).
+  - `tools/package.sh` adds `resources/`, the libraries built for Reliquary and the CHD reader. The packaged binary runs with the build's `deps/` moved away.
+- **Reliquary pinned:** 1.9.4, the zip's SHA-256 and the update procedure are in `oracle/pcsx2/README.md`. The patch: 7 files, 190 lines.
+
+**PY-3 and PY-4, first steps (2026-10-13).** Measured with `tools/ab.py`: alternating runs, 5 each, medians of total process CPU. Vulkan, 6,000 frames unless noted. Every change is bit-identical (`popn9-play`, and the new `popn9-play-vk` case) unless noted.
+
+| Change | CPU | Notes |
+|---|---|---|
+| **Picture handoff:** `bswap32(p) >> 8` instead of per-pixel masks; buffers swapped, not copied | **−7.3 %** | `on_gs_frame`: 8.9 → 1.0 % of GS samples |
+| **PGO** (`build-reliquary.sh pgo`, trained on `popn9-play`, both renderers) | **−3.2 %** (software GS −1.9 %) | far from the 573's 1.44×: the hot paths are JIT code and vectorised texture code; kept as an optional step |
+| Texture preloading Partial instead of Full | **+11.4 %**: dropped | the picture is identical; None differs in 17 frames |
+| **Each vsync's own picture** (`vsync_posted` hook; `--picture-overlap` for the old way) | +1.4 % (wall +9 % unthrottled) | **one frame less latency**; EE/IOP hashes identical in both modes; now the default |
+
+- The Vulkan GS is deterministic on this GPU and driver: identical digests over 14,000 frames. That makes `popn9-play-vk` possible; its baseline must be recorded per PC.
+- **Latency** (`oracle/scripts/popn9-latency.his`, `tools/pylatency.py`: test mode's INPUT CHECK, button 1 every 60 frames):
+  - 4 frames from a press or release to the changed picture, every time; 5 before the picture change;
+  - the game polls once per frame, and in windowed play the frame runs within ~2 ms of the shell reading the controls, so later input reading would gain little;
+  - sound goes to the shell once per vsync, but a frame's emulation is a ~2 ms burst, so finer delivery would gain ~2 ms at most;
+  - the 4 frames are pop'n 9's own pipeline.
+- **Gameplay latency.** Runs are deterministic, so the method is two runs of the same song, identical but for one press (frame 6003); the first differing audio sample and picture are the press's effects.
+  - **Picture:** 5 frames after the press.
+  - **Keysound (button 5): ~2 ms after the vsync at which the press is applied.** The game polls just after the vsync and starts the voice at once. Button 1 made no sound difference at that point of the song.
+  - What the host adds on top: up to a frame until the press is read (the game polls once a frame, as on the cabinet), the audio queue (8 ms by default), the display.
+- **Against stock Reliquary (`pcsx2-qt`, same build, same settings, same pop'n 9 attract from power-on), 2026-10-13:**
+
+  | | pcsx2-qt | hiraku-popn9 | |
+  |---|---|---|---|
+  | Playing at real time, windowed, CPU from 30 s to 150 s, Vulkan | 34 % of a core | 20 % | **−40 %** |
+  | The same, software GS | 44 % | 29 % | **−34 %** |
+  | Flat out, CPU for 6,000 frames, Vulkan (pcsx2-qt still presenting; the core headless) | 16.8 s | 16.3 s | −3 % |
+  | The same, software GS | 22.9 s | 23.0 s | 0 % |
+
+  - Medians of 2 real-time and 3 flat-out runs, alternated. Audio was null in both, and the display ran at 144 Hz, so the core's display sync was off.
+  - **The emulation costs the same:** it is the same code. The saving appears only at real-time speed, so it is in how each paces and presents a frame. The split between pcsx2-qt's frame limiter, its presentation and its Qt UI is **not measured**.
+- **Unlocks (§20's system), 2026-10-13:** pop'n 9's event phase, set from the launcher's Unlocks dialog or `tools/unlock.py popn9 phase=0..4`.
+  - **How it was found:** the four RemyWiki codes typed in test mode > EVENT OPTIONS > PASSWORD (`oracle/scripts/popn9-phases.his`), the saves compared, then the program read.
+  - **Where it lives:** the interface board's BBSRAM (`m48t58y.u48`), a small file system (`bbsram0:/settings`, `/book`) written by Konami's `mirror.c`:
+    - each file is kept twice (settings0 at 0x0, settings1 at 0x110);
+    - each copy is a 12-byte header {sum, size, data sum} with the data at +0x10. The sums are of 32-bit LE words, each XORed with its index (`0x1ab6f8`);
+    - the 0x60-byte settings record (RAM `0x1212180`) ends with its own sum at +0x5c (`0x1a9b28`): five segments, each byte XORed with its index in the segment, plus 0x50. A record with a wrong sum is ignored at boot (the phase reads `--`);
+    - the phase is record +0x14, 0–4 (`0x1aa4f0` reads it).
+  - **Checked:**
+    - every phase written by the tool, from phase 0 or from MAX, is byte-identical to the game's own save at that phase;
+    - a tool-made MAX save boots at MAX (EVENT OPTIONS), and the mode select then has HITASURA after EXPERT.
+  - **Not checked:** what phases 1–3 do without e-AMUSEMENT (the Gambler Z labyrinth needed a card).
+  - `tools/unlock.py` gained checksum kind `mirror` (with an optional `inner` record sum) for it. Code macros (`macros.txt`) already run in the Python core, which shares `runtime/main.cpp`; pop'n 9 has no per-credit codes known yet that would need one.
+- **e-AMUSEMENT, 2026-10-13 (owner: "start work on eamusement"):** pop'n 9 is the first pop'n on it. Read with Ghidra 12.1.2 headless (`MIPS:LE:64:64-32addr`, raw binary at 0x100000, `$gp` = 0x25da70, functions seeded at every `addiu sp,sp,-n`; scripts in `$HK_PYTHON_WORK/ghidra/`).
+  - **What the game has:**
+    - an e-AMUSE3 client: DHCP and sockets on the interface board (the board has the Ethernet port, and the game sends it socket commands);
+    - HTTP/1.0 to a host named `services` (User-Agent `EAMUSE.Httpac/1.0`, an `X-Eamuse-Info` header, XML bodies), with services `services.get`, `numbering.assign`, `package.list`/`intend`, user data, rankings, KONAMI ID, p-friend, the coin count, NTP and ee'MALL;
+    - a motorized magnetic card reader/writer and a 10-key, on the board's serial port.
+  - **The card and the server:** the card holds only an ID and a type. Its first 4 bytes plus a CRC-8 give the type (`0x1a28c0`): `28 23 41 01` a new pop'n 9 card, `68 23 41 01` a used one, and others for Konami common, location-test and "death" cards. The ID is 8 bytes, written as 16 hex digits. A new card gets its ID from the server (`numbering`), and is then formatted, written and read back. A used card's player data is read from the server and written back to it. So a card does nothing without a server.
+  - **Step 1, the card unit (done):** `runtime/python/cardunit.{h,cpp}`, behind a new hook in the Reliquary patch (`Hiraku::uart_write`/`uart_reply`, installed for family `pypopn` only).
+    - The bus (driver `0x1a1050`–`0x1a6c00`): 9600 baud, half-duplex. The game reads its own packet back before each answer, which is what Reliquary's stock answer lacked (CARD UNIT ERROR).
+    - Packets are `aa T ADDR CMD LEN [payload] SUM`. Bus commands: 01 address, 02 revision, 03 start. Card commands: 10 reset, 12 status (0x80 card in, 0x20 read done, 0x10 buffer loaded), 14 control (1 open, 2 eject, 4 read, 5 write), 16/18 write/read the 128-byte buffer, 1e format. 10-key: 20 init, 24 status, 26 events (PS/2 set-2 scan codes).
+    - Reliquary delivers 38 received bytes per transfer, so with the hook it now drains longer answers (the card read is 141 bytes).
+    - **Checked:** with e-AMUSEMENT ON, the boot passes CARD R/W CHECK (test mode shows the unit as VER 1.0.0) and 10 KEY CHECK. Test mode's CARD CHECK reads the card: "CHECK IS COMPLETED. NEW CARD" (`oracle/scripts/popn9-eamuse-on.his`, then `popn9-cardcheck.his`). popn9-play and popn9-play-vk are unchanged. With e-AMUSEMENT OFF the game sends the unit no commands (4,000 frames from power-on, `HK_PY_CARD_LOG`).
+    - **Not checked yet:** writing a card (only a new card's creation writes, after the server's numbering), and the 10-key in play.
+  - **Step 2, the network (done):** `runtime/python/eanet.{h,cpp}`, a virtual LAN with no host sockets, behind a second hook (`Hiraku::net_command`, with `net_respond`/`net_write`/`iop_read`).
+    - **The commands:** the board command is the game's RPC number + 1 (EE wrappers `0x1b3648`–`0x1b6ae8`): 0b socket, 0c bind, 0d listen, 0e accept, 0f connect, 13 setsockopt, 14 send, 15 sendto, 16 recv, 17 recvfrom, 1c shutdown, 1d close, 1e a property (0x101 IP, 1 mask, 3 gateway, 6 DNS, 0xf the local domain `PYTHON1-00000001`).
+    - Each answer is the channel's 8-word status block: word 1 the result (byte-swapped), words 2 and 3 the sender for recvfrom.
+    - Start-up and DHCP (00–07, "bound") stay Reliquary's.
+    - **The LAN:** the board at 192.168.50.2/24; gateway, DNS and `services` at 192.168.50.1. DNS answers `services.*`, and TCP port 80 there reaches an HTTP/1.0 handler in the core.
+    - **The game's start-up** (state machine `0x182c58`): net init, DHCP, the addresses, then e-AMUSE3 starts (`0x18ec30`: DNS, domain, port 0x7e90). It resolves `services.PYTHON1-00000001`, connects to port 80 and POSTs `/` with `X-Eamuse-Info: 1-xxxxxxxx-xxxx` and an RC4-encrypted body.
+    - **The crypto is the modern e-AMUSEMENT one** (as in bemaniutils): key = MD5(the header's 6 bytes + the 26-byte shared secret), RC4, plain XML with no compression. The first request decrypts to `<call srcid="01401401000100045FEF" model="C00:J:A:A"><services method="get"/></call>`.
+    - **Checked:** popn9-play(-vk) unchanged. With e-AMUSEMENT OFF the game sends the board no socket commands (4,000 frames, `HK_PY_NET_LOG`).
+  - **Step 3, the server (in progress):** `runtime/python/easerver.{h,cpp}`: the protocol's MD5/RC4, a small XML reader, and answers built from the game's response parsers. State is kept in the save folder's `eamuse/`.
+    - **Modules and methods** (the method entries at `0x1e81e8`…, each {name, `services` item, -, handlers: init, build, parse, end}):
+      - services get;
+      - posevent income/sales/sale (sale and sales need `approve`);
+      - pcbtracker alive;
+      - numbering assign (`number`);
+      - package list/intend;
+      - userdata read (109 = not registered, 110 = expired; `time`, `<b>`) and write;
+      - userid ctou (`user`, `active`), adduser (`alter`), addcard;
+      - rank get/register (+ `_h` HITASURA, `_gz` Gambler Z);
+      - p_friend get/state/ask;
+      - eemall i_get;
+      - ntp get (`<time year month day hour min sec>`).
+      - `services` must list the items `posevent`, `pcbtracker`, `numbering`, `package`, `userdata`, `userid` and **`local`** (rank, p_friend, eemall and ntp look up `local`).
+    - **The envelope:** `<response><MODULE status="0" …>…</MODULE>…</response>`, one element per call, in order. `fault` or a non-zero `status` fails the call.
+    - **Encryption follows the call's packet type.** Some calls go out unencrypted (numbering, ntp), and their answer must also be unencrypted, **without** `X-Eamuse-Info` (`0x190290` compares the header's crypto version with the packet type's). Answering them encrypted failed them before any XML was read. That was found with a temporary EE-interpreter PC trace, kept outside the patch (`$HK_PYTHON_WORK/scratch/Interpreter.cpp.eetrace`, `HK_EE_TRACE=pc,…`, run with `--interp`).
+    - **The start-up** (`0x182c58`): services.get → pcbtracker.alive → posevent → ntp.get → status 0. The title then says "e-AMUSEMENT 接続中!" and "カードが使用できます!!". A ping check (raw ICMP, `0x1885b8`) runs every so often; the LAN answers the echo with an IP header.
+    - **Checked, a new card** (`oracle/scripts`-style runs from the e-AMUSEMENT-on save):
+      - credits and Start, then the INFORMATION screen asks for the pop'n card;
+      - Insert: the reader takes it and reads "NEW CARD"; then name entry, then the PIN twice on the 10-key;
+      - `numbering.assign` gets `2003010000000010` (16 digits, Luhn check);
+      - the game formats, writes and reads back the card: `68 23 41 01` + CRC-8, the ID at 6–13 (byte-reversed), CRC-16 at 0x3f;
+      - "カードセーブ完了", then `userid.ctou` (no KONAMI ID), and mode select with the card.
+    - **Checked, a whole credit and the card again** (`oracle/scripts/popn9-card-new.his`, then `popn9-card-again.his`, same save):
+      - at the credit's end the game sends `p_friend.state` and `userdata.write card=… time="2003-06-02 06:42:41+9"`, with the player data base64 in `<b>` (chunks of 0x200 bytes, `0x197fc0`); the server keeps the time and the `<b>` chunks;
+      - next credit: `userdata.read` gets them back, the game skips the name and asks the PIN;
+      - 1234 shows the player's name ("あああ"), character and options, then `p_friend.get` and `userid.ctou`, and mode select with the card;
+      - a wrong PIN gets "パスワードが違います" and, after the retries, play without the card;
+      - the PIN is checked by the game, from the player data.
+    - **Rankings, KONAMI ID, ee'MALL** (2026-10-13), from the parsers (`0x19a080`…, `0x1992e8`…, `0x198858`…, `0x19b558`) and the status mappings (`0x184f68`, `0x1863e8`, `0x186620`, `0x186818`):
+      - **Boards:** score per course, HITASURA per course, and Gambler Z per shop. Each entrant's best is kept; the board is sorted; `register` answers with the place, the number of entries and `update`.
+      - **userid:** ctou 112 means no KONAMI ID; adduser 113/114; addcard 115/116/114.
+      - **ee'MALL:** items per card, from `eemall-CARD`.
+      - **Checked in play** (`oracle/scripts/popn9-card-expert.his`): an EXPERT course with the card, failed in its first song, still sends `rank.register`. The name is hex Shift-JIS, `area_num` 255. The game then shows INTERNET RANKING, "あああ さんの New ハイスコア 918 は 4位 4人中です", from the server's answer against three seeded entries.
+    - **Online** (`--eamuse http://host[:port][/path]`, `eaclient.cpp`): the core forwards each request to the server. Answers arrive on a worker thread, and the game's recv waits for them (the board's status block is written when the answer is there). DNS gives every name an address of its own on the virtual LAN, so the URLs the server hands out reach their hosts.
+      - **`hiraku-eamuse`** (`tools/eamuse/server.cpp`): the same server behind an HTTP/1.0 listener.
+      - **Checked:** a card registered through it on 127.0.0.1; offline unchanged.
+    - **For server owners:**
+      - `docs/EAMUSE3.md`: transport, the crypto and its in-kind rule, the envelope, every module with its statuses, the card, a card's life.
+      - `tools/eamuse/corpus.json`: the game's calls, captured or built from its formats, flagged.
+      - `tools/eamuse/check.py URL`: the corpus checked against the parsers' rules, then a stateful scenario. hiraku-eamuse passes all of it.
+    - **Launcher:** Settings > e-AMUSEMENT > Server (empty = offline) passes `--eamuse`.
+    - **Phases MAX and 1–3 with the card:**
+      - start-up sends `rank.get_h` (MAX) and `rank.get_gz` (1–3);
+      - a Gambler Z credit (phase 1) ends with `register_gz prog="0" parts="00000000"`, and attract then shows "Gambler Z in progress" pages;
+      - the labyrinth is the cabinet's (settings record 0x18–0x23; `0x1aa7f0`…), and the credit set +0x1c to 0xffff;
+      - a HITASURA run with no song cleared sends no `register_h`.
+    - **`--autoplay`** (the owner's request, for testing): the game's own demo play in a real credit. `0x257084` is pop'n 9's autoplay flag: each song's start sets it to "mode (`0x25a0d8`) == 2, the attract demo" (`0x10e570`); while it is set, each note reaching the line is judged GREAT (`0x10cbe8`). The play screen's button reader (`0x10dd80`) gives nothing in the demo by its own mode test. The mod patches both tests (`0x10e644` bnel → nop, `0x10dd9c` beq → b) through PCSX2's TLB at a vsync, as its own patches are written, so the recompiler drops the blocks.
+      - **Checked:** "Requiem" 201 GREAT, combo 200, 100000, CLEARED; a whole NORMAL credit, ALL STAGE CLEARED. Without the flag, `popn9-play` and `popn9-play-vk` are identical.
+      - **HITASURA** (`oracle/scripts/popn9-hitasura.his`, phase MAX): the first course's three songs cleared, life ×50 left; `rank.register_h course="0" music="3" combo="365"` (now captured in the corpus).
+      - **Gambler Z** (`oracle/scripts/popn9-gamblerz.his`, phase 1): after the results and the staff roll, the labyrinth (`0x19e188`, phases 1 and 2 by `0x143c98`): "1階 Aフロア", 3 steps, one per cleared stage (`0x1088c8`, two for a stage whose song counts double). Settings +0x1c went -1 → -4. `register_gz` still sent `prog="0" parts="00000000"`.
+      - **The labyrinth, read from the program** (docs/EAMUSE3.md): cells hold direction bits; a junction is the player's choice (buttons 4/6, red, a 180-frame timer); treasure cells give items (flags +0x18, low 24 bits); stairs change floor (+0x20); from floor index 10, door cells start a boss song whose score deals 1–5 damage (70k/80k/90k/95k) to 25 HP, 50 on floor index 15 (+0x22). The record also holds the shop's area (+0x35) and name (+0x37) that every `rank.register*` sends.
+    - **The clock:** `ntp.get` is set into the cabinet's clock as given (`0x18a138` → `0x1a9598`), and the game stamps its times "+9". `hiraku-eamuse` sends Japan time (`--tz`); the core sends its emulated clock.
+    - **KONAMI ID on the cabinet** (done): at the end of a credit with a card that has none (`ctou` 112), INFORMATION "KONAMI IDのご案内" (`0x1a8678`): 新規発行 (the ID on a character wheel, 8–32 of `a-z0-9.-_`; a 4-digit password twice on the 10-key) sends `userid.adduser`; カードへ登録 (ID and password once) sends `userid.addcard`. Checked with `oracle/scripts/popn9-konamiid-new.his` (`hiraku09` made) and `popn9-konamiid-addcard.his` (a second, fresh card added): the server's `users` lists both cards and `ctou` gives the ID for each. The game sends no `aflag` (only when nonzero); both calls are now captured in the corpus (with test card numbers, so replaying it doesn't take numbers a server hands out).
+    - **Gambler Z on the server** (done): `register_gz` sends `parts` = the labyrinth's items word (`%08x`) and `prog` = its bits set (`0x188248`); a save with two songs and the first boss sent `prog="4" parts="00084003"`. The bits, read from the item list of a save with all of them: 0–13 a song per floor's treasure, 14+k/19+k a boss's EX chart and EXPERT course, 24 cleared. `tools/unlock.py popn9` decodes them (`[[progress]] kind = "gamblerz"`), so the launcher's Unlocks dialog shows them.
+    - **Ranking pages** (done): attract mode shows "popper's ranking" per course after each demo song, and in phases 1–2 the Gambler Z shop ranking after the labyrinth, both from the server's boards, while the network check passed (`0x2571f8`). `area` is 0-based JIS order (0 北海道, 12 東京都, 46 沖縄県, 255 none); `shop_name` hex Shift-JIS, from test mode's SHOP NAME SETTING (`oracle/scripts/popn9-shopname.his`: "ひらく" went out as `82D082E782AD`).
+    - **pop'n friends** (done): `get` while the player data's friend flag is 0, `ask` once it's set, `state` at the credit's end; all three seen. 600 (get) and 601 (ask) are final noes. **ee'MALL:** `eemall.i_get` is unreachable in pop'n 9 (its wrapper `0x186ef8` has no caller).
+    - **A boss fought in play** (done): saves edited to floor index 10 with a fight under way (HP at settings +0x22), then the autoplayed Gambler Z credit: the boss's EX STAGE (テクノポップ "321 STARS" EX) at 100,000 deals 5; HP 25 -> 20 saved, and from 5 the boss falls: "隠しコース 出現！ すわコース", bits 0x84000, back to 1階 Aフロア, and the same credit's `register_gz` sends `prog="2" parts="00084000"`. `register_gz` comes after the labyrinth (the docs had it before).
+    - **Phase 3** (done): the event's end. `get_gz` at start-up; after a credit no labyrinth and no `register_gz`; attract shows the shop ranking after its demos in place of the course pages, and no labyrinth (an autoplayed credit and 12,000 frames of attract from a save with items).
+    - **package: the title message** (done): after `package.list`, the game looks for an item named `message`; if offered it sends `package.intend url=..` and GETs the url (plain HTTP), keeping `size`-1 bytes, and scrolls the text across its title screen (`0x184410`, `0x1237c0`). The server offers the owner's `message` file (≤255 bytes, one line, ASCII or Shift-JIS) and answers the GET; checked offline and online through hiraku-eamuse, ASCII and kanji. All 23 calls the game makes are now captured in the corpus (eemall.i_get is never sent).
+    - **bemaniutils** (done, out of tree): `tools/eamuse/bemaniutils/popn9-python.patch` (base 1e66fcd) adds pop'n 9 to a bemaniutils server: a backend for all its calls (`bemani/backend/popn/popn9.py`, game code `C00`), several requests per call in the dispatcher, and answers in kind in the XML layer (no declaration when the request has none: pop'n 9 rejects `encoding=`; untyped element text kept for `userdata.write`). Written with an AI model, so not for upstream: bemaniutils has refused AI contributions since 1e66fcd (README); the patch and its README say so. Checked with MariaDB 11 in Docker and HIRAKU online: check.py all pass; a new card numbered, written, saved and read back with its PIN; a KONAMI ID made on the cabinet (113 for one taken); course, HITASURA and Gambler Z registrations and boards. bemaniutils' own tests pass (71; 5 need packages not installed). Not supported: the title message (its GET is the health check), frontend pages.
+    - **Found on the way:** with a KONAMI ID on the card, INTERNET RANKING shows "? 位 ? 人中" (both servers; cause not found). The XML declaration with `encoding=` is refused by the game (without one, or `<?xml version="1.0"?>`, is fine).
+    - **Not done yet:** nothing known on the server side; the meanings of a few statuses (docs/EAMUSE3.md, "Not known yet").
+    - **Seen once:** one `popn9-play` check differed right after a rebuild, then was identical three times running. Where it differed was not captured; watch for it.
+  - **Debugging aids:** `HK_PY_WATCH=addr,…` prints EE RAM words when they change. Ghidra headless decompiles (`$HK_PYTHON_WORK/ghidra`: `Decomp.java OUT addr|range:A-B…`, `Refs.java addr…`).
+- **Tools:**
+  - `tools/ab.py`: A/B of two binaries, or of two settings with `--a-args`/`--b-args`;
+  - `--pcsx2-set Section/Key=value`: any emulator setting, for experiments;
+  - `--no-picture`, `HK_PY_PROFILE`.
+
+**Next:**
+- the owner's test;
+- PY-2 on low-end hardware, which decides whether PY-3 goes into PCSX2's GS texture path or SPU2 (both mean patching emulator logic, not just taps);
+- hands-on latency with real controls and audio (the owner). The profile behind it was measured with the core's `HK_PY_PROFILE=1` sampler and its `--no-picture` option (both added after PY-1).
+
+### pop'n music 10–14 (2026-10-13)
+
+The owner's media arrived (Reliquary `.py1` sets beside popn9). Survey, then support, the same day:
+- **The board is the same** [V]: boot ROM, config ROM, internal dongle and memory-card ID byte-identical to pop'n 9's; one `kn00002.ps2` for 10–14; the same 20 IOPRP modules. New: an external "black" DS2430 per game (`GameId` GEC20JAA, GCD11JAA, GCE12JAB, GCE13JAE, GNF14JAB), which ingest and the core already passed on. Details: docs/PYTHON.md §3–4.
+- **Two media quirks:**
+  - popn11's sector 0 is a blank PC MBR. `tools/pythonfs.py header()` takes the first of 0, 0x200, 0x400 that starts with the header's signature; copies can differ from sector 0 on intact disks (dogstdx, dstagef, wswe2k3), so a copy is only a fallback.
+  - popn13/14's record C is a loader for `ee/boot/game.bin` on a disk file system. Identification by record C's SHA-1 still works (each loader is distinct).
+- **Added:** `games/popn10..14/game.toml` (no MAME sets exist), `hiraku_python_game(popn10..14)`.
+- **Matches the oracle** [V]: EE/IOP RAM hashes identical to `pcsx2-qt` at all 50 checkpoints to frame 3,000 for every game. pop'n 13 only with the new `--bare-board`: it probes the card unit at frame 1,325, and HIRAKU's card unit answers where plain Reliquary has none (each side repeats itself exactly; found with `HK_PY_CARD_LOG`).
+- **`OPHFlagHack`:** Reliquary's game list sets it for every Python 1 game but Perfect Pool; the core didn't. It now does. pop'n 9's play case is identical either way.
+- **Plays** [V]: `oracle/scripts/popn10..14-play.his` (coins, mode, button select, a song with a button every 10 frames; pop'n 10 clears its first stage), regress cases `popn10-play` … `popn14-play`, recorded and repeating. Menus differ: 10/11 as 9 plus a BUTTON SELECT; 12–14 ENJOY with 5 buttons preselected; 13's mode select settles later. Menu presses need 10 frames (4 don't pick).
+- **Lamps and inputs** [V]: each game's LAMP CHECK steps through the same word-8 bits in the same order as pop'n 9 (`pypopn` holds); pop'n 14's INPUT CHECK lights SW1–9 and SERVICE for buttons 1–9 and service.
+- **Host cost:** like pop'n 9, ~2.4 ms of CPU-thread work per frame on average (software GS, headless).
+- **pop'n 9 only, so far:** `--autoplay` (it now says so for other games), unlocks, and the e-AMUSEMENT server's calls. From the programs' strings: 10/11 add `game` and drop `parts`; 12 adds `lobby` and `playerdata`; 13 `cardmng`; 14 `facility`.
+
+### Decisions (owner, 2026-10-13)
+
+1. **Option 3:** host Reliquary's core in HIRAKU first (PY-1), then replace parts (the EE by static recompilation, the I/O by HIRAKU's cabinet layer) where a measurement says it pays.
+2. **Reliquary is the reference** for Python, in place of MAME, whose Python drivers are skeletons. The oracle pins its CPU mode.
+3. **The first set is `popn9`.** The owner gets the other games later for testing. (pop'n 10–14 arrived 2026-10-13; the owner asked for their support.)
+- Still open: Python 2 media; a clean `dstagef`.
+- Licence: linking Reliquary makes the Python binaries GPL-3.0 as a whole (its Python 2 files carry only the repo's GPL-3). HIRAKU's own code stays GPL-3.0-or-later.
 
 ## M0 steps (all done)
 

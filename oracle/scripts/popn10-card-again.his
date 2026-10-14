@@ -1,0 +1,16 @@
+# pop'n music 10, after popn10-card-new.his (same --nvram): the registered card again. The server
+# returns the player data (userdata.read), the game asks the PIN; 1234 shows the player's name,
+# character and options, then userid.ctou and eemall.get, and mode select.
+#   hiraku-popn10 --nvram DIR --script oracle/scripts/popn10-card-again.his
+game popn10
+at 4500 press "Coin 1" 8
+at 4540 press "Coin 1" 8
+at 4700 press "P1 Button 5" 8
+at 5050 press "Card" 8
+at 5300 press "Keypad 1" 8
+at 5330 press "Keypad 2" 8
+at 5360 press "Keypad 3" 8
+at 5390 press "Keypad 4" 8
+at 5420 press "Keypad Enter" 8
+at 6000 snap
+at 7000 quit

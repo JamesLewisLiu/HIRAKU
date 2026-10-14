@@ -1,0 +1,130 @@
+# pop'n music 9, Gambler Z (event phase 1), with --autoplay: the registered card of
+# popn9-card-new.his (PIN 1234), NORMAL, three songs played by the game itself (every note GREAT,
+# 100000 each), ALL STAGE CLEARED and the staff roll; then the labyrinth: "1階 Aフロア", three
+# steps (one per cleared stage), the battery RAM's settings +0x1c going -1 -> -4 (0x121219c in
+# RAM); then register_gz and GAME OVER. Red is pressed every 240 frames until the last results;
+# during the songs autoplay ignores it. Set the phase with tools/unlock.py popn9 --nvram DIR
+# phase=1 on the save popn9-card-new.his left. About 38,000 frames. (The watch columns in
+# frames.txt show the EE's little-endian words byte-swapped: gzpos ffff0000 -> fcff0000.)
+#   hiraku-popn9 --autoplay --nvram DIR --script oracle/scripts/popn9-gamblerz.his
+game popn9
+watch mode u32 0x25a0d8
+watch gzflags u32 0x1212198
+watch gzpos u32 0x121219c
+watch gzfloor u8 0x12121a0
+at 4500 press "Coin 1" 8
+at 4540 press "Coin 1" 8
+at 4700 press "P1 Button 5" 8
+at 5050 press "Card" 8
+at 5400 press "Keypad 1" 8
+at 5430 press "Keypad 2" 8
+at 5460 press "Keypad 3" 8
+at 5490 press "Keypad 4" 8
+at 5520 press "Keypad Enter" 8
+at 6800 press "P1 Button 5" 8
+at 7040 press "P1 Button 5" 8
+at 7280 press "P1 Button 5" 8
+at 7520 press "P1 Button 5" 8
+at 7760 press "P1 Button 5" 8
+at 8000 press "P1 Button 5" 8
+at 8240 press "P1 Button 5" 8
+at 8480 press "P1 Button 5" 8
+at 8720 press "P1 Button 5" 8
+at 8960 press "P1 Button 5" 8
+at 9200 press "P1 Button 5" 8
+at 9440 press "P1 Button 5" 8
+at 9680 press "P1 Button 5" 8
+at 9920 press "P1 Button 5" 8
+at 10160 press "P1 Button 5" 8
+at 10400 press "P1 Button 5" 8
+at 10640 press "P1 Button 5" 8
+at 10880 press "P1 Button 5" 8
+at 11120 press "P1 Button 5" 8
+at 11360 press "P1 Button 5" 8
+at 11600 press "P1 Button 5" 8
+at 11840 press "P1 Button 5" 8
+at 12080 press "P1 Button 5" 8
+at 12320 press "P1 Button 5" 8
+at 12560 press "P1 Button 5" 8
+at 12800 press "P1 Button 5" 8
+at 13040 press "P1 Button 5" 8
+at 13280 press "P1 Button 5" 8
+at 13520 press "P1 Button 5" 8
+at 13760 press "P1 Button 5" 8
+at 14000 press "P1 Button 5" 8
+at 14240 press "P1 Button 5" 8
+at 14480 press "P1 Button 5" 8
+at 14720 press "P1 Button 5" 8
+at 14960 press "P1 Button 5" 8
+at 15200 press "P1 Button 5" 8
+at 15440 press "P1 Button 5" 8
+at 15680 press "P1 Button 5" 8
+at 15920 press "P1 Button 5" 8
+at 16160 press "P1 Button 5" 8
+at 16400 press "P1 Button 5" 8
+at 16640 press "P1 Button 5" 8
+at 16880 press "P1 Button 5" 8
+at 17120 press "P1 Button 5" 8
+at 17360 press "P1 Button 5" 8
+at 17600 press "P1 Button 5" 8
+at 17840 press "P1 Button 5" 8
+at 18080 press "P1 Button 5" 8
+at 18320 press "P1 Button 5" 8
+at 18560 press "P1 Button 5" 8
+at 18800 press "P1 Button 5" 8
+at 19040 press "P1 Button 5" 8
+at 19280 press "P1 Button 5" 8
+at 19520 press "P1 Button 5" 8
+at 19760 press "P1 Button 5" 8
+at 20000 press "P1 Button 5" 8
+at 20240 press "P1 Button 5" 8
+at 20480 press "P1 Button 5" 8
+at 20720 press "P1 Button 5" 8
+at 20960 press "P1 Button 5" 8
+at 21200 press "P1 Button 5" 8
+at 21440 press "P1 Button 5" 8
+at 21680 press "P1 Button 5" 8
+at 21920 press "P1 Button 5" 8
+at 22160 press "P1 Button 5" 8
+at 22400 press "P1 Button 5" 8
+at 22640 press "P1 Button 5" 8
+at 22880 press "P1 Button 5" 8
+at 23120 press "P1 Button 5" 8
+at 23360 press "P1 Button 5" 8
+at 23600 press "P1 Button 5" 8
+at 23840 press "P1 Button 5" 8
+at 24080 press "P1 Button 5" 8
+at 24320 press "P1 Button 5" 8
+at 24560 press "P1 Button 5" 8
+at 24800 press "P1 Button 5" 8
+at 25040 press "P1 Button 5" 8
+at 25280 press "P1 Button 5" 8
+at 25520 press "P1 Button 5" 8
+at 25760 press "P1 Button 5" 8
+at 26000 press "P1 Button 5" 8
+at 26240 press "P1 Button 5" 8
+at 26480 press "P1 Button 5" 8
+at 26720 press "P1 Button 5" 8
+at 26960 press "P1 Button 5" 8
+at 27200 press "P1 Button 5" 8
+at 27440 press "P1 Button 5" 8
+at 27680 press "P1 Button 5" 8
+at 27920 press "P1 Button 5" 8
+at 28160 press "P1 Button 5" 8
+at 28400 press "P1 Button 5" 8
+at 28640 press "P1 Button 5" 8
+at 28880 press "P1 Button 5" 8
+at 29120 press "P1 Button 5" 8
+at 29360 press "P1 Button 5" 8
+at 29600 press "P1 Button 5" 8
+at 29840 press "P1 Button 5" 8
+at 7000 snap
+at 15000 snap
+at 22500 snap
+at 29000 snap
+at 31000 snap
+at 36500 snap
+at 36800 snap
+at 37000 snap
+at 37300 snap
+at 38000 quit

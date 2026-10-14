@@ -1,0 +1,736 @@
+pop'n music 9 (Konami Python 1, model C00:J:A:A) for bemaniutils, from HIRAKU.
+
+NOT FOR SUBMISSION TO BEMANIUTILS. This patch was written with an AI model (Claude) and
+bemaniutils does not accept AI-written contributions in any form (its README). It is kept in
+HIRAKU for server owners to apply to their own install, at their own choice. Do not open a pull
+request, issue or review with it. See README.md next to it.
+
+Base: https://github.com/DragonMinded/bemaniutils commit 1e66fcd. Apply with:
+    git apply popn9-python.patch
+
+diff --git a/bemani/backend/dispatch.py b/bemani/backend/dispatch.py
+index 7ea0008..905333d 100644
+--- a/bemani/backend/dispatch.py
++++ b/bemani/backend/dispatch.py
+@@ -67,7 +67,7 @@ class Dispatch:
+             self.log("Invalid root node {}", tree.name)
+             return None
+ 
+-        if len(tree.children) != 1:
++        if len(tree.children) < 1:
+             # Invalid request
+             self.log("Invalid number of children for root node")
+             return None
+@@ -86,8 +86,6 @@ class Dispatch:
+         if pcb is None:
+             pcb = self.__data.local.machine.create_machine(pcbid)
+ 
+-        request = tree.children[0]
+-
+         config = self.__config.clone()
+         config["machine"] = {
+             "pcbid": pcbid,
+@@ -106,8 +104,6 @@ class Dispatch:
+                     config["server"]["uri"] = None
+ 
+         game = Base.create(self.__data, config, model)
+-        method = request.attribute("method")
+-        response = None
+ 
+         # If we are enforcing, make sure the PCBID isn't specified to be
+         # game-specific
+@@ -142,21 +138,16 @@ class Dispatch:
+                     )
+                     raise UnrecognizedPCBIDException(pcbid, modelstring, config.client.address)
+ 
+-        # First, try to handle with specific service/method function
+-        try:
+-            handler = getattr(game, f"handle_{request.name}_{method}_request")
+-            if not self.__debug and getattr(handler, "__debug_only__", False):
+-                # This is a debug-only endpoint, and we're in production mode.
+-                handler = None
+-        except AttributeError:
+-            handler = None
+-        if handler is not None:
+-            response = handler(request)
++        # Old clients (pop'n music 9 on Python) put several requests in one call; each gets
++        # its own element in the response, in order.
++        root = Node.void("response")
++        for request in tree.children:
++            method = request.attribute("method")
++            response = None
+ 
+-        if response is None:
+-            # Now, try to pass it off to a generic service handler
++            # First, try to handle with specific service/method function
+             try:
+-                handler = getattr(game, f"handle_{request.name}_requests")
++                handler = getattr(game, f"handle_{request.name}_{method}_request")
+                 if not self.__debug and getattr(handler, "__debug_only__", False):
+                     # This is a debug-only endpoint, and we're in production mode.
+                     handler = None
+@@ -165,19 +156,28 @@ class Dispatch:
+             if handler is not None:
+                 response = handler(request)
+ 
+-        if response is None:
+-            # Unrecognized handler
+-            self.log(f"Unrecognized service {request.name} method {method}")
+-            return None
++            if response is None:
++                # Now, try to pass it off to a generic service handler
++                try:
++                    handler = getattr(game, f"handle_{request.name}_requests")
++                    if not self.__debug and getattr(handler, "__debug_only__", False):
++                        # This is a debug-only endpoint, and we're in production mode.
++                        handler = None
++                except AttributeError:
++                    handler = None
++                if handler is not None:
++                    response = handler(request)
+ 
+-        # Make sure we have a status value if one wasn't provided
+-        if "status" not in response.attributes:
+-            response.set_attribute("status", str(Status.SUCCESS))
++            if response is None:
++                # Unrecognized handler
++                self.log(f"Unrecognized service {request.name} method {method}")
++                return None
+ 
+-        root = Node.void("response")
+-        root.add_child(response)
+-        root.set_attribute("dstid", pcbid)
++            # Make sure we have a status value if one wasn't provided
++            if "status" not in response.attributes:
++                response.set_attribute("status", str(Status.SUCCESS))
+ 
++            root.add_child(response)
++        root.set_attribute("dstid", pcbid)
+         self.log("Sending response:\n{}", root)
+-
+         return root
+diff --git a/bemani/backend/popn/factory.py b/bemani/backend/popn/factory.py
+index 6f7a4c1..eba5200 100644
+--- a/bemani/backend/popn/factory.py
++++ b/bemani/backend/popn/factory.py
+@@ -67,7 +67,8 @@ class PopnMusicFactory(Factory):
+ 
+     @classmethod
+     def register_all(cls) -> None:
+-        for gamecode in ["G15", "H16", "I17", "J39", "K39", "L39", "M39"]:
++        # C00: Pop'n Music 9 on Konami Python 1 (C00:J:A:A)
++        for gamecode in ["C00", "G15", "H16", "I17", "J39", "K39", "L39", "M39"]:
+             Base.register(gamecode, PopnMusicFactory)
+ 
+     @classmethod
+@@ -95,6 +96,8 @@ class PopnMusicFactory(Factory):
+                 return VersionConstants.POPN_MUSIC_UNILAB
+             return None
+ 
++        if model.gamecode == "C00":
++            return PopnMusic9(data, config, model)
+         if model.gamecode == "G15":
+             return PopnMusicAdventure(data, config, model)
+         if model.gamecode == "H16":
+diff --git a/bemani/backend/popn/popn9.py b/bemani/backend/popn/popn9.py
+new file mode 100644
+index 0000000..69b1052
+--- /dev/null
++++ b/bemani/backend/popn/popn9.py
+@@ -0,0 +1,427 @@
++# vim: set fileencoding=utf-8
++#
++# NOT FOR SUBMISSION TO BEMANIUTILS. This file was written with an AI model (Claude) for the
++# HIRAKU project and is kept out of tree, as a patch server owners may apply to their own
++# install. bemaniutils does not accept AI-written contributions (see its README).
++#
++# Pop'n Music 9 on Konami Python 1 (model C00:J:A:A): the e-AMUSE3 protocol as the game speaks
++# it, in plain XML. HIRAKU's docs/EAMUSE3.md describes every call; tools/eamuse/check.py there
++# checks a server against the game's own requests.
++import base64
++import random
++from datetime import datetime, timedelta, timezone
++from typing import Any, Dict, List, Optional, Tuple
++
++from bemani.backend.popn.base import PopnMusicBase
++from bemani.common import Profile, ValidatedDict, VersionConstants
++from bemani.data import UserID
++from bemani.protocol import Node
++
++
++class PopnMusic9(PopnMusicBase):
++    name: str = "Pop'n Music 9"
++    version: int = VersionConstants.POPN_MUSIC_9
++
++    # Statuses the game knows (docs/EAMUSE3.md)
++    STATUS_NOT_REGISTERED = 109  # userdata.read: a card with no player data
++    STATUS_NO_KONAMI_ID = 112  # userid.ctou
++    STATUS_USER_EXISTS = 113  # userid.adduser
++    STATUS_CARD_TAKEN = 114  # userid.adduser, userid.addcard
++    STATUS_NO_SUCH_USER = 115  # userid.addcard
++    STATUS_WRONG_PASSWORD = 116  # userid.addcard
++
++    # Where the game keeps the PIN (4 digits, one a byte) and the name (Shift-JIS, up to 12
++    # bytes) in its player data blob
++    BLOB_PIN = 0x60A
++    BLOB_NAME = 0x60E
++    BLOB_NAME_LENGTH = 12
++
++    # The shop's Gambler Z record, kept with the machine
++    GAMBLERZ_KEY = "popn9_gamblerz"
++
++    def previous_version(self) -> Optional[PopnMusicBase]:
++        from bemani.backend.popn.stubs import PopnMusic8
++
++        return PopnMusic8(self.data, self.config, self.model)
++
++    # ---- helpers ----
++
++    def __url(self) -> str:
++        # The game speaks plain HTTP only.
++        return f"http://{self.config.server.address}:{self.config.server.port}/"
++
++    def __user_for_card(self, cardid: str, create: bool) -> Optional[UserID]:
++        if not cardid:
++            return None
++        userid = self.data.local.user.from_cardid(cardid)
++        if userid is None and create:
++            # The game checks the PIN itself, from its player data; the real one replaces this
++            # at the card's first userdata.write.
++            userid = self.data.local.user.create_account(cardid, "0000")
++        return userid
++
++    def __profile(self, userid: UserID) -> Profile:
++        profile = self.get_profile(userid)
++        if profile is None:
++            profile = Profile(
++                self.game,
++                self.version,
++                self.data.local.user.get_refid(self.game, self.version, userid),
++                self.data.local.user.get_extid(self.game, self.version, userid),
++            )
++        return profile
++
++    @staticmethod
++    def __name_from_hex(hexname: str) -> str:
++        # Names travel as hex of their Shift-JIS bytes.
++        try:
++            return bytes.fromhex(hexname).decode("shift_jis", errors="replace")
++        except ValueError:
++            return ""
++
++    @staticmethod
++    def __hex(value: str) -> int:
++        try:
++            return int(value or "0", 16)
++        except ValueError:
++            return 0
++
++    @staticmethod
++    def __number(prefix: str) -> str:
++        # A card number: 15 digits and a Luhn check digit ("card16m10").
++        digits = prefix + "".join(random.choice("0123456789") for _ in range(15 - len(prefix)))
++        total = 0
++        for k, c in enumerate(reversed(digits)):
++            d = int(c)
++            if k % 2 == 0:
++                d *= 2
++                if d > 9:
++                    d -= 9
++            total += d
++        return digits + str((10 - total % 10) % 10)
++
++    # ---- services, clock, accounting ----
++
++    def handle_services_get_request(self, request: Node) -> Node:
++        # Only what the game looks up; rank, p_friend, eemall and ntp use "local".
++        root = Node.void("services")
++        root.set_attribute("expire", "600")
++        for name in ["posevent", "pcbtracker", "numbering", "package", "userdata", "userid", "local"]:
++            item = Node.void("item")
++            item.set_attribute("name", name)
++            item.set_attribute("url", self.__url())
++            root.add_child(item)
++        return root
++
++    def handle_ntp_get_request(self, request: Node) -> Node:
++        # The game sets its clock to this as given: Japan time.
++        now = datetime.now(timezone.utc) + timedelta(hours=9)
++        root = Node.void("ntp")
++        time = Node.void("time")
++        for name, value in [
++            ("year", now.year),
++            ("month", now.month),
++            ("day", now.day),
++            ("hour", now.hour),
++            ("min", now.minute),
++            ("sec", now.second),
++        ]:
++            time.set_attribute(name, str(value))
++        root.add_child(time)
++        return root
++
++    def handle_posevent_income_request(self, request: Node) -> Node:
++        return Node.void("posevent")
++
++    def handle_posevent_sale_request(self, request: Node) -> Node:
++        # Without approve the game reports the sale as failed.
++        root = Node.void("posevent")
++        root.set_attribute("approve", "1")
++        root.set_attribute("margin", "0")
++        return root
++
++    def handle_posevent_sales_request(self, request: Node) -> Node:
++        return self.handle_posevent_sale_request(request)
++
++    def handle_package_intend_request(self, request: Node) -> Node:
++        return Node.void("package")
++
++    # ---- cards and player data ----
++
++    def handle_numbering_assign_request(self, request: Node) -> Node:
++        while True:
++            number = self.__number("200301")
++            if self.data.local.user.from_cardid(number) is None:
++                break
++        # The account exists from here, so this card's results register before its first save.
++        self.__user_for_card(number, create=True)
++        root = Node.void("numbering")
++        root.set_attribute("number", number)
++        return root
++
++    def handle_userdata_read_request(self, request: Node) -> Node:
++        cardid = request.attribute("card")
++        userid = self.__user_for_card(cardid, create=False)
++        saved = self.__profile(userid).get_dict("cards").get_dict(cardid) if userid is not None else ValidatedDict()
++        chunks = [c for c in (saved.get("data") or []) if isinstance(c, str)]
++        root = Node.void("userdata")
++        if not chunks:
++            root.set_attribute("status", str(self.STATUS_NOT_REGISTERED))
++            return root
++        root.set_attribute("time", saved.get_str("time"))
++        for chunk in chunks:
++            root.add_child(Node.string("b", chunk))
++        return root
++
++    def handle_userdata_write_request(self, request: Node) -> Node:
++        cardid = request.attribute("card")
++        userid = self.__user_for_card(cardid, create=True)
++        root = Node.void("userdata")
++        if userid is None:
++            root.set_attribute("status", "1")
++            return root
++        chunks = [c.value for c in request.children if c.name == "b" and isinstance(c.value, str)]
++        profile = self.__profile(userid)
++        cards = profile.get_dict("cards")
++        cards.replace_dict(cardid, {"data": chunks, "time": request.attribute("time") or ""})
++        profile.replace_dict("cards", cards)
++
++        # The PIN and name, from the blob: the PIN lets the player claim the account on the web.
++        try:
++            blob = b"".join(base64.b64decode(c) for c in chunks)
++        except ValueError:
++            blob = b""
++        if len(blob) >= self.BLOB_NAME + self.BLOB_NAME_LENGTH:
++            pin = blob[self.BLOB_PIN : self.BLOB_PIN + 4]
++            if all(d <= 9 for d in pin):
++                self.data.local.user.update_pin(userid, "".join(str(d) for d in pin))
++            name = blob[self.BLOB_NAME : self.BLOB_NAME + self.BLOB_NAME_LENGTH].split(b"\0")[0]
++            profile.replace_str("name", name.decode("shift_jis", errors="replace"))
++        self.put_profile(userid, profile)
++        return root
++
++    # ---- KONAMI ID: the account's username and password ----
++
++    def handle_userid_ctou_request(self, request: Node) -> Node:
++        root = Node.void("userid")
++        userid = self.__user_for_card(request.attribute("card"), create=False)
++        user = self.data.local.user.get_user(userid) if userid is not None else None
++        if user is None or not user.username:
++            root.set_attribute("status", str(self.STATUS_NO_KONAMI_ID))
++            return root
++        root.set_attribute("user", user.username)
++        root.set_attribute("active", "1")
++        return root
++
++    def handle_userid_adduser_request(self, request: Node) -> Node:
++        root = Node.void("userid")
++        username = request.attribute("user") or ""
++        if not username or self.data.local.user.from_username(username) is not None:
++            root.set_attribute("status", str(self.STATUS_USER_EXISTS))
++            return root
++        userid = self.__user_for_card(request.attribute("card"), create=True)
++        user = self.data.local.user.get_user(userid) if userid is not None else None
++        if user is None or user.username:
++            root.set_attribute("status", str(self.STATUS_CARD_TAKEN))
++            return root
++        user.username = username
++        self.data.local.user.put_user(user)
++        self.data.local.user.update_password(userid, request.attribute("pass") or "")
++        root.set_attribute("alter", "")
++        return root
++
++    def handle_userid_addcard_request(self, request: Node) -> Node:
++        root = Node.void("userid")
++        cardid = request.attribute("card") or ""
++        target = self.data.local.user.from_username(request.attribute("user") or "")
++        if target is None:
++            root.set_attribute("status", str(self.STATUS_NO_SUCH_USER))
++            return root
++        if not self.data.local.user.validate_password(target, request.attribute("pass") or ""):
++            root.set_attribute("status", str(self.STATUS_WRONG_PASSWORD))
++            return root
++        owner = self.data.local.user.from_cardid(cardid)
++        if owner == target:
++            return root
++        if owner is not None:
++            owner_user = self.data.local.user.get_user(owner)
++            if owner_user is not None and owner_user.username:
++                root.set_attribute("status", str(self.STATUS_CARD_TAKEN))
++                return root
++            # A card registered without a KONAMI ID: it moves, with its player data.
++            saved = self.__profile(owner).get_dict("cards").get_dict(cardid)
++            if saved:
++                profile = self.__profile(target)
++                cards = profile.get_dict("cards")
++                cards.replace_dict(cardid, saved)
++                profile.replace_dict("cards", cards)
++                self.put_profile(target, profile)
++            self.data.local.user.destroy_card(owner, cardid)
++        self.data.local.user.add_card(target, cardid)
++        return root
++
++    # ---- pop'n friends (status only), ee'MALL (never sent by the game) ----
++
++    def handle_p_friend_get_request(self, request: Node) -> Node:
++        return Node.void("p_friend")
++
++    def handle_p_friend_ask_request(self, request: Node) -> Node:
++        return Node.void("p_friend")
++
++    def handle_p_friend_state_request(self, request: Node) -> Node:
++        return Node.void("p_friend")
++
++    def handle_eemall_i_get_request(self, request: Node) -> Node:
++        return Node.void("eemall")
++
++    # ---- rankings: courses and HITASURA by player, Gambler Z by shop ----
++
++    BOARDS: Dict[str, Tuple[str, str, List[str]]] = {
++        # achievement type: ranked by, then by, the fields the game shows
++        "course": ("score", "cool", ["name", "score", "cool"]),
++        "hitasura": ("music", "combo", ["name", "music", "combo"]),
++    }
++
++    def __board(self, kind: str, course: int) -> List[Tuple[UserID, ValidatedDict]]:
++        first, second, _ = self.BOARDS[kind]
++        entries = [
++            (userid, ValidatedDict(achievement.data))
++            for userid, achievement in self.data.local.user.get_all_achievements(
++                self.game, self.version, achievementid=course, achievementtype=kind
++            )
++        ]
++        entries.sort(key=lambda e: (e[1].get_int(first), e[1].get_int(second)), reverse=True)
++        return entries
++
++    def __item(self, kind: str, entry: ValidatedDict, place: int) -> Node:
++        item = Node.void("item")
++        item.set_attribute("rank", str(place))
++        for field in self.BOARDS[kind][2]:
++            item.set_attribute(field, entry.get_str(field))
++        item.set_attribute("area", entry.get_str("area", "255"))
++        item.set_attribute("id", entry.get_str("konami_id") or entry.get_str("card"))
++        return item
++
++    def __rank_get(self, kind: str, request: Node) -> Node:
++        root = Node.void("rank")
++        first = int(request.attribute("course_offset") or 0)
++        count = max(1, int(request.attribute("course_num") or 1))
++        offset = max(1, int(request.attribute("rank_offset") or 1))
++        limit = min(100, max(0, int(request.attribute("rank_num") or 100)))
++        for course in range(first, min(first + count, first + 20)):
++            board = self.__board(kind, course)
++            header = Node.void("item")
++            header.set_attribute("course", str(course))
++            header.set_attribute("entry", str(len(board)))
++            root.add_child(header)
++            for place, (_, entry) in enumerate(board[offset - 1 : offset - 1 + limit], start=offset):
++                root.add_child(self.__item(kind, entry, place))
++        return root
++
++    def __rank_register(self, kind: str, request: Node) -> Node:
++        root = Node.void("rank")
++        cardid = request.attribute("card_id") or ""
++        course = int(request.attribute("course") or 0)
++        userid = self.__user_for_card(cardid, create=True)
++        if userid is None:
++            root.set_attribute("status", "1")
++            return root
++        first, second, fields = self.BOARDS[kind]
++        mine: Dict[str, Any] = {f: request.attribute(f) or "" for f in fields + ["konami_id", "shop_name"]}
++        mine.update(
++            {
++                "area": request.attribute("area_num") or "255",
++                "card": cardid,
++                "player": self.__name_from_hex(request.attribute("name") or ""),
++            }
++        )
++        for f in ["option", "great", "good", "bad", "combo"]:
++            if request.attribute(f) is not None:
++                mine[f] = request.attribute(f)
++        old = self.data.local.user.get_achievement(self.game, self.version, userid, course, kind)
++        better = old is None or (ValidatedDict(mine).get_int(first), ValidatedDict(mine).get_int(second)) > (
++            ValidatedDict(old).get_int(first),
++            ValidatedDict(old).get_int(second),
++        )
++        if better:
++            self.data.local.user.put_achievement(self.game, self.version, userid, course, kind, mine)
++        board = self.__board(kind, course)
++        place = next((i + 1 for i, (u, _) in enumerate(board) if u == userid), len(board))
++        kept = next((e for u, e in board if u == userid), ValidatedDict(mine))
++        item = self.__item(kind, kept, place)
++        item.set_attribute("entry", str(len(board)))
++        item.set_attribute("update", "1" if better else "0")
++        root.add_child(item)
++        return root
++
++    def __gamblerz_board(self) -> List[Tuple[str, ValidatedDict]]:
++        entries = [
++            (machine.pcbid, machine.data.get_dict(self.GAMBLERZ_KEY))
++            for machine in self.data.local.machine.get_all_machines()
++            if machine.data.get_dict(self.GAMBLERZ_KEY)
++        ]
++
++        entries.sort(key=lambda e: (e[1].get_int("prog"), self.__hex(e[1].get_str("parts"))), reverse=True)
++        return entries
++
++    def __gamblerz_item(self, pcbid: str, entry: ValidatedDict, place: int) -> Node:
++        item = Node.void("item")
++        item.set_attribute("rank", str(place))
++        item.set_attribute("prog", entry.get_str("prog", "0"))
++        item.set_attribute("parts", entry.get_str("parts", "00000000"))
++        item.set_attribute("shop_name", entry.get_str("shop_name"))
++        item.set_attribute("area", entry.get_str("area", "255"))
++        item.set_attribute("id", pcbid)
++        return item
++
++    def handle_rank_get_request(self, request: Node) -> Node:
++        return self.__rank_get("course", request)
++
++    def handle_rank_get_h_request(self, request: Node) -> Node:
++        return self.__rank_get("hitasura", request)
++
++    def handle_rank_register_request(self, request: Node) -> Node:
++        return self.__rank_register("course", request)
++
++    def handle_rank_register_h_request(self, request: Node) -> Node:
++        return self.__rank_register("hitasura", request)
++
++    def handle_rank_get_gz_request(self, request: Node) -> Node:
++        root = Node.void("rank")
++        board = self.__gamblerz_board()
++        offset = max(1, int(request.attribute("rank_offset") or 1))
++        limit = min(100, max(0, int(request.attribute("rank_num") or 100)))
++        header = Node.void("item")
++        header.set_attribute("entry", str(len(board)))
++        root.add_child(header)
++        for place, (pcbid, entry) in enumerate(board[offset - 1 : offset - 1 + limit], start=offset):
++            root.add_child(self.__gamblerz_item(pcbid, entry, place))
++        return root
++
++    def handle_rank_register_gz_request(self, request: Node) -> Node:
++        # The labyrinth is the cabinet's; the server ranks shops by prog (the items won), then
++        # parts (the items word, hex).
++        mine = {
++            "prog": request.attribute("prog") or "0",
++            "parts": request.attribute("parts") or "00000000",
++            "shop_name": request.attribute("shop_name") or "",
++            "area": request.attribute("area_num") or "255",
++        }
++        machine = self.get_machine()
++        old = machine.data.get_dict(self.GAMBLERZ_KEY)
++        better = not old or (ValidatedDict(mine).get_int("prog"), self.__hex(mine["parts"])) > (
++            old.get_int("prog"),
++            self.__hex(old.get_str("parts")),
++        )
++        if better:
++            self.update_machine_data({self.GAMBLERZ_KEY: mine})
++        board = self.__gamblerz_board()
++        pcbid = self.config.machine.pcbid
++        place = next((i + 1 for i, (p, _) in enumerate(board) if p == pcbid), len(board))
++        kept = next((e for p, e in board if p == pcbid), ValidatedDict(mine))
++        root = Node.void("rank")
++        item = self.__gamblerz_item(pcbid, kept, place)
++        item.set_attribute("entry", str(len(board)))
++        item.set_attribute("update", "1" if better else "0")
++        root.add_child(item)
++        return root
+diff --git a/bemani/backend/popn/stubs.py b/bemani/backend/popn/stubs.py
+index b99466f..76178d8 100644
+--- a/bemani/backend/popn/stubs.py
++++ b/bemani/backend/popn/stubs.py
+@@ -3,6 +3,7 @@ from typing import Optional
+ 
+ from bemani.backend.popn.base import PopnMusicBase
+ from bemani.common import VersionConstants
++from bemani.backend.popn.popn9 import PopnMusic9  # the Python game, with its own backend
+ 
+ 
+ class PopnMusic(PopnMusicBase):
+@@ -66,14 +67,6 @@ class PopnMusic8(PopnMusicBase):
+         return PopnMusic7(self.data, self.config, self.model)
+ 
+ 
+-class PopnMusic9(PopnMusicBase):
+-    name: str = "Pop'n Music 9"
+-    version: int = VersionConstants.POPN_MUSIC_9
+-
+-    def previous_version(self) -> Optional[PopnMusicBase]:
+-        return PopnMusic8(self.data, self.config, self.model)
+-
+-
+ class PopnMusic10(PopnMusicBase):
+     name: str = "Pop'n Music 10"
+     version: int = VersionConstants.POPN_MUSIC_10
+diff --git a/bemani/protocol/protocol.py b/bemani/protocol/protocol.py
+index 3ee3c03..850ed93 100644
+--- a/bemani/protocol/protocol.py
++++ b/bemani/protocol/protocol.py
+@@ -39,6 +39,7 @@ class EAmuseProtocol:
+         """
+         self.last_text_encoding: Optional[str] = None
+         self.last_packet_encoding: Optional[int] = None
++        self.last_xml_declaration: bool = True
+ 
+     def rc4_crypt(self, data: bytes, key: bytes) -> bytes:
+         """
+@@ -195,13 +196,14 @@ class EAmuseProtocol:
+             # We got a result, it was XML
+             self.last_text_encoding = xml.encoding
+             self.last_packet_encoding = EAmuseProtocol.XML
++            self.last_xml_declaration = xml.declaration
+ 
+             return ret
+ 
+         # Couldn't decode
+         raise EAmuseException("Unknown packet encoding")
+ 
+-    def __encode(self, tree: Node, text_encoding: str, packet_encoding: int) -> bytes:
++    def __encode(self, tree: Node, text_encoding: str, packet_encoding: int, xml_declaration: bool = True) -> bytes:
+         """
+         Given a Node tree, encode the data into the given packet encoding.
+ 
+@@ -227,7 +229,7 @@ class EAmuseProtocol:
+         elif packet_encoding == EAmuseProtocol.XML:
+             # It's XML, encode it
+             xml = XmlEncoding()
+-            return xml.encode(tree, encoding=text_encoding)
++            return xml.encode(tree, encoding=text_encoding, declaration=xml_declaration)
+         else:
+             raise EAmuseException(f"Invalid packet encoding {packet_encoding}")
+ 
+@@ -285,10 +287,14 @@ class EAmuseProtocol:
+         if packet_encoding is None:
+             raise EAmuseException("Unknown packet encoding")
+ 
++        # An XML request without a declaration is answered without one
++        xml_declaration = self.last_xml_declaration
++
+         # Clear last packet since we sent a response
+         self.last_text_encoding = None
+         self.last_packet_encoding = None
++        self.last_xml_declaration = True
+ 
+-        data = self.__encode(tree, text_encoding, packet_encoding)
++        data = self.__encode(tree, text_encoding, packet_encoding, xml_declaration)
+         data = self.__compress(compression, data)
+         return self.__encrypt(encryption, data)
+diff --git a/bemani/protocol/xml.py b/bemani/protocol/xml.py
+index db80207..73fcccf 100644
+--- a/bemani/protocol/xml.py
++++ b/bemani/protocol/xml.py
+@@ -125,7 +125,16 @@ class XmlDecoder:
+             array = self.current[-1].is_array
+ 
+             if data_type == "void":
+-                # We can't handle this
++                # An element with no __type but with text in it, as pop'n music 9 (Python)
++                # sends (its userdata.write chunks): keep the text, as a string node.
++                current = self.current[-1]
++                if value.strip() and not current.children:
++                    node = Node(name=current.name, type=Node.NODE_TYPE_STR)
++                    for attr in current.attributes:
++                        node.set_attribute(attr, current.attributes[attr])
++                    node.set_value(value.strip())
++                    self.current[-1] = node
++                # Otherwise we can't handle this
+                 return
+ 
+             if data_type == "str":
+@@ -337,7 +346,7 @@ class XmlDecoder:
+ 
+ 
+ class XmlEncoder:
+-    def __init__(self, tree: Node, encoding: str) -> None:
++    def __init__(self, tree: Node, encoding: str, declaration: bool = True) -> None:
+         """
+         Initialize the XML encoder.
+ 
+@@ -348,10 +357,15 @@ class XmlEncoder:
+         """
+         self.tree = tree
+         self.encoding = encoding
++        self.declaration = declaration
+ 
+     def get_data(self) -> bytes:
+-        magic = f'<?xml version="1.0" encoding="{self.encoding}"?>'.encode("ascii")
+         payload = self.to_xml(self.tree)
++        if not self.declaration:
++            # Some old clients (pop'n music 9 on Python) reject any declaration with an encoding,
++            # and send none themselves.
++            return payload
++        magic = f'<?xml version="1.0" encoding="{self.encoding}"?>'.encode("ascii")
+ 
+         return magic + payload
+ 
+@@ -500,6 +514,7 @@ class XmlEncoding:
+         Initialize the encoding object.
+         """
+         self.encoding: Optional[str] = None
++        self.declaration: bool = True
+ 
+     def __fix_encoding(self, encoding: str) -> str:
+         """
+@@ -531,6 +546,8 @@ class XmlEncoding:
+         """
+         # Always assume this, unless we get told otherwise in the XML
+         self.encoding = "shift-jis"
++        # Whether the document started with an XML declaration (answered in kind)
++        self.declaration = data.lstrip().startswith(b"<?xml")
+ 
+         # Decode property/value
+         try:
+@@ -544,7 +561,7 @@ class XmlEncoding:
+             else:
+                 raise
+ 
+-    def encode(self, tree: Node, encoding: Optional[str] = None) -> bytes:
++    def encode(self, tree: Node, encoding: Optional[str] = None, declaration: bool = True) -> bytes:
+         """
+         Given a tree of Node objects, encode the data with the current encoding.
+ 
+@@ -552,6 +569,7 @@ class XmlEncoding:
+             tree - Node tree representing the data to encode
+             encoding - The text encoding to use. If None, will try to use the encoding from
+                        the last successful decode
++            declaration - Whether to start with an XML declaration.
+ 
+         Returns:
+             String blob representing encoded data as XML.
+@@ -567,5 +585,5 @@ class XmlEncoding:
+             # XML pages only support a few encodings.
+             raise XmlEncodingException(f"Invalid text encoding {encoding}")
+ 
+-        xml = XmlEncoder(tree, encoding)
++        xml = XmlEncoder(tree, encoding, declaration)
+         return xml.get_data()

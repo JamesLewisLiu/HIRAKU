@@ -1,0 +1,11 @@
+# pop'n music 9 (Konami Python 1): key-to-picture latency in emulated frames. Test mode,
+# I/O CHECK > INPUT CHECK, where the screen only changes when a switch does; button 1 is
+# pressed for 10 frames every 60. tools/pylatency.py reads the run's --digest: the frames
+# from each press (and release) to the first changed picture.
+game popn9
+
+at 3200 press "Test" 8
+at 3400 press "P1 Button 5" 10     # I/O CHECK
+at 3500 press "P1 Button 5" 10     # INPUT CHECK
+from 3700 every 60 press "P1 Button 1" 10
+at 5000 quit

@@ -1,0 +1,124 @@
+# pop'n music 10: what the operator can unlock (tools/unlock.py; launcher: right-click > Unlocks).
+#
+# Operator codes (remywiki.com/AC_pnm_10; the same five are in the EE program at 0x33cc40),
+# typed in test mode > EVENT OPTIONS > PASSWORD, in order: each moves the event phase on by one
+# (0x17d4a4), and the game writes it at once ("PHASE UPDATED"). The settings file in the
+# interface board's battery RAM (m48t58y.u48) is kept twice, as pop'n 9's (mirror.c: copies at
+# 0x0 and 0x110, a header {sum, size 0x88, data sum}, the data at +0x10). In the data
+# (0x185fa80 in RAM): +0x18 the phase, +0x28 the time phase 2 began (0x1b55f0; HOSHI NI NEGAIO's
+# star quota shrinks after 20, 25, 30 and 35 days, 0x1a8ee8; left 0 here, the game then never
+# shrinks it), +0x48 e-AMUSEMENT on (MAX then reads "REQUEST + ALL DATA RELEASE"), and at +0x80
+# its own sum (0x1b4c10): five segments, bytes 4-7 left out, plus 0x70. Found by typing the codes
+# in HIRAKU (oracle/scripts/popn10-phases.his), comparing the saves, and reading the program.
+
+[[unlock]]
+id = "phase"
+title = "Event phase"
+nvram = "m48t58y.u48"
+offsets = [0x28, 0x138]
+checksum = { kind = "mirror", files = [0x0, 0x110], size = 0x88, inner = { at = 0x80, segments = [[0, 4], [8, 0x30], [0x38, 4], [0x3c, 0xc], [0x48, 0x38]], add = 0x70 } }
+how = "In the game: test mode > EVENT OPTIONS > PASSWORD, the codes in order (the wheel: blue moves, red enters)."
+
+[[unlock.level]]
+value = 0
+name = "--"
+text = "No event: the songs of a new cabinet."
+
+[[unlock.level]]
+value = 1
+name = "1. INTERNET RANKING"
+code = "5X9UJC2WSR"
+text = "The internet ranking event."
+
+[[unlock.level]]
+value = 2
+name = "2. HOSHI NI NEGAIO"
+code = "HVARXFL26Y"
+text = "Starts HOSHI NI NEGAIO: every credit's stars fill the shop's five buckets of wishes (songs, characters, an EX chart), then a black one for the HELL 10 course (event progress, below)."
+
+[[unlock.level]]
+value = 3
+name = "3. HOSHI NI NEGAIO + SECRET DATA RELEASE"
+code = "A6Y76WPV26"
+text = "Also releases the secret data (RemyWiki)."
+
+[[unlock.level]]
+value = 4
+name = "4. HOSHI NI NEGAIO DATA RELEASE"
+code = "M8DAPTU6HN"
+text = "Also releases everything the wishes give, granted or not (the game's own check)."
+
+[[unlock.level]]
+value = 5
+name = "MAX. ALL DATA RELEASE"
+code = "5W9LZYKDWW"
+text = "Everything."
+
+# HOSHI NI NEGAIO (phases 2 and 3): the shop's buckets of stars, kept in the same settings record
+# (both copies; little-endian). A credit's stars fall into the buckets (0x1a3a40); when a bucket's
+# stars reach its current wish's cost, the wish is granted (its bit set in the items word), the
+# bucket's level goes up and its stars start again from 0 (0x1a81a8). With all five buckets done,
+# a black bucket of 7,700 stars grants the last bit (the HELL 10 course, course 6). In phases 2 and
+# 3 a wish's song or character is playable once its bit is set (0x161cf8, 0x161ec8); at phase 4 or
+# MAX all are, bits or not (0x13d330); at phase 0 or 1 none. Found in the program (the bucket and
+# wish tables at 0x367460 and 0x367538, the wishes' own texts) and checked in HIRAKU: a credit at
+# phase 2 put its stars in bucket 1. Songs not listed here (GOONIES, ペガサス幻想, ...) are not
+# event songs in pop'n 10's data: they are always playable.
+[[progress]]
+id = "hoshi"
+title = "HOSHI NI NEGAIO"
+kind = "wishes"
+nvram = "m48t58y.u48"
+checksum_of = "phase"
+copies = [0x10, 0x120]
+active = { unlock = "phase", values = [2, 3] }
+released = { unlock = "phase", values = [4, 5] }
+levels = 0x19
+stars = 0x1e
+items = 0x30
+black = { bit = 36, stars = 7700, gives = "the HELL 10 course (course 6)" }
+buckets = [
+  { name = "bucket 1", wishes = [28, 0, 10, 30, 20, 33, 22] },
+  { name = "bucket 2", wishes = [4, 31, 7, 17, 18, 9, 24] },
+  { name = "bucket 3", wishes = [3, 29, 5, 8, 19, 27, 21] },
+  { name = "bucket 4", wishes = [6, 16, 34, 2, 15, 12, 25, 26] },
+  { name = "bucket 5", wishes = [1, 14, 11, 32, 13, 35, 23] },
+]
+wishes = [
+  { bit = 0, stars = 4000, gives = "character: SHAKA (0x1d3)", wish = "タッチミミも使用キャラに使いたいよ！使いたいよー！ (Ｐ．Ｙさん（１７歳 男）)" },
+  { bit = 1, stars = 1820, gives = "character: TOUCH (0x1cd)", wish = "ミラクル４のツーストもソロ活動をしてほしい！！ (ＳＡＯさん（１４歳 女）)" },
+  { bit = 2, stars = 3000, gives = "characters: TWO-ST 10 A and B (0x2ab, 0x2ac)", wish = "中嶋さんに主役の座を奪ってもらいたい (ＨＩＴＹＡさん（２３歳 女）)" },
+  { bit = 3, stars = 1960, gives = "character: NAKAJIMA 10 (0x29e)", wish = "ハイスピと逆のロースピードをオプションに追加して欲しいっ！ (☆Ｍｉｌｌｙ☆さん（２２歳 女）)" },
+  { bit = 4, stars = 2800, gives = "a play option (the game's option 0x40)", wish = "携帯用ゲーム機のポップン曲をアレンジしてほしい！ (ＨＩＫＡさん（２１歳 男）)" },
+  { bit = 5, stars = 4600, gives = "song: トロイカダンス (RUSSIA)", wish = "携帯用ゲーム機のポップン曲をアレンジしてほしい！ (Яｙｕさん（１５歳 男）)" },
+  { bit = 6, stars = 3220, gives = "song: きえた!?ナポレオン (GANG)", wish = "携帯用ゲーム機のポップン曲をアレンジしてほしい！ (ムラサメさん（２３歳 女）)" },
+  { bit = 7, stars = 4600, gives = "song: dandelion (FOLKSONG)", wish = "携帯用ゲーム機のポップン曲をアレンジしてほしい！ (スマイル？さん（２６歳 男）)" },
+  { bit = 8, stars = 4600, gives = "song: Sea Side City (SURFY)", wish = "携帯用ゲーム機のポップン曲をアレンジしてほしい！ (キサラギさん（２３歳 女）)" },
+  { bit = 9, stars = 5060, gives = "song: No more I love you (NUDY)", wish = "携帯用ゲーム機のポップン曲をアレンジしてほしい！ (ｓｔｏｒｍさん（１５歳 男）)" },
+  { bit = 10, stars = 4600, gives = "song: テキサスのガンマン (WESTERN)", wish = "携帯用ゲーム機のポップン曲をアレンジしてほしい！ (べるきえるさん（１６歳 男）)" },
+  { bit = 11, stars = 4600, gives = "song: HORIDAY (RAKUGAKIDS)", wish = "もっと家庭用の曲をアーケードに移植して欲しい (ａｓ−ｍａｘさん（２５歳 男）)" },
+  { bit = 12, stars = 2200, gives = "song: ヤバイオンナ (LATIN ROCK)", wish = "もっと家庭用の曲をアーケードに移植して欲しい (健一さん（１９歳 男）)" },
+  { bit = 13, stars = 2200, gives = "EX chart: coastline (BOSSA)", wish = "アニメロ曲もアーケード版に入れてほしいっス〜！（特に星矢） (ＫＩＤＯさん（２３歳 女）)" },
+  { bit = 14, stars = 2000, gives = "song: デビルマンの歌 (DEVIL MAN)", wish = "アニメロの曲も本家ポップンに入れてほしい (かぼんさん（１５歳 女）)" },
+  { bit = 15, stars = 2200, gives = "song: 炎のキン肉マン (KINNIKU MAN)", wish = "ポップンアニメロの曲が次のポップンに収録されますように (ｏｌｓａｍさん（２０歳 女）)" },
+  { bit = 16, stars = 100, gives = "song: マジンガーZ (MAZINGER)", wish = "アニメロの曲がポップンで復活しますように・・・ (かきおさん（２２歳 男）)" },
+  { bit = 17, stars = 2000, gives = "song: キューティーハニー (CUTIE)", wish = "現行のポップンにアニメロの曲を移植して欲しい (Ｎ．Ｉさん（２１歳 女）)" },
+  { bit = 18, stars = 2200, gives = "song: 魔女っ子メグちゃん (MAJOKKO MEGU)", wish = "ポップンにアニメロの収録曲を復活させてほしい。 (たいちょさん（３０歳 男）)" },
+  { bit = 19, stars = 2200, gives = "song: にんげんっていいな (MUKASHI BANASHI)", wish = "ポップン１０に幻になってるアニメロの曲を収録して欲しい。 (ｃ＠ｎｅさん（１６歳 男）)" },
+  { bit = 20, stars = 2200, gives = "song: すきすきソング (SUKISUKI-SONG)", wish = "ｗａｃとｄｊＴＡＫＡがおいちょっと待てよ！ (星のたりこさん（３３歳 男）)" },
+  { bit = 21, stars = 7480, gives = "song: murmur twins (CUDDLECORE)", wish = "すわひでおとブタパンチがオラオラオラオラオラーーー！！！ (ミソカ幸治さん（２１歳 男）)" },
+  { bit = 22, stars = 7480, gives = "song: Jack (MIXTURE)", wish = "ギタドラのあさきさんに曲を提供して欲スィ！ (ケソさん（１９歳 女）)" },
+  { bit = 23, stars = 7260, gives = "song: disable dA STACK (CYBER ARABIAN)", wish = "Ｄｅｓ−ＲＯＷ先生とＴａＱさんにジョイントしてほしいころ。 (Ｙ．Ｔさん（２３歳 男）)" },
+  { bit = 24, stars = 7480, gives = "song: Votum　stellarum (ANTHEM TRANCE)", wish = "ＮＡＯＫＩさんにＲｅｖｅｎ−Ｇ名義で民族音楽をつくってほしい (たけのはなさん（１６歳 男）)" },
+  { bit = 25, stars = 5280, gives = "song: DDR MEGAMIX (ＤＤＲ)", wish = "ＮＡＯＫＩさんにＤＤＲのメドレー曲を作って欲しい！！！ (Ｒ．Ｔさん（１５歳 女）)" },
+  { bit = 26, stars = 6820, gives = "song: ヒデオ体操第1 (POP'N TAISOU)", wish = "ポップンに�UＤＸのｍｕｒｍｕｒｔｗｉｎｓを移植してほしい！ (蒼月さん（他多数）（１７歳 男）)" },
+  { bit = 27, stars = 4620, gives = "song: ラブ・アコーディオン (ROMANESQUE)", wish = "ポップンにグーニーズをいれてほしい・・・ (ｊｓｈｅａｄさん（３２歳 男）)" },
+  { bit = 28, stars = 3080, gives = "song: STEREO TOKYO (PLASTIC POP)", wish = "ポップン１０にラテンロックを移植してほしい (某Ｓ先生さん（１９歳 男）)" },
+  { bit = 29, stars = 2400, gives = "song: Drivin' High (CIRCUIT)", wish = "移植されてない家庭用ポップン曲をポップン１０に収録して！ (ｋａｚさん（２６歳 男）)" },
+  { bit = 30, stars = 2400, gives = "song: 熟れた花 (FUNK ROCK)", wish = "移植されてない家庭用ポップン曲をポップン１０に収録して！ (Ｔ．Ｓさん（１８歳 女）)" },
+  { bit = 31, stars = 2400, gives = "song: Harvest Moon (AOR)", wish = "移植されてない家庭用ポップン曲をポップン１０に収録して！ (Ｅ．Ｍさん（１６歳 男）)" },
+  { bit = 32, stars = 2000, gives = "song: Invisible Lover (ELECTRO)", wish = "移植されてない家庭用ポップン曲をポップン１０に収録して！ (Ａ．Ｋさん（２３歳 女）)" },
+  { bit = 33, stars = 2860, gives = "song: GALAXY FOREST 11.6&12 (SCREEN)", wish = "アーケードポップンにベストヒッツのスクリーンを収録して！ (ＲｉＺｅさん（１７歳 男）)" },
+  { bit = 34, stars = 2600, gives = "song: \"Princess Piccolo\" (FAIRY TALE)", wish = "スウィーツにオーケストラＶＥＲがあったら嬉しいです (Ｄｏｒａさん（１８歳 男）)" },
+  { bit = 35, stars = 6600, gives = "song: 幸せをうたう詩 (ELEGY)", wish = "ゴールまでもうすぐだよ。 (ポップンミュージック（１０歳）)" },
+]

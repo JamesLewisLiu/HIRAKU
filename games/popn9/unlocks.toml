@@ -1,0 +1,95 @@
+# pop'n music 9: what the operator can unlock (tools/unlock.py; launcher: right-click > Unlocks).
+#
+# Operator codes (remywiki.com/AC_pnm_9), typed in test mode > EVENT OPTIONS > PASSWORD, in
+# order: each moves the event phase on by one, and the game writes it at once ("PHASE UPDATED").
+# The phase is one byte of the settings file in the interface board's battery RAM (m48t58y.u48):
+# Konami's mirror.c keeps the file twice (settings0 at 0x0, settings1 at 0x110), each a header
+# {sum, size 0x60, data sum} with the data at +0x10, the sums being of 32-bit words each XORed
+# with its index (0x1ab6f8 in the EE program). The data also ends with its own sum, at +0x5c
+# (0x1a9b28): five segments, each byte XORed with its index in the segment, plus 0x50; a save
+# whose sum is wrong is ignored (the phase reads --). Found by typing the four codes in HIRAKU
+# (oracle/scripts/popn9-phases.his), comparing the saves, and reading the program; the levels
+# below are what the game wrote.
+
+[[unlock]]
+id = "phase"
+title = "Event phase"
+nvram = "m48t58y.u48"
+offsets = [0x24, 0x134]
+checksum = { kind = "mirror", files = [0x0, 0x110], size = 0x60, inner = { at = 0x5c, segments = [4, 0x20, 4, 0xc, 0x28], add = 0x50 } }
+how = "In the game: test mode > EVENT OPTIONS > PASSWORD, the codes in order (the wheel: blue moves, red enters)."
+
+[[unlock.level]]
+value = 0
+name = "--"
+text = "No event: the songs of a new cabinet."
+
+[[unlock.level]]
+value = 1
+name = "1. TATAKAE! GAMBLER Z"
+code = "ZP5N28FJ96"
+text = "Starts the Gambler Z event (RemyWiki: on the cabinet, its labyrinth needed an e-AMUSEMENT card)."
+
+[[unlock.level]]
+value = 2
+name = "2. TATAKAE! GAMBLER Z + SECRET DATA RELEASE"
+code = "89KJ95Z8UF"
+text = "Also releases the secret data (RemyWiki)."
+
+[[unlock.level]]
+value = 3
+name = "3. TATAKAE! GAMBLER Z DATA RELEASE"
+code = "GA36EJ7B25"
+text = "Also releases the Gambler Z songs and charts (RemyWiki)."
+
+[[unlock.level]]
+value = 4
+name = "MAX. HITASURA MODE RELEASE"
+code = "2K4VM7CHQ3"
+text = "Everything: also HITASURA mode, after EXPERT in the mode select (seen in HIRAKU)."
+
+# The Gambler Z labyrinth (TATAKAE! GAMBLER Z, event phases 1 and 2): what the cabinet has won,
+# kept in the same settings record as the phase (both copies, data at +0x10; little-endian).
+# Found in the program (the labyrinth 0x19e188, its item tables 0x226d60/0x226d78/0x226da0) and
+# checked in HIRAKU with --autoplay (oracle/scripts/popn9-gamblerz.his) and a save with every item
+# set, whose item list the attract mode shows. Each credit walks one step per cleared stage; a
+# floor's treasure gives a song, and from floor index 10 a boss, beaten with a song (its score
+# deals 1-5 damage), gives an EX chart and an EXPERT course. rank.register_gz reports prog (the
+# bits set) and parts (the word) to the e-AMUSEMENT server (docs/EAMUSE3.md).
+[[progress]]
+id = "gamblerz"
+title = "TATAKAE! GAMBLER Z"
+kind = "gamblerz"
+nvram = "m48t58y.u48"
+copies = [0x10, 0x120]
+active = { unlock = "phase", values = [1, 2] }
+released = { unlock = "phase", values = [3, 4] }
+flags = 0x18
+position = 0x1c
+floor = 0x20
+boss_hp = 0x22
+cleared = 0x1000000
+items = [
+  { bit = 0, name = "ジャジー (CS3)" },
+  { bit = 1, name = "ポジティブ (CS3)" },
+  { bit = 2, name = "モーター5 (CS4)" },
+  { bit = 3, name = "ボッサ (CS4)" },
+  { bit = 4, name = "プログレ (CS4)" },
+  { bit = 5, name = "オイパンク (CS6)" },
+  { bit = 6, name = "メランコリー (CS7)" },
+  { bit = 7, name = "テラピー (CS7)" },
+  { bit = 8, name = "スムース (CS7)" },
+  { bit = 9, name = "モダン80 (CS7)" },
+  { bit = 10, name = "インダストリアル (CS7)" },
+  { bit = 11, name = "ポップス・アンコール (REMIX)" },
+  { bit = 12, name = "ロックギター (REMIX)" },
+  { bit = 13, name = "ソフトロック from IIDX (REMIX)" },
+]
+# each boss sets two bits: 14+k and 19+k
+bosses = [
+  { mask = 0x84000, floor = 10, name = "テクノポップ (EX), すわ・コース (EXPERT)" },
+  { mask = 0x108000, floor = 11, name = "ターバン (EX), サナ・コース (EXPERT)" },
+  { mask = 0x210000, floor = 12, name = "ピラミッド (EX), パーキッツ・コース (EXPERT)" },
+  { mask = 0x420000, floor = 13, name = "スカ (EX), Des-ROW・コース (EXPERT)" },
+  { mask = 0x840000, floor = 14, name = "オイパンク0 (EX), クラシック・コース (EXPERT)" },
+]

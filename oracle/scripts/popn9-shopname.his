@@ -1,0 +1,69 @@
+# pop'n music 9: the cabinet's shop for e-AMUSEMENT, in test mode > e-AMUSEMENT OPTIONS >
+# e-AMUSEMENT SETTINGS: SHOP NAME SETTING "ひらく" (blue 6/4 move down/up, green 7/3 right/left,
+# red enters; three lefts from く wrap to the last column, two ups to EXIT), PREFECTURE 東京都
+# (hold red, blue x13 from "-"), SAVE AND EXIT. The settings record then holds area 12 (+0x35) and
+# the name in Shift-JIS (+0x37), and every call with a shop sends shop_name="82D082E782AD"
+# area_num="12" (e.g. p_friend.get after popn9-card-again.his). e-AMUSEMENT must be on already.
+#   hiraku-popn9 --nvram DIR --script oracle/scripts/popn9-shopname.his
+game popn9
+at 3200 press "Test" 8
+at 3320 press "P1 Button 6" 10
+at 3340 press "P1 Button 6" 10
+at 3360 press "P1 Button 6" 10
+at 3380 press "P1 Button 6" 10
+at 3400 press "P1 Button 6" 10
+at 3420 press "P1 Button 6" 10
+at 3440 press "P1 Button 6" 10
+at 3460 press "P1 Button 6" 10
+at 3520 press "P1 Button 5" 10
+at 3640 press "P1 Button 5" 10
+at 3800 press "P1 Button 6" 10
+at 3840 press "P1 Button 5" 10
+at 3960 press "P1 Button 6" 10
+at 3990 press "P1 Button 6" 10
+at 4020 press "P1 Button 6" 10
+at 4050 press "P1 Button 6" 10
+at 4080 press "P1 Button 6" 10
+at 4110 press "P1 Button 7" 10
+at 4140 press "P1 Button 5" 10
+at 4170 press "P1 Button 6" 10
+at 4200 press "P1 Button 6" 10
+at 4230 press "P1 Button 6" 10
+at 4260 press "P1 Button 3" 10
+at 4290 press "P1 Button 5" 10
+at 4320 press "P1 Button 4" 10
+at 4350 press "P1 Button 4" 10
+at 4380 press "P1 Button 4" 10
+at 4410 press "P1 Button 4" 10
+at 4440 press "P1 Button 4" 10
+at 4470 press "P1 Button 4" 10
+at 4500 press "P1 Button 4" 10
+at 4530 press "P1 Button 7" 10
+at 4560 press "P1 Button 7" 10
+at 4590 press "P1 Button 5" 10
+at 4620 press "P1 Button 3" 10
+at 4650 press "P1 Button 3" 10
+at 4680 press "P1 Button 3" 10
+at 4710 press "P1 Button 4" 10
+at 4740 press "P1 Button 4" 10
+at 4770 press "P1 Button 5" 10
+at 4890 press "P1 Button 6" 10
+at 4920 hold "P1 Button 5"
+at 4940 press "P1 Button 6" 8
+at 4960 press "P1 Button 6" 8
+at 4980 press "P1 Button 6" 8
+at 5000 press "P1 Button 6" 8
+at 5020 press "P1 Button 6" 8
+at 5040 press "P1 Button 6" 8
+at 5060 press "P1 Button 6" 8
+at 5080 press "P1 Button 6" 8
+at 5100 press "P1 Button 6" 8
+at 5120 press "P1 Button 6" 8
+at 5140 press "P1 Button 6" 8
+at 5160 press "P1 Button 6" 8
+at 5180 press "P1 Button 6" 8
+at 5200 release "P1 Button 5"
+at 5230 press "P1 Button 6" 10
+at 5260 press "P1 Button 6" 10
+at 5290 press "P1 Button 5" 10
+at 5650 quit

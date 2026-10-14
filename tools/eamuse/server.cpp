@@ -1,14 +1,17 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// hiraku-eamuse: HIRAKU's e-AMUSE3 server on the network (runtime/eamuse/server.h). The same
-// server the cores run inside themselves offline, here behind a plain HTTP/1.0 listener, so
-// several cabinets (HIRAKU with --eamuse http://host:port/) can share cards, player data and
-// rankings: the System 573 GuitarFreaks and DrumMania (runtime/sys573/eagfdm.h), such as the
-// two cabinets of a session. From the Python core's (python-groundwork branch).
+// hiraku-eamuse: HIRAKU's e-AMUSE3 server on the network. The same servers the cores run inside
+// themselves offline, here behind a plain HTTP/1.0 listener, so several cabinets (HIRAKU with
+// -url host:port) can share cards, player data and rankings: Konami Python 1 pop'n music 9-14
+// (runtime/python/easerver.cpp) and the System 573 GuitarFreaks and DrumMania
+// (runtime/sys573/eagfdm.h), such as the two cabinets of a session. A call goes to one or the
+// other by its model; both keep their files in the same folder (one card numbering, one set of
+// KONAMI IDs). docs/EAMUSE3.md describes the protocol.
 //
 //   hiraku-eamuse [--port 8080] [--bind 0.0.0.0] [--data DIR] [--clock "2003-06-01 12:00:00"] [--tz 9] [--quiet]
 //     --data   where it keeps what it must remember (default ./eamuse-data)
-//     --clock  the cabinets' time, running from this start (default: the host's clock)
-//     --tz     with the host's clock: the cabinets' time zone, hours from UTC (default 9, Japan)
+//     --clock  the cabinets' time (ntp.get), running from this start (default: the host's clock)
+//     --tz     with the host's clock: the cabinets' time zone, hours from UTC (default 9, Japan: the
+//              games set their clocks to what ntp.get says and stamp their own times "+9")
 //     --quiet  don't print each call
 #include <arpa/inet.h>
 #include <netinet/in.h>
@@ -26,6 +29,7 @@
 #include <string>
 
 #include "eamuse/server.h"
+#include "python/easerver.h"
 #include "sys573/eagfdm.h"
 
 namespace {
@@ -91,12 +95,27 @@ int main(int argc, char **argv) {
         if (g == "39" || g == "40") return hk::k573::Eamuse::answer(s, c, r, host);
         return std::string();
     });
+    hk::py::EamuseServer popn(data);   // pop'n music 9-14 (Konami Python 1), and every other model
     const int64_t started = (int64_t)time(nullptr);
     // the cabinets' wall clock
-    server.now = [&] {
+    auto now = [&] {
         return clock_start < 0 ? (int64_t)time(nullptr) + tz_hours * 3600 : clock_start + ((int64_t)time(nullptr) - started);
     };
-    if (!quiet) server.log = [](const std::string &s) { printf("%s\n", s.c_str()); fflush(stdout); };
+    server.now = now;
+    popn.now = now;
+    if (!quiet) {
+        server.log = [](const std::string &s) { printf("%s\n", s.c_str()); fflush(stdout); };
+        popn.log = server.log;
+    }
+    // GuitarFreaks and DrumMania by their model ("D40:J:A:A"), read from the call in clear
+    auto gfdm = [](const std::string &req) {
+        std::string copy = req, model;
+        hk::py::EamuseServer::edit(copy, [&](std::string &xml) {
+            const size_t at = xml.find("model=\"");
+            if (at != std::string::npos) model = xml.substr(at + 7, 3);
+        });
+        return model.size() == 3 && (model.compare(1, 2, "39") == 0 || model.compare(1, 2, "40") == 0);
+    };
 
     signal(SIGPIPE, SIG_IGN);
     const int ls = socket(AF_INET, SOCK_STREAM, 0);
@@ -122,7 +141,7 @@ int main(int argc, char **argv) {
         setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof tv);
         std::string req;
         if (read_request(fd, req)) {
-            const std::string answer = server.handle(req);
+            const std::string answer = gfdm(req) ? server.handle(req) : popn.handle(req);
             for (size_t sent = 0; sent < answer.size();) {
                 const ssize_t n = send(fd, answer.data() + sent, answer.size() - sent, 0);
                 if (n <= 0) break;

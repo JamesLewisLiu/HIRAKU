@@ -1,0 +1,12 @@
+# pop'n music 14 FEVER! (G-F14 JAB), Konami 2006: Konami Python 1
+# Boot record C is a loader (~300 KB): it loads ee/boot/game.bin from a file system on the disk.
+id = "popn14"
+title = "pop'n music 14 FEVER!"
+family = "pypopn"       # pop'n on Konami Python: 9 buttons, the interface board's lamps
+core = "python"         # PCSX2 Reliquary hosted by HIRAKU (runtime/python/, PLAN.md section 23); not in MAME
+
+[python]
+io_mode = "POPN"        # the interface board's input profile (Reliquary's IoMode)
+# SHA-1 of the EE program: boot record C on the disk, Konami-LZ-decoded (tools/pythonfs.py)
+ee_sha1 = "d2887ed24ea61c259efef1eb49ba1760e9890f71"
+hdd = "popn14"

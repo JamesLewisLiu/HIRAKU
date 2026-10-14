@@ -1,0 +1,23 @@
+# pop'n music 9: test mode > e-AMUSEMENT OPTIONS > e-AMUSEMENT ON, SAVE AND EXIT. The game then
+# asks for a power cycle; run oracle/scripts/popn9-cardcheck.his with the same --nvram next.
+#   hiraku-popn9 --nvram DIR --script oracle/scripts/popn9-eamuse-on.his
+game popn9
+at 3200 press "Test" 8
+at 3320 press "P1 Button 6" 10
+at 3340 press "P1 Button 6" 10
+at 3360 press "P1 Button 6" 10
+at 3380 press "P1 Button 6" 10
+at 3400 press "P1 Button 6" 10
+at 3420 press "P1 Button 6" 10
+at 3440 press "P1 Button 6" 10
+at 3460 press "P1 Button 6" 10
+at 3520 press "P1 Button 5" 10
+at 3640 hold "P1 Button 5"
+at 3660 press "P1 Button 6" 10
+at 3690 release "P1 Button 5"
+at 3740 press "P1 Button 6" 10
+at 3760 press "P1 Button 6" 10
+at 3780 press "P1 Button 6" 10
+at 3800 press "P1 Button 6" 10
+at 3840 press "P1 Button 5" 10   # SAVE AND EXIT
+at 4100 quit

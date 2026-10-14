@@ -43,6 +43,18 @@ std::vector<Control> make_popn() {
     return c;
 }
 
+// pop'n on Konami Python: the same, plus the e-AMUSEMENT card slot and 10-key
+std::vector<Control> make_pypopn() {
+    std::vector<Control> c = make_popn();
+    c.push_back({"Card", "e-AMUSEMENT card (insert / take back)", "e-AMUSEMENT", false, "key:Insert"});
+    for (int k = 0; k <= 9; k++)
+        c.push_back({"Keypad " + std::to_string(k), "10-key " + std::to_string(k), "e-AMUSEMENT", false, "key:Keypad " + std::to_string(k)});
+    c.push_back({"Keypad Enter", "10-key Enter", "e-AMUSEMENT", false, "key:Keypad Enter"});
+    c.push_back({"Keypad Clear", "10-key Clear", "e-AMUSEMENT", false, "key:Backspace"});
+    c.push_back({"Keypad .", "10-key .", "e-AMUSEMENT", false, "key:Keypad ."});
+    return c;
+}
+
 // ParaParaParadise: the five sensor bars left to right, plus the two buttons
 std::vector<Control> make_ppp() {
     std::vector<Control> c;
@@ -317,6 +329,20 @@ std::vector<Lamp> make_popn_lamps() {
     return l;
 }
 
+// pop'n music on Konami Python 1 (pop'n 9-14): word 8 of the JAMMA output command the
+// game sends the interface board once a frame (runtime/python/core.cpp), read off the
+// game's own LAMP CHECK (I/O CHECK in test mode) lamp by lamp, active high. The names
+// are Firebeat pop'n's, so lights files carry over: SW-LAMP 1-9 are the buttons,
+// HI-LAMP 1-5 the top lamps (which is topmost is not known), LEFT-LAMP 1-2 and
+// RIGHT-LAMP 1-2 the side lamps. Bit 9 is never used.
+std::vector<Lamp> make_pypopn_lamps() {
+    std::vector<Lamp> l;
+    add_run(l, "Button Lamp", "Buttons", 0, {0, 1, 2, 3, 4, 5, 6, 7, 8});
+    add_run(l, "Top Lamp", "Top (test mode: HI-LAMP 1-5)", 0, {14, 13, 12, 11, 10});
+    add_run(l, "Side Lamp", "Side (test mode: LEFT-LAMP 1-2, RIGHT-LAMP 1-2)", 0, {15, 16, 17, 18});
+    return l;
+}
+
 // MAME firebeat_ppp_state::lamp_output_ppp_w, lamp_output2_ppp_w, lamp_output3_ppp_w
 std::vector<Lamp> make_ppp_lamps() {
     std::vector<Lamp> l = {{"Left Lamp", "Cabinet", 0, 8}, {"Right Lamp", "Cabinet", 0, 9}, {"Door Lamp", "Cabinet", 0, 10},
@@ -403,7 +429,7 @@ const std::vector<Control> &controls(const std::string &family) {
     static const std::map<std::string, std::vector<Control>> all = {
         {"bm3", make_bm3()}, {"popn", make_popn()}, {"ppp", make_ppp()}, {"kbm", make_kbm()},
         {"djbm", make_djbm()}, {"djpopn", make_djpopn()}, {"djpstage", make_djpstage()}, {"ddr", make_ddr()},
-        {"drmn", make_drmn()}, {"gtrf", make_gtrf()}, {"iidx", make_iidx()}};
+        {"drmn", make_drmn()}, {"gtrf", make_gtrf()}, {"iidx", make_iidx()}, {"pypopn", make_pypopn()}};
     auto f = all.find(family);
     return f != all.end() ? f->second : all.at("bm3");
 }
@@ -412,7 +438,8 @@ const std::vector<Lamp> &lamps(const std::string &family) {
     static const std::map<std::string, std::vector<Lamp>> all = {
         {"bm3", make_bm3_lamps()}, {"popn", make_popn_lamps()}, {"ppp", make_ppp_lamps()}, {"kbm", make_kbm_lamps()},
         {"djbm", make_djbm_lamps()}, {"djpopn", make_djpopn_lamps()}, {"djpstage", make_djpstage_lamps()},
-        {"ddr", make_ddr_lamps()}, {"drmn", make_drmn_lamps()}, {"gtrf", make_gtrf_lamps()}, {"iidx", make_iidx_lamps()}};
+        {"ddr", make_ddr_lamps()}, {"drmn", make_drmn_lamps()}, {"gtrf", make_gtrf_lamps()}, {"iidx", make_iidx_lamps()},
+        {"pypopn", make_pypopn_lamps()}};
     auto f = all.find(family);
     return f != all.end() ? f->second : all.at("bm3");
 }

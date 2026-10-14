@@ -1,0 +1,14 @@
+# pop'n music 14, after popn14-card-new.his (same --nvram): the e-AMUSEMENT PASS again. cardmng.inquire
+# (binded), F14 playerdata get, the PIN 1234 and cardmng.authpass; then the player's name, character
+# and options, and mode select. A wrong PIN gets authpass status 116: "暗証番号が違います".
+#   hiraku-popn14 --nvram DIR --script oracle/scripts/popn14-card-again.his
+game popn14
+at 4500 press "Coin 1" 8
+at 4540 press "Coin 1" 8
+at 4700 press "P1 Button 5" 8
+at 5050 press "Card" 8
+at 5300 press "Keypad 1" 8
+at 5330 press "Keypad 2" 8
+at 5360 press "Keypad 3" 8
+at 5390 press "Keypad 4" 8
+at 7500 quit

@@ -6,6 +6,7 @@
 #include <QDialogButtonBox>
 #include <QFileInfo>
 #include <QGroupBox>
+#include <QHBoxLayout>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QLabel>
@@ -236,6 +237,24 @@ void UnlocksDialog::rebuild() {
         t->setWordWrap(true);
         t->setTextInteractionFlags(Qt::TextSelectableByMouse);
         bv->addWidget(t);
+        if (p.contains("choices") && !p["state"].isNull()) {   // an event the tool can set (pop'n 10's wishes)
+            auto *combo = new QComboBox;
+            for (const QJsonValue &cv : p["choices"].toArray())
+                combo->addItem(cv.toObject()["name"].toString(), cv.toObject()["value"].toString());
+            auto *row = new QHBoxLayout;
+            row->addWidget(combo, 1);
+            auto *apply = new QPushButton("Apply");
+            apply->setEnabled(!m_running);
+            row->addWidget(apply);
+            bv->addLayout(row);
+            QString id = p["id"].toString();
+            connect(apply, &QPushButton::clicked, this, [this, id, combo] {
+                QString e;
+                run({id + "=" + combo->currentData().toString()}, &e);
+                if (!e.isEmpty()) QMessageBox::warning(this, m_title, e);
+                rebuild();
+            });
+        }
         v->addWidget(box);
     }
     for (const QJsonValue &nv : st["notes"].toArray()) {

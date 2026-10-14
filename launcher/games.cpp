@@ -69,6 +69,21 @@ QString Game::howTo() const {
                        "Drop them on this window, or File > Add game files. They are unpacked with MAME's "
                        "chdman, which needs up to about 4 GB of space.")
             .arg(title, mame);
+    if (core == "python") {   // Konami Python: PCSX2 Reliquary hosted, built in Reliquary's tree
+        if (status == NotInstalled)
+            return QString("HIRAKU has no data for %1 yet. You need your own dumps, as PCSX2 Reliquary takes "
+                           "them: the game's .py1 with its folder (disk CHD, interface board ROMs, dongle, "
+                           "memory card), the arcade BIOS (COH-H31000) and the MagicGate key files in bios/ and "
+                           "keys/ folders beside the sets.\n\n"
+                           "Drop the .py1 on this window, or File > Add game files. The disk stays where it is.")
+                .arg(title);
+        if (status == NotBuilt)
+            return QString("The data for %1 is installed, but %2 has not been built yet. It is built with "
+                           "PCSX2 Reliquary's source (docs/PLAY.md, Konami Python).\n\nIn %3:\n\n"
+                           "oracle/pcsx2/build-reliquary.sh all")
+                .arg(title, exe, root);
+        return {};
+    }
     if (family.startsWith("dj") || core == "sys573" || core == "twinkle") {   // DJ Main, 573, Twinkle: no recompilation
         if (status == NotInstalled)
             return QString("HIRAKU has no data for %1 yet. You need your own dumps: the MAME ROM set \"%2\" "
@@ -135,6 +150,7 @@ QIcon familyIcon(const QString &family) {
     Look l = family == "popn" ? Look{QColor(0xe8, 0x4a, 0x8a), "pop'n"}
            : family == "djbm" ? Look{QColor(0x22, 0x2a, 0x5a), "bm"}
            : family == "djpopn" ? Look{QColor(0xf0, 0xb4, 0x1e), "pop'n"}
+           : family == "pypopn" ? Look{QColor(0x3c, 0xb4, 0xdc), "pop'n"}
            : family == "djpstage" ? Look{QColor(0xe0, 0x50, 0x90), "stage"}
            : family == "ppp"  ? Look{QColor(0xf0, 0x8a, 0x24), "PPP"}
            : family == "kbm"  ? Look{QColor(0x2e, 0x9e, 0x6a), "KBM"}

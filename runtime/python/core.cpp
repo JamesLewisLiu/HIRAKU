@@ -1,0 +1,1000 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Konami Python 1 (a PS2 with an i.LINK interface board): PCSX2 Reliquary's emulator
+// hosted as a HIRAKU machine core (PLAN.md §23, PY-1). Reliquary is the reference for
+// these boards, so this core is the reference by construction; later phases replace
+// parts of it (the EE by static recompilation) and check them against it.
+//
+// The machine comes from dumps/<game>/machine.txt (tools/ingest.py): the interface
+// board's files (boot ROM, config ROM, BBSRAM, dongles), the KN00002 memory-card
+// dongle, the disk image (CHD), the COH-H31000 BIOS and the MagicGate key files.
+//
+// Each run works on its own copy of the files Reliquary writes back (BBSRAM, dongles,
+// boot ROM, memory card; the disk's writes go to an overlay): in the NVRAM directory
+// when there is one, else a fresh copy under the output directory, so scripted runs
+// start from the dumps' state and repeat exactly.
+//
+// Threads: run() is PCSX2's CPU thread (EE, IOP, SPU2, the interface board). The GS
+// runs on PCSX2's own thread. At each vsync, once it is posted to the GS, the CPU thread
+// waits for that vsync's picture and hands it to the shell: pictures, digests and
+// scripts stay deterministic. --picture-overlap hands over the previous vsync's picture
+// instead (taken before the post), so the GS overlaps the EE, at a frame more latency.
+//
+// Linking Reliquary (GPL-3.0) makes the hiraku-<python game> binaries GPL-3.0 as a
+// whole; this file is GPL-3.0-or-later like the rest of HIRAKU. The Host:: glue below
+// follows pcsx2-gsrunner (GPL-3.0+).
+#include <cxxabi.h>
+#include <dlfcn.h>
+#include <signal.h>
+#include <stdlib.h>   // on_exit (glibc)
+#include <sys/syscall.h>
+#include <sys/time.h>
+#include <ucontext.h>
+#include <sys/stat.h>
+#include <unistd.h>
+
+#include <algorithm>
+#include <atomic>
+#include <chrono>
+#include <condition_variable>
+#include <cstdio>
+#include <cstring>
+#include <deque>
+#include <fstream>
+#include <functional>
+#include <map>
+#include <memory>
+#include <mutex>
+#include <random>
+#include <string>
+#include <thread>
+#include <vector>
+
+#include "common/Console.h"
+#include "common/Error.h"
+#include "common/FileSystem.h"
+#include "common/MemorySettingsInterface.h"
+#include "common/Path.h"
+#include "common/ProgressCallback.h"
+#include "common/SmallString.h"
+
+#include "pcsx2/PrecompiledHeader.h"
+
+#include "pcsx2/Achievements.h"
+#include "pcsx2/Config.h"
+#include "pcsx2/FireWire/FireWire.h"
+#include "pcsx2/GS.h"
+#include "pcsx2/GameList.h"
+#include "pcsx2/HirakuHooks.h"
+#include "pcsx2/Host.h"
+#include "pcsx2/ImGui/FullscreenUI.h"
+#include "pcsx2/ImGui/ImGuiFullscreen.h"
+#include "pcsx2/ImGui/ImGuiManager.h"
+#include "pcsx2/Input/InputManager.h"
+#include "pcsx2/MTGS.h"
+#include "pcsx2/Memory.h"
+#include "pcsx2/Memory.h"
+#include "pcsx2/R5900.h"
+#include "pcsx2/SIO/Pad/Pad.h"
+#include "pcsx2/VMManager.h"
+
+#include "python/cardunit.h"
+#include "python/icca.h"
+#include "python/eanet.h"
+#include "python/eaclient.h"
+#include "python/easerver.h"
+#include "shell/cabinet.h"
+#include "shell/core.h"
+#include "shell/eaoptions.h"
+
+// clang's profile runtime, present only in an instrumented build (oracle/pcsx2/build-reliquary.sh pgo)
+extern "C" int __llvm_profile_write_file(void) __attribute__((weak));
+
+namespace {
+
+std::map<std::string, std::string> read_kv(const std::string &path) {
+    std::map<std::string, std::string> kv;
+    std::ifstream in(path);
+    std::string line;
+    while (std::getline(in, line)) {
+        size_t eq = line.find('=');
+        if (eq != std::string::npos && line[0] != '#') kv[line.substr(0, eq)] = line.substr(eq + 1);
+    }
+    return kv;
+}
+
+bool copy_file(const std::string &from, const std::string &to) {
+    std::ifstream in(from, std::ios::binary);
+    std::ofstream out(to, std::ios::binary | std::ios::trunc);
+    if (!in || !out) return false;
+    out << in.rdbuf();
+    return (bool)out;
+}
+
+bool exists(const std::string &p) {
+    struct stat st;
+    return stat(p.c_str(), &st) == 0;
+}
+
+void mkdirs(const std::string &path) {
+    for (size_t k = 1; k <= path.size(); k++)
+        if (k == path.size() || path[k] == '/') mkdir(path.substr(0, k).c_str(), 0755);
+}
+
+std::string base_name(const std::string &p) { return p.substr(p.rfind('/') + 1); }
+
+// pop'n buttons 1-9, left to right (MAME's names), on the interface board's JAMMA
+// inputs as Reliquary's POPN profile reads them (KonamiPython1.cpp,
+// BuildP1IOPopnInputSourceBits): SW1-SW9 are P1 Up/Down/Left/Right/Button1 and
+// P2 Up/Down/Left/Right.
+const std::map<std::string, std::string> POPN_INPUTS = {
+    {"P1 Button 1", "P1Up"},   {"P1 Button 2", "P1Down"}, {"P1 Button 3", "P1Left"},
+    {"P1 Button 4", "P1Right"}, {"P1 Button 5", "P1Button1"}, {"P1 Button 6", "P2Up"},
+    {"P1 Button 7", "P2Down"}, {"P1 Button 8", "P2Left"}, {"P1 Button 9", "P2Right"},
+    {"Coin 1", "Coin1"},       {"Coin 2", "Coin2"},       {"Test", "Test"},
+    {"Service", "Service"},    {"1 Player Start", "P1Start"},
+};
+
+// The e-AMUSEMENT 10-key (cardunit.h): its keys' PS/2 set 2 scan codes, as the game maps them
+// (0x1a54c0). Enter and / are sent without their 0xe0 prefix, which the game skips.
+const std::map<std::string, uint8_t> KEYPAD_SCAN = {
+    {"Keypad 0", 0x70}, {"Keypad 1", 0x69}, {"Keypad 2", 0x72}, {"Keypad 3", 0x7a}, {"Keypad 4", 0x6b},
+    {"Keypad 5", 0x73}, {"Keypad 6", 0x74}, {"Keypad 7", 0x6c}, {"Keypad 8", 0x75}, {"Keypad 9", 0x7d},
+    {"Keypad .", 0x71}, {"Keypad Enter", 0x5a}, {"Keypad Clear", 0x66}, {"Keypad /", 0x4a},
+    {"Keypad *", 0x7c}, {"Keypad -", 0x7b}, {"Keypad +", 0x79},
+};
+
+MemorySettingsInterface s_settings;
+
+// HK_PY_PROFILE=1: a 1 kHz SIGPROF sampler of the host instruction pointer, by thread,
+// printed at exit with each sample attributed to one of PCSX2's code caches (EE, IOP,
+// VU0, VU1, VIF, the software GS's JIT) or to its function. HIRAKU's own sampler
+// (runtime/core/sampler.cpp) can't see into the caches, and dumps from atexit, which
+// this core's exit path skips.
+namespace prof {
+constexpr int MAX = 1 << 20;
+uintptr_t g_rip[MAX];
+pid_t g_tid[MAX];
+std::atomic<int> g_n{0};
+pid_t g_cpu_tid = 0;
+
+void on_sig(int, siginfo_t *, void *uc) {
+    int n = g_n.fetch_add(1, std::memory_order_relaxed);
+    if (n >= MAX) return;
+    g_rip[n] = (uintptr_t) static_cast<ucontext_t *>(uc)->uc_mcontext.gregs[REG_RIP];
+    g_tid[n] = (pid_t)syscall(SYS_gettid);
+}
+void start() {
+    struct sigaction sa {};
+    sa.sa_sigaction = on_sig;
+    sa.sa_flags = SA_SIGINFO | SA_RESTART;
+    sigaction(SIGPROF, &sa, nullptr);
+    itimerval t{{0, 1000}, {0, 1000}};
+    setitimer(ITIMER_PROF, &t, nullptr);
+}
+void report() {
+    itimerval off{};
+    setitimer(ITIMER_PROF, &off, nullptr);
+    const int n = std::min(g_n.load(), MAX);
+    struct Range { const char *name; uintptr_t lo, hi; };
+    const Range ranges[] = {
+        {"[EE JIT code]", (uintptr_t)SysMemory::GetEERec(), (uintptr_t)SysMemory::GetEERecEnd()},
+        {"[IOP JIT code]", (uintptr_t)SysMemory::GetIOPRec(), (uintptr_t)SysMemory::GetIOPRecEnd()},
+        {"[VU0 JIT code]", (uintptr_t)SysMemory::GetVU0Rec(), (uintptr_t)SysMemory::GetVU0RecEnd()},
+        {"[VU1 JIT code]", (uintptr_t)SysMemory::GetVU1Rec(), (uintptr_t)SysMemory::GetVU1RecEnd()},
+    };
+    std::map<std::string, int> cpu, other;
+    std::map<char, std::map<uintptr_t, int>> exe;   // thread class -> executable offset -> samples
+    for (int k = 0; k < n; k++) {
+        const uintptr_t a = g_rip[k];
+        std::string name;
+        for (const Range &r : ranges)
+            if (a >= r.lo && a < r.hi) name = r.name;
+        if (name.empty()) {
+            Dl_info i{};
+            Dl_info self{};
+            dladdr((void *)&report, &self);
+            if (dladdr((void *)a, &i) && i.dli_fbase == self.dli_fbase) {
+                exe[(g_tid[k] == g_cpu_tid ? 'c' : 'o')][a - (uintptr_t)self.dli_fbase]++;   // symbolised below
+                continue;
+            } else if (i.dli_sname) {
+                int st = 0;
+                char *d = abi::__cxa_demangle(i.dli_sname, nullptr, nullptr, &st);
+                name = d ? d : i.dli_sname;
+                free(d);
+                if (size_t p = name.find('('); p != std::string::npos) name.resize(p);
+            } else if (i.dli_fname) {
+                name = std::string("[") + base_name(i.dli_fname) + "]";
+            } else {
+                name = "[anonymous: other JIT code]";
+            }
+        }
+        (g_tid[k] == g_cpu_tid ? cpu : other)[name]++;
+    }
+    auto print = [](const char *title, const std::map<std::string, int> &h, int total_all) {
+        std::vector<std::pair<int, std::string>> v;
+        int total = 0;
+        for (auto &[k, c] : h) v.push_back({c, k}), total += c;
+        std::sort(v.rbegin(), v.rend());
+        fprintf(stderr, "profile: %s: %d samples (%.0f %%)\n", title, total, 100.0 * total / std::max(1, total_all));
+        for (size_t i = 0; i < v.size() && i < 25; i++)
+            fprintf(stderr, "profile:   %5.1f %%  %s\n", 100.0 * v[i].first / std::max(1, total), v[i].second.c_str());
+    };
+    // the executable's own functions: llvm-symbolizer on the offsets, one call for all
+    if (!exe.empty()) {
+        char path[4096];
+        ssize_t len = readlink("/proc/self/exe", path, sizeof path - 1);
+        path[len > 0 ? len : 0] = 0;
+        const std::string in = "/tmp/hk-py-profile-" + std::to_string(getpid()) + ".txt";
+        FILE *f = fopen(in.c_str(), "w");
+        std::vector<std::tuple<char, uintptr_t, int>> order;
+        for (auto &[cls, h] : exe)
+            for (auto &[off, c] : h) fprintf(f, "0x%lx\n", (unsigned long)off), order.emplace_back(cls, off, c);
+        fclose(f);
+        const std::string cmd = "llvm-symbolizer --functions=short --no-inlines --obj='" + std::string(path) + "' < " + in;
+        if (FILE *p = popen(cmd.c_str(), "r")) {
+            char line[4096];
+            size_t k = 0;
+            std::string fn;
+            int state = 0;   // llvm-symbolizer prints: function, file:line, blank
+            while (fgets(line, sizeof line, p) && k < order.size()) {
+                std::string l(line);
+                if (!l.empty() && l.back() == '\n') l.pop_back();
+                if (state == 0) { fn = l; state = 1; }
+                else if (state == 1) {
+                    auto &[cls, off, c] = order[k++];
+                    (cls == 'c' ? cpu : other)[fn] += c;
+                    state = 2;
+                } else state = 0;
+            }
+            pclose(p);
+        }
+        unlink(in.c_str());
+    }
+    print("CPU thread (EE, IOP, VU, SPU2, the interface board)", cpu, n);
+    print("other threads (GS, its workers)", other, n);
+}
+}  // namespace prof
+
+
+class PythonCore final : public hk::Core {
+public:
+    bool option(const std::string &name, const std::function<std::string()> &value) override {
+        if (name == "--renderer") {
+            const std::string v = value();
+            renderer_ = v == "vk" ? GSRendererType::VK : v == "gl" ? GSRendererType::OGL : GSRendererType::SW;
+            return true;
+        }
+        if (name == "--interp") { interp_ = true; return true; }
+        if (name == "--pcsx2-log") { pcsx2_log_ = true; return true; }
+        if (name == "--no-picture") { no_picture_ = true; return true; }
+        if (name == "--bare-board") { bare_board_ = true; return true; }
+        if (name == "--picture-overlap") { picture_now_ = false; return true; }
+        if (name == "--autoplay") {
+            autoplay_ = true;
+            if (!has_autoplay(HK_GAME_ID)) fprintf(stderr, "autoplay: not available for %s yet (pop'n music 9 only)\n", HK_GAME_ID);
+            return true;
+        }
+        if (name == "--eamuse") {   // the older name: local (the server in the core) or -url's URL
+            const std::string v = value();
+            ea_.url = v == "local" ? "" : v;
+            if (ea_.online() && !hk::py::EamuseRemote(ea_.http_url()).ok()) return false;
+            return true;
+        }
+        std::string error;
+        if (ea_.option(name, value, &error)) {   // spice2x's -ea, -url, -p, -card0, ... (shell/eaoptions.h)
+            if (error.empty() && name == "--url" && !hk::py::EamuseRemote(ea_.http_url()).ok())
+                error = "-url: " + ea_.url + " is not host:port[/path] or http://host[:port][/path] (the game speaks plain HTTP)";
+            if (!error.empty()) { fprintf(stderr, "%s\n", error.c_str()); exit(2); }
+            return true;
+        }
+        if (name == "--pcsx2-set") {   // Section/Key=value, after the core's own settings
+            const std::string v = value();
+            const size_t slash = v.rfind('/', v.find('=')), eq = v.find('=');
+            if (slash == std::string::npos || eq == std::string::npos || slash > eq) return false;
+            extra_settings_.push_back({v.substr(0, slash), v.substr(slash + 1, eq - slash - 1), v.substr(eq + 1)});
+            return true;
+        }
+        return false;
+    }
+    std::string options_help() const override {
+        return "  --renderer sw|vk|gl  the GS renderer: software (default: what the oracle runs), Vulkan or OpenGL\n"
+               "  --interp             every CPU interpreted (EE, IOP, VU0, VU1), as the oracle's --interp\n"
+               "  --pcsx2-log          the emulator's own log on stderr\n"
+               "  --no-picture         don't read the GS's pictures back (black frames; for measuring)\n"
+               "  --bare-board         no e-AMUSEMENT card unit or network on the board, as in plain Reliquary\n"
+               "                       (for checking against the oracle: pop'n 13 probes the card unit at frame 1,325)\n"
+               "  --picture-overlap    hand over the previous vsync's picture, so the GS overlaps the EE: less\n"
+               "                       time per frame, a frame (16.7 ms) more latency. The default waits for each\n"
+               "                       vsync's own picture\n"
+               "  --autoplay           the game plays every song itself, as in its attract demo: every note GREAT\n"
+               "                       (a mod for testing what clears unlock; pop'n music 9)\n"
+               "  --pcsx2-set S/K=V    set one of the emulator's settings (its ini's section S, key K), for experiments\n"
+               "  --eamuse local|URL   the older -ea / -url (below)\n" +
+               std::string(hk::EaOptions::help()) +
+               "  (e-AMUSEMENT when the game has it on in test mode; the server inside HIRAKU is offline and\n"
+               "  reproducible. pop'n has one card reader: player 1's. docs/EAMUSE3.md)\n";
+    }
+
+    bool init(const Options &o) override {
+        opt_ = o;
+        auto m = read_kv(o.root + "/dumps/" + o.game + "/machine.txt");
+        if (m.empty() || m["core"] != "python") {
+            fprintf(stderr, "no Python dumps/%s/machine.txt - run tools/ingest.py <the set's .py1> first\n", o.game.c_str());
+            return false;
+        }
+        family_ = m.count("family") ? m["family"] : "pypopn";
+        lamps_.assign(hk::cab::lamps(family_).size(), 0);
+
+        // The run's own copy of what Reliquary writes back
+        run_dir_ = o.nvram_dir.empty() ? o.out + "/python-run" : o.nvram_dir;
+        if (run_dir_[0] != '/') {   // the descriptor's paths must not depend on the working directory
+            char cwd[4096];
+            if (getcwd(cwd, sizeof cwd)) run_dir_ = std::string(cwd) + "/" + run_dir_;
+        }
+        if (o.nvram_dir.empty() && exists(run_dir_)) FileSystem::RecursiveDeleteDirectory(run_dir_.c_str());
+        mkdirs(run_dir_);
+        io_mode_ = m["io_mode"];
+        std::string py1 = "[Game]\nName=" + m["name"] + "\nIoMode=" + io_mode_ + "\n";
+        if (!m["game_id"].empty()) py1 += "GameId=" + m["game_id"] + "\n";
+        struct F { const char *key, *ini; bool writable; };
+        const F files[] = {
+            {"hdd", "HddImagePath", false},           {"cf", "CfImagePath", false},
+            {"bbsram", "BbsRamPath", true},           {"io_bootrom", "IoBootRomPath", true},
+            {"io_config_rom", "IoConfigRomPath", false}, {"internal_dongle", "InternalDonglePath", true},
+            {"external_dongle", "ExternalDonglePath", true}, {"memcard", "MemoryCardDonglePath", true},
+            {"memcard_id", "MemoryCardIdPath", false},
+        };
+        for (const F &f : files) {
+            if (m[f.key].empty()) continue;
+            std::string src = o.data_path(m[f.key]);
+            if (!exists(src)) { fprintf(stderr, "python: missing %s (%s)\n", src.c_str(), f.key); return false; }
+            std::string path = src;
+            if (f.writable) {
+                path = run_dir_ + "/" + base_name(src);
+                if (!exists(path) && !copy_file(src, path)) { fprintf(stderr, "python: cannot copy %s\n", src.c_str()); return false; }
+            }
+            py1 += std::string(f.ini) + "=" + path + "\n";
+        }
+        py1_path_ = run_dir_ + "/" + o.game + ".py1";
+        if (family_ == "pypopn" && !bare_board_) {
+            std::string error;
+            ea_.read_card_files(run_dir_, &error);
+            if (!error.empty()) { fprintf(stderr, "%s\n", error.c_str()); return false; }
+            if (!ea_.card[1].empty() || ea_.autocard[1]) printf("e-AMUSEMENT: pop'n has one card reader, player 1's (player 2's card not used)\n");
+            // A card with a number (-card0, card0.txt) is its own file, cards/NUMBER.bin; without one,
+            // card.bin. A fresh card is one of this game (cardunit.h), and gets its number when the
+            // game asks the server for one (on_call).
+            if (o.game == "popn14") {
+                // pop'n 14's e-AMUSEMENT PASS: an IC card, only a number. Without -card0 or
+                // card0.txt, a new number, kept in the save folder's card0.txt; a run without a
+                // save folder (--nvram) gets a fixed one, so that it is reproducible
+                if (ea_.card[0].empty() && o.nvram_dir.empty()) {
+                    ea_.card[0] = "E004010000000001";
+                } else if (ea_.card[0].empty()) {
+                    std::random_device rd;
+                    char id[17];
+                    snprintf(id, sizeof id, "E004%04X%08X", rd() & 0xffff, rd());
+                    ea_.card[0] = id;
+                    FileSystem::WriteStringToFile((run_dir_ + "/card0.txt").c_str(), ea_.card[0] + "\n");
+                }
+                printf("e-AMUSEMENT: IC card %s%s\n", ea_.card[0].c_str(), ea_.autocard[0] ? ", presented by itself" : "");
+                card_ = std::make_unique<hk::py::IcCardUnit>(ea_.card[0]);
+            } else {
+                std::string card_file = run_dir_ + "/card.bin";
+                if (!ea_.card[0].empty()) {
+                    mkdirs(run_dir_ + "/cards");
+                    card_file = run_dir_ + "/cards/" + ea_.card[0] + ".bin";
+                    printf("e-AMUSEMENT: card %s%s\n", ea_.card[0].c_str(), ea_.autocard[0] ? ", presented by itself" : "");
+                }
+                card_ = std::make_unique<hk::py::CardUnit>(card_file, hk::py::CardUnit::fresh_header(o.game));
+            }
+            hk::py::VirtualNet::Io io;
+            io.write = [](uint32_t addr, const uint8_t *d, uint32_t n) { Hiraku::net_write(addr, d, n); };
+            io.respond = [](uint32_t ch, const uint32_t w[8]) { Hiraku::net_respond(ch, w); };
+            io.read = [](uint32_t addr, uint8_t *d, uint32_t n) { return Hiraku::iop_read(addr, d, n); };
+            net_ = std::make_unique<hk::py::VirtualNet>(io, [this](const hk::py::VirtualNet::Target &t, std::string req,
+                                                                   std::function<void(std::string)> done) {
+                if (std::string answer = on_call(req, done); !answer.empty()) { done(std::move(answer)); return; }
+                if (!remote_) { done(server_->handle(req)); return; }
+                // online: off the emulator's thread; the recv waits for the answer
+                std::thread([this, t, req, done = std::move(done)] {
+                    std::string error;
+                    std::string answer = remote_->exchange(t, req, &error);
+                    if (net_log_) {
+                        std::lock_guard<std::mutex> l(net_log_mutex_);
+                        fprintf(net_log_, "online %s:%u %s\n  -> %s\n", t.services ? remote_->host().c_str() : t.host.c_str(),
+                                t.services ? remote_->port() : t.port, hk::py::EamuseServer::clear(req).c_str(),
+                                answer.empty() ? ("failed: " + error).c_str() : hk::py::EamuseServer::clear(answer).c_str());
+                        fflush(net_log_);
+                    }
+                    if (answer.empty()) fprintf(stderr, "e-AMUSEMENT: %s\n", error.c_str());
+                    done(std::move(answer));
+                }).detach();
+            });
+            if (ea_.online()) {   // -url (-ea is ignored with it, as in spice2x)
+                remote_ = std::make_unique<hk::py::EamuseRemote>(ea_.http_url());
+                std::string why;
+                if (ea_.smartea && !remote_->reachable(&why)) {
+                    printf("e-AMUSEMENT: %s doesn't answer (%s): the server inside HIRAKU (-smartea)\n", ea_.url.c_str(), why.c_str());
+                    remote_.reset();
+                } else {
+                    printf("e-AMUSEMENT: online, %s\n", ea_.http_url().c_str());
+                }
+            }
+            if (!ea_.pcbid.empty()) printf("e-AMUSEMENT: PCBID %s\n", ea_.pcbid.c_str());
+            server_ = std::make_unique<hk::py::EamuseServer>(run_dir_ + "/eamuse");
+            // the cabinet's clock (init_emulator: 2003-06-01 12:00 JST) plus the machine's own time
+            server_->now = [this] { return (int64_t)1054468800 + (int64_t)seconds(); };
+        }
+        if (!FileSystem::WriteStringToFile(py1_path_.c_str(), py1)) { fprintf(stderr, "python: cannot write %s\n", py1_path_.c_str()); return false; }
+
+        const std::string bios = o.data_path(m["bios"]);
+        const std::string keys = o.data_path(m["keys"]);
+        if (!exists(bios)) { fprintf(stderr, "python: missing BIOS %s\n", bios.c_str()); return false; }
+        return init_emulator(bios, keys);
+    }
+    const std::string &family() const override { return family_; }
+
+    void set_frame_hook(FrameHook h) override { frame_hook_ = std::move(h); }
+    void set_audio_sink(AudioSink s) override { audio_sink_ = std::move(s); }
+    void set_on_fatal(std::function<void()> f) override { on_fatal_ = std::move(f); }
+
+    [[noreturn]] void run() override {
+        if (picture_now_) Hiraku::vsync_posted = [] { self_->on_vsync(); };
+        else Hiraku::vsync_cpu = [] { self_->on_vsync(); };
+        Hiraku::audio_sample = [](float l, float r) {
+            self_->audio_.push_back(l);
+            self_->audio_.push_back(r);
+        };
+        Hiraku::p1io_output = [](const u32 *payload, u32 quads) { self_->on_p1io_output(payload, quads); };
+        if (const char *f = getenv("HK_PY_P1IO_LOG")) p1io_log_ = fopen(f, "w");
+        if (!no_picture_) Hiraku::gs_frame = [](const u32 *rgba, u32 w, u32 h) { self_->on_gs_frame(rgba, w, h); };
+        if (const char *f = getenv("HK_PY_CARD_LOG")) card_log_ = fopen(f, "w");
+        if (const char *f = getenv("HK_PY_NET_LOG")) net_log_ = fopen(f, "w");
+        if (net_) {
+            if (net_log_) net_->log = server_->log = [this](const std::string &s) {
+                std::lock_guard<std::mutex> l(net_log_mutex_);
+                fprintf(net_log_, "%llu %s\n", (unsigned long long)frame_, s.c_str());
+                fflush(net_log_);
+            };
+            Hiraku::net_command = [](u32 ch, const u32 *p, u32 q) { return self_->net_->command(ch, p, q); };
+        }
+        if (card_) Hiraku::uart_write = [](const u8 *data, u32 size) {
+            std::vector<uint8_t> reply;
+            if (!self_->card_->write(data, size, reply)) {
+                if (FILE *f = self_->card_log_) {   // what the card unit isn't, as written
+                    fprintf(f, "%llu > (left to the emulator)", (unsigned long long)self_->frame_);
+                    for (u32 i = 0; i < size; i++) fprintf(f, " %02x", data[i]);
+                    fprintf(f, "\n");
+                    fflush(f);
+                }
+                return false;
+            }
+            if (FILE *f = self_->card_log_) {   // HK_PY_CARD_LOG: the bus, packet by packet
+                if (!(size == 4 && data[3] == 0x55)) {
+                    fprintf(f, "%llu >", (unsigned long long)self_->frame_);
+                    for (u32 i = 0; i < size; i++) fprintf(f, " %02x", data[i]);
+                    fprintf(f, "\n%llu <", (unsigned long long)self_->frame_);
+                    for (size_t i = self_->card_->echoes() ? size : 0; i < reply.size(); i++) fprintf(f, " %02x", reply[i]);
+                    fprintf(f, "\n");
+                    fflush(f);
+                }
+            }
+            if (!reply.empty()) Hiraku::uart_reply(reply.data(), (u32)reply.size());
+            self_->card_changed();
+            return true;
+        };
+
+        if (!VMManager::Internal::CPUThreadInitialize()) fatal("the emulator's CPU thread could not start");
+        VMManager::ApplySettings();
+        VMBootParameters params;
+        params.filename = py1_path_;
+        Error error;
+        if (VMManager::Initialize(params, &error) != VMBootResult::StartupSuccess)
+            fatal("the machine did not start: " + error.GetDescription());
+        bind_inputs();
+        VMManager::SetLimiterMode(LimiterModeType::Unlimited);   // the shell paces the machine
+        VMManager::SetState(VMState::Running);
+        while (VMManager::GetState() == VMState::Running) VMManager::Execute();
+        fatal("the machine stopped");
+    }
+    void shutdown() override {
+        // Reliquary writes the BBSRAM, dongles and disk overlay as the game goes
+        fflush(nullptr);
+    }
+    void report() override {
+        printf("python: %llu frames (%.1f s), renderer %s%s, run files in %s\n", (unsigned long long)frame_,
+               seconds(), renderer_ == GSRendererType::SW ? "software" : renderer_ == GSRendererType::VK ? "Vulkan" : "OpenGL",
+               interp_ ? ", interpreters" : "", run_dir_.c_str());
+        if (gs_waits_)   // host timing: "profile:" lines are not compared by tools/regress.py
+            printf("profile: python: waited for the GS on %llu frames, %.1f ms in all\n", (unsigned long long)gs_waits_, gs_wait_ms_);
+    }
+    void debug_line(uint64_t f) override {
+        printf("frame %llu: EE pc %08x, cycle %llu\n", (unsigned long long)f, cpuRegs.pc, (unsigned long long)cpuRegs.cycle);
+    }
+
+    double seconds() const override { return (double)frame_ / 59.94; }
+    const uint8_t *mem(uint32_t addr, uint32_t len) const override {
+        addr &= 0x1fffffff;
+        if (!eeMem || (uint64_t)addr + len > Ps2MemSize::MainRam) return nullptr;
+        return eeMem->Main + addr;
+    }
+    uint64_t frame_count() const override { return frame_; }
+
+    bool set_input(const std::string &name, int value) override {
+        if (card_ && (name == "Card" || KEYPAD_SCAN.count(name))) {
+            int &was = held_[name];
+            const bool edge = (value != 0) != (was != 0);
+            was = value;
+            if (!edge) return true;
+            if (name == "Card") {
+                if (value) card_->card_button();
+                card_changed();
+            } else {
+                card_->key(KEYPAD_SCAN.at(name), value != 0);
+            }
+            return true;
+        }
+        auto it = binds_.find(name);
+        if (it == binds_.end()) return false;
+        FireWire::SetP1IOBindValue(it->second, value ? 1.0f : 0.0f);
+        return true;
+    }
+    int audio_rate() const override { return 48000; }
+    void turntable_add(int, int) override {}
+    const std::vector<uint8_t> &lamp_state() const override { return lamps_; }
+    uint64_t lamp_changes() const override { return lamp_changes_; }
+
+    static PythonCore *self_;
+
+private:
+    bool init_emulator(const std::string &bios, const std::string &keys) {
+        EmuFolders::SetAppRoot();
+        if (!EmuFolders::SetResourcesDirectory()) { fprintf(stderr, "python: no emulator resources next to the binary\n"); return false; }
+        // not EmuFolders::SetDataDirectory(): it would create the user's own ~/.config/PCSX2
+        EmuFolders::DataRoot = run_dir_ + "/pcsx2";   // settings, game settings, the disk overlay
+        EmuFolders::Settings = EmuFolders::DataRoot + "/inis";   // never the user's own PCSX2 settings
+        mkdirs(EmuFolders::Settings);
+        const char *why;
+        if (!VMManager::PerformEarlyHardwareChecks(&why)) { fprintf(stderr, "python: %s\n", why); return false; }
+
+        const std::string font = EmuFolders::GetOverridableResourcePath("fonts" FS_OSPATH_SEPARATOR_STR "Roboto-Regular.ttf");
+        font_data_ = FileSystem::MapBinaryFileForRead(font.c_str());
+        if (!font_data_.empty()) {
+            std::vector<ImGuiManager::FontInfo> fonts;
+            ImGuiManager::FontInfo fi{};
+            fi.data = font_data_;
+            fonts.push_back(fi);
+            ImGuiManager::SetFonts(std::move(fonts));
+        }
+
+        SettingsInterface &si = s_settings;
+        Host::Internal::SetBaseSettingsLayer(&s_settings);
+        VMManager::SetDefaultSettings(si, true, true, true, true, true);
+
+        // As the oracle runs (oracle/pcsx2/run.py): pinned, repeatable
+        si.SetStringValue("Folders", "Bios", std::string(Path::GetDirectory(bios)).c_str());
+        si.SetStringValue("Filenames", "BIOS", base_name(bios).c_str());
+        si.SetStringValue("Filenames", "ArcadeBIOS", base_name(bios).c_str());
+        const std::pair<const char *, const char *> key_files[] = {
+            {"MgChallengeIvFile", "civ"}, {"MgCardKeyStoreFile", "cks"}, {"MgEncryptedKeyStoreFile", "eks"},
+            {"MgKeyStoreKeyFile", "kek"}, {"ArcadeKelfOverrideKbitFile", "arcade_kelf_override_kbit"},
+            {"ArcadeKelfOverrideKcFile", "arcade_kelf_override_kc"}};
+        for (const auto &[k, f] : key_files) si.SetStringValue("Security", k, (keys + "/" + f + ".bin").c_str());
+        si.SetBoolValue("EmuCore", "EnablePatches", false);
+        si.SetBoolValue("EmuCore", "EnableCheats", false);
+        si.SetBoolValue("EmuCore", "EnablePINE", false);
+        // The cabinet's clock: 2003-06-01 12:00 JST, the time HIRAKU's server gives. The board's RTC
+        // keeps UTC (pop'n 11-14 add 9 hours to what they read, pop'n 12 0x1a8468), and Reliquary
+        // stores the manual time plus 9 hours (CDVD.cpp: the PS2's RTC is JST), so this is 9 hours
+        // before 03:00 UTC. pop'n 12's NINPOUCHO only runs from 10:55 to 23:05 JST (0x1a2058).
+        si.SetBoolValue("EmuCore", "ManuallySetRealTimeClock", true);
+        si.SetIntValue("EmuCore", "RtcYear", 3);
+        si.SetIntValue("EmuCore", "RtcMonth", 5);
+        si.SetIntValue("EmuCore", "RtcDay", 31);
+        si.SetIntValue("EmuCore", "RtcHour", 18);
+        si.SetIntValue("EmuCore", "RtcMinute", 0);
+        si.SetIntValue("EmuCore", "RtcSecond", 0);
+        si.SetBoolValue("EmuCore/Speedhacks", "vuThread", false);
+        // as Reliquary's game list sets up every Python 1 game (GameList.cpp), but Perfect Pool
+        si.SetBoolValue("EmuCore/Gamefixes", "OPHFlagHack", io_mode_ != "PPOOL");
+        for (const char *cpu : {"EnableEE", "EnableIOP", "EnableVU0", "EnableVU1"})
+            si.SetBoolValue("EmuCore/CPU/Recompiler", cpu, !interp_);
+        si.SetIntValue("EmuCore/GS", "Renderer", static_cast<int>(renderer_));
+        si.SetBoolValue("EmuCore/GS", "FrameLimitEnable", false);
+        si.SetIntValue("EmuCore/GS", "VsyncEnable", 0);
+        si.SetBoolValue("EmuCore/GS", "OsdShowMessages", false);
+        si.SetStringValue("SPU2/Output", "Backend", "Null");
+        si.SetBoolValue("InputSources", "SDL", false);
+        si.SetBoolValue("InputSources", "XInput", false);
+        Pad::ClearPortBindings(si, 0);
+        si.ClearSection("Hotkeys");
+        si.ClearSection("FireWire");   // no host bindings: the shell sets the inputs
+        si.SetBoolValue("MemoryCards", "Slot2_Enable", false);
+        si.SetBoolValue("Logging", "EnableSystemConsole", pcsx2_log_);
+        si.SetBoolValue("Logging", "EnableFileLogging", false);
+        si.SetBoolValue("Logging", "EnableEEConsole", pcsx2_log_);
+        si.SetBoolValue("Logging", "EnableIOPConsole", pcsx2_log_);
+
+        for (const auto &[section, key, v] : extra_settings_) si.SetStringValue(section.c_str(), key.c_str(), v.c_str());
+        VMManager::Internal::LoadStartupSettings();
+        // The shell ends a run with exit() from inside a vsync. PCSX2's static destructors
+        // then assert (the VM is still mapped), so leave before them with the same status;
+        // the shell has already saved and reported everything by then.
+        on_exit([](int status, void *) {
+            if (getenv("HK_PY_PROFILE")) prof::report();
+            if (__llvm_profile_write_file) __llvm_profile_write_file();   // a PGO training build: _exit skips its atexit
+            fflush(nullptr);
+            _exit(status);
+        }, nullptr);
+        if (getenv("HK_PY_PROFILE")) prof::start();
+        if (!EmuFolders::EnsureFoldersExist()) { fprintf(stderr, "python: cannot create %s\n", EmuFolders::DataRoot.c_str()); return false; }
+        self_ = this;
+        return true;
+    }
+
+    // MAME input names -> the interface board's bind indices (Reliquary's names)
+    void bind_inputs() {
+        std::map<std::string, u32> by_name;
+        for (const InputBindingInfo &b : FireWire::GetP1IOBindings()) by_name[b.name] = b.bind_index;
+        for (const auto &[mame, p1io] : POPN_INPUTS)
+            if (auto it = by_name.find(p1io); it != by_name.end()) binds_[mame] = it->second;
+    }
+
+    // CPU thread: a JAMMA output command to the interface board (outputs; the input poll).
+    // HK_PY_P1IO_LOG=<file>: each change of its payload, and the commands per frame.
+    void on_p1io_output(const u32 *payload, u32 quads) {
+        p1io_polls_++;
+        // lamps: word 8, as shell/cabinet.cpp's pypopn family reads it
+        if (quads > 8 && family_ == "pypopn") {
+            const auto &defs = hk::cab::lamps(family_);
+            for (size_t k = 0; k < defs.size() && k < lamps_.size(); k++) {
+                const uint8_t lit = (payload[8] >> defs[k].bit) & 1;
+                if (lit != lamps_[k]) lamps_[k] = lit, lamp_changes_++;
+            }
+        }
+        std::vector<u32> words(payload, payload + std::min<u32>(quads, 16));
+        if (words == p1io_last_) return;
+        p1io_last_ = words;
+        if (p1io_log_) {
+            fprintf(p1io_log_, "%llu out", (unsigned long long)frame_);
+            for (u32 w : words) fprintf(p1io_log_, " %08x", w);
+            fputc('\n', p1io_log_);
+        }
+    }
+
+    // GS thread: the picture shown at this vsync, as 0x00RRGGBB
+    void on_gs_frame(const u32 *rgba, u32 w, u32 h) {
+        std::lock_guard lock(gs_mutex_);
+        if (rgba && w && h) {
+            gs_pic_.resize((size_t)w * h);
+            uint32_t *out = gs_pic_.data();
+            const size_t n = gs_pic_.size();
+            for (size_t k = 0; k < n; k++) out[k] = __builtin_bswap32(rgba[k]) >> 8;   // R G B A bytes -> 0x00RRGGBB
+            gs_w_ = (int)w, gs_h_ = (int)h;
+        } else {
+            gs_pic_.assign((size_t)gs_w_ * gs_h_, 0u);   // a blank frame: black, the last size
+        }
+        gs_fresh_ = true;
+        gs_done_++;
+        gs_cv_.notify_all();
+    }
+
+    // CPU thread, at each vsync: sound so far, the previous vsync's picture, the shell
+    void on_vsync() {
+        if (!frame_) {
+            prof::g_cpu_tid = (pid_t)syscall(SYS_gettid);
+            // HK_PY_WATCH=addr,addr,...: EE RAM words, printed when they change (for reading the game)
+            if (const char *w = getenv("HK_PY_WATCH"))
+                for (const char *p = w; *p;) {
+                    char *e;
+                    watch_.push_back({(uint32_t)strtoul(p, &e, 16), 0xdeadbeef});
+                    p = *e ? e + 1 : e;
+                }
+        }
+        if (net_) net_->poll();   // online answers that arrived
+        if (autoplay_) apply_autoplay();
+        if (card_ && ea_.autocard[0]) autocard();
+        // HK_PY_EE_DUMP=FRAME[-LAST]:FILE: EE RAM (32 MiB) at that frame (FILE; the IOP's in FILE.iop),
+        // or at each frame to LAST (FILE.FRAME), for reading a game that only exists in RAM (pop'n 13 and 14 load
+        // theirs from a second stage)
+        static const char *dump = getenv("HK_PY_EE_DUMP");
+        if (dump) {
+            char *e;
+            const uint64_t first = strtoull(dump, &e, 10), last = *e == '-' ? strtoull(e + 1, nullptr, 10) : first;
+            if (frame_ >= first && frame_ <= last) {
+                std::string path = strchr(dump, ':') ? strchr(dump, ':') + 1 : "ee.bin";
+                if (last != first) path += "." + std::to_string(frame_);
+                if (FILE *f = fopen(path.c_str(), "wb")) {
+                    fwrite(eeMem->Main, 1, Ps2MemSize::MainRam, f);
+                    fclose(f);
+                }
+                if (FILE *f = fopen((path + ".iop").c_str(), "wb")) {   // and the IOP's 2 MiB
+                    fwrite(iopMem->Main, 1, Ps2MemSize::IopRam, f);
+                    fclose(f);
+                }
+            }
+        }
+        for (auto &[addr, last] : watch_) {
+            uint32_t v;
+            memcpy(&v, eeMem->Main + (addr & 0x1fffffc), 4);
+            if (v != last) printf("watch: frame %llu %08x = %08x\n", (unsigned long long)frame_, addr, v);
+            last = v;
+        }
+        if (p1io_log_ && p1io_polls_ != p1io_polls_logged_) {
+            fprintf(p1io_log_, "%llu polls %llu\n", (unsigned long long)frame_, (unsigned long long)(p1io_polls_ - p1io_polls_logged_));
+            p1io_polls_logged_ = p1io_polls_;
+            fflush(p1io_log_);
+        }
+        frame_++;
+        if (audio_sink_ && !audio_.empty()) audio_sink_(audio_.data(), (int)(audio_.size() / 2));
+        audio_.clear();
+        {
+            std::unique_lock lock(gs_mutex_);
+            // the picture wanted: this vsync's (just posted to the GS) or the previous one's
+            const uint64_t want = picture_now_ ? frame_ : frame_ - 1;
+            if (!no_picture_ && want >= 1 && gs_done_ < want) {
+                const auto t0 = std::chrono::steady_clock::now();
+                if (!gs_cv_.wait_for(lock, std::chrono::seconds(10), [&] { return gs_done_ >= want; }))
+                    fprintf(stderr, "python: frame %llu: no picture from the GS after 10 s\n", (unsigned long long)frame_);
+                gs_waits_++;
+                gs_wait_ms_ += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
+            }
+            // take the GS's picture by swapping buffers: it writes the whole of its next one
+            if (gs_fresh_) {
+                std::swap(pic_, gs_pic_);
+                pic_w_ = gs_w_, pic_h_ = gs_h_;
+                gs_fresh_ = false;
+            } else if (pic_.empty()) {
+                pic_.assign((size_t)gs_w_ * gs_h_, 0u);   // before the first picture: black
+                pic_w_ = gs_w_, pic_h_ = gs_h_;
+            }
+        }
+        if (frame_hook_) frame_hook_(frame_, pic_.data(), pic_w_, pic_h_);
+    }
+
+    // --autoplay: the game's own demo play. At each song's start pop'n music 9 sets its autoplay
+    // flag (0x257084) to "mode == attract demo" (FUN_0010e570); while it is set, every note that
+    // reaches the line is judged GREAT (FUN_0010cbe8). The play screen's button reader
+    // (FUN_0010dd80) gives nothing in the demo, by its own test of the mode. The mod makes both
+    // behave as in the demo, outside it too. Written as PCSX2's patches are, at a vsync on the CPU
+    // thread through the TLB, so the recompiler drops the blocks; checked each vsync, because the
+    // program is loaded from the disk after boot.
+    struct CodePatch { const char *game; uint32_t addr, was, now; };
+    static constexpr CodePatch AUTOPLAY[] = {
+        {"popn9", 0x10e644, 0x54430003, 0x00000000},   // bnel v0,v1 (mode != 2: flag = 0) -> nop
+        {"popn9", 0x10dd9c, 0x10430036, 0x10000036},   // beq v0,v1 (mode == 2: no buttons) -> b
+    };
+    static bool has_autoplay(const std::string &game) {
+        for (const CodePatch &p : AUTOPLAY)
+            if (game == p.game) return true;
+        return false;
+    }
+    void apply_autoplay() {
+        for (const CodePatch &p : AUTOPLAY)
+            if (opt_.game == p.game && memRead32(p.addr) == p.was) {
+                memWrite32(p.addr, p.now);
+                printf("autoplay: %08x patched (frame %llu)\n", p.addr, (unsigned long long)frame_);
+            }
+    }
+
+    [[noreturn]] void fatal(const std::string &why) {
+        fprintf(stderr, "python: %s\n", why.c_str());
+        if (on_fatal_) on_fatal_();
+        _exit(1);
+    }
+
+    Options opt_;
+    std::string family_, run_dir_, py1_path_, io_mode_;
+    std::unique_ptr<hk::py::CardReader> card_;
+    FILE *card_log_ = nullptr;
+    std::unique_ptr<hk::py::VirtualNet> net_;
+    FILE *net_log_ = nullptr;
+    std::unique_ptr<hk::py::EamuseServer> server_;
+    std::vector<std::pair<uint32_t, uint32_t>> watch_;   // HK_PY_WATCH: address, last value
+    std::unique_ptr<hk::py::EamuseRemote> remote_;   // -url: online
+    hk::EaOptions ea_;   // spice2x's e-AMUSEMENT options
+    uint64_t autocard_wait_ = 0;
+    // A call from the game, as it goes out: the PCBID put in (-p). The answer, when the core
+    // gives it itself: a new card's number (-card0), so the server never numbers a card that
+    // won't carry its number. "": the server answers (through done, which this may wrap).
+    std::string on_call(std::string &req, std::function<void(std::string)> &done) {
+        bool numbering = false, getnewid = false;
+        const std::string &number = ea_.card[0];
+        hk::py::EamuseServer::edit(req, [&](std::string &xml) {
+            if (!ea_.pcbid.empty()) {
+                hk::py::EamuseServer::set_attr(xml, "srcid", ea_.pcbid);
+                hk::py::EamuseServer::set_attr(xml, "gpcb_id", ea_.pcbid);
+            }
+            numbering = xml.find("<numbering") != std::string::npos && xml.find("method=\"assign\"") != std::string::npos;
+            // pop'n 13 numbers a new card with cardmng.getnewid (a card id and its player's ref id):
+            // with -card0 it asks the server about that number instead (inquire registers a card
+            // it doesn't know), and the answer gets the number as the card id
+            static const std::string method = "method=\"getnewid\"";
+            const size_t at = xml.find(method);
+            getnewid = !number.empty() && xml.find("<cardmng") != std::string::npos && at != std::string::npos;
+            if (getnewid) xml.replace(at, method.size(), "method=\"inquire\" cardid=\"" + number + "\" update=\"1\"");
+        });
+        if (getnewid) {
+            if (net_log_) {
+                std::lock_guard<std::mutex> l(net_log_mutex_);
+                fprintf(net_log_, "%llu cardmng.getnewid: inquire about the card's own number, %s (-card0)\n", (unsigned long long)frame_, number.c_str());
+                fflush(net_log_);
+            }
+            done = [done = std::move(done), number](std::string answer) {
+                hk::py::EamuseServer::edit(answer, [&](std::string &xml) {
+                    if (const size_t at = xml.find("<cardmng"); at != std::string::npos) xml.insert(at + 8, " cardid=\"" + number + "\"");
+                });
+                done(std::move(answer));
+            };
+            return "";
+        }
+        if (!numbering || number.empty()) return "";
+        if (net_log_) {
+            std::lock_guard<std::mutex> l(net_log_mutex_);
+            fprintf(net_log_, "%llu numbering.assign: the card's own number, %s (-card0)\n", (unsigned long long)frame_, ea_.card[0].c_str());
+            fflush(net_log_);
+        }
+        return server_->reply(req, "<response><numbering status=\"0\" number=\"" + ea_.card[0] + "\"></numbering></response>");
+    }
+    // -autocard: the card in the slot from the start, and again a while after the reader gives it
+    // back (spice2x waits 8 s too), so the game takes it whenever it opens the slot.
+    void autocard() {
+        if (card_->card_offered()) { autocard_wait_ = 8 * 60; return; }
+        if (autocard_wait_ && --autocard_wait_) return;
+        card_->card_button();
+        card_changed();
+    }
+    std::mutex net_log_mutex_;
+    std::map<std::string, int> held_;   // the card button's and 10-key's last values
+    std::string card_state_;
+    void card_changed() {
+        const std::string s = card_->state();
+        if (s == card_state_) return;
+        card_state_ = s;
+        printf("card: %s (frame %llu)\n", s.empty() ? "back with the player" : s.c_str(), (unsigned long long)frame_);
+        fflush(stdout);
+    }
+    GSRendererType renderer_ = GSRendererType::SW;
+    bool interp_ = false, pcsx2_log_ = false, no_picture_ = false, picture_now_ = true, autoplay_ = false;
+    bool bare_board_ = false;   // --bare-board: no card unit or e-AMUSEMENT network, as plain Reliquary
+    std::span<const u8> font_data_;   // mapped for the process's life
+    std::map<std::string, u32> binds_;
+    struct Setting { std::string section, key, value; };
+    std::vector<Setting> extra_settings_;
+    std::vector<uint8_t> lamps_;
+    uint64_t lamp_changes_ = 0;
+    FrameHook frame_hook_;
+    AudioSink audio_sink_;
+    std::function<void()> on_fatal_;
+    uint64_t frame_ = 0;
+    std::vector<float> audio_;
+    FILE *p1io_log_ = nullptr;
+    uint64_t p1io_polls_ = 0, p1io_polls_logged_ = 0;
+    std::vector<u32> p1io_last_;
+
+    std::mutex gs_mutex_;
+    std::condition_variable gs_cv_;
+    uint64_t gs_done_ = 0;                    // GS vsyncs presented
+    bool gs_fresh_ = false;                   // gs_pic_ holds a picture the CPU thread hasn't taken
+    std::vector<uint32_t> gs_pic_, pic_;
+    int gs_w_ = 640, gs_h_ = 448, pic_w_ = 640, pic_h_ = 448;
+    uint64_t gs_waits_ = 0;
+    double gs_wait_ms_ = 0;
+};
+
+PythonCore *PythonCore::self_ = nullptr;
+PythonCore g_core;
+
+// Host::RunOnCPUThread work, run at the next vsync's message pump (CPU thread)
+std::mutex s_cpu_queue_mutex;
+std::deque<std::function<void()>> s_cpu_queue;
+std::thread::id s_cpu_thread;
+
+}  // namespace
+
+hk::Core &hk::core() { return g_core; }
+
+//////////////////////////////////////////////////////////////////////////
+// PCSX2's Host interface: what its core asks of a front end. Mostly nothing here:
+// no UI, no window of its own (the GS runs surfaceless), no host input.
+//////////////////////////////////////////////////////////////////////////
+
+void Host::CommitBaseSettingChanges() {}
+void Host::LoadSettings(SettingsInterface &, std::unique_lock<std::mutex> &) {}
+void Host::CheckForSettingsChanges(const Pcsx2Config &) {}
+bool Host::RequestResetSettings(bool, bool, bool, bool, bool) { return false; }
+void Host::SetDefaultUISettings(SettingsInterface &) {}
+bool Host::LocaleCircleConfirm() { return false; }
+std::unique_ptr<ProgressCallback> Host::CreateHostProgressCallback() { return ProgressCallback::CreateNullProgressCallback(); }
+void Host::ReportInfoAsync(const std::string_view title, const std::string_view message) {
+    fprintf(stderr, "python: %.*s: %.*s\n", (int)title.size(), title.data(), (int)message.size(), message.data());
+}
+void Host::ReportErrorAsync(const std::string_view title, const std::string_view message) {
+    fprintf(stderr, "python: error: %.*s: %.*s\n", (int)title.size(), title.data(), (int)message.size(), message.data());
+}
+void Host::OpenURL(const std::string_view) {}
+bool Host::CopyTextToClipboard(const std::string_view) { return false; }
+std::string Host::GetTextFromClipboard() { return {}; }
+void Host::BeginTextInput() {}
+void Host::EndTextInput() {}
+std::optional<WindowInfo> Host::GetTopLevelWindowInfo() {
+    WindowInfo wi;
+    wi.type = WindowInfo::Type::Surfaceless;
+    return wi;
+}
+void Host::OnInputDeviceConnected(const std::string_view, const std::string_view) {}
+void Host::OnInputDeviceDisconnected(const InputBindingKey, const std::string_view) {}
+void Host::SetMouseMode(bool, bool) {}
+void Host::SetMouseLock(bool) {}
+std::optional<WindowInfo> Host::AcquireRenderWindow(bool) { return GetTopLevelWindowInfo(); }
+void Host::ReleaseRenderWindow() {}
+void Host::BeginPresentFrame() {}
+void Host::RequestResizeHostDisplay(s32, s32) {}
+void Host::OnVMStarting() {}
+void Host::OnVMStarted() {}
+void Host::OnVMDestroyed() {}
+void Host::OnVMPaused() {}
+void Host::OnVMResumed() {}
+void Host::OnGameChanged(const std::string &, const std::string &, const std::string &, const std::string &, u32, u32) {}
+void Host::OnPerformanceMetricsUpdated() {}
+void Host::OnSaveStateLoading(const std::string_view) {}
+void Host::OnSaveStateLoaded(const std::string_view, bool) {}
+void Host::OnSaveStateSaved(const std::string_view) {}
+void Host::RunOnCPUThread(std::function<void()> function, bool block) {
+    if (std::this_thread::get_id() == s_cpu_thread || s_cpu_thread == std::thread::id()) {
+        function();
+        return;
+    }
+    std::lock_guard lock(s_cpu_queue_mutex);
+    s_cpu_queue.push_back(std::move(function));
+    (void)block;   // only the CPU thread drains the queue; a blocking caller would deadlock it
+}
+void Host::RefreshGameListAsync(bool) {}
+void Host::CancelGameListRefresh() {}
+bool Host::IsFullscreen() { return false; }
+void Host::SetFullscreen(bool) {}
+void Host::OnCaptureStarted(const std::string &) {}
+void Host::OnCaptureStopped() {}
+void Host::RequestExitApplication(bool) {}
+void Host::RequestExitBigPicture() {}
+void Host::RequestVMShutdown(bool, bool, bool) { VMManager::SetState(VMState::Stopping); }
+void Host::OnAchievementsLoginSuccess(const char *, u32, u32, u32) {}
+void Host::OnAchievementsLoginRequested(Achievements::LoginRequestReason) {}
+void Host::OnAchievementsHardcoreModeChanged(bool) {}
+void Host::OnAchievementsRefreshed() {}
+bool Host::InBatchMode() { return true; }
+bool Host::InNoGUIMode() { return true; }
+bool Host::ShouldPreferHostFileSelector() { return false; }
+void Host::OpenHostFileSelectorAsync(std::string_view, bool, FileSelectorCallback callback, FileSelectorFilters, std::string_view) {
+    callback(std::string());
+}
+int Host::LocaleSensitiveCompare(std::string_view lhs, std::string_view rhs) { return lhs.compare(rhs); }
+std::optional<u32> InputManager::ConvertHostKeyboardStringToCode(const std::string_view) { return std::nullopt; }
+std::optional<std::string> InputManager::ConvertHostKeyboardCodeToString(u32) { return std::nullopt; }
+const char *InputManager::ConvertHostKeyboardCodeToIcon(u32) { return nullptr; }
+BEGIN_HOTKEY_LIST(g_host_hotkeys)
+END_HOTKEY_LIST()
+
+void Host::PumpMessagesOnCPUThread() {
+    s_cpu_thread = std::this_thread::get_id();
+    std::deque<std::function<void()>> work;
+    {
+        std::lock_guard lock(s_cpu_queue_mutex);
+        work.swap(s_cpu_queue);
+    }
+    for (auto &f : work) f();
+}
+
+s32 Host::Internal::GetTranslatedStringImpl(const std::string_view, const std::string_view msg, char *tbuf, size_t tbuf_space) {
+    if (msg.size() > tbuf_space) return -1;
+    std::memcpy(tbuf, msg.data(), msg.size());
+    return static_cast<s32>(msg.size());
+}
+
+std::string Host::TranslatePluralToString(const char *, const char *msg, const char *, int count) {
+    std::string ret(msg);
+    const std::string n = std::to_string(count);
+    for (size_t pos; (pos = ret.find("%n")) != std::string::npos;) ret.replace(pos, 2, n);
+    return ret;
+}

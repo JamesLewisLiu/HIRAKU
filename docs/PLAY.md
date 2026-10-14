@@ -639,7 +639,7 @@ Effect is E and VEFX is W. Coin is 5; Test and Service are F2 and 9. A USB IIDX 
 
 **Lamps:** the key lamps, Start, VEFX, Effect and credit lamps, eight spotlights, the neon and the board's LEDs, by name for HID LEDs and the lights socket (docs/LIGHTS.md). The 16-segment display above the screen shows in the window title.
 
-**The background video** plays in the middle of the play field during a stage, from the Video CD (`gc992-jaa04`), as the game drives the DVD player; MAME shows none. `--video off` gives MAME's picture. The video needs FFmpeg's libraries (libavformat, libavcodec) when HIRAKU is built; without them the build goes ahead without it. Which clip goes with which song, and the exact keying and placement, still need checking against a real cabinet (PLAN.md section 21, TW-3).
+**The background video** plays in the middle of the play field during a stage, from the Video CD (`gc992-jaa04`), as the game drives the DVD player; MAME shows none. `--video off` gives MAME's picture. The video needs FFmpeg's libraries (libavformat, libavcodec) when HIRAKU is built; without them the build goes ahead without it. Which clip goes with which song, and the exact keying and placement, still need checking against a real cabinet (PLAN.md section 23, TW-3).
 
 **Speed** (desktop, with the game's R3000 code recompiled: `tools/mipsrec.py bmiidx3`, then `ninja`): a stage 1.5 ms a frame with the video, 1.3 without. When the game reads its program CD (between screens) frames take up to about 40 ms: MAME's SCSI model, which HIRAKU runs as it is.
 
@@ -664,3 +664,84 @@ Test mode's **DVD CHECK** plays and stops the Video CD. A credit is **3 coins** 
 **Speed** (desktop, recompiled R3000 code): a stage 1.8 ms a frame with the video.
 
 Its regress cases: `bmiidx-clear` (the first boot, the DVD check and backup clear in test mode, the restart, attract), `bmiidx-play` (a game of 7KEYS after it) and `bmiidx-video` (the same with the video). They are checked against a MAME given the same serial port (oracle/mame-patches).
+
+## Konami Python 1: pop'n music 9–14 (in progress, M16)
+
+pop'n music 9 (`popn9`) runs on HIRAKU's Python core, and so do 10 (`popn10`), 11 (`popn11`), 12 Iroha (`popn12`), 13 Carnival (`popn13`) and 14 FEVER! (`popn14`): PCSX2 Reliquary's emulator hosted by HIRAKU's shell (PLAN.md §23, docs/PYTHON.md). It is built inside Reliquary's own build. You need:
+- Reliquary's source, `pcsx2-reliquary-1.9.4-reliquary.zip`, unpacked to `$HK_PYTHON_WORK/pcsx2-reliquary` (default `/run/media/roganis/DATA/Python-work`);
+- the set as Reliquary takes it: `popn9.py1` (or `popn10.py1` …) and its folder (the disk CHD, the interface board's ROMs, BBSRAM, dongles, the KN00002 memory card), plus the arcade BIOS (`COH-H31000.BIN`, `.NVM`, `.MEC`) and the MagicGate key files. The ingester finds `bios/` and `keys/` next to the sets' folder, or takes `--bios DIR --keys DIR`.
+
+```bash
+oracle/pcsx2/build-reliquary.sh all     # once: Reliquary with HIRAKU's patch, and hiraku-popn9 … hiraku-popn14 (memory-capped)
+tools/build-libchdr.sh                  # once: the CHD reader the ingester uses
+tools/ingest.py ~/Downloads/konami-python-1-collection/kpython1/popn9.py1
+build/cmake/hiraku-popn9 --window --renderer vk
+```
+
+- `--renderer vk` draws with Vulkan: less CPU. The default, `sw` (software), is what the reference runs. `tools/regress.py` checks both.
+- `--autoplay` (pop'n music 9 only, for now) makes the game play every song itself, as in its attract demo: every note GREAT, the buttons ignored during songs. It's a mod for testing what clears unlock (events, HITASURA, Gambler Z); scores and e-AMUSEMENT rankings count it like any play.
+- Each frame's picture is shown at the end of that frame: 4 frames from a button to the picture, the game's own. `--picture-overlap` shows the previous frame's instead, so the GS works alongside the CPU: a little less time per frame on a slow PC, for a frame (16.7 ms) more latency.
+- `oracle/pcsx2/build-reliquary.sh pgo` (once, ~5 min) rebuilds with profile-guided optimisation: about 3 % less CPU, same results.
+- The CHD stays where it is (linked, not unpacked). The game's writes (BBSRAM, dongle, the disk's own writes as an overlay) go to the NVRAM folder, `~/.local/share/hiraku/popn9`.
+- The keys and the BIOS are copied into `dumps/popn9/`, which is never committed. Reliquary's habit of printing the derived keys is off in HIRAKU's build.
+- Boot takes about 50 s (BIOS, card, disk), as on the real cabinet.
+
+| Key | pop'n music |
+|---|---|
+| Z S X D C F V G B | buttons 1–9, left to right (white, yellow, green, blue, red, blue, green, yellow, white) |
+| 5 | coin (two coins make a credit) |
+| F2 / 9 | test / service |
+
+In test mode, blue (buttons 4/6) moves and red (5) selects; I/O CHECK > INPUT CHECK shows SW1–SW9 lighting for buttons 1–9.
+
+**Lamps:** the 9 button lamps, 5 top lamps and 4 side lamps, through the lights socket and HID lamps (docs/LIGHTS.md), as the game's LAMP CHECK names them.
+
+**pop'n 9 unlocks:** right-click pop'n music 9 > **Unlocks**, pick the event phase, and start the game.
+- **MAX** adds HITASURA mode after EXPERT in the mode select, and everything the phases before it release.
+- Phases 1–3 run the Gambler Z event and release its songs (RemyWiki). On the cabinet the event's labyrinth needed an e-AMUSEMENT card; what it does without one in HIRAKU is not checked yet.
+- From a terminal: `tools/unlock.py popn9` lists the phases, and `tools/unlock.py popn9 phase=4` sets MAX. The game must not be running; the old save is kept as a `.bak`.
+- **In the game itself:** test mode > EVENT OPTIONS > PASSWORD, the four codes in order (`unlocks.toml` has them). The tool writes the same bytes the game does.
+
+**e-AMUSEMENT (in progress):** pop'n 9 is the first pop'n with e-AMUSEMENT cards. It is OFF by default (test mode > e-AMUSEMENT OPTIONS), and the game plays normally without it.
+- **What works:** with it ON, HIRAKU plays the cabinet's card reader/writer and 10-key, and Konami's e-AMUSEMENT server (closed in 2003) inside the emulator, with no network traffic.
+  - The title screen says "e-AMUSEMENT connected!" and "cards can be used!!".
+  - A new card is registered as on the cabinet: after Start, put the card in (Insert), enter a name, then a 4-digit PIN twice on the 10-key. The game writes the card ("card save complete") and plays on with it.
+  - The player data is saved at the end of each credit (in the save folder's `eamuse/`). Next time, the card and the PIN bring back your name, character and options; a wrong PIN plays without the card.
+- **Offline or online:** by default the server runs inside HIRAKU, with the data in the save folder's `eamuse/`.
+  - To share cards, players and rankings between PCs, run `hiraku-eamuse --port 8080` on one of them, and put `that-pc:8080` in the launcher's Settings > e-AMUSEMENT > EA Service URL (or `-url that-pc:8080`).
+  - **As in spice2x:** the settings and options are spice2x's: `-ea`, `-url`, `-smartea`, `-p` (PCBID), `-card0` / `card0.txt` (the card's number, `E004...`) and `-autocard`. A spice2x setup's values work as they are (docs/EAMUSE3.md, "spice2x's options"). In the launcher, **Pick** next to a card offers the cards HIRAKU already has, or a new number.
+  - A line of text in the server's `message` file (in `eamuse/` offline, or `hiraku-eamuse`'s data folder) scrolls across the title screen of every cabinet, from its next start.
+  - Any server that implements docs/EAMUSE3.md works the same way; `tools/eamuse/check.py URL` checks one.
+- **Course rankings** are kept and given back. The HITASURA and Gambler Z boards, KONAMI ID and ee'MALL follow the game's formats but haven't been seen in play yet (docs/EAMUSE3.md).
+- **The card:** `card.bin` in the save folder (`~/.local/share/hiraku/popn9`), 128 bytes, created as a fresh card of the game played (pop'n 9 to 13); with a card number, `cards/NUMBER.bin`. Insert puts it in the slot (or takes it back); the reader takes it when the game opens the slot and gives it back when the game ejects it. With Auto Card Insert (`-autocard p1`) it goes in by itself.
+- **The 10-key:** the numeric keypad's 0–9, Enter and `.`, with Backspace as Clear.
+
+**pop'n music 10–14:** they run the same way and play (coins, mode, button select, songs); their lamps and inputs are the same as pop'n 9's, checked in each game's LAMP CHECK. What is pop'n 9's alone so far: `--autoplay`.
+- **pop'n 10 unlocks:** right-click pop'n music 10 > **Unlocks**, as for pop'n 9: the event phase, from 1 (INTERNET RANKING) through HOSHI NI NEGAIO (2-4) to MAX (ALL DATA RELEASE). Or `tools/unlock.py popn10 phase=5`, or the five codes in test mode > EVENT OPTIONS > PASSWORD (`unlocks.toml` has them).
+  - **HOSHI NI NEGAIO** (phases 2 and 3) is the shop's: every credit's stars fill five buckets of wishes (30 songs, characters, an EX chart), then a black bucket for the HELL 10 course. It runs in HIRAKU as on a cabinet, card or not. Unlocks shows each bucket's progress and can grant every wish at once (`tools/unlock.py popn10 hoshi=all`, or `hoshi=none` for a new event). At phase 4 or MAX everything it gives is playable anyway.
+  - **INTERNET RANKING:** with e-AMUSEMENT on, the attract mode shows the EXPERT course rankings, and in phases 2 and 3 the shops' HOSHI NI NEGAIO board, from what the server has (HIRAKU's own, or a shared one for several cabinets).
+- **pop'n 11 unlocks:** right-click pop'n music 11 > **Unlocks**: the event phase, from 1 (INTERNET RANKING) through POPN TOURIST (2-4) to MAX (ALL DATA RELEASE). Or `tools/unlock.py popn11 phase=5`, or the five codes in test mode > EVENT OPTIONS > PASSWORD.
+  - **POPN TOURIST** (phases 2 and 3) is the shop's board game: its 18 finds release 14 songs, an option, a course and EX charts. Unlocks shows which are found and can mark them all found (`tools/unlock.py popn11 tourist=all`, or `tourist=none` for a new event). Phase 3 also releases the secret songs, and at phase 4 or MAX everything the board gives is playable anyway.
+  - **Mileage songs:** nine songs a player buys with an e-AMUSEMENT card's mileage, kept by the server per card. Unlocks shows each card's tickets and can give every card nine tickets for each song (`tools/unlock.py popn11 tickets=all`); this needs HIRAKU's own server.
+  - **INTERNET RANKING:** with e-AMUSEMENT on, the attract mode shows the EXPERT course rankings, and in phases 2 and 3 the shops' POPN TOURIST board ("獲得アイテム一覧": finds, and the date of the last one).
+- **pop'n 12 unlocks:** right-click pop'n music 12 Iroha > **Unlocks**: the event phase, from 1 (INTERNET RANKING) and 2 (NET TAISEN MODE RELEASE) through NINPOUCHO (3-4) to MAX (ALL DATA RELEASE). Or `tools/unlock.py popn12 phase=5`, or the five codes in test mode > EVENT OPTIONS > PASSWORD.
+  - **NINPOUCHO** (phase 3) is the shop's: after each credit the player stops a wheel of the four seasons, and the credit's points go to that season. Each season's points reach its six songs in turn; then ヒナマツリ and course 7. Unlocks shows each season's points and what comes next, and can reach everything at once (`tools/unlock.py popn12 ninpoucho=all`, or `ninpoucho=none` for a new event). Phase 3 also releases the secret songs; at phase 4 or MAX everything NINPOUCHO gives is playable anyway.
+  - **NINPOUCHO keeps shop hours:** it only runs from 10:55 to 23:05 Japan time. HIRAKU's cabinet clock starts at 12:00 Japan time.
+  - **NET TAISEN** (online battles between cabinets, through a matching server) isn't supported yet: the phase can be set, but HIRAKU has no matching server.
+  - **INTERNET RANKING:** with e-AMUSEMENT on, the attract mode shows the EXPERT course rankings, and at phase 3 the shops' NINPOUCHO board ("ポップン秘伝忍法帖", each shop's scrolls).
+- **pop'n 13 unlocks:** right-click pop'n music 13 Carnival > **Unlocks**: the event phase, from 1 (POP'N LAND) and 2 (POP'N WORLD) to MAX (ALL DATA RELEASE), and EXTRA (BEMANI EXPO: アジアンミクスチャー, ピアノトロニカ, クイズマジックアカデミー). Or `tools/unlock.py popn13 phase=4 extra=1`. In test mode > EVENT OPTIONS the passwords are hidden: blue right then red opens PHASE PASSWORD (the four codes in order), blue left then red EXTRA PASSWORD.
+  - **POP'N LAND** (phase 1) and **POP'N WORLD** (phase 2) are the shop's theme parks: after each credit the player picks a card, and its points build one attraction (a song). Each song opens at its mark, then its HYPER and EX charts; older songs gain new charts; the last attractions open courses 6 and 7. Unlocks shows how far each park is and what is nearest, and can build everything at once (`tools/unlock.py popn13 land=all`, or `land=none` for a new event). Phase 1 also releases the secret songs; phase 2 releases everything POP'N LAND gives, phase 3 POP'N WORLD's.
+  - **Shop boards:** with e-AMUSEMENT on, the attract mode shows the shops' ポップランド board at phase 1 and ポップワールド board at phase 2 (each shop's attractions, COMPLETE!! when all are built).
+- **pop'n 14 unlocks:** right-click pop'n music 14 FEVER! > **Unlocks**: the event phase, from 1 (the SHOP EVENT's first story) through the seventh story (7) and its end (8) to MAX (ALL DATA RELEASE, with the ee'MALL songs). Or `tools/unlock.py popn14 phase=9`. In test mode > EVENT OPTIONS the password is hidden, as in pop'n 13: blue right then red opens PHASE PASSWORD (the nine codes in order).
+  - **The SHOP EVENT** (フィーバー戦士ポップン14, phases 1-7) is the shop's: each phase is a story whose four songs the shop's credits rescue, one at each mark; once a story is done, credits fill FEVER ROBO's gauge, which gives フィーバーロボ. Unlocks shows each story's progress and what is nearest, and can rescue everything at once (`tools/unlock.py popn14 story=all`, or `story=none` for a new event). Each story's songs are released two phases after it, everything at MAX. The final story's four EX charts need a count only reached online; MAX releases them.
+  - **INTERNET RANKING:** with e-AMUSEMENT on, the attract mode shows the EXPERT course rankings, and the story screen shows the songs rescued so far.
+- **e-AMUSEMENT:** pop'n 10 to 14 work as pop'n 9 does (cards registered, saved and read back, pop'n 11's mileage too; test mode > NETWORK OPTIONS > e-AMUSEMENT OPTIONS); a pop'n 9 card can be carried over to pop'n 10. pop'n 12, 13 and 14 keep their player records and each song's best score. Older cards can't be carried over to 12, 13 and 14 yet (docs/EAMUSE3.md, "Later games").
+- **pop'n 14's e-AMUSEMENT PASS** is an IC card: only a number, `E004` and 12 hex digits, as in spice2x. HIRAKU uses `-card0` or `card0.txt` (the launcher's Player 1 Card), or makes a number and keeps it in the save folder's `card0.txt`. Insert puts the card in the reader's slot; the PIN is typed on the numeric keypad (the reader's 10-key: Enter is its blank key, `.` its 00 key) and checked by the server.
+- pop'n 12–14 start in ENJOY mode with 5 buttons selected; blue moves to 9.
+- The pop'n 11 dump has a damaged first sector (a PC wrote a blank partition table there); HIRAKU and Reliquary read the boot header's backup copy.
+
+**From the launcher:** drop the `.py1` (or the set's folder) on its window; it passes `--renderer vk` for Python games.
+
+**On another PC:** `tools/package.sh` takes the Python binaries along with Reliquary's resources and the libraries built for it; `tools/pack-data.py DEST popn9` copies the game's data, CHD included (2.4 GB).
+
+**Not yet:** the board's own CPU (Reliquary answers its FireWire commands directly), Python games other than pop'n 9–14 (they need their own `games/<id>/game.toml`; the ingester tells you the program's SHA-1).

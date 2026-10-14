@@ -186,6 +186,8 @@ int main(int argc, char **argv) {
     int audio_ms = 8;
     for (int k = 1; k < argc; k++) {
         std::string a = argv[k];
+        // one dash is two, as spice2x writes its options (-url, -p, -card0: shell/eaoptions.h)
+        if (a.size() >= 2 && a[0] == '-' && a[1] != '-' && a != "-h") a = "-" + a;
         auto val = [&]() -> std::string {
             if (k + 1 >= argc) { fprintf(stderr, "%s needs a value\n", a.c_str()); exit(2); }
             return argv[++k];

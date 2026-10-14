@@ -1,0 +1,24 @@
+# pop'n music 12 Iroha: test mode > NETWORK OPTIONS (item 8) > e-AMUSEMENT OPTIONS (no ee'MALL line) >
+# e-AMUSEMENT ON, SAVE AND EXIT. Then power cycle; run oracle/scripts/popn12-card-new.his with the same --nvram.
+#   hiraku-popn12 --nvram DIR --script oracle/scripts/popn12-eamuse-on.his
+game popn12
+at 3000 press "Test" 10
+at 3300 press "P1 Button 6" 10
+at 3320 press "P1 Button 6" 10
+at 3340 press "P1 Button 6" 10
+at 3360 press "P1 Button 6" 10
+at 3380 press "P1 Button 6" 10
+at 3400 press "P1 Button 6" 10
+at 3420 press "P1 Button 6" 10
+at 3440 press "P1 Button 6" 10
+at 3520 press "P1 Button 5" 10
+at 3620 press "P1 Button 5" 10
+at 3760 hold "P1 Button 5"
+at 3780 press "P1 Button 6" 10
+at 3810 release "P1 Button 5"
+at 3860 press "P1 Button 6" 10
+at 3880 press "P1 Button 6" 10
+at 3900 press "P1 Button 6" 10
+at 3920 press "P1 Button 6" 10
+at 3960 press "P1 Button 5" 10
+at 4130 quit

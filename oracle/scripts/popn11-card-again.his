@@ -1,0 +1,17 @@
+# pop'n music 11, after popn11-card-new.his (same --nvram): the registered card again. userdata.read
+# and D11 player get (the mileage), the PIN 1234, then the player's name, character and options,
+# D11 pf get, userid.ctou, and mode select.
+#   hiraku-popn11 --nvram DIR --script oracle/scripts/popn11-card-again.his
+game popn11
+at 4500 press "Coin 1" 8
+at 4540 press "Coin 1" 8
+at 4700 press "P1 Button 5" 8
+at 5050 press "Card" 8
+at 5400 press "P1 Button 5" 10
+at 5600 press "Keypad 1" 8
+at 5630 press "Keypad 2" 8
+at 5660 press "Keypad 3" 8
+at 5690 press "Keypad 4" 8
+at 5720 press "Keypad Enter" 8
+at 6000 snap
+at 7000 quit
