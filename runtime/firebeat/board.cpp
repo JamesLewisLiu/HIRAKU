@@ -221,7 +221,7 @@ void kbd_scan_fire() {
         kb.sent = kb.keys;
         if (idle && !kb.byte->armed()) kb.byte->in(ticks_from_us(320));
     }
-    g_kbd_scan.in(ticks_from_us(10000));
+    g_kbd_scan.again(ticks_from_us(10000));
 }
 uint8_t g_wheel[2] = {0x80, 0x80};
 uint64_t g_midi_out_bytes = 0;
@@ -607,7 +607,7 @@ void ymz_tick_fire();
 Timer g_ymz_tick("ymz", ymz_tick_fire);
 void ymz_tick_fire() {
     ymz_render_until(now());
-    g_ymz_tick.in(ticks_from_us(2000));
+    g_ymz_tick.again(ticks_from_us(2000));
 }
 
 // ---- video timing ---------------------------------------------------------------------
@@ -622,7 +622,7 @@ uint64_t frame_ticks() {
 void vblank_fire() {
     audio_release();
     g_frame++;
-    g_vblank.in(frame_ticks());
+    g_vblank.again(frame_ticks());
     g_gcu->vblank(true);
     if (g_frame_hook) {
         int w = g_gcu->hvisible(), h = g_gcu->vvisible();

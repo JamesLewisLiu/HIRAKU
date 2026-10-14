@@ -24,6 +24,7 @@ struct Event {
     uint64_t when = UINT64_MAX;
     EventFn fn;
     std::string name;
+    uint64_t fired = 0;               // the tick it was due at when it last ran
 };
 
 // A timer handle owned by a device. Re-arming replaces the pending expiry.
@@ -33,6 +34,10 @@ public:
     ~Timer();
     void at(uint64_t when);          // absolute tick
     void in(uint64_t ticks);         // relative to now
+    // Re-arm `period` after the tick this timer's current firing was due at, not after now: events
+    // run at the next poll, a little after they are due, and a periodic timer re-armed from now
+    // would drift by that much every period. MAME's timer callbacks run at their exact time.
+    void again(uint64_t period);
     void cancel();
     bool armed() const;
     uint64_t when() const;

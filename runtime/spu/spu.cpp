@@ -98,7 +98,7 @@ void tick_fire() {
     catch_up();
     if (g_sync_ata_irq) { set_line(6, true); g_stats.irq6++; }
     else { set_line(2, true); g_stats.irq2++; }
-    g_tick.in(ticks_from_hz(500));
+    g_tick.again(ticks_from_hz(500));
 }
 
 // ---- ATA DMA into wave RAM: one word every 350 ns while DMARQ is up, as in MAME ------
@@ -113,7 +113,7 @@ void dma_fire() {
         g_dma_addr++;
         g_stats.dma_words++;
     }
-    if (g_dmarq) g_dma.in(ticks_from_us(0.35 * DMA_BURST));
+    if (g_dmarq) g_dma.again(ticks_from_us(0.35 * DMA_BURST));
 }
 
 // ---- 68000 address space ------------------------------------------------------------

@@ -57,6 +57,7 @@ void Timer::at(uint64_t when) {
     regrant();
 }
 void Timer::in(uint64_t ticks) { at(now() + ticks); }
+void Timer::again(uint64_t period) { at(g_events[slot_].fired + period); }
 void Timer::cancel() { g_events[slot_].when = UINT64_MAX; }
 bool Timer::armed() const { return g_events[slot_].when != UINT64_MAX; }
 uint64_t Timer::when() const { return g_events[slot_].when; }
@@ -75,6 +76,7 @@ void sched_sync() {
             if (g_events[k].when <= g_base && g_events[k].when < bw) { bw = g_events[k].when; best = (int)k; }
         if (best < 0) break;
         g_events[best].when = UINT64_MAX;
+        g_events[best].fired = bw;
         g_events[best].fn();
     }
     regrant();
