@@ -417,7 +417,8 @@ void MainWindow::showDetails() {
     if (g->status != Game::Ready) {
         QString how = g->howTo().toHtmlEscaped();
         int pre = how.indexOf("\n\n", how.indexOf("\n\n") + 2);   // the commands, after the second paragraph break
-        h += "<p>" + how.left(pre).replace("\n\n", "</p><p>") + "</p><pre>" + how.mid(pre + 2) + "</pre>";
+        h += "<p>" + how.left(pre).replace("\n\n", "</p><p>") + "</p>";
+        if (pre >= 0) h += "<pre>" + how.mid(pre + 2) + "</pre>";   // (a not-installed text has none)
     } else {
         bool fresh = !QFileInfo::exists(cfg::nvramDir(g->id));
         if (fresh && !g->firstBoot.isEmpty())
