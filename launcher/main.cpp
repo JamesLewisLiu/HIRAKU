@@ -6,6 +6,7 @@
 //   hiraku --add FILE...     add a game from its files (ROM set, CHDs, images, folders),
 //                            as dropping them on the window does; the log goes to stderr too
 #include <QApplication>
+#include <QIcon>
 #include <QTimer>
 
 #include "mainwindow.h"
@@ -15,6 +16,7 @@ int main(int argc, char **argv) {
     QApplication::setApplicationName("hiraku");
     QApplication::setApplicationDisplayName("HIRAKU");
     QApplication::setDesktopFileName("hiraku");
+    QApplication::setWindowIcon(QIcon(":/icon.png"));
     MainWindow w;
     w.show();
     QStringList args = app.arguments().mid(1);

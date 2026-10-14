@@ -17,6 +17,7 @@
 #include <QDockWidget>
 #include <QFile>
 #include <QFileInfo>
+#include <QHBoxLayout>
 #include <QHeaderView>
 #include <QLabel>
 #include <QLineEdit>
@@ -29,6 +30,7 @@
 #include <QStatusBar>
 #include <QTimer>
 #include <QToolBar>
+#include <QToolButton>
 #include <QTreeWidget>
 #include <QUrl>
 #include <QVBoxLayout>
@@ -70,7 +72,6 @@ bool lightsFileUsed(const QString &path) {
 
 MainWindow::MainWindow() {
     setWindowTitle("HIRAKU");
-    setWindowIcon(familyIcon("bm3"));
     resize(900, 600);
 
     // ---- actions ----
@@ -147,6 +148,24 @@ MainWindow::MainWindow() {
     tb->addSeparator();
     tb->addAction(refreshAct);
     tb->addAction(addFiles);
+    // the HIRAKU logo, as tall as the buttons beside it; a click shows About HIRAKU
+    tb->addSeparator();
+    auto *logo = new QToolButton;
+    const int logoH = tb->iconSize().height() + tb->fontMetrics().height();
+    QPixmap lp = QPixmap(":/logo.png").scaledToHeight(logoH * devicePixelRatio(), Qt::SmoothTransformation);
+    lp.setDevicePixelRatio(devicePixelRatio());
+    logo->setIcon(QIcon(lp));
+    logo->setIconSize(lp.deviceIndependentSize().toSize());
+    logo->setAutoRaise(true);
+    logo->setCursor(Qt::PointingHandCursor);
+    logo->setToolTip("About HIRAKU");
+    connect(logo, &QToolButton::clicked, this, [this] { AboutDialog(this).exec(); });
+    // in a plain widget: a tool button added straight to the toolbar gets the toolbar's icon size
+    auto *logoBox = new QWidget;
+    auto *logoLay = new QHBoxLayout(logoBox);
+    logoLay->setContentsMargins(0, 0, 0, 0);
+    logoLay->addWidget(logo);
+    tb->addWidget(logoBox);
     auto *spacer = new QWidget;
     spacer->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
     tb->addWidget(spacer);
@@ -241,8 +260,6 @@ MainWindow::MainWindow() {
     help->addAction("Lights (docs/LIGHTS.md)", this, [] {
         QDesktopServices::openUrl(QUrl::fromLocalFile(cfg::rootDir() + "/docs/LIGHTS.md"));
     });
-    help->addSeparator();
-    help->addAction(QIcon::fromTheme("help-about"), "About HIRAKU…", this, [this] { AboutDialog(this).exec(); });
 
     // ---- the game process ----
     m_ingest.setProcessChannelMode(QProcess::MergedChannels);
