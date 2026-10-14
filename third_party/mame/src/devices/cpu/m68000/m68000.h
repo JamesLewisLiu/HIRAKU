@@ -60,6 +60,8 @@ public:
 	u64 vpa_sync(offs_t address, u64 current_time);
 	u32 vpa_after(offs_t address);
 
+	u32 hk_pc() const { return m_ipc; }   // HIRAKU: the current instruction's address, for reports
+
 protected:
 	struct mmu_disabled : public mmu {
 		u16 read_program(offs_t addr, u16 mem_mask) override;

@@ -106,3 +106,18 @@ The runtime will execute the same files, so every input is keyed to a frame and 
   | ~4400 | sound select |
   | ~4800 | practice stage starts (bar counter `0x80103674` advancing) |
 - **Volume.** Boot is dominated by ATA PIO data reads (33M) and GCU VRAM uploads (5.8M). In-song there are about 440 accesses per frame, mostly GCU FIFO writes, plus about 0.3 SPU mailbox writes per frame (keysound commands).
+
+## Patched MAME for departures
+
+Where HIRAKU departs from MAME on purpose, a MAME patched the same way keeps the lockstep check
+going past the point where stock MAME differs. The patches apply to MAME at HIRAKU's pin
+(58f90f43) and run with `MAME_BIN=<that build>`:
+
+- `mame-patches/twinkle-sio1-cts.patch` (beatmania IIDX 1st style, PLAN.md section 21, TW-5):
+  SIO1 as windyfairy's UART (`sio_uart.*`, as HIRAKU has it) with the DVD player's CTS, which
+  the game's DVD check needs (stock MAME: E600 DVD INIT ERROR). Build the `twinkle` subtarget:
+  `git worktree add ../mame-tw5 58f90f43 && cd ../mame-tw5 && git apply .../twinkle-sio1-cts.patch`,
+  then `make SUBTARGET=twinkle SOURCES=src/mame/konami/twinkle.cpp` (as for the stock Twinkle oracle).
+
+MAME runs the autoboot script again after every machine reset (a game resetting itself through
+its watchdog, as the 1st style does after test mode); `lua/hiraku.lua` arms only once.

@@ -245,16 +245,20 @@ void twinkle_state::device_add_mconfig(machine_config &config) {
     rs232_port_device &rs232 = RS232_PORT(config, "rs232_dvd");
     rs232.option_add("xvd701", JVC_XVD701);
     rs232.set_default_option("xvd701");
-    auto *sio1 = subdevice<psxsio1_device>("maincpu:sio1");
     ns16550_device &uart = *subdevice<ns16550_device>("fdc37c665gt:uart2");
     rs232_port_device &rs232_network = RS232_PORT(config, "rs232_network", default_rs232_devices, nullptr);
     if (c.dvd_port == "sio1") {
-        // MAME: CTS isn't implemented in its SIO (the 1st style's DVD check fails, E600)
-        rs232.rxd_handler().set(*sio1, &psxsio1_device::write_rxd);
-        rs232.dsr_handler().set(*sio1, &psxsio1_device::write_dsr);
-        sio1->txd_handler().set(rs232, &rs232_port_device::write_txd);
-        sio1->dtr_handler().set(rs232, &rs232_port_device::write_dtr);
-        sio1->rts_handler().set(rs232, &rs232_port_device::write_rts);
+        // A departure from MAME (TW-5): the game sends the player a byte only while SIO1's CTS is
+        // on (status bit 8), which MAME's SIO lacks, so it stops at E600 DVD INIT ERROR. SIO1 is
+        // the fork's UART here (sio_uart.h, hk_psx_sio1_uart, as on the 573's multi-session
+        // unit), with the player's CTS wired as MAME's driver has it commented out.
+        auto &sio1 = *subdevice<psxsio1_uart_device>("maincpu:sio1");
+        rs232.rxd_handler().set(sio1, &psxsio1_uart_device::write_rxd);
+        rs232.dsr_handler().set(sio1, &psxsio1_uart_device::write_dsr);
+        rs232.cts_handler().set(sio1, &psxsio1_uart_device::write_cts);
+        sio1.txd_handler().set(rs232, &rs232_port_device::write_txd);
+        sio1.dtr_handler().set(rs232, &rs232_port_device::write_dtr);
+        sio1.rts_handler().set(rs232, &rs232_port_device::write_rts);
         uart.out_tx_callback().set(rs232_network, &rs232_port_device::write_txd);
         uart.out_dtr_callback().set(rs232_network, &rs232_port_device::write_dtr);
         uart.out_rts_callback().set(rs232_network, &rs232_port_device::write_rts);
@@ -264,6 +268,7 @@ void twinkle_state::device_add_mconfig(machine_config &config) {
         rs232_network.ri_handler().set(uart, &ns16550_device::ri_w);
         rs232_network.cts_handler().set(uart, &ns16550_device::cts_w);
     } else {
+        auto *sio1 = subdevice<psxsio1_device>("maincpu:sio1");
         sio1->txd_handler().set(rs232_network, &rs232_port_device::write_txd);
         sio1->dtr_handler().set(rs232_network, &rs232_port_device::write_dtr);
         rs232_network.rxd_handler().set(*sio1, &psxsio1_device::write_rxd);
@@ -596,6 +601,7 @@ struct Board {
 
 bool init(const Config &cfg) {
     g.cfg = cfg;
+    hk_psx_sio1_uart = cfg.dvd_port == "sio1";   // SIO1 with CTS for the player (TW-5)
     auto rom = [&](const std::string &f) { return cfg.rom_dir + "/" + f; };
     g.machine = std::make_unique<running_machine>();
     running_machine &m = *g.machine;
@@ -823,6 +829,6 @@ std::string video_report() {
 }
 
 uint32_t pc() { return g.state ? static_cast<cpu_device &>(*g.state->m_maincpu).pc() : 0; }
-uint32_t audio_pc() { return g.state ? static_cast<cpu_device &>(*g.state->m_audiocpu).pc() : 0; }
+uint32_t audio_pc() { return g.state ? g.state->m_audiocpu->hk_pc() : 0; }
 
 }  // namespace hk::twinkle

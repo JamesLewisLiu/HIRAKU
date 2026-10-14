@@ -1471,8 +1471,9 @@ public:
         for (auto &[n, m] : m_external_maps) if (n == spacenum) return true;
         return false;
     }
-    // HIRAKU: after start and after reset (MAME's device_execute_interface work there)
+    // HIRAKU: after start, and before and after reset (MAME's device_execute_interface work there)
     virtual void hk_post_start() {}
+    virtual void hk_pre_reset() {}
     virtual void hk_post_reset() {}
 
     std::vector<device_t *> m_children;
@@ -1764,6 +1765,7 @@ public:
     // MAME's set_periodic_int: a timer, armed at reset, calling cb while the CPU isn't held
     void set_periodic_int(std::function<void()> cb, const attotime &rate) { m_periodic_cb = std::move(cb); m_periodic_rate = rate; }
     void hk_post_start() override;
+    void hk_pre_reset() override;
     void hk_post_reset() override;
     std::function<void()> m_periodic_cb;
     attotime m_periodic_rate;

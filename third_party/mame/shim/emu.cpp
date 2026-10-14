@@ -114,6 +114,7 @@ device_t *hk_find_device(device_t *owner, const char *tag) {
 }
 
 void device_t::reset() {
+    hk_pre_reset();
     for (device_interface *i : m_interfaces) i->interface_pre_reset();
     device_reset();
     for (device_t *c : m_children) c->reset();
@@ -137,6 +138,15 @@ void cpu_device::hk_post_start() {
         m_periodic_timer = machine().alloc_timer([this](s32) {
             if (!suspended(SUSPEND_REASON_HALT | SUSPEND_REASON_RESET | SUSPEND_REASON_DISABLE | SUSPEND_REASON_CLOCK)) m_periodic_cb();
         });
+}
+
+// MAME's interface_pre_reset: the cycle count starts again from 0 (the 68000 syncs to its E clock,
+// a tenth of it, by that count: kept over a watchdog's reset, an autovectored interrupt came up to 9
+// cycles off MAME's), and the CPU runs, unless disabled
+void cpu_device::hk_pre_reset() {
+    m_totalcycles = 0;
+    if (suspended(SUSPEND_REASON_DISABLE)) return;
+    if (clock() != 0) resume(~0u);
 }
 
 void cpu_device::hk_post_reset() {
@@ -940,12 +950,14 @@ void running_machine::timeslice() {
     execute_timers();
 }
 
-// MAME's schedule_soft_reset: a zero-time timer that resets every device, the executing CPU's
-// timeslice cut short (running_machine::soft_reset). Only a watchdog asks for it here.
+// MAME's schedule_soft_reset: a zero-time timer that resets every device (running_machine::
+// soft_reset), and eat_all_cycles(): an executing CPU's remaining cycles count as run, so its
+// timeslice still ends where it was to. Only a watchdog asks for it here, from its timer, when no
+// CPU is executing.
 void running_machine::schedule_soft_reset() {
     fprintf(stderr, "hiraku: soft reset (watchdog) at %.6f s\n", time().as_double());
     synchronize([this](s32) { reset(); });
-    abort_timeslice();
+    if (m_executing) m_executing->eat_cycles(1000000000);
 }
 
 void running_machine::execute_timers() {

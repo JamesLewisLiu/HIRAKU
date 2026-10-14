@@ -78,9 +78,13 @@ psxsio1_uart_device::psxsio1_uart_device(
 	m_txd_handler(*this),
 	m_dtr_handler(*this),
 	m_rts_handler(*this),
+	m_baud(0), // HIRAKU: the fork left these four unset (MAME read whatever the heap held)
+	m_delayed_tx_en(false),
 	m_cts(1),
 	m_dsr(1),
 	m_rxd(1),
+	m_rxd_bits(0),
+	m_data_bits_count(0),
 	m_timer(nullptr)
 {
 }

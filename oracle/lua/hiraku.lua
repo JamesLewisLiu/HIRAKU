@@ -16,6 +16,11 @@
 --   log.txt     what the script did, and when
 --   snaps       PNG snapshots go to MAME's snapshot dir (mame.sh points it at HIRAKU_OUT)
 
+-- MAME runs the autoboot script again after every reset, the watchdog's soft reset too (a game
+-- rebooting itself, as Twinkle's after test mode): the first run's notifiers carry on through it
+-- (install_taps on reset), so a second run does nothing, or it would start the script over
+if _G.hiraku_subs then return end
+
 local mach   = manager.machine
 local cpu    = mach.devices[":maincpu"]
 local space  = cpu.spaces["program"]

@@ -10,6 +10,7 @@ extern "C" {
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
+#include <fcntl.h>
 #include <fstream>
 
 namespace hk::twinkle {
@@ -182,7 +183,13 @@ void VideoCD::start_chapter(int chapter) {
     m_index = -1;
     if (chapter < 1 || chapter > (int)m_entries.size()) return;
     m_ended = false;
-    m_thread = std::thread(&VideoCD::worker, this, m_entries[chapter - 1]);
+    // the whole chapter from the disk now, in the background (the worker reads it a sector at a
+    // time, and the emulation waits for the frame it needs: a cold read on a busy disk stalled it
+    // for seconds)
+    const uint32_t from = m_entries[chapter - 1];
+    const uint32_t to = chapter < (int)m_entries.size() ? m_entries[chapter] : m_sectors;
+    if (to > from) posix_fadvise(fileno(m_bin), (off_t)from * 2352, (off_t)(to - from) * 2352, POSIX_FADV_WILLNEED);
+    m_thread = std::thread(&VideoCD::worker, this, from);
 }
 
 bool VideoCD::decode_next(Frame &f) {

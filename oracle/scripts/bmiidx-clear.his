@@ -1,0 +1,35 @@
+# beatmania IIDX (1st style, Twinkle): first power-on from blank NVRAM, with the DVD player's
+# CTS on SIO1 (PLAN.md section 21, TW-5; MAME without it stops at E600, bmiidx-boot.his). The
+# device check passes all but the backup RAM: E150 BACKUP DATA ERROR, TEST = TEST MODE (there is
+# no 1P Start clear in this style). Test mode: DVD CHECK (PLAY, then STOP), then BACKUP CLEAR and
+# TEST EXIT; the game resets itself (the watchdog) and boots to attract with the intro video.
+# SW1/SW2 move the cursor down/up, SW6 does, SW7 exits; SW2 answers yes. Hashes the main RAM every
+# frame and snapshots every 60 frames, against MAME with the same SIO1 (the oracle's patch).
+game bmiidx
+
+hash ram  0x80000000 0x80400000   # 4 MiB main RAM (KSEG0)
+
+at 2400 press "Test" 8
+from 0 every 60 snap
+# DVD CHECK: three down, do; PLAY; ten seconds later three down to STOP, do; exit
+at 2900 press "P1-1 (SW1)" 8
+at 2930 press "P1-1 (SW1)" 8
+at 2960 press "P1-1 (SW1)" 8
+at 2990 press "P1-6 (SW6)" 8
+at 3050 press "P1-6 (SW6)" 8
+at 3650 press "P1-1 (SW1)" 8
+at 3680 press "P1-1 (SW1)" 8
+at 3710 press "P1-1 (SW1)" 8
+at 3740 press "P1-6 (SW6)" 8
+at 3860 press "P1-7 (SW7)" 8
+# BACKUP CLEAR: four more down (the bottom item), do, yes
+at 3980 press "P1-1 (SW1)" 8
+at 4010 press "P1-1 (SW1)" 8
+at 4040 press "P1-1 (SW1)" 8
+at 4070 press "P1-1 (SW1)" 8
+at 4100 press "P1-6 (SW6)" 8
+at 4160 press "P1-2 (SW2)" 8
+# TEST EXIT, yes: the reset, then the boot to attract
+at 4760 press "P1-7 (SW7)" 8
+at 4820 press "P1-2 (SW2)" 8
+at 10820 quit

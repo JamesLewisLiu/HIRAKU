@@ -617,7 +617,7 @@ hiraku-gtfrk11m --session-join /tmp/gfdm.sock
 
 The regress cases are `gtfrk11m-install`, `gtfrk11m-boot`, `gtfrk11m-hdd`, `gtfrk11m-eaon` and `gtfrk11m-net` (the network unit, as drmn10m's), and `drmn10m-session` + `gtfrk11m-session` (a session game: both cabinets play the first stage of 花火).
 
-## Twinkle: beatmania IIDX 3rd style (in progress, M15)
+## Twinkle: beatmania IIDX (in progress, M15)
 
 beatmania IIDX 3rd style (`bmiidx3`) runs on HIRAKU's Twinkle core in lockstep with MAME (PLAN.md section 21). It needs MAME's `bmiidx3` set and its three CHDs: the program CD `gc992-jac01`, the Video CD `gc992-jaa04` and the sound board's hard disk `992hdda01` (unpacked to about 4 GB):
 
@@ -642,7 +642,24 @@ Effect is E and VEFX is W. Coin is 5; Test and Service are F2 and 9. A USB IIDX 
 
 **Speed** (desktop, with the game's R3000 code recompiled: `tools/mipsrec.py bmiidx3`, then `ninja`): a stage 1.5 ms a frame with the video, 1.3 without. When the game reads its program CD (between screens) frames take up to about 40 ms: MAME's SCSI model, which HIRAKU runs as it is.
 
-**Not there yet:**
-- **1st style (`bmiidx`)** stops at E600 DVD INIT ERROR, as in MAME (TW-5).
+The regress cases are `bmiidx3-boot` (the first boot to attract), `bmiidx3-play` (a coin-up and a stage, after it) and `bmiidx3-video` (the same with the video).
 
-The regress cases are `bmiidx3-boot` (the first boot to attract) and `bmiidx3-play` (a coin-up and a stage, after it).
+### beatmania IIDX (1st style)
+
+The first beatmania IIDX (`bmiidx`, GQ863 JAB) plays too, which MAME's doesn't: there it stops at **E600 DVD INIT ERROR** (MAME flags it NOT_WORKING). The game talks to its DVD player through the PlayStation's own serial port, and waits for the player's CTS line there, which MAME's serial port lacks; HIRAKU's has it (PLAN.md section 21, TW-5). Ingest it like 3rd style:
+
+```bash
+tools/ingest.py bmiidx.7z gq863-jab01.chd gq863a04.chd 863hdda01.chd
+ninja -C build/cmake hiraku-bmiidx
+```
+
+**The first boot** stops at **E150** (backup RAM cleared) with no Start prompt; this style clears it in test mode:
+1. Press **Test** (F2).
+2. Move down to **BACKUP CLEAR** with key 1 (key 2 moves up) and press key 6; answer yes with key 2.
+3. Key 7 leaves test mode (yes: key 2). The game restarts and goes to attract.
+
+Test mode's **DVD CHECK** plays and stops the Video CD. A credit is **3 coins** by default (game settings). At mode select the turntable moves between 4KEYS, 5KEYS, 7KEYS and EXPERT; key 1 takes it. During a stage the game draws its own graffiti layer over the video.
+
+**Speed** (desktop, recompiled R3000 code): a stage 1.8 ms a frame with the video.
+
+Its regress cases: `bmiidx-clear` (the first boot, the DVD check and backup clear in test mode, the restart, attract), `bmiidx-play` (a game of 7KEYS after it) and `bmiidx-video` (the same with the video). They are checked against a MAME given the same serial port (oracle/mame-patches).

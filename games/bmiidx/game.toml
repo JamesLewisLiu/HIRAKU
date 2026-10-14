@@ -3,9 +3,9 @@ id = "bmiidx"
 title = "beatmania IIDX"
 family = "iidx"         # IIDX cabinet: 7 keys and a turntable per player, VEFX, Effect, 5 effector sliders
 mame = "bmiidx"         # MAME set name, used by the oracle
-core = "twinkle"        # Twinkle (runtime/twinkle/, PLAN.md section 21); no core yet (TW-1)
-# MAME flags this set NOT_WORKING: its DVD player check needs RTS->CTS on the PS1's SIO1, which
-# MAME's SIO doesn't have (PLAN.md section 21, TW-5)
+core = "twinkle"        # Twinkle (runtime/twinkle/, PLAN.md section 21)
+# MAME flags this set NOT_WORKING: its DVD player check needs CTS on the PS1's SIO1, which MAME's
+# SIO doesn't have (E600 DVD INIT ERROR). HIRAKU's SIO1 has it here (TW-5).
 
 [roms]
 bios = "863a03.7b"      # Twinkle BIOS (27C040), the same chip in every set
@@ -14,7 +14,7 @@ dongle = "863a02"       # the security dongle's X76F041 (MAME BAD_DUMP: write/co
 
 [board]
 dongle = "x76f041"      # MAME twinklex
-dvd_port = "sio1"       # the DVD player on the PS1's SIO1, over the mini-DIN (1st style)
+dvd_port = "sio1"       # the DVD player on the PS1's SIO1, over the mini-DIN (1st style), with its CTS
 
 [cd]
 chd = "gq863-jab01"     # the program CD, on the SCSI bus
