@@ -26,9 +26,11 @@
 #include <string>
 #include <vector>
 
+#include "python/cardreader.h"
+
 namespace hk::py {
 
-class CardUnit {
+class CardUnit final : public CardReader {
 public:
     // fresh: a new card's first four bytes, for the game running (fresh_header)
     using Header = std::array<uint8_t, 4>;
@@ -39,19 +41,15 @@ public:
     // the header builder 0x180b498, in RAM). A used card has 0x40 more in the first byte.
     static Header fresh_header(const std::string &game);
 
-    // A write from the game to the serial port: false if it isn't this bus's (left to the
-    // emulator). The answer, if any, is appended to `reply`.
-    bool write(const uint8_t *data, uint32_t size, std::vector<uint8_t> &reply);
-
-    // The player: the card button (puts the card in the slot, or takes it back when the
-    // reader has given it out), and the 10-key (scan code of the key, pressed or not).
-    void card_button();
-    void key(uint8_t scan, bool down);
+    // CardReader (the bus is half-duplex: the answer follows the game's packet, read back)
+    bool write(const uint8_t *data, uint32_t size, std::vector<uint8_t> &reply) override;
+    bool echoes() const override { return true; }
+    void card_button() override;
+    void key(uint8_t scan, bool down) override;
+    bool card_offered() const override { return offered_; }   // in the slot, or in the reader
+    std::string state() const override;
 
     bool card_inside() const { return inside_; }
-    bool card_offered() const { return offered_; }   // in the slot, or in the reader
-    // A line for the window title ("card in", "card ready", ...), "" when nothing to say.
-    std::string state() const;
 
     // A fresh card: the header and a CRC-8 of it, the rest blank.
     static std::vector<uint8_t> new_card(const Header &h);

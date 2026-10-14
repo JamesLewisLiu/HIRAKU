@@ -540,12 +540,19 @@ std::string EamuseServer::answer_later(const std::string &game, const Request &r
     const std::string &m = r.module, &f = r.method;
     if (m == "services" && f == "get") {   // as pop'n 9, and eemall/shopinf look up their own names
         // message: pop'n 13 fails its start-up without it (the library looks a call's URL up by its
-        // module, 0x17d94c0: -10 when missing); cardmng, cardreis: pop'n 13's cards
+        // module, 0x17d94c0: -10 when missing); cardmng, cardreis: pop'n 13's cards; facility:
+        // pop'n 14's start-up (5-2009 without it)
         static const char *modules[] = {"posevent", "pcbtracker", "numbering", "package", "userdata", "userid", "local",
-                                        "eemall", "shopinf", "message", "cardmng", "cardreis"};
+                                        "eemall", "shopinf", "message", "cardmng", "cardreis", "facility"};
         std::string items;
         for (const char *mod : modules) items += std::string("<item name=\"") + mod + "\" url=\"http://" + esc(host) + "/\"/>";
         return "<services expire=\"600\" status=\"0\">" + items + "</services>";
+    }
+    if (m == "facility" && f == "get") {   // pop'n 14 (0x17d6860): the shop, as text elements in three groups
+        return "<facility status=\"0\" expire=\"600\"><location><id>HIRAKU</id><country>JP</country>"
+               "<region>13</region><line>0</line></location><portfw><globalip>192.168.50.2</globalip>"
+               "<globalport>5700</globalport><privateport>5700</privateport></portfw><public><name>HIRAKU</name>"
+               "<flag>0</flag></public></facility>";
     }
     if (m == "cardmng") {   // pop'n 13: a card has an id (written on it) and its player a ref id, in "cards"
         const std::string cardtype = attr(r.attrs, "cardtype");
@@ -571,17 +578,52 @@ std::string EamuseServer::answer_later(const std::string &game, const Request &r
             const std::string id = next_number();
             return "<cardmng status=\"0\" cardid=\"" + id + "\" refid=\"" + add(id) + "\"/>";
         }
-        if (f == "inquire") {   // cardtype cardid update: the card's ref id; newflag 1 when the server didn't know it
+        if (f == "inquire") {   // cardtype cardid update: the card's ref id; newflag 1 when the server didn't
+            // know it. pop'n 14 also wants binded (the card has its player, 0x17d51b0) and expired.
             const std::string id = attr(r.attrs, "cardid");
             if (!safe_name(id)) return "<cardmng status=\"1\"/>";
             std::string ref = refid_of(id);
             const bool fresh = ref.empty();
             if (fresh) ref = add(id);
-            return "<cardmng status=\"0\" refid=\"" + ref + "\" newflag=\"" + (fresh ? "1" : "0") + "\"/>";
+            return "<cardmng status=\"0\" refid=\"" + ref + "\" binded=\"" + (fresh ? "0" : "1") +
+                   "\" expired=\"0\" newflag=\"" + (fresh ? "1" : "0") + "\"/>";
         }
         if (f == "gettmpid")   // cardtype oldid: a new id for an older card's player
             return "<cardmng status=\"0\" newid=\"" + next_number() + "\"/>";
-        if (f == "rebind") return "<cardmng status=\"0\"/>";   // cardtype newid
+        // pop'n 14's e-AMUSEMENT PASS: the PIN is the server's (the card holds only its id)
+        auto save = [&] {
+            std::string out;
+            for (const Record &c : cards) out += to_line(c);
+            write_file("cards", out);
+        };
+        auto card_of_ref = [&](const std::string &ref) -> Record * {
+            for (Record &c : cards)
+                if (attr(c, "refid") == ref) return &c;
+            return nullptr;
+        };
+        if (f == "getrefid") {   // cardtype cardid newflag passwd: a card made a player, with its PIN
+            const std::string id = attr(r.attrs, "cardid");
+            if (!safe_name(id)) return "<cardmng status=\"1\"/>";
+            std::string ref = refid_of(id);
+            if (ref.empty()) ref = add(id);
+            if (Record *c = card_of_ref(ref); c && attr(*c, "pass").empty()) {
+                (*c)["pass"] = attr(r.attrs, "passwd");
+                save();
+            }
+            return "<cardmng status=\"0\" refid=\"" + ref + "\"/>";
+        }
+        if (f == "authpass") {   // refid pass: 0, or 116 for a wrong PIN (0x17ac2c8). A card's first PIN is kept.
+            Record *c = card_of_ref(attr(r.attrs, "refid"));
+            if (!c) return "<cardmng status=\"112\"/>";
+            if (attr(*c, "pass").empty()) {
+                (*c)["pass"] = attr(r.attrs, "pass");
+                save();
+            }
+            return attr(*c, "pass") == attr(r.attrs, "pass") ? "<cardmng status=\"0\"/>" : "<cardmng status=\"116\"/>";
+        }
+        // rebind (cardtype newid), bindmodel (refid newflag: the player starts on this game),
+        // bindcard (cardtype newid refid): nothing kept
+        if (f == "rebind" || f == "bindmodel" || f == "bindcard") return "<cardmng status=\"0\"/>";
     }
     if (m == "userdata") {   // as pop'n 9, kept per game: userdata-<game>-<card>
         const std::string card = attr(r.attrs, "card");
@@ -702,8 +744,11 @@ std::string EamuseServer::answer_playerdata(const std::string &game, const Reque
     // each game's record (docs/EAMUSE3.md): its size, the password's, option's and character's
     // places, and the songs' clear words (16 bits each in pop'n 12, 32 in pop'n 13)
     struct Layout { size_t record, password, option, chara, songs, song_bytes, songs_end; };
-    const bool p13 = game == "E13";
-    const Layout L = p13 ? Layout{0xd6c, 0x1c, 0x20, 0x22, 0x28, 4, 0xd6c}     // 0x166daa8, 0x1810e60
+    // pop'n 14 has no password in it (cardmng.authpass checks it on the server): NONE
+    constexpr size_t NONE = ~(size_t)0;
+    const bool p13 = game == "E13", p14 = game == "F14";
+    const Layout L = p14 ? Layout{0xdb8, NONE, 0x1c, 0x1e, 0x24, 4, 0xdb8}     // 0x16506b8, 0x17fdfa0
+                   : p13 ? Layout{0xd6c, 0x1c, 0x20, 0x22, 0x28, 4, 0xd6c}     // 0x166daa8, 0x1810e60
                          : Layout{0x708, 0x34, 0x38, 0x3a, 0x3c, 2, 0x5f0};
     const size_t RECORD = L.record;
     const std::string &f = r.method;
@@ -721,11 +766,12 @@ std::string EamuseServer::answer_playerdata(const std::string &game, const Reque
         for (size_t i = 0; i < 13; i++) rec[i] = i < name.size() && i < 12 ? name[i] : 0;
     };
     auto set_password = [&](const std::string &pw) {
+        if (L.password == NONE) return;
         for (size_t i = 0; i < 4; i++) rec[L.password + i] = i < pw.size() && std::isdigit((unsigned char)pw[i]) ? (char)(pw[i] - '0') : 0;
     };
-    // pop'n 13: f_compress (0x17f83c0), the record compressed (lzss)
+    // pop'n 13 and 14: f_compress (0x17f83c0), the record compressed (lzss)
     auto with_record = [&] {
-        return p13 ? open + " f_compress=\"1\"><b>" + base64(lzss(rec)) + "</b></" + game + ">"
+        return p13 || p14 ? open + " f_compress=\"1\"><b>" + base64(lzss(rec)) + "</b></" + game + ">"
                    : open + "><b>" + base64(rec) + "</b></" + game + ">";
     };
 
@@ -746,8 +792,8 @@ std::string EamuseServer::answer_playerdata(const std::string &game, const Reque
         if (r.attrs.count("password")) set_password(attr(r.attrs, "password"));
         if (r.attrs.count("option")) put16(L.option, num(r.attrs, "option"));
         if (r.attrs.count("chara_num")) put16(L.chara, num(r.attrs, "chara_num"));
-        if (!p13 && r.attrs.count("puzzle_now")) rec[0x1b] = (char)num(r.attrs, "puzzle_now");
-        if (!p13 && r.attrs.count("puzzle_piece")) {
+        if (!p13 && !p14 && r.attrs.count("puzzle_now")) rec[0x1b] = (char)num(r.attrs, "puzzle_now");
+        if (!p13 && !p14 && r.attrs.count("puzzle_piece")) {
             const std::string pp = attr(r.attrs, "puzzle_piece");
             size_t at = 0;
             for (int k = 0; k < 6 && at <= pp.size(); k++) {

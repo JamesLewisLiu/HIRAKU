@@ -602,8 +602,48 @@ pop'n 12's, keyed by a **ref id** from a new module, `cardmng`.
   pop'n 13), `cardreis.altercard`, `gettmpid`, `rebind`; the ranking tables (`rank get` answers
   compressed data, `f_compress`, `0x17f71a8`).
 
-**pop'n music 14** (`F14`): uses an IC card reader ("IC CARD R/W UNIT ERROR", 5-1508-000, without
-one), which HIRAKU doesn't play yet.
+**pop'n music 14** (`F14`; checked in HIRAKU: a new e-AMUSEMENT PASS registered, a credit saved, the
+card read back with its PIN; `oracle/scripts/popn14-eamuse-on.his`, `popn14-card-new.his`,
+`popn14-card-again.his`). Its program is RAM-only too (0x1730000-0x1820000, as pop'n 13's). The
+e-AMUSEMENT PASS replaces the magnetic card: an IC card that holds only its id, read by a slotted
+reader with its own 10-key; the PIN is checked by the server.
+- **The IC card reader** (Konami's slotted "ICCA", on the interface board's serial port at 19200
+  baud; the driver is the game's own, `0x17f7f30`; HIRAKU's is `runtime/python/icca.cpp`):
+  - The game sends `aa` and wants `aa` back; then packets `aa 00 HI LO 00 LEN payload SUM` (SUM: the
+    8-bit sum of HI..payload), answered `aa 81 HI LO 00 LEN payload SUM` (the sum of all after the
+    `aa`). Full duplex: no echo. **ACIO escaping:** after the `aa`, a byte `aa` or `ff` goes as `ff`
+    and the byte inverted; the game undoes it, so an answer whose card id holds `ff` must be sent so,
+    or it comes up short and the reads time out.
+  - Commands: `00 03`, `01 00`, `01 30` (start-up, each answered with one byte 00); `01 34` the state;
+    `01 35` the slot, payload `18 MODE` (11 open: take a card in; 12 eject; 00 close); `01 39` read
+    the card; `01 10` the 10-key.
+  - The state, 0x18 bytes: 0 the status (2 ready; the game requires 2 at start-up; 4 after a read
+    with no card), 1 the sensors (0x10 front: a card at the slot; 0x20 rear: a card in), 2-9 the
+    card's id. The game takes a card when it has seen both sensors on for more than 4 polls
+    (`0x173bbd0`), reads it, and ejects it when the credit ends.
+  - The 10-key answer is 4 bytes: 0, 0, then the keys held, bits 0-3 of the third byte blank 3 6 9,
+    the fourth byte 0 1 4 7 00 2 5 8 (the game makes digit d its bit d, `0x17f93d8`).
+  - Without the reader: "IC CARD R/W UNIT ERROR" 5-1508-000 at start-up; a reader that stops
+    answering mid-game: 5-1500-000.
+- **`facility.get`** at start-up, after `posevent`; without a `facility` service, 5-2009-0000. The
+  answer is groups of text elements (`0x17d6860`): `<facility status="0" expire="600"><location><id/>
+  <country/><region/><line/></location><portfw><globalip/><globalport/><privateport/></portfw>
+  <public><name/><flag/></public></facility>`.
+- **A card's life:** `cardmng.inquire cardtype="1" cardid="E004..."` (the card's id is the
+  e-AMUSEMENT card number, as on later games and in spice2x). The answer needs all of `refid`,
+  `binded`, `expired` and `newflag` (`0x17d51b0`). Then the PIN on the reader's 10-key (four equal
+  digits are refused by the game) and `cardmng.authpass refid pass`: status 0, or **116 for a wrong
+  PIN** (`0x17ac2c8`). A new player: `bindmodel refid newflag`, a choice between "はじめてあそぶ"
+  and carrying data over from pop'n 13 ("カーニバルからデータを引きつぐ", `playerdata conv`), the
+  name, then `F14 playerdata new ref_id card_id name ea_passwd`. HIRAKU keeps a card's PIN from its
+  first `authpass` (or `getrefid cardtype cardid newflag passwd`, which answers a `refid`). Also
+  seen in the program: `bindcard cardtype newid refid`, `playerdata expire`.
+- **The record:** compressed as pop'n 13's (`f_compress="1"`, the same LZSS, `0x17fd3d8`). `get`
+  answers 0xdb8 bytes (at `0x16506b8`); `new` is read as 0xd6c, and a pop'n 13 player's record
+  (0xd6c, `conv`) too. 0x00 the name, 0x1c the option and 0x1e the character (16-bit), from 0x24 a
+  32-bit word per song (`0x17fdfa0`); no password.
+- **Not done yet:** `playerdata conv` (a pop'n 13 player brought over), `expire`, `bindcard`,
+  `cardreis.altercard`, the rankings.
 
 ## Not known yet
 

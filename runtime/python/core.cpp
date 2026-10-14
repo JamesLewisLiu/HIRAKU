@@ -44,6 +44,7 @@
 #include <map>
 #include <memory>
 #include <mutex>
+#include <random>
 #include <string>
 #include <thread>
 #include <vector>
@@ -77,6 +78,7 @@
 #include "pcsx2/VMManager.h"
 
 #include "python/cardunit.h"
+#include "python/icca.h"
 #include "python/eanet.h"
 #include "python/eaclient.h"
 #include "python/easerver.h"
@@ -362,13 +364,30 @@ public:
             // A card with a number (-card0, card0.txt) is its own file, cards/NUMBER.bin; without one,
             // card.bin. A fresh card is one of this game (cardunit.h), and gets its number when the
             // game asks the server for one (on_call).
-            std::string card_file = run_dir_ + "/card.bin";
-            if (!ea_.card[0].empty()) {
-                mkdirs(run_dir_ + "/cards");
-                card_file = run_dir_ + "/cards/" + ea_.card[0] + ".bin";
-                printf("e-AMUSEMENT: card %s%s\n", ea_.card[0].c_str(), ea_.autocard[0] ? ", presented by itself" : "");
+            if (o.game == "popn14") {
+                // pop'n 14's e-AMUSEMENT PASS: an IC card, only a number. Without -card0 or
+                // card0.txt, a new number, kept in the save folder's card0.txt; a run without a
+                // save folder (--nvram) gets a fixed one, so that it is reproducible
+                if (ea_.card[0].empty() && o.nvram_dir.empty()) {
+                    ea_.card[0] = "E004010000000001";
+                } else if (ea_.card[0].empty()) {
+                    std::random_device rd;
+                    char id[17];
+                    snprintf(id, sizeof id, "E004%04X%08X", rd() & 0xffff, rd());
+                    ea_.card[0] = id;
+                    FileSystem::WriteStringToFile((run_dir_ + "/card0.txt").c_str(), ea_.card[0] + "\n");
+                }
+                printf("e-AMUSEMENT: IC card %s%s\n", ea_.card[0].c_str(), ea_.autocard[0] ? ", presented by itself" : "");
+                card_ = std::make_unique<hk::py::IcCardUnit>(ea_.card[0]);
+            } else {
+                std::string card_file = run_dir_ + "/card.bin";
+                if (!ea_.card[0].empty()) {
+                    mkdirs(run_dir_ + "/cards");
+                    card_file = run_dir_ + "/cards/" + ea_.card[0] + ".bin";
+                    printf("e-AMUSEMENT: card %s%s\n", ea_.card[0].c_str(), ea_.autocard[0] ? ", presented by itself" : "");
+                }
+                card_ = std::make_unique<hk::py::CardUnit>(card_file, hk::py::CardUnit::fresh_header(o.game));
             }
-            card_ = std::make_unique<hk::py::CardUnit>(card_file, hk::py::CardUnit::fresh_header(o.game));
             hk::py::VirtualNet::Io io;
             io.write = [](uint32_t addr, const uint8_t *d, uint32_t n) { Hiraku::net_write(addr, d, n); };
             io.respond = [](uint32_t ch, const uint32_t w[8]) { Hiraku::net_respond(ch, w); };
@@ -442,13 +461,21 @@ public:
         }
         if (card_) Hiraku::uart_write = [](const u8 *data, u32 size) {
             std::vector<uint8_t> reply;
-            if (!self_->card_->write(data, size, reply)) return false;
+            if (!self_->card_->write(data, size, reply)) {
+                if (FILE *f = self_->card_log_) {   // what the card unit isn't, as written
+                    fprintf(f, "%llu > (left to the emulator)", (unsigned long long)self_->frame_);
+                    for (u32 i = 0; i < size; i++) fprintf(f, " %02x", data[i]);
+                    fprintf(f, "\n");
+                    fflush(f);
+                }
+                return false;
+            }
             if (FILE *f = self_->card_log_) {   // HK_PY_CARD_LOG: the bus, packet by packet
                 if (!(size == 4 && data[3] == 0x55)) {
                     fprintf(f, "%llu >", (unsigned long long)self_->frame_);
                     for (u32 i = 0; i < size; i++) fprintf(f, " %02x", data[i]);
                     fprintf(f, "\n%llu <", (unsigned long long)self_->frame_);
-                    for (size_t i = size; i < reply.size(); i++) fprintf(f, " %02x", reply[i]);
+                    for (size_t i = self_->card_->echoes() ? size : 0; i < reply.size(); i++) fprintf(f, " %02x", reply[i]);
                     fprintf(f, "\n");
                     fflush(f);
                 }
@@ -664,8 +691,8 @@ private:
         if (net_) net_->poll();   // online answers that arrived
         if (autoplay_) apply_autoplay();
         if (card_ && ea_.autocard[0]) autocard();
-        // HK_PY_EE_DUMP=FRAME[-LAST]:FILE: EE RAM (32 MiB) at that frame (FILE), or at each frame
-        // to LAST (FILE.FRAME), for reading a game that only exists in RAM (pop'n 13 and 14 load
+        // HK_PY_EE_DUMP=FRAME[-LAST]:FILE: EE RAM (32 MiB) at that frame (FILE; the IOP's in FILE.iop),
+        // or at each frame to LAST (FILE.FRAME), for reading a game that only exists in RAM (pop'n 13 and 14 load
         // theirs from a second stage)
         static const char *dump = getenv("HK_PY_EE_DUMP");
         if (dump) {
@@ -676,6 +703,10 @@ private:
                 if (last != first) path += "." + std::to_string(frame_);
                 if (FILE *f = fopen(path.c_str(), "wb")) {
                     fwrite(eeMem->Main, 1, Ps2MemSize::MainRam, f);
+                    fclose(f);
+                }
+                if (FILE *f = fopen((path + ".iop").c_str(), "wb")) {   // and the IOP's 2 MiB
+                    fwrite(iopMem->Main, 1, Ps2MemSize::IopRam, f);
                     fclose(f);
                 }
             }
@@ -751,7 +782,7 @@ private:
 
     Options opt_;
     std::string family_, run_dir_, py1_path_, io_mode_;
-    std::unique_ptr<hk::py::CardUnit> card_;
+    std::unique_ptr<hk::py::CardReader> card_;
     FILE *card_log_ = nullptr;
     std::unique_ptr<hk::py::VirtualNet> net_;
     FILE *net_log_ = nullptr;
