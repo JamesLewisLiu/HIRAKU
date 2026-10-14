@@ -358,7 +358,7 @@ analyze/ghidra.sh ppp1mp && analyze/prep.py ppp1mp && ninja -C build/cmake hirak
 
 With `--window` both are saved to `~/.local/share/hiraku/ppp1mp`.
 
-**Status:** with the ROM set, 1st Mix Plus plays: coin, song select, a full song with its CD music. ParaParaParadise (`ppp`), v1.1 (`ppp11`) and ParaParaDancing (`ppd`) ingest the same way with their own discs and sets.
+**Status:** with the ROM set, 1st Mix Plus plays: coin, song select, a full song with its CD music. ParaParaParadise (`ppp`), v1.1 (`ppp11`) and ParaParaDancing (`ppd`) ingest the same way with their own discs and sets, need the same first-boot setup (E158/E124 until then), and play: mode and music select, a stage danced with the sensor bars, the result. The sensor bars read as MAME's.
 
 | Key | Action |
 |---|---|

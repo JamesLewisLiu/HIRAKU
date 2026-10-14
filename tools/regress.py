@@ -42,6 +42,12 @@ OUT = os.path.join(ROOT, "out", "regress")
 # that order.
 CASES = {
     "bm3final-practice": ("bm3final", 12000, ["--script", "oracle/scripts/bm3final-practice.his"]),
+    # the other four beatmania III (M6): boot from a blank NVRAM, attract, coins, mode and sound select,
+    # the practice stage played with keys 1-5 in turn
+    "bm3-play": ("bm3", 9600, ["--script", "oracle/scripts/bm3-play.his"]),
+    "bm3core-play": ("bm3core", 9600, ["--script", "oracle/scripts/bm3core-play.his"]),
+    "bm36th-play": ("bm36th", 9600, ["--script", "oracle/scripts/bm36th-play.his"]),
+    "bm37th-play": ("bm37th", 9600, ["--script", "oracle/scripts/bm37th-play.his"]),
     "popn7-attract": ("popn7", 3600, []),
     # pop'n music Mickey Tunes! from a blank NVRAM: the boot checks, the warm-up, attract to How to Play
     "popnmt2-attract": ("popnmt2", 9000, ["--script", "oracle/scripts/popnmt2-attract.his"]),
