@@ -881,6 +881,10 @@ Each phase has an exit test. Sizes are assisted-effort guesses; DJ Main went fas
   - **Regress:** `drmn10m-card` (a new card through registration, a game, and the save) and `drmn10m-card2` (the card again, its password, `gametop` with its lists). The cases with `--npu` changed: the card units answer the boot check, which moves the boot (`drmn10m-eaon` and `drmn10m-net` press Test 1,500 frames later).
   - **Next:** a cleared stage in the game (the skill's units and its display); dataget's shop ranking; the internet ranking (`ir`, `irdata`) and the land event (`landdata`, `land`); KONAMI ID (userid); GuitarFreaks hands-on with both readers.
 
+- **Progress (2026-10-14): GuitarFreaks 11th Mix recompiled.** The first test on the MacBook (HD 5000, a 2013 dual-core) ran it interpreted at 8.6 ms a frame (p99 17 ms: 799 late frames), with the CRT shader at 8.9 ms of GPU. Its recording (`tools/mipsrec.py`'s way, over the install, boot, a new `gtfrk11m-play`, the unit's install and the network check: 22,657 blocks) halves the CPU here: boot and attract 1.84 → 0.91 ms a frame, a game 2.13 → 1.08 ms. Exact: `gtfrk11m-boot` matches its baseline, and `gtfrk11m-play` the interpreter's digest. A package needs the recordings in its own tree's `build/<game>/` (the package worktree had none for the 573 games).
+  - **Regress:** `gtfrk11m-play` (two coins, Start through the session WELCOME alone, the mode and music select, ルージュの伝言 played with no input to GAME OVER, attract).
+  - The MacBook run also had one 778 ms frame (frame 3,473, an audio gap). Here, long frames came only while other runs loaded the machine; `HK_FRAMETIMES` now tells a busy frame from a waiting one.
+
 **573-4. Efficiency** (sized by the measurements in 573-1)
 - **Measured (2026-10-12, `HK_PROFILE=1`, ddr2m 150 s from the installed flash, 21,600 samples):**
 
@@ -943,7 +947,7 @@ Each phase has an exit test. Sizes are assisted-effort guesses; DJ Main went fas
         - A jump to a block in the same function is a goto. Before it, the function checks that the timeslice has room for the target's first stretch and that no checked code was written (`hk_psx::epoch`).
         - The function's code is checked as a whole.
       - **Blocks run on past conditional branches that aren't taken** (superblocks). At each further stretch they check the timeslice has room. Alone this was no faster; loop regions build on it.
-      - **Tools:** `tools/mipsgen.py` runs on every build and does nothing unless the recording changed, so `tools/mipsrec.py` then `ninja` is enough. `HK_FRAMETIMES=file` writes every frame's host time; `HK_PROFILE_AFTER=ms` starts the sampler later.
+      - **Tools:** `tools/mipsgen.py` runs on every build and does nothing unless the recording changed, so `tools/mipsrec.py` then `ninja` is enough. `HK_FRAMETIMES=file` writes every frame's host time (and, since 2026-10-14, the emulation thread's CPU time and the major page faults in it: a long frame with little CPU waited, on the disk or for the host's CPU); `HK_PROFILE_AFTER=ms` starts the sampler later.
       - **Measured and dropped:**
         - transparent texels without a branch: no change;
         - the screen's pens computed instead of looked up: 3 % slower;

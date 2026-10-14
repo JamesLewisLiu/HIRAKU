@@ -1,0 +1,11 @@
+# GuitarFreaks 11th Mix: a game, from what gtfrk11m-boot left (its NVRAM). Two coins, then Start
+# every 300 frames: the session WELCOME (no other cabinet: it plays alone), the mode and music
+# select (their defaults), the first stage played with no input to GAME OVER, and attract again.
+# Also what tools/mipsrec.py records for the R3000 recompiler's gameplay blocks.
+game gtfrk11m
+
+at 10800 press "Coin 1" 8
+at 10850 press "Coin 1" 8
+from 11000 every 300 press "1 Player Start" 8
+from 8400 every 600 snap
+at 19800 quit

@@ -40,6 +40,7 @@
 //
 // The machine is described by dumps/<game>/machine.txt and dumps/<game>/rom/,
 // both written by tools/ingest.py from the user's own dumps.
+#include <sys/resource.h>
 #include <sys/stat.h>
 #include <unistd.h>
 
@@ -50,6 +51,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <ctime>
 #include <string>
 #include <vector>
 
@@ -96,13 +98,25 @@ struct FrameTimes {
     uint64_t n = 0, last = 0, last_wait = 0, worst_frame = 0;
     uint64_t last_cat[prof::NCAT] = {}, worst_cat[prof::NCAT] = {};
     double sum_ms = 0, max_ms = 0;
-    FILE *log = nullptr;   // HK_FRAMETIMES=file: every frame's host work, "frame ms"
+    FILE *log = nullptr;   // HK_FRAMETIMES=file: every frame's host work, "frame ms cpu_ms major_faults"
+    double last_cpu = 0;   // the emulation thread's CPU time and the process's major page faults
+    long last_faults = 0;  // (a long frame with little CPU waited: on the disk, or for the CPU)
 
     void frame(uint64_t f) {
         const uint64_t t = prof::ticks(), w = prof::g_wait_ticks;
+        double cpu = 0;
+        long faults = 0;
+        if (log) {
+            timespec ts;
+            clock_gettime(CLOCK_THREAD_CPUTIME_ID, &ts);
+            cpu = (double)ts.tv_sec * 1e3 + (double)ts.tv_nsec / 1e6;
+            rusage ru;
+            getrusage(RUSAGE_SELF, &ru);
+            faults = ru.ru_majflt;
+        }
         if (last) {
             double ms = (double)((t - last) - (w - last_wait)) * prof::ns_per_tick() / 1e6;
-            if (log) fprintf(log, "%llu %.3f\n", (unsigned long long)f, ms);
+            if (log) fprintf(log, "%llu %.3f %.3f %ld\n", (unsigned long long)f, ms, cpu - last_cpu, faults - last_faults);
             hist[std::min(BINS, (int)(ms / 0.05))]++;
             n++;
             sum_ms += ms;
@@ -113,6 +127,8 @@ struct FrameTimes {
         }
         last = t;
         last_wait = w;
+        last_cpu = cpu;
+        last_faults = faults;
         for (int c = 0; c < prof::NCAT; c++) last_cat[c] = prof::g_total[c];
     }
     double percentile(double q) const {

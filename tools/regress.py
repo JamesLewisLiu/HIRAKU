@@ -76,6 +76,10 @@ CASES = {
     "gtfrk11m-install": ("gtfrk11m", 28800, ["--rtc", "1791884700", "--script", "oracle/scripts/gtfrk11m-install.his"]),
     "gtfrk11m-boot": ("gtfrk11m", 10800, ["--rtc", "1791885700", "--script", "oracle/scripts/gtfrk11m-boot.his"],
                       "gtfrk11m-install"),
+    # ... and a game from there: two coins, Start through the session WELCOME (alone), the mode and
+    # music select, the first stage (ルージュの伝言) played with no input to GAME OVER, attract
+    "gtfrk11m-play": ("gtfrk11m", 19800, ["--rtc", "1791886700", "--script", "oracle/scripts/gtfrk11m-play.his"],
+                      "gtfrk11m-boot"),
     # ... its network unit: the data install, e-AMUSEMENT ON, and NETWORK CHECK (as drmn10m's)
     "gtfrk11m-hdd": ("gtfrk11m", 60000, ["--rtc", "1791892000", "--cd", "hdd", "--script", "oracle/scripts/gtfrk11m-hdd.his"],
                      "gtfrk11m-boot"),
