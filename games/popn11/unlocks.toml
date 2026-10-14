@@ -1,0 +1,111 @@
+# pop'n music 11: what the operator can unlock (tools/unlock.py; launcher: right-click > Unlocks).
+#
+# Operator codes (in the EE program at 0x316f30), typed in test mode > EVENT OPTIONS > PASSWORD,
+# in order: each moves the event phase on by one (0x177754), and the game writes it at once. The
+# settings file in the battery RAM (m48t58y.u48) is kept twice as pop'n 9's (mirror.c: copies at
+# 0x0 and 0x110, a header {sum, size 0x64, data sum}, the data at +0x10). In the data (0x184f180
+# in RAM): +0x0c the phase, +0x54 POPN TOURIST's board (below), and at +0x60 its own sum
+# (0x1a0900): six segments, plus 0x58. Found by typing the codes in HIRAKU
+# (oracle/scripts/popn11-phases.his), comparing the saves, and reading the program.
+
+[[unlock]]
+id = "phase"
+title = "Event phase"
+nvram = "m48t58y.u48"
+offsets = [0x1c, 0x12c]
+checksum = { kind = "mirror", files = [0x0, 0x110], size = 0x64, inner = { at = 0x60, segments = [4, 0xc, 4, 8, 0x38, 0xc], add = 0x58 } }
+how = "In the game: test mode > EVENT OPTIONS > PASSWORD, the codes in order (the wheel: blue moves, red enters)."
+
+[[unlock.level]]
+value = 0
+name = "--"
+text = "No event: the songs of a new cabinet."
+
+[[unlock.level]]
+value = 1
+name = "1. INTERNET RANKING"
+code = "A33RVCVZZW"
+text = "The internet ranking event."
+
+[[unlock.level]]
+value = 2
+name = "2. POPN TOURIST"
+code = "QCDLZCLW3K"
+text = "Starts POPN TOURIST: the shop's board game, whose finds release songs, an option and EX charts (event progress, below); and the mileage songs (tickets, below)."
+
+[[unlock.level]]
+value = 3
+name = "3. POPN TOURIST + SECRET DATA RELEASE"
+code = "NUKLAXF7JX"
+text = "Also releases the secret songs (the game's own check: from phase 3)."
+
+[[unlock.level]]
+value = 4
+name = "4. POPN TOURIST DATA RELEASE"
+code = "MKW23JJZN7"
+text = "Also releases everything the board gives, found or not."
+
+[[unlock.level]]
+value = 5
+name = "MAX. ALL DATA RELEASE"
+code = "DPC2SB7NUU"
+text = "Everything."
+
+# POPN TOURIST (phases 2 and 3): the shop's board game. Its record, in the settings (both copies;
+# little-endian): +0x54 the piece's place, +0x55 the route (ff until the game picks one of two,
+# 0x19a008), +0x58 a word of what the shop has found. In phases 2 and 3 a song, chart or option
+# is playable once its bit is set (0x1bebf0, 0x1beb08, 0x1bea48, 0x1beab0); at phase 4 or MAX
+# all are; at phase 0 or 1 none. Found in the program; the songs named by their genres.
+[[progress]]
+id = "tourist"
+title = "POPN TOURIST"
+kind = "eventmask"
+nvram = "m48t58y.u48"
+checksum_of = "phase"
+copies = [0x10, 0x120]
+offset = 0x58
+active = { unlock = "phase", values = [2, 3] }
+released = { unlock = "phase", values = [4, 5] }
+bits = [
+  { bit = 0, gives = "a play option (the game's option 0x20)" },
+  { bit = 1, gives = "song: ネブタ" },
+  { bit = 2, gives = "song: ホラー２, and course 7" },
+  { bit = 3, gives = "song: ナニワヒーロー" },
+  { bit = 4, gives = "song: ナンキョク" },
+  { bit = 5, gives = "song: グラディウス" },
+  { bit = 6, gives = "song: メサリミ" },
+  { bit = 7, gives = "song: タイガリミックス" },
+  { bit = 8, gives = "song: テクノボー" },
+  { bit = 9, gives = "song: ドラムンフライ" },
+  { bit = 10, gives = "song: ジャイアンリサイタル" },
+  { bit = 11, gives = "EX chart of song 3" },
+  { bit = 12, gives = "song: ラテンエンカ" },
+  { bit = 13, gives = "song: ケシゴム" },
+  { bit = 14, gives = "song: クラシック８" },
+  { bit = 15, gives = "song: デジテクノ" },
+  { bit = 16, gives = "EX chart of song 1" },
+  { bit = 17, gives = "EX chart of song 0x54" },
+]
+
+# The mileage songs: each card's own. A credit with a card earns mileage, which buys tickets (one
+# kind per song, up to 9 each; a kind is offered from the phase given); a ticket plays its song
+# once (0x1be690, 0x1bda78). The server keeps them with the card (D11 player set/get). Here: the
+# cards of the server inside HIRAKU (the save folder's eamuse/), not a server on the network.
+[[progress]]
+id = "tickets"
+title = "Mileage tickets"
+kind = "tickets"
+store = "eamuse"
+prefix = "player-D11-"
+max = 9
+songs = [
+  { ticket = 0, phase = 2, gives = "song 0x1b5: 冴えたビートがかっこいい、シンセのフレーズが印象的なJテクノナンバー。" },
+  { ticket = 1, phase = 0, gives = "song 0x1b6: もはやメロディーなんて必要ない。街じゅうを楽器にしてしまえ！" },
+  { ticket = 2, phase = 0, gives = "song 0x1b7: 大作ＳＦ映画のテーマ曲のようなスケールの大きなオーケストラサウンド。" },
+  { ticket = 3, phase = 0, gives = "song 0x1b8: 圧倒的におして、押して、圧して、捺して、そして男で攻めまくる Des-ROW・組 男パワー全開・全快・男奉" },
+  { ticket = 4, phase = 2, gives = "song 0x1b9: 今こうやってみんなで一つになって踊れるのも最高よ。" },
+  { ticket = 5, phase = 3, gives = "song 0x1ba: インドネシア発、伝統的トランスミュージック。神々の響きを奏でよう。" },
+  { ticket = 6, phase = 0, gives = "song 0x1bb: ＴＶでお馴染みのあの曲が登場だよ！" },
+  { ticket = 7, phase = 0, gives = "song 0x1bc: ポップンステージの人気曲がポップンで登場！！" },
+  { ticket = 8, phase = 3, gives = "song 0x1bd: ちょっぴりパンキッシュな宅録ポップではっちゃけフィーバーしよう！" },
+]

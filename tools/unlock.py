@@ -43,6 +43,15 @@ def default_nvram(game: str) -> str:
     return os.path.join(base, "hiraku", game)
 
 
+def backup_name(path: str) -> str:
+    """Where the old save goes: path.YYYYmmdd-HHMMSS.bak, numbered when that exists already."""
+    base = f"{path}.{time.strftime('%Y%m%d-%H%M%S')}"
+    name, k = base + ".bak", 2
+    while os.path.exists(name):
+        name, k = f"{base}-{k}.bak", k + 1
+    return name
+
+
 def mirror_sum(b: bytes) -> int:
     """Konami Python's BBSRAM file sum (mirror.c, pop'n 9 0x1ab6f8): little-endian words, each XORed with its index."""
     return sum(int.from_bytes(b[k:k + 4], "little") ^ (k // 4) for k in range(0, len(b) - 3, 4)) & 0xffffffff
@@ -119,7 +128,7 @@ def apply_switches(game: str, u: dict, nvram: str, changes: dict) -> str:
         raise Error(f"{path}: no save yet. Start {game} once (with its first-boot setup), quit it, then unlock.")
     switches(u, nvram)   # refuses a save it doesn't understand
     data = bytearray(open(path, "rb").read())
-    backup = f"{path}.{time.strftime('%Y%m%d-%H%M%S')}.bak"
+    backup = backup_name(path)
     shutil.copy2(path, backup)
     for sw in u["switch"]:
         if sw["id"] not in changes:
@@ -157,6 +166,8 @@ def current(u: dict, nvram: str):
 
 def progress(p: dict, nvram: str, unlocks: dict) -> dict | None:
     """An event's state from the save (games/<id>/unlocks.toml [[progress]]), or None (no save)."""
+    if p.get("kind") == "tickets":
+        return tickets(p, nvram)
     path = os.path.join(nvram, p["nvram"])
     if not os.path.exists(path):
         return None
@@ -175,6 +186,8 @@ def progress(p: dict, nvram: str, unlocks: dict) -> dict | None:
         return gamblerz(p, data, active, matches(p.get("released")))
     if p.get("kind") == "wishes":
         return wishes(p, data, active, matches(p.get("released")))
+    if p.get("kind") == "eventmask":
+        return eventmask(p, data, active, matches(p.get("released")))
     stage, unl, missed, pos, lap = (field(p[k]) for k in ("stage", "unlocked", "missed", "position", "lap"))
     st = p["stages"][min(stage, len(p["stages"]) - 1)]
     goal = st["goal"]
@@ -260,6 +273,83 @@ def wishes(p: dict, data: bytes, active: bool, released: bool) -> dict:
             "black_stars": black["stars"], "all_buckets": all(b["level"] >= b["of"] for b in buckets)}
 
 
+def eventmask_word(p: dict, data: bytes) -> int:
+    vals = {int.from_bytes(data[c + p["offset"]:c + p["offset"] + 4], "little") for c in p["copies"]}
+    if len(vals) != 1:
+        raise Error(f"the copies of {p['id']} disagree: not a save this tool knows")
+    return vals.pop()
+
+
+def eventmask(p: dict, data: bytes, active: bool, released: bool) -> dict:
+    """An event whose finds are bits of a word in the settings record (pop'n 11's POPN TOURIST)."""
+    word = eventmask_word(p, data)
+    return {"active": active, "released": released, "word": word, "count": len(p["bits"]),
+            "found": [b["gives"] for b in p["bits"] if word >> b["bit"] & 1],
+            "missing": [b["gives"] for b in p["bits"] if not word >> b["bit"] & 1]}
+
+
+def ticket_files(p: dict, nvram: str) -> list[str]:
+    folder = os.path.join(nvram, p["store"])
+    if not os.path.isdir(folder):
+        return []
+    return sorted(os.path.join(folder, f) for f in os.listdir(folder)
+                  if f.startswith(p["prefix"]) and not f.endswith((".tmp", ".bak")))
+
+
+def read_record(path: str) -> dict:
+    """One record of HIRAKU's server (runtime/python/easerver.cpp): tab-separated key=value."""
+    line = open(path, encoding="utf-8").readline().rstrip("\n")
+    return dict(f.partition("=")[::2] for f in line.split("\t") if f)
+
+
+def tickets(p: dict, nvram: str) -> dict:
+    """Each card's mileage and tickets, as the server inside HIRAKU keeps them (pop'n 11)."""
+    cards = []
+    for path in ticket_files(p, nvram):
+        r = read_record(path)
+        counts = [int(x or 0) for x in r.get("ticket", "").split(",")[:len(p["songs"])]]
+        counts += [0] * (len(p["songs"]) - len(counts))
+        cards.append({"card": os.path.basename(path)[len(p["prefix"]):], "mileage": int(r.get("mileage") or 0), "tickets": counts})
+    return {"cards": cards, "songs": [x["gives"] for x in p["songs"]], "max": p["max"]}
+
+
+def apply_tickets(p: dict, nvram: str, value: str) -> str:
+    files = ticket_files(p, nvram)
+    if not files:
+        raise Error(f"no cards yet in {os.path.join(nvram, p['store'])}: play a credit with a card on the server inside HIRAKU first")
+    n = p["max"] if value == "all" else 0
+    for path in files:
+        r = read_record(path)
+        shutil.copy2(path, backup_name(path))
+        r["ticket"] = ",".join([str(n)] * len(p["songs"])) + ","
+        tmp = path + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            f.write("\t".join(f"{k}={v}" for k, v in r.items()) + "\n")
+        os.replace(tmp, path)
+    return f"{len(files)} card(s)"
+
+
+def apply_eventmask(game: str, p: dict, unlocks: dict, nvram: str, value: str) -> str:
+    path = os.path.join(nvram, p["nvram"])
+    if not os.path.exists(path):
+        raise Error(f"{path}: no save yet. Start {game} once (with its first-boot setup), quit it, then unlock.")
+    u = unlocks[p["checksum_of"]]
+    current(u, nvram)
+    data = bytearray(open(path, "rb").read())
+    eventmask_word(p, data)
+    backup = backup_name(path)
+    shutil.copy2(path, backup)
+    word = sum(1 << b["bit"] for b in p["bits"]) if value == "all" else 0
+    for c in p["copies"]:
+        data[c + p["offset"]:c + p["offset"] + 4] = word.to_bytes(4, "little")
+    seal(u, data)
+    tmp = path + ".tmp"
+    with open(tmp, "wb") as f:
+        f.write(data)
+    os.replace(tmp, path)
+    return backup
+
+
 def apply_wishes(game: str, p: dict, unlocks: dict, nvram: str, value: str) -> str:
     """HOSHI NI NEGAIO all (every wish granted and the black bucket done, as the game leaves a shop
     that finished the event) or none (a new event)."""
@@ -270,7 +360,7 @@ def apply_wishes(game: str, p: dict, unlocks: dict, nvram: str, value: str) -> s
     current(u, nvram)   # refuses a save it doesn't understand
     data = bytearray(open(path, "rb").read())
     wishes_fields(p, data)
-    backup = f"{path}.{time.strftime('%Y%m%d-%H%M%S')}.bak"
+    backup = backup_name(path)
     shutil.copy2(path, backup)
     every = value == "all"
     items = sum(1 << x["bit"] for x in p["wishes"]) | (1 << p["black"]["bit"]) if every else 0
@@ -290,6 +380,22 @@ def apply_wishes(game: str, p: dict, unlocks: dict, nvram: str, value: str) -> s
 def describe_progress(p: dict, s: dict) -> str:
     if s is None:
         return "no save yet"
+    if p.get("kind") == "eventmask":
+        lines = [] if s["active"] else ["the event is not running (it runs at phase 2 or 3)"]
+        if s["released"]:
+            lines.append("DATA RELEASE (phase 4 or MAX): everything it gives is playable anyway")
+        lines.append(f"found: {len(s['found'])} of {s['count']}")
+        if s["missing"]:
+            lines.append("still to find: " + "; ".join(s["missing"]))
+        return "\n".join(lines)
+    if p.get("kind") == "tickets":
+        if not s["cards"]:
+            return "no card yet on the server inside HIRAKU (the save folder's eamuse/)"
+        lines = []
+        for c in s["cards"]:
+            lines.append(f"card {c['card']}: mileage {c['mileage']}; tickets " + ", ".join(str(t) for t in c["tickets"]))
+        lines.append("the tickets, in order: " + "; ".join(f"{i + 1}. {g}" for i, g in enumerate(s["songs"])))
+        return "\n".join(lines)
     if p.get("kind") == "wishes":
         lines = [] if s["active"] else ["the event is not running (it runs at phase 2 or 3)"]
         if s["released"]:
@@ -357,7 +463,7 @@ def apply(game: str, u: dict, nvram: str, value: int) -> str:
         raise Error(f"{path}: no save yet. Start {game} once (with its first-boot setup), quit it, then unlock.")
     current(u, nvram)   # refuses a save it doesn't understand
     data = bytearray(open(path, "rb").read())
-    backup = f"{path}.{time.strftime('%Y%m%d-%H%M%S')}.bak"
+    backup = backup_name(path)
     shutil.copy2(path, backup)
     for o in u["offsets"]:
         data[o] = value
@@ -383,7 +489,7 @@ def main() -> int:
         owner = {sw["id"]: u for u in unlocks.values() for sw in u.get("switch", [])}
         pending: dict[str, dict] = {}
         wishes_sets: list[tuple[str, str]] = []
-        wish_ids = {p["id"] for p in spec.get("progress", []) if p.get("kind") == "wishes"}
+        wish_ids = {p["id"] for p in spec.get("progress", []) if p.get("kind") in ("wishes", "eventmask", "tickets")}
         for s in a.set:
             uid, _, v = s.partition("=")
             if uid in wish_ids and v in ("all", "none"):
@@ -402,9 +508,15 @@ def main() -> int:
                 raise Error(f"{s}: expected ID=VALUE, ID one of {list(unlocks) + list(owner)}")
         progresses = {p["id"]: p for p in spec.get("progress", [])}
         for uid, v in wishes_sets:
-            backup = apply_wishes(a.game, progresses[uid], unlocks, nvram, v)
+            kind = progresses[uid].get("kind")
+            if kind == "eventmask":
+                backup = apply_eventmask(a.game, progresses[uid], unlocks, nvram, v)
+            elif kind == "tickets":
+                backup = apply_tickets(progresses[uid], nvram, v)
+            else:
+                backup = apply_wishes(a.game, progresses[uid], unlocks, nvram, v)
             if not a.json:
-                print(f"{uid}: {v} (the old save: {backup})")
+                print(f"{uid}: {v} ({'the old save: ' + backup if os.path.isabs(backup) else backup + ', each backed up'})")
         for uid, changes in pending.items():
             backup = apply_switches(a.game, unlocks[uid], nvram, changes)
             if not a.json:
@@ -423,6 +535,12 @@ def main() -> int:
             if p.get("kind") == "wishes":   # the launcher offers these
                 entry["choices"] = [{"value": "none", "name": "A new event: no wish granted"},
                                     {"value": "all", "name": "Every wish granted, the black bucket done"}]
+            elif p.get("kind") == "eventmask":
+                entry["choices"] = [{"value": "none", "name": "A new event: nothing found"},
+                                    {"value": "all", "name": "Everything found"}]
+            elif p.get("kind") == "tickets":
+                entry["choices"] = [{"value": "all", "name": f"Every card: {p['max']} tickets of each kind"},
+                                    {"value": "none", "name": "Every card: no tickets"}]
             prog.append(entry)
         if a.json:
             print(json.dumps({"game": a.game, "nvram": nvram, "unlocks": state, "progress": prog,

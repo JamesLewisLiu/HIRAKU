@@ -503,7 +503,7 @@ back with its PIN; `oracle/scripts/popn10-eamuse-on.his`, `popn10-card-new.his`,
   wishes (the items word of its settings, low and high 32 bits, signed decimal), its name and
   prefecture (`0x187a98`). Sent after a credit's HOSHI NI NEGAIO screen with e-AMUSEMENT on
   (`0x1a6f78`); answer `<rank status="0"/>` (121 is also taken). HIRAKU keeps the latest per shop
-  (`C20-rank-shop`) for `rank.get`'s shop board.
+  (`C20-rank-shop`: `shop_name area_num mask mask_hi when`) for `rank.get`'s shop board.
 - **message.get:** `<message status="0" phase="N" text="..."/>` (`0x19f4e0`). `phase` >= 0 sets the
   cabinet's event phase when it differs (`0x18dee0`, "PHASE ONLINE UPDATE"); a missing phase reads
   as 0, so answer `-1` unless you mean it. HIRAKU's server takes it from the file `phase-C20`.
@@ -522,9 +522,20 @@ the `local` service.
   name (a kana grid: blue moves, red enters, the white buttons switch kana/letters; 決定 is one
   blue-left from あ), the PIN twice.
 - **`D11 rank exp`:** pop'n 10's `rank.exp` (plus `chara_num`), answered on `<D11 update entry rank
-  hi_score hi_cool/>`. **`rank get`:** a `<b>` table as pop'n 10's (empty: `<D11/>`). **`rank shop`**
-  (`item extra shop_name area_num`), **`pf ask`**, **`game select`** (play counts: `<music num play
+  hi_score hi_cool/>`. **`pf ask`**, **`game select`** (play counts: `<music num play
   cnt/>` children), **`renewc reg`/`ask`** (a card's renewal: `old_card_id`, `new_card_id`): `<D11/>`.
+- **`D11 rank get`:** the rankings in `<b>` pieces, as pop'n 10's `rank.get`, into a 0x1f80-byte
+  table (`0x1932a8`): the 15 EXPERT courses as pop'n 10's, except that each entry has the
+  prefecture at 0x0d and the place at 0x0e. Then (at 0x1c5c) POPN TOURIST's shop board, "ポップン・
+  ツーリスト 獲得アイテム一覧": a count (up to 20), then 20 entries of 0x28 bytes: 0x00 the shop's
+  name (24 bytes), 0x18 the place, 0x19 the prefecture, 0x1a-0x1d the month, day, hour and minute
+  its finds were last added to, 0x20 the finds word (one bit per find; the STAGE column counts them), 0x24
+  `extra` (`0x129240`). The attract mode shows the courses at phase 1 and on, and the shop board
+  at phases 2 and 3. HIRAKU ranks the shops by finds, then by the earlier date.
+- **`D11 rank shop`** sends `item extra shop_name area_num`: the shop's POPN TOURIST finds word and
+  a second word, signed decimal. Answer `<D11/>`. HIRAKU keeps the latest per shop
+  (`D11-rank-shop`), dated by the server's clock when the finds grew. (Checked with records written by
+  hand; no HIRAKU run has sent one yet.)
 - **`D11 pf get`:** `<D11 pf_num mobile/>`. **`D11 game get`:** `<D11 phase message expire_days/>`;
   `phase` as pop'n 10's `message.get` (-1 leaves the cabinet's own; HIRAKU's file `phase-D11`).
 - **`D11 player set`** sends `card_id mileage ticket="t0,...,t8,"`; **`player get`** reads them back,

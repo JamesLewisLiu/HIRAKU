@@ -74,9 +74,12 @@ private:
     };
     Entered enter(const Board &b, const Request &r);
     std::string rank_register(const Board &b, const Request &r);
+    std::string next_number();   // a new card's number (numbering.assign, cardmng)
+    // pop'n 10's and 11's rank.get tables (15 courses, then the shops' board); as <b> pieces
+    std::string rank_table(const std::string &game);
+    std::string rank_b(const std::string &game);
+    void rank_shop(const std::string &game, const Request &r, const char *mask, const char *mask_hi);
     // pop'n 10 on: their own calls and answers ("" leaves the call to pop'n 9's)
-    std::string next_number();
-    std::string rank_table_c20();   // pop'n 10's rank.get table   // a new card's number (numbering.assign, cardmng)
     std::string answer_later(const std::string &game, const Request &r, const std::string &host);
     std::string answer_game(const std::string &game, const Request &r);
     std::string answer_playerdata(const std::string &game, const Request &r);
