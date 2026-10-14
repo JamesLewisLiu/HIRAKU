@@ -519,6 +519,64 @@ std::string EamuseServer::answer(const Call &c, const Request &r, const std::str
 
 // pop'n music 10 on (docs/EAMUSE3.md, "Later games"): game is the model's first three
 // characters. "" leaves the call to pop'n 9's answers (services, numbering, userid, posevent, ...).
+// pop'n 10's rankings, as rank.get's <b> (0x187be4 copies it to 0x18287c8, 0x1f30 bytes): 15
+// EXPERT courses of {count, 20 entries of 0x18: name (Shift-JIS, 13 bytes), place, prefecture,
+// score, cool} (0x12b218 draws them; the score only with the game's score display on), then the
+// shops by HOSHI NI NEGAIO wishes: {count, 20 entries of 0x24: shop name (25 bytes), place,
+// prefecture, the wishes word (64-bit)} (0x13afa0). Little-endian.
+std::string EamuseServer::rank_table_c20() {
+    std::string t(0x1f30, '\0');
+    auto put32 = [&](size_t at, uint32_t v) { for (int k = 0; k < 4; k++) t[at + k] = (char)(v >> (8 * k) & 255); };
+    auto bytes = [](const std::string &v) {   // the requests send names as hex Shift-JIS
+        std::string out;
+        bool hex = !v.empty() && v.size() % 2 == 0;
+        for (char c : v) hex = hex && std::isxdigit((unsigned char)c);
+        if (!hex) return v;
+        for (size_t i = 0; i + 1 < v.size(); i += 2) out += (char)std::strtoul(v.substr(i, 2).c_str(), nullptr, 16);
+        return out;
+    };
+    auto name_at = [&](size_t at, const std::string &v, size_t room) {
+        const std::string b = bytes(v);
+        for (size_t i = 0; i + 1 < room && i < b.size(); i++) t[at + i] = b[i];
+    };
+    const Board b{nullptr, "card_id", EXP_KEEP, "score", "cool", 10};
+    const std::vector<Record> all = from_lines(read_file("C20-rank-exp"));
+    for (int course = 0; course < 15; course++) {
+        std::vector<Record> board;
+        for (const Record &e : all)
+            if (attr(e, "course") == std::to_string(course)) board.push_back(e);
+        std::stable_sort(board.begin(), board.end(), [&](const Record &x, const Record &y) { return better(b, x, y); });
+        const size_t base = (size_t)course * 0x1e4, n = std::min<size_t>(board.size(), 20);
+        put32(base, (uint32_t)n);
+        for (size_t i = 0; i < n; i++) {
+            const size_t e = base + 4 + i * 0x18;
+            name_at(e, attr(board[i], "name"), 13);
+            t[e + 0x0d] = (char)(i + 1);
+            t[e + 0x0e] = (char)num(board[i], "area_num");
+            put32(e + 0x10, (uint32_t)num(board[i], "score"));
+            put32(e + 0x14, (uint32_t)num(board[i], "cool"));
+        }
+    }
+    std::vector<Record> shops = from_lines(read_file("C20-rank-shop"));
+    // sent as signed decimal ("%d")
+    auto word = [](const Record &e, const char *k) { return (uint32_t)std::strtoll(attr(e, k).c_str(), nullptr, 10); };
+    auto wishes = [&](const Record &e) { return __builtin_popcountll(word(e, "praystar_lo") | (uint64_t)word(e, "praystar_hi") << 32); };
+    std::stable_sort(shops.begin(), shops.end(), [&](const Record &x, const Record &y) { return wishes(x) > wishes(y); });
+    const size_t base = 15 * 0x1e4, n = std::min<size_t>(shops.size(), 20);
+    put32(base, (uint32_t)n);
+    for (size_t i = 0; i < n; i++) {
+        const size_t e = base + 4 + i * 0x24;
+        name_at(e, attr(shops[i], "shop_name"), 0x19);
+        t[e + 0x19] = (char)(i + 1);
+        t[e + 0x1a] = (char)num(shops[i], "area_num");
+        put32(e + 0x1c, word(shops[i], "praystar_lo"));
+        put32(e + 0x20, word(shops[i], "praystar_hi"));
+    }
+    // the game clears its buffer before decoding (0x187be4): trailing zeros needn't be sent
+    while (!t.empty() && t.back() == '\0') t.pop_back();
+    return t;
+}
+
 std::string EamuseServer::next_number() {
     uint64_t next = 1;
     if (std::string n = read_file("numbering"); !n.empty()) next = std::strtoull(n.c_str(), nullptr, 10);
@@ -659,11 +717,33 @@ std::string EamuseServer::answer_later(const std::string &game, const Request &r
                    "\" rank=\"" + std::to_string(e.place) + "\" hi_score=\"" + esc(attr(e.kept, "score")) + "\" hi_cool=\"" +
                    esc(attr(e.kept, "cool")) + "\"/>";
         }
-        // the rankings as a <b> block the game decodes (0x19e300); none yet: an empty board
-        if (f == "get") return "<rank status=\"0\"/>";
+        // the rankings as a <b> block the game decodes (0x19e300): pop'n 10's table (rank_table_c20);
+        // the later games' formats are not worked out yet: an empty board
+        if (f == "get") {
+            if (game != "C20") return "<rank status=\"0\"/>";
+            // in <b> pieces of 768 bytes: the game's reader refuses one long text, and appends
+            // each <b> after the last (0x19e300)
+            const std::string t = rank_table_c20();
+            std::string out = "<rank status=\"0\">";
+            for (size_t at = 0; at < t.size(); at += 768) out += "<b>" + base64(t.substr(at, 768)) + "</b>";
+            return out + "</rank>";
+        }
         // the server's ranking course (0x19e420); 117: none (the game clears it, 0x187f2c)
         if (f == "course") return "<rank status=\"117\"/>";
-        if (f == "shop") return "<rank status=\"0\"/>";
+        if (f == "shop") {   // praystar_lo/hi: the shop's HOSHI NI NEGAIO wishes (pop'n 10), kept per shop
+            std::vector<Record> shops = from_lines(read_file(game + "-rank-shop"));
+            const std::string name = attr(r.attrs, "shop_name");
+            Record mine{{"shop_name", name}, {"area_num", attr(r.attrs, "area_num")},
+                        {"praystar_lo", attr(r.attrs, "praystar_lo")}, {"praystar_hi", attr(r.attrs, "praystar_hi")}};
+            bool found = false;
+            for (Record &e : shops)
+                if (attr(e, "shop_name") == name) { e = mine; found = true; }
+            if (!found) shops.push_back(mine);
+            std::string out;
+            for (const Record &e : shops) out += to_line(e);
+            write_file(game + "-rank-shop", out);
+            return "<rank status=\"0\"/>";
+        }
     }
     if (m == "message" && f == "get") {   // (0x19f4e0) phase: the event phase, set online when >= 0
         // (0x18dee0); -1 leaves the cabinet's own. text: the owner's message.

@@ -50,9 +50,14 @@ def mirror_sum(b: bytes) -> int:
 
 def record_sum(c: dict, rec: bytes) -> int:
     """A record's own sum (checksum.inner): its segments' bytes, each XORed with its index in the
-    segment, plus a constant (pop'n 9's settings: 0x1a9b28)."""
+    segment, plus a constant (pop'n 9's settings: 0x1a9b28). A segment is a length (it follows the
+    previous one) or [start, length] (pop'n 10's skip bytes 4-7)."""
     s, o = c["add"], 0
-    for n in c["segments"]:
+    for seg in c["segments"]:
+        if isinstance(seg, list):
+            o, n = seg
+        else:
+            n = seg
         s += sum(rec[o + k] ^ k for k in range(n))
         o += n
     return s & 0xffffffff
@@ -168,6 +173,8 @@ def progress(p: dict, nvram: str, unlocks: dict) -> dict | None:
         return bingo(p, data, active, matches(p.get("released")))
     if p.get("kind") == "gamblerz":
         return gamblerz(p, data, active, matches(p.get("released")))
+    if p.get("kind") == "wishes":
+        return wishes(p, data, active, matches(p.get("released")))
     stage, unl, missed, pos, lap = (field(p[k]) for k in ("stage", "unlocked", "missed", "position", "lap"))
     st = p["stages"][min(stage, len(p["stages"]) - 1)]
     goal = st["goal"]
@@ -223,9 +230,80 @@ def gamblerz(p: dict, data: bytes, active: bool, released: bool) -> dict:
             "floor": field(p["floor"], 1), "boss_hp": field(p["boss_hp"], 2)}
 
 
+def wishes_fields(p: dict, data: bytes) -> tuple[list, list, int]:
+    """pop'n 10's HOSHI NI NEGAIO: the buckets' levels and stars, and the items word (little-endian,
+    in the settings record's copies)."""
+    vals = set()
+    for c in p["copies"]:
+        lv = tuple(data[c + p["levels"]:c + p["levels"] + len(p["buckets"])])
+        st = tuple(int.from_bytes(data[c + p["stars"] + 2 * k:c + p["stars"] + 2 * k + 2], "little") for k in range(len(p["buckets"])))
+        vals.add((lv, st, int.from_bytes(data[c + p["items"]:c + p["items"] + 8], "little")))
+    if len(vals) != 1:
+        raise Error(f"the copies of {p['id']} disagree: not a save this tool knows")
+    lv, st, items = vals.pop()
+    return list(lv), list(st), items
+
+
+def wishes(p: dict, data: bytes, active: bool, released: bool) -> dict:
+    lv, st, items = wishes_fields(p, data)
+    w = {x["bit"]: x for x in p["wishes"]}
+    buckets = []
+    for b, (bucket, level, stars) in enumerate(zip(p["buckets"], lv, st)):
+        nxt = w[bucket["wishes"][level]] if level < len(bucket["wishes"]) else None
+        buckets.append({"name": bucket["name"], "level": level, "of": len(bucket["wishes"]), "stars": stars,
+                        "next": nxt and nxt["gives"], "next_stars": nxt and nxt["stars"]})
+    black = p["black"]
+    return {"active": active, "released": released, "items": items, "buckets": buckets,
+            "granted": [w[k]["gives"] for k in sorted(w) if items >> k & 1],
+            "missing": [w[k]["gives"] for k in sorted(w) if not items >> k & 1],
+            "wish_count": len(w), "black": bool(items >> black["bit"] & 1), "black_gives": black["gives"],
+            "black_stars": black["stars"], "all_buckets": all(b["level"] >= b["of"] for b in buckets)}
+
+
+def apply_wishes(game: str, p: dict, unlocks: dict, nvram: str, value: str) -> str:
+    """HOSHI NI NEGAIO all (every wish granted and the black bucket done, as the game leaves a shop
+    that finished the event) or none (a new event)."""
+    path = os.path.join(nvram, p["nvram"])
+    if not os.path.exists(path):
+        raise Error(f"{path}: no save yet. Start {game} once (with its first-boot setup), quit it, then unlock.")
+    u = unlocks[p["checksum_of"]]
+    current(u, nvram)   # refuses a save it doesn't understand
+    data = bytearray(open(path, "rb").read())
+    wishes_fields(p, data)
+    backup = f"{path}.{time.strftime('%Y%m%d-%H%M%S')}.bak"
+    shutil.copy2(path, backup)
+    every = value == "all"
+    items = sum(1 << x["bit"] for x in p["wishes"]) | (1 << p["black"]["bit"]) if every else 0
+    for c in p["copies"]:
+        for b, bucket in enumerate(p["buckets"]):
+            data[c + p["levels"] + b] = len(bucket["wishes"]) if every else 0
+            data[c + p["stars"] + 2 * b:c + p["stars"] + 2 * b + 2] = (0).to_bytes(2, "little")
+        data[c + p["items"]:c + p["items"] + 8] = items.to_bytes(8, "little")
+    seal(u, data)
+    tmp = path + ".tmp"
+    with open(tmp, "wb") as f:
+        f.write(data)
+    os.replace(tmp, path)
+    return backup
+
+
 def describe_progress(p: dict, s: dict) -> str:
     if s is None:
         return "no save yet"
+    if p.get("kind") == "wishes":
+        lines = [] if s["active"] else ["the event is not running (it runs at phase 2 or 3)"]
+        if s["released"]:
+            lines.append("DATA RELEASE (phase 4 or MAX): its songs and characters are playable anyway")
+        lines.append(f"wishes granted: {len(s['granted'])} of {s['wish_count']}"
+                     + ("; the black bucket is done: " + s["black_gives"] if s["black"] else ""))
+        for b in s["buckets"]:
+            lines.append(f"  {b['name']}: wish {b['level']} of {b['of']}" +
+                         (f", {b['stars']} of {b['next_stars']} stars toward {b['next']}" if b["next"] else ", done"))
+        if s["all_buckets"] and not s["black"]:
+            lines.append(f"  the black bucket: {s['black_stars']} stars toward {s['black_gives']}")
+        if s["missing"]:
+            lines.append("still to wish for: " + "; ".join(s["missing"]))
+        return "\n".join(lines)
     if p.get("kind") == "gamblerz":
         lines = [] if s["active"] else ["the event is not running (it runs at phase 1 or 2)"]
         if s["released"]:
@@ -304,9 +382,13 @@ def main() -> int:
         unlocks = {u["id"]: u for u in spec.get("unlock", [])}
         owner = {sw["id"]: u for u in unlocks.values() for sw in u.get("switch", [])}
         pending: dict[str, dict] = {}
+        wishes_sets: list[tuple[str, str]] = []
+        wish_ids = {p["id"] for p in spec.get("progress", []) if p.get("kind") == "wishes"}
         for s in a.set:
             uid, _, v = s.partition("=")
-            if uid in owner and v in ("0", "1"):
+            if uid in wish_ids and v in ("all", "none"):
+                wishes_sets.append((uid, v))
+            elif uid in owner and v in ("0", "1"):
                 pending.setdefault(owner[uid]["id"], {})[uid] = v == "1"
             elif uid in unlocks and unlocks[uid].get("kind") == "switches" and v in ("all", "none"):
                 pending.setdefault(uid, {}).update({sw["id"]: v == "all" for sw in unlocks[uid]["switch"]})
@@ -318,6 +400,11 @@ def main() -> int:
                     print(f"{uid}: {level_name(u, before)} -> {level_name(u, int(v, 0))} (the old save: {backup})")
             else:
                 raise Error(f"{s}: expected ID=VALUE, ID one of {list(unlocks) + list(owner)}")
+        progresses = {p["id"]: p for p in spec.get("progress", [])}
+        for uid, v in wishes_sets:
+            backup = apply_wishes(a.game, progresses[uid], unlocks, nvram, v)
+            if not a.json:
+                print(f"{uid}: {v} (the old save: {backup})")
         for uid, changes in pending.items():
             backup = apply_switches(a.game, unlocks[uid], nvram, changes)
             if not a.json:
@@ -332,7 +419,11 @@ def main() -> int:
         prog = []
         for p in spec.get("progress", []):
             s = progress(p, nvram, unlocks)
-            prog.append({"id": p["id"], "title": p["title"], "state": s, "text": describe_progress(p, s)})
+            entry = {"id": p["id"], "title": p["title"], "state": s, "text": describe_progress(p, s)}
+            if p.get("kind") == "wishes":   # the launcher offers these
+                entry["choices"] = [{"value": "none", "name": "A new event: no wish granted"},
+                                    {"value": "all", "name": "Every wish granted, the black bucket done"}]
+            prog.append(entry)
         if a.json:
             print(json.dumps({"game": a.game, "nvram": nvram, "unlocks": state, "progress": prog,
                               "notes": spec.get("note", [])}, ensure_ascii=False))

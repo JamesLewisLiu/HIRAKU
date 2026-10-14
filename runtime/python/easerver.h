@@ -75,7 +75,8 @@ private:
     Entered enter(const Board &b, const Request &r);
     std::string rank_register(const Board &b, const Request &r);
     // pop'n 10 on: their own calls and answers ("" leaves the call to pop'n 9's)
-    std::string next_number();   // a new card's number (numbering.assign, cardmng)
+    std::string next_number();
+    std::string rank_table_c20();   // pop'n 10's rank.get table   // a new card's number (numbering.assign, cardmng)
     std::string answer_later(const std::string &game, const Request &r, const std::string &host);
     std::string answer_game(const std::string &game, const Request &r);
     std::string answer_playerdata(const std::string &game, const Request &r);

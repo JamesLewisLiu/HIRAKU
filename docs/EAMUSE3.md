@@ -482,12 +482,28 @@ back with its PIN; `oracle/scripts/popn10-eamuse-on.his`, `popn10-card-new.his`,
   chara_num rare_f/>` (`0x19e7e8`); no `chara_num` means none.
 - **rank.exp** (pop'n 9's `rank.register`, the same fields): answer `<rank status="0" update entry
   rank hi_score hi_cool/>` on the element itself (`0x19dda8`).
-- **rank.get** (no attributes): the rankings as a `<b>` text block of up to 16 KiB that fills a
-  7,984-byte table (`0x19e300`, used at `0x187be4`). Its format is not worked out; HIRAKU answers
-  none (`<rank status="0"/>`), which the game takes as empty.
+- **rank.get** (no attributes): the rankings, base64 in `<b>` (`0x19e300`; the game appends one
+  `<b>` after another, into a 16 KiB buffer it clears first), copied into a 0x1f30-byte table
+  (`0x187be4`, at `0x18287c8`). Little-endian:
+  - 15 EXPERT courses of 0x1e4 bytes each: a count (up to 20), then 20 entries of 0x18 bytes:
+    0x00 the name (Shift-JIS, 13 bytes), 0x0d the place, 0x0e the prefecture (JIS code, from 1),
+    0x10 the score (shown with the game's score display on), 0x14 the COOL count (`0x12b218`).
+    The attract mode's INTERNET RANKING screens show them (event phase 1 and on).
+  - Then (at 0x1c5c) HOSHI NI NEGAIO's shop board: a count (up to 20), then 20 entries of 0x24
+    bytes: 0x00 the shop's name (25 bytes), 0x19 the place, 0x1a the prefecture, 0x1c the shop's
+    granted wishes (64-bit; each a bucket icon, all 37 a special one) (`0x13afa0`). Shown as
+    "お星様にお願い！ お店対抗 RANKING" in phases 2 and 3.
+  - **Size:** the whole table in one `<b>` (10.7 KB) is refused (the game asks again, three
+    times); HIRAKU sends it in `<b>` pieces of 768 bytes and leaves out the trailing zeros.
+  HIRAKU builds it from `rank.exp` (the best per player and course, by score then COOL) and
+  `rank.shop` (the latest per shop, ranked by wishes).
 - **rank.course:** the server's ranking course, `<rank status="0" course_num music="a,b,c,d"
   area_num course_name user_name comment type/>` (`0x19e420`); status **117** means none.
-- **rank.shop** sends `praystar_lo praystar_hi shop_name area_num`; answer `<rank status="0"/>`.
+- **rank.shop** sends `praystar_lo praystar_hi shop_name area_num`: the shop's HOSHI NI NEGAIO
+  wishes (the items word of its settings, low and high 32 bits, signed decimal), its name and
+  prefecture (`0x187a98`). Sent after a credit's HOSHI NI NEGAIO screen with e-AMUSEMENT on
+  (`0x1a6f78`); answer `<rank status="0"/>` (121 is also taken). HIRAKU keeps the latest per shop
+  (`C20-rank-shop`) for `rank.get`'s shop board.
 - **message.get:** `<message status="0" phase="N" text="..."/>` (`0x19f4e0`). `phase` >= 0 sets the
   cabinet's event phase when it differs (`0x18dee0`, "PHASE ONLINE UPDATE"); a missing phase reads
   as 0, so answer `-1` unless you mean it. HIRAKU's server takes it from the file `phase-C20`.
