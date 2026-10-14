@@ -997,8 +997,9 @@ sound_stream *device_sound_interface::stream_alloc(int inputs, int outputs, u32 
 attotime sound_stream::sample_to_time(u64 index) const {
     // MAME: seconds exact, the remainder rounded up to whole attoseconds
     const u64 secs = index / m_sample_rate, rem = index % m_sample_rate;
-    const attotime::i128 num = (attotime::i128)rem * ATTOSECONDS_PER_SECOND;
-    const attoseconds_t attos = (attoseconds_t)((num + m_sample_rate - 1) / m_sample_rate);
+    const attotime::i128 num = (attotime::i128)rem * ATTOSECONDS_PER_SECOND + m_sample_rate - 1;
+    u64 q, r;
+    const attoseconds_t attos = attotime::div64(num, m_sample_rate, q, r) ? (attoseconds_t)q : (attoseconds_t)(num / m_sample_rate);
     return attotime((s64)secs, attos);
 }
 
@@ -1006,7 +1007,10 @@ void sound_stream::update() {
     if (!m_device->machine().m_exact || !m_sample_rate || m_in_update) return;
     const attotime now = m_device->machine().time();
     if (now.is_zero()) return;
-    const u64 idx = (u64)now.seconds() * m_sample_rate + (u64)((attotime::i128)now.attoseconds() * m_sample_rate / ATTOSECONDS_PER_SECOND);
+    const attotime::i128 part = (attotime::i128)now.attoseconds() * m_sample_rate;
+    u64 q, r;
+    const u64 idx = (u64)now.seconds() * m_sample_rate +
+                    (attotime::div64(part, ATTOSECONDS_PER_SECOND, q, r) ? q : (u64)(part / ATTOSECONDS_PER_SECOND));
     const s64 n = (s64)(idx - m_write_sample) + 1;   // up to and including the current sample
     if (n <= 0) return;
     m_samples_to_update = (s32)n;

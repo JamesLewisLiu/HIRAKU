@@ -2324,7 +2324,21 @@ void psxgpu_device::FlatRectangle()
 				drawx = n_drawarea_x1;
 			}
 
-			SOLIDFILL( FLATRECTANGEUPDATE )
+			if( ( n_cmd & 0x02 ) == 0 && !m_check_stp )
+			{
+				/* HIRAKU: opaque and no mask test: every pixel the same colour, filled at once */
+				if( n_distance > ( (int32_t)n_drawarea_x2 - drawx ) + 1 )
+					n_distance = ( n_drawarea_x2 - drawx ) + 1;
+				if( n_distance > 0 )
+					std::fill_n( p_p_vram[ drawy ] + drawx, n_distance, (uint16_t)( (
+						p_n_redshade[ MID_LEVEL | n_r.w.h ] |
+						p_n_greenshade[ MID_LEVEL | n_g.w.h ] |
+						p_n_blueshade[ MID_LEVEL | n_b.w.h ] ) | ( m_draw_stp ? 0x8000 : 0 ) ) );
+			}
+			else
+			{
+				SOLIDFILL( FLATRECTANGEUPDATE )
+			}
 		}
 
 		n_y++;

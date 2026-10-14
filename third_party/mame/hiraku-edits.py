@@ -567,8 +567,52 @@ def video_psx_cpp(s):
 					p_n_blueshade[ HK_BLEVEL( n_bgr ) | n_b.w.h ] ) \\
 			} \\
 """, 'TRANSPARENTPIXEL')
-    return s
+    # FlatRectangle (the 573's install screens' solid fills): opaque and no mask test, every pixel
+    # of a row gets the same value, so the row is filled at once (std::fill_n), the same pixels
+    s = edit(s, """			if( ( (int32_t)n_drawarea_x1 - drawx ) > 0 )
+			{
+				n_distance -= ( n_drawarea_x1 - drawx );
+				drawx = n_drawarea_x1;
+			}
 
+			SOLIDFILL( FLATRECTANGEUPDATE )
+		}
+
+		n_y++;
+		n_h--;
+	}
+}
+
+void psxgpu_device::FlatRectangle8x8()""", """			if( ( (int32_t)n_drawarea_x1 - drawx ) > 0 )
+			{
+				n_distance -= ( n_drawarea_x1 - drawx );
+				drawx = n_drawarea_x1;
+			}
+
+			if( ( n_cmd & 0x02 ) == 0 && !m_check_stp )
+			{
+				/* HIRAKU: opaque and no mask test: every pixel the same colour, filled at once */
+				if( n_distance > ( (int32_t)n_drawarea_x2 - drawx ) + 1 )
+					n_distance = ( n_drawarea_x2 - drawx ) + 1;
+				if( n_distance > 0 )
+					std::fill_n( p_p_vram[ drawy ] + drawx, n_distance, (uint16_t)( (
+						p_n_redshade[ MID_LEVEL | n_r.w.h ] |
+						p_n_greenshade[ MID_LEVEL | n_g.w.h ] |
+						p_n_blueshade[ MID_LEVEL | n_b.w.h ] ) | ( m_draw_stp ? 0x8000 : 0 ) ) );
+			}
+			else
+			{
+				SOLIDFILL( FLATRECTANGEUPDATE )
+			}
+		}
+
+		n_y++;
+		n_h--;
+	}
+}
+
+void psxgpu_device::FlatRectangle8x8()""", "video/psx.cpp FlatRectangle fill")
+    return s
 
 def atapihle_cpp(s):
     # a packet's byte count limit below one sector (the multi-session unit's firmware asks

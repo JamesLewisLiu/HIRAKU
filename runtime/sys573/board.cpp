@@ -43,7 +43,6 @@
 #include <sys/stat.h>
 
 #include <cstdio>
-#include <deque>
 #include <map>
 
 namespace hk::k573 {
@@ -728,7 +727,20 @@ struct Board {
         sound_stream *stream;
         float gain;               // MAME's route
         bool msu;
-        std::deque<float> q[2];
+        // the samples waiting for the host, per channel: read from `head` on, the space before
+        // it given back now and then (a deque here was ~3% of an install's frame time)
+        struct Fifo {
+            std::vector<float> v;
+            size_t head = 0;
+            size_t size() const { return v.size() - head; }
+            float operator[](size_t i) const { return v[head + i]; }
+            void push_back(float f) { v.push_back(f); }
+            void append(const float *b, const float *e) { v.insert(v.end(), b, e); }
+            void pop(size_t n) {
+                head += n;
+                if (head >= 4096 && head * 2 >= v.size()) { v.erase(v.begin(), v.begin() + (ptrdiff_t)head); head = 0; }
+            }
+        } q[2];
         double pos = 0;
         float peak = 0;           // its largest |sample|, and its rate (the report)
         u32 rate = 0;
@@ -911,8 +923,8 @@ void set_audio_sink(AudioSink s) { g.audio_sink = std::move(s); }
                 for (size_t i = 0; i < avail; i++) d.peak = std::max({d.peak, std::fabs(ml[i]), std::fabs(mr[i])});
                 size_t used = avail;
                 if (rate == 44100 || !rate) {
-                    d.q[0].insert(d.q[0].end(), ml.begin(), ml.begin() + avail);
-                    d.q[1].insert(d.q[1].end(), mr.begin(), mr.begin() + avail);
+                    d.q[0].append(ml.data(), ml.data() + avail);
+                    d.q[1].append(mr.data(), mr.data() + avail);
                 } else {   // linear, from rate to 44.1 kHz
                     const double step = rate / 44100.0;
                     while (d.pos + 1 < (double)avail) {
@@ -962,7 +974,7 @@ void set_audio_sink(AudioSink s) { g.audio_sink = std::move(s); }
                             for (size_t i = 0; i < n; i++) lr[2 * i + ch] += q[i] * d.gain;
                             if (host && d.msu)
                                 for (size_t i = 0; i < n; i++) unit[2 * i + ch] += q[i] * d.gain;
-                            q.erase(q.begin(), q.begin() + n);
+                            q.pop(n);
                         }
                     if (host) g_link.send_audio(unit.data(), n);
                     else if (!g.cfg.session_join.empty()) g_link.mix_audio(lr.data(), n);

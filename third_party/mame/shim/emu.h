@@ -209,6 +209,21 @@ template <typename T> constexpr attoseconds_t ATTOSECONDS_IN_NSEC(T x) { return 
 class attotime {
 public:
     using i128 = __int128;
+    // HIRAKU: n / d and n % d, when n >= 0 and the quotient fits in 64 bits, with one x86-64 divq:
+    // the same numbers as the 128-bit division (a libgcc call, ~3% of a 573 install's frame
+    // time), which the callers keep for every other case and on other hosts
+    static inline bool div64(i128 n, u64 d, u64 &q, u64 &r) {
+#if defined(__x86_64__)
+        const unsigned __int128 u = (unsigned __int128)n;
+        const u64 hi = (u64)(u >> 64), lo = (u64)u;
+        if (n >= 0 && hi < d) {
+            __asm__("divq %4" : "=a"(q), "=d"(r) : "a"(lo), "d"(hi), "rm"(d) : "cc");
+            return true;
+        }
+#endif
+        (void)n; (void)d; (void)q; (void)r;
+        return false;
+    }
     constexpr attotime() : m_v(0) {}
     constexpr attotime(s64 seconds, attoseconds_t attos) : m_v(i128(seconds) * ATTOSECONDS_PER_SECOND + attos) {}
     static constexpr attotime raw(i128 v) { attotime t; t.m_v = v; return t; }
@@ -217,12 +232,30 @@ public:
 
     bool is_never() const { return m_v >= NEVER; }
     bool is_zero() const { return m_v == 0; }
-    s64 seconds() const { return is_never() ? 1000000000 : (s64)(m_v / ATTOSECONDS_PER_SECOND); }
-    attoseconds_t attoseconds() const { return is_never() ? 0 : (attoseconds_t)(m_v % ATTOSECONDS_PER_SECOND); }
+    s64 seconds() const {
+        if (is_never()) return 1000000000;
+        u64 q, r;
+        return div64(m_v, ATTOSECONDS_PER_SECOND, q, r) ? (s64)q : (s64)(m_v / ATTOSECONDS_PER_SECOND);
+    }
+    attoseconds_t attoseconds() const {
+        if (is_never()) return 0;
+        u64 q, r;
+        return div64(m_v, ATTOSECONDS_PER_SECOND, q, r) ? (attoseconds_t)r : (attoseconds_t)(m_v % ATTOSECONDS_PER_SECOND);
+    }
     double as_double() const { return is_never() ? 1e9 : (double)m_v / 1e18; }
     double as_hz() const { return 1.0 / as_double(); }
-    u64 as_ticks(u32 frequency) const { return is_never() ? ~u64(0) : (u64)(m_v * frequency / ATTOSECONDS_PER_SECOND); }
-    u64 as_ticks(u64 frequency) const { return is_never() ? ~u64(0) : (u64)(m_v * (i128)frequency / ATTOSECONDS_PER_SECOND); }
+    u64 as_ticks(u32 frequency) const {
+        if (is_never()) return ~u64(0);
+        const i128 n = m_v * frequency;
+        u64 q, r;
+        return div64(n, ATTOSECONDS_PER_SECOND, q, r) ? q : (u64)(n / ATTOSECONDS_PER_SECOND);
+    }
+    u64 as_ticks(u64 frequency) const {
+        if (is_never()) return ~u64(0);
+        const i128 n = m_v * (i128)frequency;
+        u64 q, r;
+        return div64(n, ATTOSECONDS_PER_SECOND, q, r) ? q : (u64)(n / ATTOSECONDS_PER_SECOND);
+    }
     // as MAME: whole seconds exact, the rest in whole attoseconds per tick
     static attotime from_ticks(u64 ticks, u32 frequency) {
         if (!frequency) return never;
@@ -258,7 +291,11 @@ public:
     attotime &operator*=(u32 f) { return *this = *this * f; }
     attotime &operator/=(u32 f) { return *this = *this / f; }
     friend attotime operator*(attotime a, u32 f) { return a.is_never() ? never : raw(a.m_v * f); }
-    friend attotime operator/(attotime a, u32 f) { return a.is_never() ? never : raw(a.m_v / f); }
+    friend attotime operator/(attotime a, u32 f) {
+        if (a.is_never()) return never;
+        u64 q, r;
+        return f && div64(a.m_v, f, q, r) ? raw((i128)q) : raw(a.m_v / f);
+    }
     friend bool operator<(attotime a, attotime b) { return a.m_v < b.m_v; }
     friend bool operator>(attotime a, attotime b) { return a.m_v > b.m_v; }
     friend bool operator<=(attotime a, attotime b) { return a.m_v <= b.m_v; }
