@@ -1,0 +1,174 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+#include "aboutdialog.h"
+
+#include <QApplication>
+#include <QComboBox>
+#include <QDialogButtonBox>
+#include <QFile>
+#include <QFont>
+#include <QHBoxLayout>
+#include <QLabel>
+#include <QMessageBox>
+#include <QPlainTextEdit>
+#include <QPushButton>
+#include <QTabWidget>
+#include <QTextBrowser>
+#include <QVBoxLayout>
+
+#include "config.h"
+
+namespace {
+
+// A licence text: a whole file, or its first `lines` lines (a notice at the top of a source file)
+struct Licence {
+    const char *title, *path;
+    int lines;
+};
+
+const Licence kLicences[] = {
+    {"HIRAKU: GNU GPL v3", "LICENSE", 0},
+    {"MAME: BSD-3-Clause", "third_party/mame/LICENSE", 0},
+    {"Musashi: MIT", "third_party/musashi/LICENSE", 0},
+    {"SoftFloat 2b (Musashi's FPU)", "third_party/musashi/softfloat/README.txt", 0},
+    {"Berkeley SoftFloat 3: BSD-3-Clause", "third_party/mame/src/3rdparty/softfloat3/COPYING.txt", 0},
+    {"minimp3: CC0", "third_party/mame/src/3rdparty/minimp3/minimp3.h", 8},
+    {"crt-royale: GNU GPL v2", "third_party/slang-shaders/crt/shaders/crt-royale/LICENSE.TXT", 0},
+    {"crt-guest-advanced-fast: GNU GPL v2 or later", "third_party/slang-shaders/crt/shaders/guest/fast/bloom_horizontal.slang", 22},
+    {"Wayland presentation-time: MIT", "third_party/wayland/presentation-time.xml", 26},
+    {"Wayland fifo-v1: MIT", "third_party/wayland/fifo-v1.xml", 24},
+};
+
+QString readLicence(const Licence &l) {
+    QFile f(cfg::rootDir() + "/" + l.path);
+    if (!f.open(QIODevice::ReadOnly | QIODevice::Text))
+        return QString("%1 was not found in the HIRAKU folder (%2).").arg(l.path, cfg::rootDir());
+    QString text = QString::fromUtf8(f.readAll());
+    if (l.lines > 0) text = text.section('\n', 0, l.lines - 1) + "\n";
+    return text;
+}
+
+QString link(const char *url, const char *text) { return QString("<a href=\"%1\">%2</a>").arg(url, text); }
+
+QString aboutHtml() {
+    return QString(
+               "<p>Konami arcade games as native Linux programs. Firebeat games are statically "
+               "recompiled from their PowerPC code; DJ Main, System 573, Twinkle and Python run on "
+               "the same shell, behind this launcher.</p>"
+               "<p>HIRAKU ships no game data. It runs your own dumps.</p>"
+               "<p>Copyright © 2026 Roganis</p>"
+               "<p>HIRAKU is free software: you can redistribute it and/or modify it under the terms of the "
+               "GNU General Public License as published by the Free Software Foundation, either version 3 "
+               "of the License, or (at your option) any later version. It is distributed in the hope that "
+               "it will be useful, but <b>without any warranty</b>; without even the implied warranty of "
+               "merchantability or fitness for a particular purpose. See the Licences tab.</p>"
+               "<p>Code taken from other projects keeps its own licence and notices: see Software and Licences.</p>"
+               "<p>beatmania, pop'n music, Keyboardmania, ParaParaParadise, GuitarFreaks, DrumMania, "
+               "Dance Dance Revolution, beatmania IIDX and e-AMUSEMENT are trademarks of Konami. "
+               "HIRAKU is not affiliated with or endorsed by Konami.</p>"
+               "<p><small>Built with Qt %1, running on Qt %2.</small></p>")
+        .arg(QT_VERSION_STR, qVersion());
+}
+
+QString softwareHtml() {
+    QString h;
+    h += "<h3>Code in HIRAKU</h3><ul>";
+    h += "<li><b>" + link("https://www.mamedev.org", "MAME") +
+         "</b> (BSD-3-Clause, MAMEdev and contributors): the devices of the XT446 synth card, "
+         "System 573, Twinkle and the multi-session unit, on HIRAKU's own shim of MAME's framework. "
+         "Copyright holders are named in each file.</li>";
+    h += "<li><b>" + link("https://github.com/987123879113/mame", "windyfairy's System 573 work") +
+         "</b> (BSD-3-Clause): the multi-session unit, its TC9446F MP3 decoders, SIO1 as a UART, "
+         "the TX3927 CPU.</li>";
+    h += "<li><b>" + link("https://github.com/kstenerud/Musashi", "Musashi") +
+         "</b> (MIT, Karl Stenerud): the 68000 of the Firebeat SPU and the 68EC020 of DJ Main.</li>";
+    h += "<li><b>" + link("http://www.jhauser.us/arithmetic/SoftFloat.html", "SoftFloat") +
+         "</b> (John R. Hauser): release 2b in Musashi; Berkeley SoftFloat 3 (BSD-3-Clause, "
+         "The Regents of the University of California) in the MIPS CPUs.</li>";
+    h += "<li><b>" + link("https://github.com/lieff/minimp3", "minimp3") +
+         "</b> (CC0, lieff): the MP3 decoding of the 573's digital I/O board and the multi-session unit.</li>";
+    h += "<li><b>" + link("https://github.com/libretro/slang-shaders", "libretro slang-shaders") +
+         "</b> (GPL-2.0-or-later): crt-guest-advanced-fast (guest(r), with Dr. Venom) and "
+         "crt-royale (TroggleMonkey), the picture's CRT shaders.</li>";
+    h += "<li><b>" + link("https://gitlab.freedesktop.org/wayland/wayland-protocols", "wayland-protocols") +
+         "</b> (MIT): presentation-time (Collabora) and fifo-v1 (Valve), for frame pacing.</li>";
+    h += "</ul>";
+
+    h += "<h3>Libraries</h3><ul>";
+    h += "<li><b>" + link("https://www.qt.io", "Qt 6") + "</b> (LGPL-3.0): this launcher.</li>";
+    h += "<li><b>" + link("https://www.libsdl.org", "SDL 3") +
+         "</b> (zlib): windows, sound, controllers and their LEDs.</li>";
+    h += "<li><b>" + link("https://github.com/DiscoStarslayer/pcsx2-reliquary", "PCSX2 Reliquary") +
+         "</b> (GPL-3.0-or-later), a fork of " + link("https://github.com/PCSX2/pcsx2", "PCSX2") +
+         ": the emulator inside the Konami Python core.</li>";
+    h += "<li><b>" + link("https://ffmpeg.org", "FFmpeg") +
+         "</b> (LGPL-2.1-or-later): Twinkle's background video, when found at build time.</li>";
+    h += "<li><b>" + link("https://www.fluidsynth.org", "FluidSynth") +
+         "</b> (LGPL-2.1-or-later): Keyboardmania's SoundFont stand-in for the XT446, when found at build time.</li>";
+    h += "<li><b>" + link("https://wayland.freedesktop.org", "libwayland-client") + "</b> (MIT).</li>";
+    h += "</ul>";
+
+    h += "<h3>References</h3><ul>";
+    h += "<li><b>MAME</b>: the oracle every core is checked against, frame by frame and access by access.</li>";
+    h += "<li><b>PCSX2 Reliquary</b>: the oracle for the Python core.</li>";
+    h += "<li><b>" + link("https://ghidra-sre.org", "Ghidra") +
+         "</b> (Apache-2.0, NSA): the analysis of each game program before translation.</li>";
+    h += "<li><b>" + link("https://www.qemu.org", "QEMU") +
+         "</b> (GPL-2.0): the reference for the PowerPC instruction tests.</li>";
+    h += "<li><b>" + link("https://spice2x.github.io", "spice2x") +
+         "</b>: the names and meanings of the e-AMUSEMENT options.</li>";
+    h += "<li><b>" + link("https://remywiki.com", "RemyWiki") +
+         "</b>: event codes, unlocks and song facts.</li>";
+    h += "</ul>";
+    h += "<p>And everyone who dumped, documented and preserved these machines.</p>";
+    return h;
+}
+
+QTextBrowser *browser(const QString &html) {
+    auto *b = new QTextBrowser;
+    b->setOpenExternalLinks(true);
+    b->setHtml(html);
+    return b;
+}
+
+}  // namespace
+
+AboutDialog::AboutDialog(QWidget *parent) : QDialog(parent) {
+    setWindowTitle("About HIRAKU");
+    resize(640, 520);
+
+    auto *tabs = new QTabWidget;
+    tabs->addTab(browser(aboutHtml()), "About");
+    tabs->addTab(browser(softwareHtml()), "Software");
+
+    auto *licences = new QWidget;
+    auto *which = new QComboBox;
+    for (const Licence &l : kLicences) which->addItem(l.title);
+    auto *text = new QPlainTextEdit;
+    text->setReadOnly(true);
+    text->setFont(QFont("monospace"));
+    text->setLineWrapMode(QPlainTextEdit::NoWrap);
+    connect(which, &QComboBox::currentIndexChanged, text,
+            [text](int i) { text->setPlainText(i >= 0 ? readLicence(kLicences[i]) : QString()); });
+    text->setPlainText(readLicence(kLicences[0]));
+    auto *ll = new QVBoxLayout(licences);
+    ll->addWidget(which);
+    ll->addWidget(text);
+    tabs->addTab(licences, "Licences");
+
+    auto *buttons = new QDialogButtonBox(QDialogButtonBox::Close);
+    auto *aboutQt = buttons->addButton("About Qt", QDialogButtonBox::HelpRole);
+    connect(aboutQt, &QPushButton::clicked, this, [this] { QMessageBox::aboutQt(this); });
+    connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
+
+    auto *icon = new QLabel;
+    icon->setPixmap(windowIcon().pixmap(48, 48));
+    auto *title = new QLabel("<b style='font-size:large'>HIRAKU</b><br>Konami arcade games, native");
+    auto *top = new QHBoxLayout;
+    top->addWidget(icon);
+    top->addWidget(title, 1);
+
+    auto *l = new QVBoxLayout(this);
+    l->addLayout(top);
+    l->addWidget(tabs);
+    l->addWidget(buttons);
+}

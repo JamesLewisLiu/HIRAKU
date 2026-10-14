@@ -33,6 +33,7 @@
 #include <QUrl>
 #include <QVBoxLayout>
 
+#include "aboutdialog.h"
 #include "config.h"
 #include "controlsdialog.h"
 #include "lightsdialog.h"
@@ -240,11 +241,8 @@ MainWindow::MainWindow() {
     help->addAction("Lights (docs/LIGHTS.md)", this, [] {
         QDesktopServices::openUrl(QUrl::fromLocalFile(cfg::rootDir() + "/docs/LIGHTS.md"));
     });
-    help->addAction("About HIRAKU", this, [this] {
-        QMessageBox::about(this, "About HIRAKU",
-                           "<b>HIRAKU</b><br>Konami Firebeat games, statically recompiled to native code.<br><br>"
-                           "HIRAKU ships no game data: it runs your own dumps.<br>Licence: GPL-3.0-or-later.");
-    });
+    help->addSeparator();
+    help->addAction(QIcon::fromTheme("help-about"), "About HIRAKU…", this, [this] { AboutDialog(this).exec(); });
 
     // ---- the game process ----
     m_ingest.setProcessChannelMode(QProcess::MergedChannels);

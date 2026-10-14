@@ -211,6 +211,7 @@ if(Qt6_FOUND AND TARGET hiraku_hidout)
   set(CMAKE_AUTOMOC ON)
   add_executable(hiraku
     launcher/main.cpp
+    launcher/aboutdialog.cpp
     launcher/config.cpp
     launcher/games.cpp
     launcher/inputs.cpp
