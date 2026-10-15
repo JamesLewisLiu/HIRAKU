@@ -742,13 +742,43 @@ same number.
   - **13** (`conv name ref_id old_card_id new_card_id`): pop'n 12's song words' low byte (the four
     charts' clear marks, two bits each, the same in both: `0x1812f98`, `0x1812c4c`) as pop'n 13's
     32-bit words from 0x28; pop'n 12's flags above it are left out. The PIN and the name.
-  - **14** (`conv name ref_id card_id popn_id ea_passwd`): pop'n 13's record copied byte for byte
-    into the 0xdb8 bytes (so pop'n 13's song n is pop'n 14's n+1, its list starting 4 bytes
-    earlier), the name as sent. The answer is pop'n 13's record again, compressed.
-- **Not shared:** each game keeps its own player afterwards (scores and clears go on separately);
-  a name changed in one game stays there. Characters and options: pop'n 14's are what pop'n 13's
-  bytes say (as the game copies them), the others start from the game's defaults. ee'MALL tickets
-  don't carry over (the games say so).
+  - **14** (`conv name ref_id card_id popn_id ea_passwd`): the game takes the answer's record as
+    its own, byte for byte. pop'n 13's record as it is would put song n at pop'n 14's n+1 (14's song
+    words start at 0x24, `0x17fdfa0`; 13's at 0x28) and 13's PIN where 14 keeps its option and
+    character, though both games number their songs alike (below). So the answer is the record in
+    pop'n 14's layout: the name, 13's option and character (0x20, 0x22) at 0x1c, 0x1e, and each
+    song's word at 0x24 + 4n; the server keeps the same.
+- **Clear marks are shared** (below); each game keeps its own player otherwise: scores, options
+  and a name changed in one game stay there. Characters and options: pop'n 14 takes pop'n 13's,
+  the others start from the game's defaults. ee'MALL tickets don't carry over (the games say so).
+
+### Shared clear marks
+
+- **One song numbering:** each game's song table (entries with pointers to a genre name and a
+  comment) gives the same genre at the same index in all six games (pop'n 9 and 10: 325 and 390
+  entries; 11: 450; 12 and 13: 472; 14: 700), the differences being spelling only (kana or
+  kanji, "(PS)"-style tags), except pop'n 14's 457-459, other genres than 13's. The songs sent in
+  play agree (pop'n 14's 393 is アンパンマン, on screen and in its table).
+- **The marks:** two bits a chart, 1 a clear and 2-3 the better medals, in the low byte of a song's
+  word: pop'n 12, 13, 14 in one order (bits 0-1, 2-3, 4-5, 6-7), pop'n 10 and 11 with the last
+  two charts the other way round. pop'n 9 keeps a cleared bit a chart, byte 0x416 + song, bits 0-3
+  in pop'n 12's order. Found from the games' own conversions, with patterned players:
+  - pop'n 9 -> 10: 9's byte 0x416 + n bits 0-3 become 10's flags 0x100, 0x200, 0x800, 0x400 of
+    word n (10's song words: 600 at 0x3fc); 9's bits 4-7 and its 0x8-0x404 (scores, presumably)
+    aren't carried;
+  - pop'n 10 -> 11: the low byte as it is (11's words: 600 at 0x410), 10's flags 0x100-0x800
+    become marks of 1 at bits 0, 2, 4, 6; songs past 10's table (390) left out;
+  - 11 -> 12, 12 -> 13, 13 -> 14: above.
+- **The server** gives each game, when it reads its own player (pop'n 9-11 `userdata.read`, 12-14
+  `playerdata get`), every chart's best mark over all the games the card has played (their saved
+  players: `userdata-*`, `pdata-*`, pop'n 13's and 14's by the card's ref id), in that game's
+  format, for the songs that game has; a game's own better mark and its other bits stay. The game
+  then saves them with its own at the end of a credit (pop'n 9-11 save the whole player). Checked:
+  marks put in pop'n 9, 10, 11 and 13 reached all six games (in RAM for 12-14), and pop'n 9, 10 and
+  11 played a credit with them and saved them.
+- **Not shared yet:** scores (pop'n 12-14's `score` per chart are the server's; pop'n 14 sends
+  sheet numbers 13 doesn't use, so the charts' numbering needs working out first), and pop'n 13's
+  and 14's other flags.
 
 ## NET TAISEN (pop'n music 12–14)
 

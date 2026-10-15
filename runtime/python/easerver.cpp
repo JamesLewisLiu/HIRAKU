@@ -465,7 +465,7 @@ std::string EamuseServer::answer(const Call &c, const Request &r, const std::str
         const std::string card = attr(r.attrs, "card");
         const std::string data = safe_name(card) ? read_file("userdata-" + card) : "";
         if (data.empty()) return "<userdata status=\"109\"/>";
-        return data;   // kept as the answer element itself
+        return with_shared_marks("C00", card, data);   // kept as the answer element itself, the card's marks put in
     }
     if (m == "userdata" && f == "write") {
         const std::string card = attr(r.attrs, "card");
@@ -857,6 +857,7 @@ std::string EamuseServer::answer_later(const std::string &game, const Request &r
         if (!safe_name(card)) return "<userdata status=\"1\"/>";
         if (f == "read") {
             std::string data = read_file("userdata-" + game + "-" + card);
+            if (!data.empty()) return with_shared_marks(game, card, data);   // the card's marks from the other games put in
             // a card carried over from pop'n 9: what pop'n 9 saved (the game converts it)
             if (data.empty()) data = read_file("userdata-" + card);
             return data.empty() ? "<userdata status=\"109\"/>" : data;
@@ -1019,6 +1020,143 @@ std::string EamuseServer::answer_game(const std::string &game, const Request &r)
 // character (16-bit), from 0x3c a 16-bit word per song (2-bit clear marks per chart in bits 0-7,
 // flags in 0x100-0x800: 0x1b3958), from about 0x5f0 the network battle's. Scores are kept apart
 // (playerdata score asks one chart's).
+// One card for all: shared clear marks (docs/EAMUSE3.md, "One card for all"). All six games number
+// their songs alike (checked by their song tables), and every chart's clear mark is two bits, 1 a
+// clear and 2-3 the better medals, in pop'n 12's order: song word bits 0-1, 2-3, 4-5, 6-7 for
+// the four charts (12, 13, 14: their words' low byte; pop'n 13 shows a 12 record so, 0x1812f98).
+// pop'n 10 and 11 keep the last two charts the other way round (11 -> 12 swaps them, 0x1a0a38).
+// pop'n 9 keeps only a cleared bit per chart, byte 0x416 + song, bits 0-3 in pop'n 12's order
+// (pop'n 10 makes them its flags 0x100, 0x200, 0x800, 0x400 and pop'n 11 those marks of 1). The
+// marks travel; each game's own bits (flags, scores) stay its own.
+namespace {
+
+// the songs each game has (from its song table); pop'n 14's 457-459 are other songs than 13's
+struct SongRanges { const char *game; std::vector<std::pair<int, int>> ranges; };
+const SongRanges SONGS[] = {
+    {"C00", {{0, 120}, {122, 149}, {151, 220}, {222, 251}, {253, 256}, {258, 324}}},
+    {"C20", {{0, 120}, {122, 149}, {151, 220}, {222, 256}, {258, 385}, {387, 389}}},
+    {"D11", {{0, 427}, {429, 449}}},
+    {"E12", {{0, 243}, {247, 251}, {253, 253}, {255, 256}, {258, 259}, {261, 261}, {264, 327}, {330, 336}, {339, 391}, {393, 427}, {429, 449}, {457, 464}, {466, 467}, {469, 471}}},
+    {"E13", {{0, 243}, {247, 251}, {253, 253}, {255, 256}, {258, 259}, {261, 261}, {264, 327}, {330, 336}, {339, 391}, {393, 427}, {429, 449}, {457, 464}, {466, 467}, {469, 471}}},
+    {"F14", {{0, 243}, {247, 251}, {253, 253}, {255, 256}, {258, 259}, {261, 261}, {264, 327}, {330, 336}, {339, 391}, {393, 427}, {429, 456}, {460, 496}, {500, 500}, {511, 515}, {517, 517}, {520, 521}, {530, 530}, {532, 533}, {536, 699}}},
+};
+
+bool has_song(const std::string &game, size_t n) {
+    for (const SongRanges &g : SONGS)
+        if (game == g.game) {
+            for (const auto &[a, b] : g.ranges)
+                if ((int)n >= a && (int)n <= b) return true;
+            return false;
+        }
+    return false;
+}
+
+constexpr size_t SONG_MAX = 1024;
+
+uint8_t swap34(uint8_t m) { return (uint8_t)((m & 0x0f) | (m & 0x30) << 2 | (m & 0xc0) >> 2); }
+
+uint8_t best(uint8_t a, uint8_t b) {   // per chart, the better mark
+    uint8_t o = 0;
+    for (int c = 0; c < 8; c += 2) o |= (uint8_t)(std::max(a >> c & 3, b >> c & 3) << c);
+    return o;
+}
+
+// where a game keeps its song words in its player data: offset, bytes a word, and whether the
+// data is a userdata blob (pop'n 9-11) or a record (12-14)
+struct Words { size_t at, bytes; };
+Words words_of(const std::string &game) {
+    if (game == "C20") return {0x3fc, 2};
+    if (game == "D11") return {0x410, 2};
+    if (game == "E12") return {0x3c, 2};
+    if (game == "E13") return {0x28, 4};
+    if (game == "F14") return {0x24, 4};
+    return {0x416, 1};   // C00: a byte a song
+}
+
+// a song's marks as the game keeps them, in pop'n 12's order
+uint8_t marks_in(const std::string &game, const std::string &d, size_t n) {
+    const Words w = words_of(game);
+    const size_t at = w.at + w.bytes * n;
+    if (at + w.bytes > d.size()) return 0;
+    const unsigned lo = (uint8_t)d[at], hi = w.bytes > 1 ? (uint8_t)d[at + 1] : 0;
+    if (game == "C00") {   // cleared bits
+        uint8_t m = 0;
+        for (int c = 0; c < 4; c++) if (lo >> c & 1) m |= (uint8_t)(1 << 2 * c);
+        return m;
+    }
+    if (game == "C20") {   // marks (11's order) and the cleared flags of a pop'n 9 player
+        uint8_t m = swap34((uint8_t)lo);
+        static const int flag_chart[4] = {0, 1, 3, 2};   // 0x100, 0x200, 0x400, 0x800
+        for (int b = 0; b < 4; b++)
+            if (hi >> b & 1) m = best(m, (uint8_t)(1 << 2 * flag_chart[b]));
+        return m;
+    }
+    if (game == "D11") return swap34((uint8_t)lo);
+    return (uint8_t)lo;
+}
+
+// a song's marks put into the game's data: each chart the better of the two
+void marks_out(const std::string &game, std::string &d, size_t n, uint8_t m) {
+    const Words w = words_of(game);
+    const size_t at = w.at + w.bytes * n;
+    if (at + w.bytes > d.size() || !m) return;
+    if (game == "C00") {
+        uint8_t b = (uint8_t)d[at];
+        if (b == 0xff) b = 0;   // never played
+        for (int c = 0; c < 4; c++) if (m >> 2 * c & 3) b |= (uint8_t)(1 << c);
+        d[at] = (char)b;
+        return;
+    }
+    const uint8_t mine = game == "C20" || game == "D11" ? swap34(m) : m;
+    d[at] = (char)best((uint8_t)d[at], mine);
+}
+
+}  // namespace
+
+std::vector<uint8_t> EamuseServer::shared_marks(const std::string &card) const {
+    std::vector<uint8_t> marks(SONG_MAX, 0);
+    if (!safe_name(card)) return marks;
+    std::string ref;   // pop'n 13 and 14 keep their players by ref id
+    for (const Record &c : from_lines(read_file("cards")))
+        if (attr(c, "cardid") == card) ref = attr(c, "refid");
+    struct Source { const char *game; std::string data; };
+    const Source sources[] = {
+        {"C00", unbase64_b(read_file("userdata-" + card))},
+        {"C20", unbase64_b(read_file("userdata-C20-" + card))},
+        {"D11", unbase64_b(read_file("userdata-D11-" + card))},
+        {"E12", read_file("pdata-E12-" + card)},
+        {"E13", safe_name(ref) ? read_file("pdata-E13-" + ref) : ""},
+        {"F14", safe_name(ref) ? read_file("pdata-F14-" + ref) : ""},
+    };
+    for (const Source &s : sources)
+        for (size_t n = 0; n < SONG_MAX && !s.data.empty(); n++)
+            if (has_song(s.game, n)) marks[n] = best(marks[n], marks_in(s.game, s.data, n));
+    return marks;
+}
+
+// data: the game's own player data (a userdata answer with <b> pieces for pop'n 9-11, the raw
+// record for 12-14), returned with the card's shared marks put in
+std::string EamuseServer::with_shared_marks(const std::string &game, const std::string &card, std::string data) const {
+    const std::vector<uint8_t> marks = shared_marks(card);
+    const bool blob = game == "C00" || game == "C20" || game == "D11";
+    std::string d = blob ? unbase64_b(data) : data;
+    for (size_t n = 0; n < SONG_MAX; n++)
+        if (has_song(game, n)) marks_out(game, d, n, marks[n]);
+    if (!blob) return d;
+    // back into the same <b> pieces
+    std::string out;
+    size_t at = 0, from = 0;
+    for (size_t b = data.find("<b>"); b != std::string::npos; b = data.find("<b>", b + 3)) {
+        const size_t e = data.find("</b>", b);
+        if (e == std::string::npos) break;
+        const size_t n = unbase64_b(data.substr(b, e + 4 - b)).size();
+        out += data.substr(from, b + 3 - from) + base64(d.substr(at, n));
+        at += n;
+        from = e;
+    }
+    return out + data.substr(from);
+}
+
 std::string EamuseServer::answer_playerdata(const std::string &game, const Request &r) {
     // each game's record (docs/EAMUSE3.md): its size, the password's, option's and character's
     // places, and the songs' clear words (16 bits each in pop'n 12, 32 in pop'n 13)
@@ -1092,6 +1230,13 @@ std::string EamuseServer::answer_playerdata(const std::string &game, const Reque
             return open + ">" + data.substr(b, e + 4 - b) + "</" + game + ">";
         }
         if (rec.size() != RECORD) return "<" + game + " status=\"109\"/>";
+        // the card's clear marks from the other pop'n games put in (pop'n 13 and 14 key the player by
+        // ref id; the card is card_id, or the ref id's in the cards)
+        std::string number = attr(r.attrs, "card_id");
+        if (!safe_name(number) || number == "-")
+            for (const Record &c : from_lines(read_file("cards")))
+                if (attr(c, "refid") == card) number = attr(c, "cardid");
+        if (safe_name(number)) rec = with_shared_marks(game, number, rec);
         return with_record();
     }
     if (f == "set") {
@@ -1190,21 +1335,25 @@ std::string EamuseServer::answer_playerdata(const std::string &game, const Reque
         return open + "/>";
     }
     // pop'n 14: conv (name ref_id card_id popn_id ea_passwd) after the player chose "カーニバルから
-    // データを引きつぐ" and typed pop'n 13's transfer number (POP'N ID): the answer is that pop'n 13
-    // player's record (0xd6c, compressed as get's), which the game converts. Transfer numbers
-    // aren't issued here; with one card for all, the card's ref id is pop'n 13's too, so its pop'n 13
-    // player is the one, whatever number was typed.
-    // The game then holds that record copied byte for byte into its own (checked in RAM: so
-    // pop'n 13's song n is pop'n 14's song n+1, its list starting 4 bytes earlier); the credit's set
-    // sends only the songs played, so the server keeps the same copy as pop'n 14's record.
+    // データを引きつぐ" and typed pop'n 13's transfer number (POP'N ID). The game takes the answer's
+    // record as its own, byte for byte (checked in RAM). pop'n 13's record as it is would put song n
+    // at pop'n 14's n+1 (14's song words start at 0x24, 13's at 0x28: 0x17fdfa0, 0x17a0170; both
+    // number songs alike, by their song tables and the songs played) and 13's PIN where 14 keeps its
+    // option and character; so the answer is the record converted to pop'n 14's layout: the name,
+    // the option and character (13's 0x20, 0x22 to 0x1c, 0x1e), and each song's word. The server
+    // keeps it as pop'n 14's record (the credit's set sends only the songs played). Transfer numbers
+    // aren't issued here; with one card for all, the card's ref id is pop'n 13's too.
     if (f == "conv" && p14) {
         const std::string old = read_file("pdata-E13-" + card);
         if (old.size() != 0xd6c) return "<" + game + " status=\"109\"/>";
-        rec = old;
-        rec.resize(RECORD, 0);
+        rec.assign(RECORD, 0);
         set_name(attr(r.attrs, "name"));
+        put16(L.option, (uint8_t)old[0x20] | (uint8_t)old[0x21] << 8);
+        put16(L.chara, (uint8_t)old[0x22] | (uint8_t)old[0x23] << 8);
+        for (size_t n = 0; 0x28 + 4 * n + 4 <= old.size() && L.songs + 4 * n + 4 <= L.songs_end; n++)
+            for (size_t b = 0; b < 4; b++) rec[L.songs + 4 * n + b] = old[0x28 + 4 * n + b];
         write_file(file, rec);
-        return open + " f_compress=\"1\"><b>" + base64(lzss(old)) + "</b></" + game + ">";
+        return open + " f_compress=\"1\"><b>" + base64(lzss(rec)) + "</b></" + game + ">";
     }
     // tmp, renew: not yet
     return open + "/>";
