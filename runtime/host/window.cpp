@@ -207,7 +207,7 @@ unsigned g_card_rate = 0;
 std::atomic<uint64_t> g_written{0}, g_xruns{0};   // frames written after the ring's first fill, underruns
 uint64_t g_t0 = 0;                                 // when the ring was first full
 std::atomic<bool> g_stop{false};
-std::thread g_thread;
+std::thread *g_thread = nullptr;   // never destroyed: a game ends with exit(), the thread still writing
 
 bool load(std::string &why) {
     static void *lib = dlopen("libasound.so.2", RTLD_NOW | RTLD_LOCAL);
@@ -307,14 +307,14 @@ std::string open(const std::string &device, const SDL_AudioSpec &src, int period
     g_card_rate = rate;
     g_t0 = prof::now_ns();
     g_stop = false;
-    g_thread = std::thread(run, stream);
+    g_thread = new std::thread(run, stream);
     return "";
 }
 
 void close() {
     if (!g_pcm) return;
     g_stop = true;
-    if (g_thread.joinable()) g_thread.join();
+    if (g_thread) g_thread->join(), delete g_thread, g_thread = nullptr;
     api.drop(g_pcm);
     api.close(g_pcm);
     g_pcm = nullptr;

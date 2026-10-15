@@ -113,6 +113,34 @@
  	s_current_chunk[s_current_chunk_pos++] = conv[0];
  	s_current_chunk[s_current_chunk_pos++] = conv[1];
  	if (s_current_chunk_pos == s_current_chunk.size())
+--- a/pcsx2/GS/GS.cpp
++++ b/pcsx2/GS/GS.cpp
+@@ -1363,6 +1363,17 @@
+ {
+ 	pxAssert(s_shm_fd == -1);
+ 
++#ifdef __linux__
++	// HIRAKU: an anonymous memory file. The named "/GS.mem" (opened exclusively, then unlinked)
++	// failed when two emulators opened their GS at the same moment, as parallel runs do.
++	const char* file_name = "GS.mem";
++	s_shm_fd = memfd_create(file_name, MFD_CLOEXEC);
++	if (s_shm_fd == -1)
++	{
++		fprintf(stderr, "Failed to open %s due to %s\n", file_name, strerror(errno));
++		return nullptr;
++	}
++#else
+ 	const char* file_name = "/GS.mem";
+ 	s_shm_fd = shm_open(file_name, O_RDWR | O_CREAT | O_EXCL, 0600);
+ 	if (s_shm_fd != -1)
+@@ -1374,6 +1385,7 @@
+ 		fprintf(stderr, "Failed to open %s due to %s\n", file_name, strerror(errno));
+ 		return nullptr;
+ 	}
++#endif
+ 
+ 	if (ftruncate(s_shm_fd, repeat * size) < 0)
+ 		fprintf(stderr, "Failed to reserve memory due to %s\n", strerror(errno));
 --- a/pcsx2/GS/Renderers/Common/GSRenderer.cpp
 +++ b/pcsx2/GS/Renderers/Common/GSRenderer.cpp
 @@ -1,6 +1,7 @@
