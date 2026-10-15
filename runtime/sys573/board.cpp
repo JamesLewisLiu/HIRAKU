@@ -897,10 +897,27 @@ bool init(const Config &cfg) {
 void set_frame_hook(FrameHook h) { g.frame_hook = std::move(h); }
 void set_audio_sink(AudioSink s) { g.audio_sink = std::move(s); }
 
+// --fine-sound (Config::fine_sound): the sound for the host every millisecond of machine time.
+// MAME brings its streams up to date 50 times a second (and when the CPU touches a sound chip), so
+// by default the host gets the sound in 20 ms pieces: the controls are read once per piece and
+// the sound queue swings by 20 ms. A timer that does nothing ends a timeslice every millisecond
+// (timeslice() returns only when a timer fires), and the SPU's stream is brought up to date then.
+// The machine is unchanged: the SPU schedules its own IRQ at the exact sample (spu.cpp
+// update_irq_event), reads of its registers update the stream first, and every regress case shows
+// the same pictures. The sound is too on ddr2m-play and drmn10m-play, bit for bit; on ddr3mj-play
+// the SPU's differs a little from 195 s on (2.7 % of samples, correlation 0.99; why is open). The
+// digital board's MP3
+// decoders still update only at MAME's 50 Hz (decoding asks the board for more data, which the
+// machine sees), and the mix waits for them, so for now this helps the analog board only.
 [[noreturn]] void run() {
     running_machine &m = *g.machine;
+    const attotime step = attotime::from_msec(1);
+    attotime next_audio;
+    if (g.cfg.fine_sound) m.alloc_timer([](s32) {})->adjust(step, 0, step);
     for (;;) {
         m.timeslice();
+        const bool audio_step = g.cfg.fine_sound && m.time() >= next_audio;
+        if (audio_step) next_audio = m.time() + step;
         // sound: MAME's speaker, the SPU plus the CR-589's CD audio (both 44.1 kHz, routed at 1.0;
         // the CD at its MODE SELECT volume, set_output_gain), plus the digital board's MP3 (routed
         // at 1.0) and the multi-session unit's four (0.65 each, as windyfairy's fork routes them)
@@ -944,6 +961,7 @@ void set_audio_sink(AudioSink s) { g.audio_sink = std::move(s); }
                 // the CD stream to now, so the SPU's samples don't wait for its 50 Hz update (the
                 // game sees the same either way: get_audio_lba() updates the stream itself)
                 if (cd) cd->update();
+                if (audio_step) spu->update();
                 auto &l = spu->m_out[0], &r = spu->m_out[1];
                 size_t n = std::min(l.size(), r.size());
                 if (cd) n = std::min({n, cd->m_out[0].size(), cd->m_out[1].size()});

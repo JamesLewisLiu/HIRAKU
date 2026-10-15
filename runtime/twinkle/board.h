@@ -38,6 +38,10 @@ struct Config {
     // full scale on loud stretches (1.07 in bmiidx3-play) and clips; 0.8 keeps MAME's balance with
     // headroom. 1.0 (--mame-mix) is MAME's output, for comparing with its WAV.
     float mix_gain = 0.8f;
+    // --fine-sound: the sound for the host every millisecond of machine time, not at MAME's 50 Hz
+    // stream updates; the RF5C400's keysounds then start when the game triggers them (board.cpp,
+    // run()). Off is MAME's.
+    bool fine_sound = false;
     std::string nvram_dir;                 // RTC (backup RAM), dongle ("" = blank each run)
     int64_t rtc_time = 0;                  // the RTC's time at power-on (seconds since 1970)
     std::string trace_dir;                 // --trace: an oracle-format MMIO trace there (mmio.bin)

@@ -48,6 +48,9 @@ struct Config {
     // scale: DDR's mix peaks at 2.0 and crackles. The board mixes them in analog; 0.5 keeps MAME's
     // balance with no clipping. 1.0 (--mame-mix) is MAME's output, for comparing with its WAV.
     float mix_gain = 0.5f;
+    // --fine-sound: the sound for the host every millisecond of machine time, not at MAME's 50 Hz
+    // stream updates (board.cpp, run()). Off is MAME's.
+    bool fine_sound = false;
     // session play (link.h): the cabinet with the multi-session unit hosts the cable (a socket
     // path or host:port); the other joins it. Both run in lockstep, a quantum of emulated time apart.
     std::string session_host, session_join;

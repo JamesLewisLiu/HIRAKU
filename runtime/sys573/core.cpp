@@ -31,6 +31,7 @@ public:
     bool option(const std::string &name, const std::function<std::string()> &value) override {
         if (name == "--rtc") { rtc_ = std::stoll(value()); return true; }
         if (name == "--mame-mix") { mame_mix_ = true; return true; }
+        if (name == "--fine-sound") { fine_sound_ = true; return true; }
         if (name == "--cassette") { cassette_slot_ = value(); return true; }
         if (name == "--npu") { npu_ = true; return true; }
         if (name == "--session-host") { session_host_ = value(); return true; }
@@ -44,6 +45,8 @@ public:
         return "  --rtc SECONDS     the timekeeper's time at power-on (default: now), seconds since 1970\n"
                "  --mame-mix        sound at MAME's level: the SPU and CD audio summed at full gain, clipping\n"
                "                    where they add up past full scale (default: half, which never clips)\n"
+               "  --fine-sound      hand the sound to the host every millisecond, not at MAME's 50 Hz stream\n"
+               "                    updates: lower, steadier latency (the digital board's MP3 still comes at 50 Hz)\n"
                "  --cassette install  boot with the install cassette (first boot of games that install from CD\n"
                "                    with one, ddr3mj: when it says so, power off and boot again without)\n"
                "  --npu             fit the network PCB unit (e-AMUSEMENT GuitarFreaks and DrumMania): its hard\n"
@@ -120,6 +123,7 @@ public:
         cfg.session_quantum_us = session_quantum_;
         cfg.rtc_time = rtc_ >= 0 ? rtc_ : (int64_t)time(nullptr);
         if (mame_mix_) cfg.mix_gain = 1.0f;
+        cfg.fine_sound = fine_sound_;
         if (!cassette_slot_.empty()) {
             if (cassette_slot_ != "game" && cassette_slot_ != "install") {
                 fprintf(stderr, "--cassette: game or install\n");
@@ -163,6 +167,7 @@ private:
     std::function<void()> on_fatal_;
     long long rtc_ = -1;
     bool mame_mix_ = false;
+    bool fine_sound_ = false;
     std::string cassette_slot_;
     bool npu_ = false;
     std::string eamuse_ = "local";

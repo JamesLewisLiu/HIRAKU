@@ -31,6 +31,7 @@ public:
     bool option(const std::string &name, const std::function<std::string()> &value) override {
         if (name == "--rtc") { rtc_ = std::stoll(value()); return true; }
         if (name == "--mame-mix") { mame_mix_ = true; return true; }
+        if (name == "--fine-sound") { fine_sound_ = true; return true; }
         if (name == "--video") {
             const std::string v = value();
             if (v != "on" && v != "off") { fprintf(stderr, "--video: on or off\n"); exit(2); }
@@ -42,6 +43,9 @@ public:
     std::string options_help() const override {
         return "  --rtc SECONDS     the RTC's time at power-on (default: now), seconds since 1970\n"
                "  --mame-mix        sound at MAME's level (it can clip on loud stretches; default: 0.8 of it)\n"
+               "  --fine-sound      hand the sound to the host every millisecond, not at MAME's 50 Hz stream\n"
+               "                    updates: lower, steadier latency, and keysounds start when the game triggers\n"
+               "                    them (MAME's RF5C400 starts them at its previous update, up to 20 ms early)\n"
                "  --video on|off    the background video from the Video CD (default on; MAME shows none)\n";
     }
 
@@ -78,6 +82,7 @@ public:
         cfg.rtc_time = rtc_ >= 0 ? rtc_ : (int64_t)time(nullptr);
         if (o.trace) cfg.trace_dir = o.out;
         if (mame_mix_) cfg.mix_gain = 1.0f;
+        cfg.fine_sound = fine_sound_;
         cfg.video = video_;
         if (!twinkle::init(cfg)) return false;
         printf("hiraku %s: Twinkle, MAME's PS1 (its recompiled blocks) and 68000\n", o.game.c_str());
@@ -116,6 +121,7 @@ private:
     std::function<void()> on_fatal_;
     long long rtc_ = -1;
     bool mame_mix_ = false;
+    bool fine_sound_ = false;
     bool video_ = true;
 };
 

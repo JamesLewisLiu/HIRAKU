@@ -165,6 +165,13 @@ On exit, the console prints the buffer it actually got.
 
 **Sound server settings:** the first reports came before the performance fixes in this release. Re-test with the defaults first. On PipeWire the server quantum adds its own latency; a smaller one (`PIPEWIRE_LATENCY=256/48000`) is worth trying, but only if the default is already clean.
 
+**System 573 and Twinkle: `--fine-sound`** (launcher: Settings > Audio > "Sound every millisecond"). These cores run MAME's devices, and MAME hands their sound on 50 times a second. So by default the sound reaches the PC in 20 ms pieces, which adds up to 20 ms of latency, uneven from moment to moment, and the controls are read once per piece. `--fine-sound` hands it on every millisecond instead:
+- The machine runs the same (the regress cases show the same pictures).
+- On beatmania IIDX the keysounds then start when the game triggers them. MAME's RF5C400 starts them at its previous update, up to 20 ms early, so the sound no longer matches MAME's recordings.
+- On the digital board (DDR 3rd Mix on, DrumMania, GuitarFreaks) it doesn't help yet: the MP3 decoders still come at 50 Hz, and the mix waits for them.
+
+It's off by default, which keeps MAME's sound for comparing with it.
+
 ## Frame pacing
 
 The games don't run at 60 Hz. Each sets its own video timing, which HIRAKU runs as MAME does:

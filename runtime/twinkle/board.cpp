@@ -772,6 +772,15 @@ void set_audio_sink(AudioSink s) { g.audio_sink = std::move(s); }
         else if (dynamic_cast<rf5c400_device *>(s->m_device)) rf = s;
         else if (dynamic_cast<cdda_device *>(s->m_device)) cd = s;
     }
+    // --fine-sound (Config::fine_sound): the sound for the host every millisecond of machine time,
+    // not in MAME's 50 Hz pieces (see the 573's run(), runtime/sys573/board.cpp). The machine is
+    // unchanged, the sound isn't: MAME's RF5C400 applies key-on, key-off and the channel registers
+    // without first bringing its stream up to date (rf5c400_w), so a keysound starts at the
+    // previous update, up to 20 ms before the game triggered it. Updated every millisecond, it
+    // starts within a millisecond of it. The SPU's and the CD's sound are the same either way.
+    const attotime step = attotime::from_msec(1);
+    attotime next_audio;
+    if (g.cfg.fine_sound) m.alloc_timer([](s32) {})->adjust(step, 0, step);
     for (;;) {
         m.timeslice();
         // sound: MAME's speaker, the SPU at 0.75, the RF5C400's two main outputs and the CD drive's
@@ -779,6 +788,12 @@ void set_audio_sink(AudioSink s) { g.audio_sink = std::move(s); }
         if (!g.audio_sink || !spu || !rf) {
             for (sound_stream *s : m.m_streams) for (auto &o : s->m_out) o.clear();
             continue;
+        }
+        if (g.cfg.fine_sound && m.time() >= next_audio) {
+            next_audio = m.time() + step;
+            spu->update();
+            rf->update();
+            if (cd) cd->update();
         }
         size_t n = std::min({spu->m_out[0].size(), spu->m_out[1].size(), rf->m_out[0].size(), rf->m_out[1].size()});
         if (cd) n = std::min({n, cd->m_out[0].size(), cd->m_out[1].size()});
