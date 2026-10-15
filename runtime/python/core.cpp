@@ -39,7 +39,9 @@
 #include <cstdio>
 #include <cstring>
 #include <deque>
+#include <filesystem>
 #include <fstream>
+#include <sstream>
 #include <functional>
 #include <map>
 #include <memory>
@@ -88,6 +90,7 @@
 #include "shell/cabinet.h"
 #include "shell/core.h"
 #include "shell/eaoptions.h"
+#include "shell/userdir.h"
 
 // clang's profile runtime, present only in an instrumented build (oracle/pcsx2/build-reliquary.sh pgo)
 extern "C" int __llvm_profile_write_file(void) __attribute__((weak));
@@ -124,6 +127,47 @@ void mkdirs(const std::string &path) {
 }
 
 std::string base_name(const std::string &p) { return p.substr(p.rfind('/') + 1); }
+
+// One game's e-AMUSEMENT folder moved into the folder all the pop'n games share (pop'n 9-14 in the
+// saves' default places: a player carried from one game to the next is found there). A file the
+// shared folder lacks moves over; the card counters keep the larger; the card and KONAMI ID lists
+// gain the lines they lack. Anything else already there stays, and the old folder is kept, renamed.
+void merge_eamuse(const std::string &from, const std::string &to) {
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    if (!fs::is_directory(from, ec)) return;
+    mkdirs(to);
+    auto read = [](const fs::path &p) {
+        std::ifstream f(p, std::ios::binary);
+        return std::string(std::istreambuf_iterator<char>(f), std::istreambuf_iterator<char>());
+    };
+    auto write = [](const fs::path &p, const std::string &d) { std::ofstream(p, std::ios::binary | std::ios::trunc) << d; };
+    bool left = false;
+    for (const fs::directory_entry &e : fs::directory_iterator(from, ec)) {
+        const std::string name = e.path().filename().string();
+        const fs::path dst = fs::path(to) / name;
+        if (!fs::exists(dst, ec)) {
+            fs::rename(e.path(), dst, ec);
+            if (ec) left = true;
+        } else if (name == "numbering" || name == "refid") {
+            const unsigned long long a = std::strtoull(read(e.path()).c_str(), nullptr, 10), b = std::strtoull(read(dst).c_str(), nullptr, 10);
+            write(dst, std::to_string(std::max(a, b)) + "\n");
+        } else if (name == "cards" || name == "users") {
+            std::string have = read(dst), add;
+            std::istringstream lines(read(e.path()));
+            for (std::string l; std::getline(lines, l);)
+                if (!l.empty() && have.find(l) == std::string::npos) add += l + "\n";
+            if (!have.empty() && have.back() != '\n') have += "\n";
+            write(dst, have + add);
+        } else {
+            left = true;
+            fprintf(stderr, "e-AMUSEMENT: %s is in both %s and %s; the shared one is kept\n", name.c_str(), from.c_str(), to.c_str());
+        }
+    }
+    fs::rename(from, from + ".moved", ec);
+    printf("e-AMUSEMENT: this game's data moved to %s, which the pop'n games share%s\n", to.c_str(),
+           left ? " (what couldn't move stays in eamuse.moved)" : "");
+}
 
 // pop'n buttons 1-9, left to right (MAME's names), on the interface board's JAMMA
 // inputs as Reliquary's POPN profile reads them (KonamiPython1.cpp,
@@ -376,6 +420,8 @@ public:
         }
         py1_path_ = run_dir_ + "/" + o.game + ".py1";
         if (family_ == "pypopn" && !bare_board_) {
+            // the saves' folder when this game's save is in its default place there (the game window's)
+            if (const std::string saves = hk::user_data_dir(o.root); run_dir_ == saves + "/" + o.game) shared_saves_ = saves;
             std::string error;
             ea_.read_card_files(run_dir_, &error);
             if (!error.empty()) { fprintf(stderr, "%s\n", error.c_str()); return false; }
@@ -405,7 +451,26 @@ public:
                     card_file = run_dir_ + "/cards/" + ea_.card[0] + ".bin";
                     printf("e-AMUSEMENT: card %s%s\n", ea_.card[0].c_str(), ea_.autocard[0] ? ", presented by itself" : "");
                 }
-                card_ = std::make_unique<hk::py::CardUnit>(card_file, hk::py::CardUnit::fresh_header(o.game));
+                const bool had_card = exists(card_file);
+                auto unit = std::make_unique<hk::py::CardUnit>(card_file, hk::py::CardUnit::fresh_header(o.game));
+                // one card for all the pop'n games (docs/EAMUSE3.md, "One card for all"): a numbered
+                // card this game has never seen is shown as the game before's card, as that game left
+                // it in its save, so this game offers to carry the player over
+                static const std::map<std::string, std::string> before = {
+                    {"popn10", "popn9"}, {"popn11", "popn10"}, {"popn12", "popn11"}, {"popn13", "popn12"}};
+                if (!had_card && !ea_.card[0].empty() && !shared_saves_.empty())
+                    if (auto it = before.find(o.game); it != before.end()) {
+                        std::ifstream f(shared_saves_ + "/" + it->second + "/cards/" + ea_.card[0] + ".bin", std::ios::binary);
+                        std::vector<uint8_t> older((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+                        if (older.size() == 128 && (older[0] & 0x40)) {   // a card that game registered
+                            unit->present_older(std::move(older));
+                            printf("e-AMUSEMENT: card %s is new to this game: it is shown as %s's, to carry its player over\n",
+                                   ea_.card[0].c_str(), it->second.c_str());
+                            unit->note = [](const std::string &s) { printf("card: %s\n", s.c_str()); fflush(stdout); };
+                            card_unit_ = unit.get();
+                        }
+                    }
+                card_ = std::move(unit);
             }
             hk::py::VirtualNet::Io io;
             io.write = [](uint32_t addr, const uint8_t *d, uint32_t n) { Hiraku::net_write(addr, d, n); };
@@ -441,7 +506,15 @@ public:
                 }
             }
             if (!ea_.pcbid.empty()) printf("e-AMUSEMENT: PCBID %s\n", ea_.pcbid.c_str());
-            server_ = std::make_unique<hk::py::EamuseServer>(run_dir_ + "/eamuse");
+            // the server's files: in the saves' default places (the game window's), one folder for all
+            // the pop'n games, beside their saves, so a card's player carries from one to the next;
+            // with --nvram elsewhere, that folder's own
+            std::string ea_dir = run_dir_ + "/eamuse";
+            if (!shared_saves_.empty()) {
+                merge_eamuse(ea_dir, shared_saves_ + "/eamuse");
+                ea_dir = shared_saves_ + "/eamuse";
+            }
+            server_ = std::make_unique<hk::py::EamuseServer>(ea_dir);
             // the cabinet's clock (init_emulator: 2003-06-01 12:00 JST) plus the machine's own time
             server_->now = [this] { return (int64_t)1054468800 + (int64_t)seconds(); };
             if (!lan_where_.empty()) {   // NET TAISEN with cabinets in other processes (lancable.h)
@@ -861,6 +934,8 @@ private:
     std::unique_ptr<hk::py::CardReader> card_;
     FILE *card_log_ = nullptr;
     std::unique_ptr<hk::py::VirtualNet> net_;
+    hk::py::CardUnit *card_unit_ = nullptr;   // the card unit, while it shows an older game's card
+    std::string shared_saves_;   // the saves' folder when this game's is in its default place there, else ""
     hk::py::LanCable lan_;   // --lan-host/--lan-join
     hk::py::RelayClient relay_;   // online NET TAISEN (-url with hiraku-eamuse)
     std::string lan_where_;
@@ -884,6 +959,18 @@ private:
                 hk::py::EamuseServer::set_attr(xml, "gpcb_id", ea_.pcbid);
             }
             numbering = xml.find("<numbering") != std::string::npos && xml.find("method=\"assign\"") != std::string::npos;
+            // carrying the older card's player over: the game asks about it (pop'n 10/11 read
+            // "NUMBER:MODEL", pop'n 11 renewc, pop'n 12 playerdata get with the older game's
+            // model, playerdata conv)
+            if (card_unit_ && ((!number.empty() && xml.find(number + ":") != std::string::npos) || xml.find("\"renewc\"") != std::string::npos ||
+                               (xml.find("\"playerdata\"") != std::string::npos && xml.find(" model=\"") != std::string::npos) ||
+                               xml.find("method=\"conv\"") != std::string::npos))
+                card_unit_->older_asked();
+            // pop'n 14 asks for pop'n 13's player by the transfer number typed (ref_id), with no
+            // card (card_id "-"): one card for all, the card's number goes along, so the server
+            // finds the player of this card whatever was typed
+            if (!number.empty() && xml.find("model=\"E13\"") != std::string::npos && xml.find("\"playerdata\"") != std::string::npos)
+                hk::py::EamuseServer::set_attr(xml, "card_id", number);
             portfw = (xml.find("<portfw") != std::string::npos || xml.find("<facility") != std::string::npos) &&
                      xml.find("method=\"get\"") != std::string::npos;
             // pop'n 13 numbers a new card with cardmng.getnewid (a card id and its player's ref id):

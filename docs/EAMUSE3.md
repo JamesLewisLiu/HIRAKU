@@ -585,8 +585,7 @@ The game-named calls as pop'n 11's, but **no `userdata`**: the player lives in `
   on, the shop board at phase 3. HIRAKU ranks the shops by scrolls, then by the earlier date.
 - **`E12 rank shop`** sends `item shop_name pref`: the shop's NINPOUCHO word (`0x197380`). Answer
   `<E12/>`; HIRAKU keeps the latest per shop (`E12-rank-shop`).
-- **Not done yet:** `playerdata conv` (a pop'n 11 card's data, read into a 0xa28 record and
-  converted, `0x1a0a38`), `tmp`, `renew`; `cardreis.altercard`; a card left at the OK screen until
+- **Not done yet:** `tmp`, `renew` (`playerdata conv`: below, "One card for all"); `cardreis.altercard`; a card left at the OK screen until
   the timer runs out stays on "カードをお取り下さい" (the card status's 0x40, card at the slot mouth,
   isn't played).
 
@@ -643,8 +642,8 @@ pop'n 12's, keyed by a **ref id** from a new module, `cardmng`.
 - **`E13 rank shop`** sends `stage item_hi item_lo shop_name pref` after a credit (`0x17ead80`): the
   area of the cabinet's phase. Answer `<E13/>`. HIRAKU puts it on that area's board, from the phase
   the shop's last `game active` sent (`E13-shop-phase`), and keeps the latest per shop and board.
-- **Not done yet:** `playerdata conv`, `tmp_set`, `tmp_ref` (a pop'n 12 card's player brought to
-  pop'n 13), `cardreis.altercard`, `gettmpid`, `rebind`.
+- **Not done yet:** `tmp_set`, `tmp_ref`, `cardreis.altercard`, `gettmpid`, `rebind`
+  (`playerdata conv`: below, "One card for all").
 
 **pop'n music 14** (`F14`; checked in HIRAKU: a new e-AMUSEMENT PASS registered, a credit saved, the
 card read back with its PIN; `oracle/scripts/popn14-eamuse-on.his`, `popn14-card-new.his`,
@@ -697,8 +696,59 @@ reader with its own 10-key; the PIN is checked by the server.
   four stages' scores added up, and takes the name from the player's record (`pdata-F14-REF`).
 - **`F14 rank shop`** sends `stage item robo shop_name pref` after a credit (the SHOP EVENT's story,
   its counter, FEVER ROBO's gauge): `<F14/>`; HIRAKU keeps the latest per shop.
-- **Not done yet:** `playerdata conv` (a pop'n 13 player brought over), `expire`, `bindcard`,
-  `cardreis.altercard`.
+- **Not done yet:** `expire`, `bindcard`, `cardreis.altercard` (`playerdata conv`: below, "One
+  card for all").
+
+## One card for all (pop'n music 9–14)
+
+Each pop'n carries a player over from the one before: it reads the older game's card, asks the
+server for that player, offers to carry the name and clears over ("引き継ぎ"), and then wants a
+card of its own (pop'n 14: an e-AMUSEMENT PASS and pop'n 13's transfer number). In HIRAKU one card
+number (`-card0`, `card0.txt`, the launcher's Player 1 Card) is used in every game, and the player
+follows it from game to game: 9 → 10 → 11 → 12 → 13 → 14, each step checked in HIRAKU with the
+same number.
+
+- **One server folder:** with the saves in their default places (the game window's,
+  `~/.local/share/hiraku/<game>`, or a portable install's `user/data/<game>`), the pop'n games share
+  one e-AMUSEMENT folder beside them, `eamuse/`. A game's own `eamuse/` from before is merged into
+  it once and kept renamed (`eamuse.moved`). With `--nvram` elsewhere a game keeps its own folder,
+  as before (and regress runs are unchanged).
+- **The older card:** a numbered card a game has never seen (no `cards/NUMBER.bin` in its save) is
+  shown as the game before's card, as that game left it in its save (`popn9`'s for pop'n 10, ...).
+  pop'n 10 rewrites it as its own. pop'n 11-13 read it, then give it back and ask for an unused
+  card of their own: once the player has agreed (the game asked the server about the player and
+  the old PIN was typed), the card given back is followed by a fresh one of this game with the
+  same number, which the game then formats. Refused, the older card stays for another try. pop'n
+  14's card is only its number.
+- **What each game asks, and what the server answers:**
+
+  | Game | Asks | Answer |
+  |---|---|---|
+  | 10 | `userdata.read card="NUMBER:C00"` | pop'n 9's `userdata`, as saved (the game converts it) |
+  | 11 | `D11 renewc ask`, `userdata.read card="NUMBER:C20"` | pop'n 10's `userdata` |
+  | 12 | `E12 playerdata get model="D11"` | pop'n 11's `userdata` `<b>` pieces (the game appends them, `0x191910`) |
+  | 13 | `E13 playerdata get model="E12"` | pop'n 12's record, `f_compress="0"` (converted by the game, `0x17e9dd8`) |
+  | 14 | `F14 playerdata get ref_id="POP'N ID" model="E13"` | pop'n 13's record, compressed |
+
+  pop'n 14 asks by the transfer number the player typed; the core adds the card's number, and the
+  server answers that card's pop'n 13 player whatever was typed (it issues no transfer numbers).
+- **`playerdata conv`** follows the player's yes. The games convert the older record in memory
+  and their credit's `set` sends only the songs played, so the server builds each new record as
+  the game does (checked against the game's own result in RAM):
+  - **12** (`conv name new_card_id old_card_id`): from pop'n 11's 0xa28 bytes, the 600 song words
+    at 0x410 into the record's words from 0x3c, the song numbers alike, bits 4-5 and 6-7 swapped and
+    the high byte dropped (`0x1a0a38`); the PIN from 0x9f3 (a digit a byte; the name follows at
+    0x9f7); the name as sent.
+  - **13** (`conv name ref_id old_card_id new_card_id`): pop'n 12's song words' low byte (the four
+    charts' clear marks, two bits each, the same in both: `0x1812f98`, `0x1812c4c`) as pop'n 13's
+    32-bit words from 0x28; pop'n 12's flags above it are left out. The PIN and the name.
+  - **14** (`conv name ref_id card_id popn_id ea_passwd`): pop'n 13's record copied byte for byte
+    into the 0xdb8 bytes (so pop'n 13's song n is pop'n 14's n+1, its list starting 4 bytes
+    earlier), the name as sent. The answer is pop'n 13's record again, compressed.
+- **Not shared:** each game keeps its own player afterwards (scores and clears go on separately);
+  a name changed in one game stays there. Characters and options: pop'n 14's are what pop'n 13's
+  bytes say (as the game copies them), the others start from the game's defaults. ee'MALL tickets
+  don't carry over (the games say so).
 
 ## NET TAISEN (pop'n music 12–14)
 

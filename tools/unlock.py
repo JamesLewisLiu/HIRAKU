@@ -426,8 +426,18 @@ def apply_thresholds(game: str, p: dict, unlocks: dict, nvram: str, value: str) 
     return backup
 
 
+def store_folder(p: dict, nvram: str) -> str:
+    """The server's folder: the save's own, or, for a save in its default place, the one the pop'n
+    games share beside the saves (runtime/python/core.cpp: one card for all)"""
+    own = os.path.join(nvram, p["store"])
+    shared = os.path.join(os.path.dirname(os.path.normpath(nvram)), p["store"])
+    if not os.path.isdir(own) and os.path.isdir(shared):
+        return shared
+    return own
+
+
 def ticket_files(p: dict, nvram: str) -> list[str]:
-    folder = os.path.join(nvram, p["store"])
+    folder = store_folder(p, nvram)
     if not os.path.isdir(folder):
         return []
     return sorted(os.path.join(folder, f) for f in os.listdir(folder)
@@ -454,7 +464,7 @@ def tickets(p: dict, nvram: str) -> dict:
 def apply_tickets(p: dict, nvram: str, value: str) -> str:
     files = ticket_files(p, nvram)
     if not files:
-        raise Error(f"no cards yet in {os.path.join(nvram, p['store'])}: play a credit with a card on the server inside HIRAKU first")
+        raise Error(f"no cards yet in {store_folder(p, nvram)}: play a credit with a card on the server inside HIRAKU first")
     n = p["max"] if value == "all" else 0
     for path in files:
         r = read_record(path)
@@ -548,7 +558,7 @@ def describe_progress(p: dict, s: dict) -> str:
         return "\n".join(lines)
     if p.get("kind") == "tickets":
         if not s["cards"]:
-            return "no card yet on the server inside HIRAKU (the save folder's eamuse/)"
+            return "no card yet on the server inside HIRAKU (its eamuse/ folder, beside the saves)"
         lines = []
         for c in s["cards"]:
             lines.append(f"card {c['card']}: mileage {c['mileage']}; tickets " + ", ".join(str(t) for t in c["tickets"]))

@@ -23,6 +23,7 @@
 #include <array>
 #include <cstdint>
 #include <deque>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -51,6 +52,19 @@ public:
 
     bool card_inside() const { return inside_; }
 
+    // Carrying a player to this game from the one before (docs/EAMUSE3.md, "One card for all"):
+    // until the game writes the card, it is shown `older`, that game's card with the same number.
+    // A game that rewrites it as its own (pop'n 10) keeps it so; one that gives it back unchanged
+    // (pop'n 11-13 read the old card, then want a new one) next gets a fresh card of its own.
+    void present_older(std::vector<uint8_t> older);
+    // the game has asked the server about the older card's player. The card given back after that
+    // and after the old PIN on the 10-key is a carry-over agreed (pop'n 11 then asks for an unused
+    // card of its own); given back without them (the attract mode reading an inserted card, the
+    // player saying no), the older card stays, for another try
+    void older_asked() { older_asked_ = !older_.empty(); older_keyed_ = false; }
+    // called with a line to print when the card shown changes from the older one to a fresh one
+    std::function<void(const std::string &)> note;
+
     // A fresh card: the header and a CRC-8 of it, the rest blank.
     static std::vector<uint8_t> new_card(const Header &h);
 
@@ -64,6 +78,9 @@ private:
     std::string file_;
     Header fresh_;
     std::vector<uint8_t> card_, buffer_;
+    std::vector<uint8_t> older_;   // present_older's card, while it is the one shown
+    bool older_asked_ = false, older_keyed_ = false;
+    void given_back();
     uint8_t addr_ = 1;
     bool offered_ = false;   // the player has put the card in the slot
     bool inside_ = false;    // the reader has it

@@ -154,6 +154,29 @@ std::string base64(const std::string &in) {
     return o;
 }
 
+// The bytes of every <b>...</b> in x, base64-decoded and joined (a game's player data, as saved)
+std::string unbase64_b(const std::string &x) {
+    std::string out;
+    for (size_t at = x.find("<b>"); at != std::string::npos; at = x.find("<b>", at + 3)) {
+        const size_t e = x.find("</b>", at);
+        if (e == std::string::npos) break;
+        uint32_t acc = 0;
+        int bits = 0;
+        for (size_t i = at + 3; i < e; i++) {
+            const char c = x[i];
+            int v = c >= 'A' && c <= 'Z' ? c - 'A' : c >= 'a' && c <= 'z' ? c - 'a' + 26 : c >= '0' && c <= '9' ? c - '0' + 52 : c == '+' ? 62 : c == '/' ? 63 : -1;
+            if (v < 0) continue;
+            acc = acc << 6 | (uint32_t)v;
+            bits += 6;
+            if (bits >= 8) {
+                bits -= 8;
+                out += (char)(acc >> bits & 0xff);
+            }
+        }
+    }
+    return out;
+}
+
 std::string fmt(const char *f, unsigned a, unsigned b) {
     char s[64];
     snprintf(s, sizeof s, f, a, b);
@@ -821,7 +844,16 @@ std::string EamuseServer::answer_later(const std::string &game, const Request &r
         if (f == "rebind" || f == "bindmodel" || f == "bindcard") return "<cardmng status=\"0\"/>";
     }
     if (m == "userdata") {   // as pop'n 9, kept per game: userdata-<game>-<card>
-        const std::string card = attr(r.attrs, "card");
+        std::string card = attr(r.attrs, "card");
+        // an older game's card being carried over is read as CARD:MODEL, that game's data
+        // (seen from pop'n 10: "E004...:C00"); pop'n 9's (C00) is userdata-<card>
+        if (const size_t colon = card.find(':'); f == "read" && colon != std::string::npos) {
+            const std::string from = card.substr(colon + 1, 3);
+            card.resize(colon);
+            if (!safe_name(card) || !safe_name(from)) return "<userdata status=\"1\"/>";
+            const std::string data = read_file(from == "C00" ? "userdata-" + card : "userdata-" + from + "-" + card);
+            return data.empty() ? "<userdata status=\"109\"/>" : data;
+        }
         if (!safe_name(card)) return "<userdata status=\"1\"/>";
         if (f == "read") {
             std::string data = read_file("userdata-" + game + "-" + card);
@@ -1030,6 +1062,35 @@ std::string EamuseServer::answer_playerdata(const std::string &game, const Reque
         return with_record();
     }
     if (f == "get") {   // 109: no player on this card (0x164be8)
+        // an older game's card being carried over (docs/EAMUSE3.md, "One card for all"): get with
+        // that game's model answers its player as that game saved it, in its <b> pieces (pop'n 12
+        // appends them, 0x191910, and converts the 0xa28 bytes of a pop'n 11 player, 0x1a0a38)
+        if (const std::string from = attr(r.attrs, "model"); !from.empty() && from != game) {
+            if (!safe_name(from)) return "<" + game + " status=\"1\"/>";
+            // pop'n 12's player is its record (pdata-E12-CARD), keyed by the card: pop'n 13 takes it
+            // uncompressed (f_compress 0) and converts it (0x17e9dd8)
+            // pop'n 13's player for pop'n 14 (get ref_id=<the typed POP'N ID> model="E13", 0xd6c
+            // compressed as get's, which the game converts): that ref id's, or (one card for all)
+            // the player of the card the core put in card_id
+            if (from == "E13") {
+                std::string old = safe_name(card) ? read_file("pdata-E13-" + card) : "";
+                if (old.size() != 0xd6c)
+                    for (const Record &c : from_lines(read_file("cards")))
+                        if (attr(c, "cardid") == attr(r.attrs, "card_id") && safe_name(attr(c, "refid"))) old = read_file("pdata-E13-" + attr(c, "refid"));
+                if (old.size() != 0xd6c) return "<" + game + " status=\"109\"/>";
+                return open + " f_compress=\"1\"><b>" + base64(lzss(old)) + "</b></" + game + ">";
+            }
+            if (from == "E12") {
+                const std::string id = attr(r.attrs, "card_id");
+                const std::string old = safe_name(id) ? read_file("pdata-E12-" + id) : "";
+                if (old.size() != 0x708) return "<" + game + " status=\"109\"/>";
+                return open + " f_compress=\"0\"><b>" + base64(old) + "</b></" + game + ">";
+            }
+            const std::string data = read_file(from == "C00" ? "userdata-" + card : "userdata-" + from + "-" + card);
+            const size_t b = data.find("<b>"), e = data.rfind("</b>");
+            if (b == std::string::npos || e == std::string::npos) return "<" + game + " status=\"109\"/>";
+            return open + ">" + data.substr(b, e + 4 - b) + "</" + game + ">";
+        }
         if (rec.size() != RECORD) return "<" + game + " status=\"109\"/>";
         return with_record();
     }
@@ -1084,7 +1145,68 @@ std::string EamuseServer::answer_playerdata(const std::string &game, const Reque
             if (attr(e, "num") == attr(r.attrs, "music_num") && attr(e, "sheet") == attr(r.attrs, "sheet_num")) best = num(e, "score");
         return open + " score=\"" + std::to_string(best) + "\"/>";
     }
-    // conv (a pop'n 11 card's data), tmp, renew: not yet
+    // conv (old_card_id new_card_id name ...): a player carried over from the game before
+    // (docs/EAMUSE3.md, "One card for all"). The game converts the older record it was given (get
+    // with that game's model) for itself and keeps it only in memory; its credit's set sends only
+    // the songs played. So the record is built here as the game builds it: pop'n 12 from pop'n 11's
+    // 0xa28 bytes, whose 600 song words at 0x410 number the songs as pop'n 12 does, each word's bits
+    // 4-5 and 6-7 swapped and its high byte dropped (0x1a0a38, checked: the game's own result in
+    // RAM is the same); the name as sent.
+    if (f == "conv" && game == "E12") {
+        const std::string old = attr(r.attrs, "old_card_id");
+        if (!safe_name(old)) return "<" + game + " status=\"1\"/>";
+        const std::string from = unbase64_b(read_file("userdata-D11-" + old));
+        if (rec.size() != RECORD) rec.assign(RECORD, 0);
+        set_name(attr(r.attrs, "name"));
+        // the PIN, a digit a byte at 0x9f3 (the name follows at 0x9f7): the credit's set sends it
+        // too, but a later game asks for it even if this credit never ends properly
+        if (from.size() >= 0x9f7)
+            for (size_t i = 0; i < 4; i++) rec[L.password + i] = (char)((uint8_t)from[0x9f3 + i] % 10);
+        for (size_t n = 0; n < 600 && 0x410 + 2 * n + 2 <= from.size(); n++) {
+            const unsigned w = (uint8_t)from[0x410 + 2 * n] | (uint8_t)from[0x410 + 2 * n + 1] << 8;
+            put16(L.songs + 2 * n, (w & 0xf) | (w & 0x30) << 2 | (w & 0xc0) >> 2);   // the high byte dropped, as there
+        }
+        write_file(file, rec);
+        return open + "/>";
+    }
+    // pop'n 13 from pop'n 12's record (pdata-E12-<old card>): pop'n 13 asks only conv with the
+    // player's new ref id and keeps nothing itself, so the record is the server's to make. The songs
+    // are numbered alike (its display of the older record, 0x1812f98, looks songs up by the same
+    // index), and both keep a chart's clear mark in two bits, the four charts at bits 0-1, 2-3, 4-5,
+    // 6-7 (pop'n 13's own display, 0x1812c4c): the low byte carries over, 32 bits a song from 0x28.
+    // pop'n 12's flags above it don't (their meaning in 13 isn't known). The PIN and the name too.
+    if (f == "conv" && game == "E13") {
+        const std::string old = attr(r.attrs, "old_card_id");
+        if (!safe_name(old)) return "<" + game + " status=\"1\"/>";
+        const std::string from = read_file("pdata-E12-" + old);
+        if (rec.size() != RECORD) rec.assign(RECORD, 0);
+        set_name(attr(r.attrs, "name"));
+        if (from.size() == 0x708) {
+            for (size_t i = 0; i < 4; i++) rec[L.password + i] = (char)((uint8_t)from[0x34 + i] % 10);
+            for (size_t n = 0; 0x3c + 2 * n + 2 <= 0x5f0 && L.songs + 4 * n + 4 <= L.songs_end; n++)
+                put32(L.songs + 4 * n, (uint8_t)from[0x3c + 2 * n]);
+        }
+        write_file(file, rec);
+        return open + "/>";
+    }
+    // pop'n 14: conv (name ref_id card_id popn_id ea_passwd) after the player chose "カーニバルから
+    // データを引きつぐ" and typed pop'n 13's transfer number (POP'N ID): the answer is that pop'n 13
+    // player's record (0xd6c, compressed as get's), which the game converts. Transfer numbers
+    // aren't issued here; with one card for all, the card's ref id is pop'n 13's too, so its pop'n 13
+    // player is the one, whatever number was typed.
+    // The game then holds that record copied byte for byte into its own (checked in RAM: so
+    // pop'n 13's song n is pop'n 14's song n+1, its list starting 4 bytes earlier); the credit's set
+    // sends only the songs played, so the server keeps the same copy as pop'n 14's record.
+    if (f == "conv" && p14) {
+        const std::string old = read_file("pdata-E13-" + card);
+        if (old.size() != 0xd6c) return "<" + game + " status=\"109\"/>";
+        rec = old;
+        rec.resize(RECORD, 0);
+        set_name(attr(r.attrs, "name"));
+        write_file(file, rec);
+        return open + " f_compress=\"1\"><b>" + base64(lzss(old)) + "</b></" + game + ">";
+    }
+    // tmp, renew: not yet
     return open + "/>";
 }
 

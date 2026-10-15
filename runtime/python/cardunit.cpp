@@ -71,7 +71,30 @@ void CardUnit::load() {
     }
 }
 
+void CardUnit::present_older(std::vector<uint8_t> older) {
+    if (older.size() != CARD_BYTES) return;
+    older_ = older;
+    card_ = std::move(older);
+    // no card file of this game's until it writes one (or gives the older card back): a run that
+    // ends before the card is used shows the older one again next time
+    if (!file_.empty()) std::remove(file_.c_str());
+}
+
+// The card is back with the player: an older game's, given back unchanged, is followed by a fresh
+// card of this game (the same number: the server numbers it as before)
+void CardUnit::given_back() {
+    if (older_.empty() || card_ != older_) return;
+    const bool agreed = older_asked_ && older_keyed_;
+    older_asked_ = older_keyed_ = false;
+    if (!agreed) return;
+    older_.clear();
+    card_ = new_card(fresh_);
+    save();
+    if (note) note("the older game's card given back: a fresh card of this game in its place");
+}
+
 void CardUnit::save() {
+    older_.clear();   // written: this game's own now
     if (file_.empty()) return;
     const std::string tmp = file_ + ".tmp";
     {
@@ -128,7 +151,7 @@ bool CardUnit::write(const uint8_t *d, uint32_t n, std::vector<uint8_t> &reply) 
     case 0x00: case 0x01:
     case 0x10: case 0x11:   // reset: a card inside comes back out (pop'n 10 returns a refused card so)
         read_ready_ = buffer_ready_ = false;
-        if (inside_) { inside_ = false; offered_ = false; accepting_ = false; }
+        if (inside_) { inside_ = false; offered_ = false; accepting_ = false; given_back(); }
         answer(0x01, cmd, {0x00}, 0x01, reply);
         break;
     case 0x12:   // status
@@ -144,7 +167,7 @@ bool CardUnit::write(const uint8_t *d, uint32_t n, std::vector<uint8_t> &reply) 
                 break;
             case 2:   // close / eject: the card comes back out
                 accepting_ = false;
-                if (inside_) { inside_ = false; offered_ = false; }
+                if (inside_) { inside_ = false; offered_ = false; given_back(); }
                 break;
             case 4:   // read the card into the buffer
                 read_ready_ = inside_;
@@ -212,6 +235,7 @@ void CardUnit::card_button() {
 }
 
 void CardUnit::key(uint8_t scan, bool down) {
+    if (inside_ && older_asked_) older_keyed_ = true;
     if (!down) keys_.push_back(0xf0);
     keys_.push_back(scan);
 }
