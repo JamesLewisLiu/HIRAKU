@@ -64,6 +64,9 @@ public:
     // keeper), and the cable, called at each frame's end with the datagrams for the others, to
     // fill with theirs (LanCable::exchange)
     void set_cabinet(int index);
+    // Online (netrelay.h): the address the relay gave this cabinet, which other cabinets send to;
+    // the lobby is the server's then, and every datagram for elsewhere goes on `cable`
+    void set_online(uint32_t address);
     std::function<void(std::vector<LanCable::Packet> &out, std::vector<LanCable::Packet> &in)> cable;
 
     // Each command and its answer, for HK_PY_NET_LOG.
@@ -107,6 +110,7 @@ private:
     std::map<int, Socket> sockets_;
     uint8_t address_[4] = {192, 168, 50, 2};   // this cabinet's
     bool lobby_here_ = true;
+    uint32_t online_ = 0;                      // the relay's address for this cabinet
     std::vector<LanCable::Packet> to_lan_;   // datagrams for the cable, at the frame's end
     uint16_t next_port_ = 49152;             // for a socket that sends unbound
     Lobby lobby_;

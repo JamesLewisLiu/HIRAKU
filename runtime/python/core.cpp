@@ -83,6 +83,8 @@
 #include "python/eaclient.h"
 #include "python/easerver.h"
 #include "python/lancable.h"
+#include "python/lobby.h"
+#include "python/netrelay.h"
 #include "shell/cabinet.h"
 #include "shell/core.h"
 #include "shell/eaoptions.h"
@@ -449,6 +451,21 @@ public:
                     lan_.exchange(out, in);
                 };
             }
+            // online: NET TAISEN through the server's relay, when it is hiraku-eamuse (netrelay.h)
+            if (remote_ && lan_where_.empty()) {
+                std::string why;
+                if (relay_.open(remote_->host(), hk::py::Lobby::PORT, 3, &why)) {
+                    const uint32_t a = relay_.address();
+                    printf("e-AMUSEMENT: NET TAISEN online through %s:%u, this cabinet %u.%u.%u.%u\n", remote_->host().c_str(),
+                           hk::py::Lobby::PORT, a >> 24, (a >> 16) & 255, (a >> 8) & 255, a & 255);
+                    net_->set_online(a);
+                    net_->cable = [this](std::vector<hk::py::LanCable::Packet> &out, std::vector<hk::py::LanCable::Packet> &in) {
+                        relay_.exchange(out, in);
+                    };
+                } else {
+                    printf("e-AMUSEMENT: no NET TAISEN relay (%s): online battles find nobody\n", why.c_str());
+                }
+            }
         } else if (!lan_where_.empty()) {
             fprintf(stderr, "--lan-host/--lan-join: pop'n music only, and not with --bare-board (the board has no network then)\n");
             return false;
@@ -722,6 +739,14 @@ private:
                     p = *e ? e + 1 : e;
                 }
         }
+        // HK_PY_PACE=N: frames at N times the cabinet's 59.94 Hz, for runs without a window that
+        // must keep time with something outside (NET TAISEN online between headless cabinets)
+        static const double pace = getenv("HK_PY_PACE") ? atof(getenv("HK_PY_PACE")) : 0.0;
+        if (pace > 0) {
+            static auto next = std::chrono::steady_clock::now();
+            next += std::chrono::nanoseconds((int64_t)(1e9 / (59.94 * pace)));
+            std::this_thread::sleep_until(next);
+        }
         if (net_) net_->poll();   // online answers that arrived
         if (autoplay_) apply_autoplay();
         if (card_ && ea_.autocard[0]) autocard();
@@ -837,6 +862,7 @@ private:
     FILE *card_log_ = nullptr;
     std::unique_ptr<hk::py::VirtualNet> net_;
     hk::py::LanCable lan_;   // --lan-host/--lan-join
+    hk::py::RelayClient relay_;   // online NET TAISEN (-url with hiraku-eamuse)
     std::string lan_where_;
     bool lan_host_ = false;
     int lan_cabinets_ = 2;
@@ -850,7 +876,7 @@ private:
     // gives it itself: a new card's number (-card0), so the server never numbers a card that
     // won't carry its number. "": the server answers (through done, which this may wrap).
     std::string on_call(std::string &req, std::function<void(std::string)> &done) {
-        bool numbering = false, getnewid = false;
+        bool numbering = false, getnewid = false, portfw = false;
         const std::string &number = ea_.card[0];
         hk::py::EamuseServer::edit(req, [&](std::string &xml) {
             if (!ea_.pcbid.empty()) {
@@ -858,6 +884,7 @@ private:
                 hk::py::EamuseServer::set_attr(xml, "gpcb_id", ea_.pcbid);
             }
             numbering = xml.find("<numbering") != std::string::npos && xml.find("method=\"assign\"") != std::string::npos;
+            portfw = xml.find("<portfw") != std::string::npos && xml.find("method=\"get\"") != std::string::npos;
             // pop'n 13 numbers a new card with cardmng.getnewid (a card id and its player's ref id):
             // with -card0 it asks the server about that number instead (inquire registers a card
             // it doesn't know), and the answer gets the number as the card id
@@ -875,6 +902,26 @@ private:
             done = [done = std::move(done), number](std::string answer) {
                 hk::py::EamuseServer::edit(answer, [&](std::string &xml) {
                     if (const size_t at = xml.find("<cardmng"); at != std::string::npos) xml.insert(at + 8, " cardid=\"" + number + "\"");
+                });
+                done(std::move(answer));
+            };
+            return "";
+        }
+        if (portfw && relay_.is_open()) {
+            // online: other cabinets reach this one at the relay's address for it (netrelay.h),
+            // its battle socket's port
+            const uint32_t a = relay_.address();
+            char ip[20];
+            snprintf(ip, sizeof ip, "%u.%u.%u.%u", a >> 24, (a >> 16) & 255, (a >> 8) & 255, a & 255);
+            done = [done = std::move(done), ip = std::string(ip)](std::string answer) {
+                hk::py::EamuseServer::edit(answer, [&](std::string &xml) {
+                    const size_t at = xml.find("<portfw");
+                    if (at == std::string::npos) return;
+                    const size_t end = xml.find('>', at);
+                    const std::string el = xml.substr(at, end == std::string::npos ? std::string::npos : end - at);
+                    if (el.find(" globalip=\"") == std::string::npos) xml.insert(at + 7, " globalip=\"\" port=\"\"");
+                    hk::py::EamuseServer::set_attr(xml, "globalip", ip);
+                    hk::py::EamuseServer::set_attr(xml, "port", "5700");
                 });
                 done(std::move(answer));
             };

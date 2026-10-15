@@ -708,7 +708,8 @@ addresses here are pop'n 12's. In HIRAKU the mode is offered and played: alone, 
 comes, the game says so and starts the credit in CHALLENGE mode (`oracle/scripts/popn12-nettaisen.his`);
 two HIRAKU cabinets on one LAN cable (`--lan-host`/`--lan-join`, `runtime/python/lancable.h`)
 meet through the first one's lobby and battle, a CPU in the third seat
-(`oracle/scripts/popn12-nettaisen-a.his`/`-b.his`, regress `popn12-nettaisen-a`/`-b`).
+(`oracle/scripts/popn12-nettaisen-a.his`/`-b.his`, regress `popn12-nettaisen-a`/`-b`); cabinets on
+different PCs meet online through `hiraku-eamuse`'s relay (below, "Online").
 
 - **When the mode is offered** (`0x19a300`, the mode wheel's NET対戦 and the title's `ICON_NET`):
   the event phase 2 or later (NET TAISEN MODE RELEASE), a card in, and on the network all of:
@@ -764,6 +765,19 @@ meet through the first one's lobby and battle, a CPU in the third seat
   seconds and microseconds): the lobby's 1 s a try and 1 ms to empty its queue, another 50 ms. A
   recv waits for a datagram that long; answered at once instead, a lobby request from another
   cabinet (one frame away) went out again before its answer came.
+- **Online** (`runtime/python/netrelay.h`): `hiraku-eamuse` keeps the lobby and a relay on TCP
+  port 5740, the port its `globby` URL names. Each cabinet with `-url` pointing at it connects
+  there at start, and the relay gives it an address of its own, 10.57.0.N. The cabinet puts that
+  address in its `portfw` answer (port 5700), as a shop router's address would be, so the other
+  games send there. The game's datagrams go over the connection with the address and port the
+  game used: to the lobby's port at an address that isn't a cabinet's, the relay's lobby answers;
+  to a cabinet's, the relay passes it on, from the sender's address; broadcasts go nowhere. The
+  cabinets connect out, so no port forwarding is needed at the cabinets; only the server's 5740
+  must be reachable. Not in lockstep: datagrams arrive when the network brings them, and the
+  cabinets run free, as real ones did. Checked with two headless cabinets on one PC paced at real
+  time ×4 (`HK_PY_PACE=4`): A waits in the lobby, B finds it and joins, a CPU takes the third
+  seat, both RESULTs agree, stage 2 together. Against a server without the relay, the cabinet
+  says so at start and NET TAISEN finds nobody.
 - **After the credit:** `playerdata set` carries `<netvs music_num sheet_num caption fruit class
   class_skill badge get_ojama set_ojama rank stage_record member_name member_pref map_hi map_lo/>`
   (pop'n 13 and 14: their own fields).

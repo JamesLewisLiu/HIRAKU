@@ -148,6 +148,11 @@ void VirtualNet::deliver(Socket &s, uint32_t ch, uint32_t buf, uint32_t len) {
     if (log) log(fmt("ch%u 16 recv = %u", ch, n));
 }
 
+void VirtualNet::set_online(uint32_t address) {
+    online_ = address;
+    lobby_here_ = false;
+}
+
 void VirtualNet::set_cabinet(int index) {
     address_[3] = (uint8_t)(2 + index);
     lobby_here_ = index == 0;
@@ -201,7 +206,7 @@ void VirtualNet::from_lan(LanCable::Packet &p) {
         return;
     }
     const bool broadcast = p.dst == 0xffffffffu || p.dst == (me | 0xff);
-    if (p.dst != me && !broadcast) return;
+    if (p.dst != me && !broadcast && !(online_ && p.dst == online_)) return;
     for (auto &[fd, s] : sockets_)
         if (s.type == 2 && s.port == p.dport) {
             if (log) log(fmt("lan in %u.%u.%u.%u:%u -> fd %d port %u, %zu bytes", p.src >> 24, (p.src >> 16) & 255, (p.src >> 8) & 255,

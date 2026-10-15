@@ -7,12 +7,16 @@
 // other by its model; both keep their files in the same folder (one card numbering, one set of
 // KONAMI IDs). docs/EAMUSE3.md describes the protocol.
 //
-//   hiraku-eamuse [--port 8080] [--bind 0.0.0.0] [--data DIR] [--clock "2003-06-01 12:00:00"] [--tz 9] [--quiet]
+// It also runs NET TAISEN's lobby and relay for pop'n music 12-14 cabinets (runtime/python/netrelay.h),
+// on TCP port 5740 of the same address.
+//
+//   hiraku-eamuse [--port 8080] [--bind 0.0.0.0] [--data DIR] [--clock "2003-06-01 12:00:00"] [--tz 9] [--quiet] [--no-relay]
 //     --data   where it keeps what it must remember (default ./eamuse-data)
 //     --clock  the cabinets' time (ntp.get), running from this start (default: the host's clock)
 //     --tz     with the host's clock: the cabinets' time zone, hours from UTC (default 9, Japan: the
 //              games set their clocks to what ntp.get says and stamp their own times "+9")
 //     --quiet  don't print each call
+//     --no-relay  no NET TAISEN relay
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
@@ -30,6 +34,8 @@
 
 #include "eamuse/server.h"
 #include "python/easerver.h"
+#include "python/lobby.h"
+#include "python/netrelay.h"
 #include "sys573/eagfdm.h"
 
 namespace {
@@ -68,7 +74,7 @@ int main(int argc, char **argv) {
     std::string bind_addr = "0.0.0.0", data = "eamuse-data";
     int64_t clock_start = -1;
     int tz_hours = 9;
-    bool quiet = false;
+    bool quiet = false, relay_on = true;
     for (int i = 1; i < argc; i++) {
         const std::string a = argv[i];
         auto val = [&]() -> const char * {
@@ -83,8 +89,9 @@ int main(int argc, char **argv) {
             if (clock_start < 0) { fprintf(stderr, "--clock: YYYY-MM-DD[ HH:MM:SS]\n"); return 2; }
         } else if (a == "--tz") tz_hours = atoi(val());
         else if (a == "--quiet") quiet = true;
+        else if (a == "--no-relay") relay_on = false;
         else {
-            fprintf(stderr, "usage: hiraku-eamuse [--port N] [--bind ADDR] [--data DIR] [--clock \"YYYY-MM-DD HH:MM:SS\"] [--tz H] [--quiet]\n");
+            fprintf(stderr, "usage: hiraku-eamuse [--port N] [--bind ADDR] [--data DIR] [--clock \"YYYY-MM-DD HH:MM:SS\"] [--tz H] [--quiet] [--no-relay]\n");
             return a == "--help" || a == "-h" ? 0 : 2;
         }
     }
@@ -130,6 +137,12 @@ int main(int argc, char **argv) {
         return 1;
     }
     printf("hiraku-eamuse: e-AMUSE3 on %s:%d, data in %s\n", bind_addr.c_str(), port, data.c_str());
+    hk::py::RelayServer relay;
+    if (relay_on) {
+        relay.log = server.log;
+        if (relay.start(bind_addr, hk::py::Lobby::PORT))
+            printf("hiraku-eamuse: NET TAISEN lobby and relay on %s:%u\n", bind_addr.c_str(), hk::py::Lobby::PORT);
+    }
     fflush(stdout);
     for (;;) {   // one connection at a time: the game makes one request per connection (HTTP/1.0)
         sockaddr_in peer{};
