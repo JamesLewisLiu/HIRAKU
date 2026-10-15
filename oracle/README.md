@@ -70,6 +70,7 @@ In MAME a button pressed at frame F is first seen at frame F+1. MAME latches dig
 A field's name is `PORT/Field` or just `Field` when unique: beatmania's turntables are `TT1/Dial` and `TT2/Dial`. A wrong name stops the run, with the port's fields in the error.
 - `snap`
 - `dump <name> <lo> <hi>`
+- `poke <addr> <byte>...`: write guest memory before the frame runs, bytes in memory order (as `dump` reads them). For a game's own debug or demo switches: `kbm-autoplay.his` sets Keyboardmania's autoplay flag.
 - `mark <text>`
 - `itrace on|off` (MAME debugger instruction trace, `EXACT_PC=1` only; about 29 MB per frame)
 - `quit`

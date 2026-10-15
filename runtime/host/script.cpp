@@ -2,6 +2,7 @@
 #include "script.h"
 
 #include <cstdio>
+#include <cstring>
 #include <fstream>
 #include <map>
 #include <sstream>
@@ -17,6 +18,7 @@ struct Action {
     std::string verb, field;
     int64_t a = 0, b = 0, c = 0;
     std::string text;
+    std::vector<uint8_t> bytes;   // poke: what to write at `a`
 };
 struct Repeat {
     uint64_t every, from;
@@ -74,6 +76,11 @@ Action parse_action(const std::vector<std::string> &t, size_t k) {
     else if (a.verb == "hold" || a.verb == "release") a.field = t.at(k + 1);
     else if (a.verb == "set") { a.field = t.at(k + 1); a.a = num(t.at(k + 2)); }
     else if (a.verb == "dump") { a.field = t.at(k + 1); a.a = num(t.at(k + 2)); a.b = num(t.at(k + 3)); }
+    else if (a.verb == "poke") {   // poke ADDR BYTE...: write guest memory, bytes in mem()'s order
+        a.a = num(t.at(k + 1));
+        for (size_t j = k + 2; j < t.size(); j++) a.bytes.push_back((uint8_t)num(t[j]));
+        if (a.bytes.empty()) throw std::runtime_error("poke: no bytes");
+    }
     else if (a.verb == "mark") { for (size_t j = k + 1; j < t.size(); j++) a.text += (j > k + 1 ? " " : "") + t[j]; }
     else if (a.verb == "snap" || a.verb == "quit" || a.verb == "itrace") {}
     else throw std::runtime_error("unknown action '" + a.verb + "'");
@@ -173,6 +180,11 @@ bool frame(uint64_t f, const std::function<void()> &snap) {
                 fwrite(m, 1, (size_t)(a.b - a.a), o);
                 fclose(o);
             }
+        } else if (a.verb == "poke") {
+            // the memory input scripts read (mem()) is the guest's RAM itself: write it in place
+            auto *m = const_cast<uint8_t *>(core().mem((uint32_t)a.a, (uint32_t)a.bytes.size()));
+            if (!m) fprintf(stderr, "script: poke %llx: not plain memory\n", (unsigned long long)a.a);
+            else memcpy(m, a.bytes.data(), a.bytes.size());
         } else if (a.verb == "quit") keep = false;
     };
     for (auto &r : g_repeat)

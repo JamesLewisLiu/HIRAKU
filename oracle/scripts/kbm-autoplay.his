@@ -1,0 +1,19 @@
+# Keyboardmania (1st Mix): a credit, player 1, and the first stage played by the game itself.
+# The game has a per-player autoplay flag, the one its attract demo uses: 0x8022be72 + player
+# (mode.c: FUN_800c071c reads it; FUN_800bdf94 then presses each note's key as it arrives,
+# through the same key-event table the MIDI keyboards fill). Setting it for player 1 during a
+# real game plays every note: STAGE CLEAR, 135 GREAT of 135, score 1,000,000.
+# From a set-up save (blank NVRAM stops at E161):
+#   hiraku-kbm --nvram DIR --script oracle/scripts/kbm-autoplay.his
+game kbm
+watch mode u32 0x8022be70           # players in (be70/71), autoplay (be72/73)
+watch flags u32 0x8022be74          # game mode; bit 3: the attract demo
+at 4400 press "Coin 1" 6
+at 4440 press "Coin 1" 6
+at 4600 press "1 Player Start" 8
+at 4900 press "1 Player Start" 8
+at 5200 press "1 Player Start" 8
+from 5650 every 30 poke 0x8022be72 1
+from 5600 every 600 snap
+at 11600 snap
+at 11700 quit

@@ -302,6 +302,11 @@ local function parse_action(t, k)
     elseif verb == "set" then return { "set", t[k + 1], num(t[k + 2]) }
     elseif verb == "snap" then return { "snap" }
     elseif verb == "dump" then return { "dump", t[k + 1], num(t[k + 2]), num(t[k + 3]) }
+    elseif verb == "poke" then
+        local b = {}
+        for j = k + 2, #t do b[#b + 1] = num(t[j]) end
+        if #b == 0 then error("poke: no bytes") end
+        return { "poke", num(t[k + 1]), b }
     elseif verb == "mark" then return { "mark", table.concat(t, " ", k + 1) }
     elseif verb == "itrace" then
         assert(t[k + 1] == "on" or t[k + 1] == "off", "itrace on|off")
@@ -378,6 +383,9 @@ local function run(a)
         local fh = assert(io.open(string.format("%s/dump-%s-f%d.bin", OUT, a[2], frame), "wb"))
         fh:write(space:read_range(a[3] & 0x1fffffff, (a[4] - 1) & 0x1fffffff, 8)); fh:close()
         say("f%d dump %s %08x-%08x", frame, a[2], a[3], a[4])
+    elseif v == "poke" then
+        for i, b in ipairs(a[3]) do space:write_u8((a[2] + i - 1) & 0x1fffffff, b) end
+        say("f%d poke %08x (%d bytes)", frame, a[2], #a[3])
     elseif v == "mark" then
         say("f%d mark %s", frame, a[2])
     elseif v == "itrace" then

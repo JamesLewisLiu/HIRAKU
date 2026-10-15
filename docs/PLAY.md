@@ -411,6 +411,8 @@ Each asks three times. Answer "YES?" and "ARE YOU SURE?" with **1** (move to YES
 - `build/cmake/hiraku-xt446 ROMDIR OUT.wav --midi LOG` runs the card on its own. LOG has one `<seconds> <hex byte>` per line.
 - The card is MAME's emulation from a later master commit than the 0.289 oracle, for the SWP30's accuracy fixes (third_party/mame/README.md).
 
+**Autoplay (Keyboardmania 1st Mix):** the game has a per-player autoplay flag, the one its attract demo uses. `oracle/scripts/kbm-autoplay.his` inserts a credit, starts player 1 and sets the flag (the script's `poke` action): the game then plays every note itself, STAGE CLEAR with 135 GREAT of 135. Run it from a set-up save: `hiraku-kbm --nvram DIR --script oracle/scripts/kbm-autoplay.his`. Useful for watching a whole song, and for checking the XT446 against MAME over one.
+
 **Unlocks:** right-click the game > **Unlocks**.
 - **Keyboardmania 3rd:** the startup code (PRESSURE mode and three hidden songs).
 - **Keyboardmania 2nd:** PRESSURE mode, normally unlocked by a long wheel hold on the 2P side.
