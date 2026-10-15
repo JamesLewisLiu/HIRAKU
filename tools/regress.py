@@ -177,6 +177,15 @@ CASES = {
     "popn12-play": ("popn12", 14000, ["--script", "oracle/scripts/popn12-play.his", "--interlaced"]),
     "popn13-play": ("popn13", 16000, ["--script", "oracle/scripts/popn13-play.his", "--interlaced"]),
     "popn14-play": ("popn14", 14000, ["--script", "oracle/scripts/popn14-play.his", "--interlaced"]),
+    # pop'n 12's NET TAISEN between two cabinets on one LAN cable (runtime/python/lancable.h, PLAN.md
+    # section 23): e-AMUSEMENT on, the event phases typed to MAX, then the two cabinets' credits at
+    # once, a battle with a CPU in the third seat to its RESULT
+    "popn12-eamuse-on": ("popn12", 4130, ["--script", "oracle/scripts/popn12-eamuse-on.his"]),
+    "popn12-phases": ("popn12", 22140, ["--script", "oracle/scripts/popn12-phases.his"], "popn12-eamuse-on"),
+    "popn12-nettaisen-a": ("popn12", 27000, ["--script", "oracle/scripts/popn12-nettaisen-a.his",
+                                             "--lan-host", "out/regress/work/popn12-lan.sock"], "popn12-phases", "popn12-nettaisen-b"),
+    "popn12-nettaisen-b": ("popn12", 27000, ["--script", "oracle/scripts/popn12-nettaisen-b.his",
+                                             "--lan-join", "out/regress/work/popn12-lan.sock"], "popn12-phases", "popn12-nettaisen-a"),
 }
 
 # Twinkle: the cases above run MAME's program CD drive (--mame-cd), so they stay in lockstep

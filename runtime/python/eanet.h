@@ -7,7 +7,9 @@
 //   - DNS (UDP 53): "services..." is 192.168.50.1; any other name gets an address of its own
 //     on the LAN (192.168.50.10 on), remembered, so a connection to it names its host again;
 //   - UDP to 192.168.50.1 at Lobby::PORT: NET TAISEN's lobby (pop'n 12-14, lobby.h), answered at
-//     once; datagrams anywhere else go nowhere, as on a LAN with no other cabinet;
+//     once; datagrams to other cabinets and broadcasts go on the LAN cable to cabinets in other
+//     processes (lancable.h: then this cabinet is 192.168.50.2 + its number, and only the
+//     first cabinet keeps the lobby), else nowhere, as on a LAN with no other cabinet;
 //   - TCP: each HTTP request the game sends goes to a handler, with the host and port it
 //     connected to (docs/EAMUSE3.md). The handler answers at once (the server in the core:
 //     reproducible) or later (a real server on the network); a recv waits for the answer, as
@@ -25,6 +27,7 @@
 #include <string>
 #include <vector>
 
+#include "python/lancable.h"
 #include "python/lobby.h"
 
 namespace hk::py {
@@ -56,6 +59,12 @@ public:
     // Call once a frame (the emulator's thread): answers that arrived complete waiting recvs.
     void poll();
 
+    // On a LAN with cabinets in other processes: this one's number (0: 192.168.50.2, the lobby's
+    // keeper), and the cable, called at each frame's end with the datagrams for the others, to
+    // fill with theirs (LanCable::exchange)
+    void set_cabinet(int index);
+    std::function<void(std::vector<LanCable::Packet> &out, std::vector<LanCable::Packet> &in)> cable;
+
     // Each command and its answer, for HK_PY_NET_LOG.
     std::function<void(const std::string &)> log;
 
@@ -78,10 +87,12 @@ private:
         uint32_t wait_ch = 0, wait_buf = 0, wait_len = 0;
         std::vector<Datagram> datagrams;   // datagram: answers not read yet
         bool dns = false;                  // it asked DNS: an empty recvfrom gives 0, not a timeout
+        uint16_t port = 0;                 // datagram: the port it is bound to (or was given)
     };
     void respond(uint32_t channel, int32_t ret, uint32_t w2 = 0, uint32_t w3 = 0);
     void http_progress(Socket &s);
     void take_answers();
+    void from_lan(LanCable::Packet &p);
     void deliver(Socket &s, uint32_t ch, uint32_t buf, uint32_t len);
     std::vector<uint8_t> dns_answer(const uint8_t *q, size_t n, std::string *name);
     Target target_of(uint32_t ip_be, uint16_t port) const;
@@ -89,6 +100,10 @@ private:
     Io io_;
     Http http_;
     std::map<int, Socket> sockets_;
+    uint8_t address_[4] = {192, 168, 50, 2};   // this cabinet's
+    bool lobby_here_ = true;
+    std::vector<LanCable::Packet> to_lan_;   // datagrams for the cable, at the frame's end
+    uint16_t next_port_ = 49152;             // for a socket that sends unbound
     Lobby lobby_;
     uint64_t polls_ = 0;   // frames: the lobby's clock
     uint64_t next_id_ = 1;

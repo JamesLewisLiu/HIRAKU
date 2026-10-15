@@ -12,7 +12,6 @@ namespace hk::py {
 
 namespace {
 
-constexpr uint8_t BOARD_IP[4] = {192, 168, 50, 2};
 constexpr uint8_t NETMASK[4] = {255, 255, 255, 0};
 constexpr uint8_t GATEWAY[4] = {192, 168, 50, 1};
 constexpr uint8_t SERVER_IP[4] = {192, 168, 50, 1};   // DNS and "services"
@@ -29,6 +28,8 @@ std::string fmt(const char *f, ...) {
     return b;
 }
 
+uint32_t be_of(const uint8_t a[4]) { return (uint32_t)a[0] << 24 | a[1] << 16 | a[2] << 8 | a[3]; }
+
 uint16_t checksum(const uint8_t *p, size_t n) {
     uint32_t sum = 0;
     for (size_t i = 0; i + 1 < n; i += 2) sum += (uint32_t)p[i] << 8 | p[i + 1];
@@ -38,13 +39,13 @@ uint16_t checksum(const uint8_t *p, size_t n) {
 }
 
 // An ICMP echo request to `to` (big-endian address) answered: IPv4 header, then the echo as a reply
-std::vector<uint8_t> echo_reply(const std::vector<uint8_t> &icmp, uint32_t to) {
+std::vector<uint8_t> echo_reply(const std::vector<uint8_t> &icmp, uint32_t to, const uint8_t own[4]) {
     std::vector<uint8_t> r(20, 0);
     const size_t total = 20 + icmp.size();
     r[0] = 0x45; r[2] = (uint8_t)(total >> 8); r[3] = (uint8_t)total;
     r[8] = 64; r[9] = 1;   // TTL, ICMP
     r[12] = (uint8_t)(to >> 24); r[13] = (uint8_t)(to >> 16); r[14] = (uint8_t)(to >> 8); r[15] = (uint8_t)to;
-    for (int i = 0; i < 4; i++) r[16 + i] = BOARD_IP[i];
+    for (int i = 0; i < 4; i++) r[16 + i] = own[i];
     const uint16_t hc = checksum(r.data(), 20);
     r[10] = (uint8_t)(hc >> 8); r[11] = (uint8_t)hc;
     std::vector<uint8_t> e = icmp;
@@ -147,9 +148,42 @@ void VirtualNet::deliver(Socket &s, uint32_t ch, uint32_t buf, uint32_t len) {
     if (log) log(fmt("ch%u 16 recv = %u", ch, n));
 }
 
+void VirtualNet::set_cabinet(int index) {
+    address_[3] = (uint8_t)(2 + index);
+    lobby_here_ = index == 0;
+}
+
 void VirtualNet::poll() {
     polls_++;
+    if (cable) {
+        std::vector<LanCable::Packet> in;
+        cable(to_lan_, in);
+        to_lan_.clear();
+        for (LanCable::Packet &p : in) from_lan(p);
+    }
     take_answers();
+}
+
+// A datagram off the cable: the lobby's (on the first cabinet), else to the socket bound to its
+// port, if it is for this cabinet or everyone
+void VirtualNet::from_lan(LanCable::Packet &p) {
+    const uint32_t me = be_of(address_);
+    if (lobby_here_ && p.dst == SERVER_IP_BE && p.dport == Lobby::PORT) {
+        std::vector<uint8_t> r = lobby_.handle(p.data.data(), p.data.size(), polls_ / 59.94);
+        if (log) log(fmt("lan lobby from %u.%u.%u.%u:%u, %zu bytes = %zu", p.src >> 24, (p.src >> 16) & 255, (p.src >> 8) & 255,
+                         p.src & 255, p.sport, p.data.size(), r.size()));
+        if (!r.empty()) to_lan_.push_back({SERVER_IP_BE, p.src, Lobby::PORT, p.sport, std::move(r)});
+        return;
+    }
+    const bool broadcast = p.dst == 0xffffffffu || p.dst == (me | 0xff);
+    if (p.dst != me && !broadcast) return;
+    for (auto &[fd, s] : sockets_)
+        if (s.type == 2 && s.port == p.dport) {
+            if (log) log(fmt("lan in %u.%u.%u.%u:%u -> fd %d port %u, %zu bytes", p.src >> 24, (p.src >> 16) & 255, (p.src >> 8) & 255,
+                             p.src & 255, p.sport, fd, p.dport, p.data.size()));
+            s.datagrams.push_back({std::move(p.data), __builtin_bswap32(p.src), p.sport});
+            return;
+        }
 }
 
 void VirtualNet::take_answers() {
@@ -180,7 +214,7 @@ bool VirtualNet::command(uint32_t ch, const uint32_t *p, uint32_t quads) {
     case 0x1e: {   // a board property: the addresses; the machine id and the rest stay the emulator's
         const uint8_t *v = nullptr;
         switch (arg(1)) {
-        case 0x101: v = BOARD_IP; break;
+        case 0x101: v = address_; break;
         case 0x001: v = NETMASK; break;
         case 0x003: v = GATEWAY; break;
         case 0x006: v = SERVER_IP; break;
@@ -195,7 +229,7 @@ bool VirtualNet::command(uint32_t ch, const uint32_t *p, uint32_t quads) {
     case 0x08: case 0x09: {   // the board's own address and netmask, 4 bytes in the reply: pop'n 12
         // announces itself on the shop LAN with them after a new card's OK (0x19fdc0: RPCs 7 and 8,
         // read back at 0x1c0550 / 0x1c0840); Reliquary doesn't have them
-        const uint8_t *v = cmd == 0x08 ? BOARD_IP : NETMASK;
+        const uint8_t *v = cmd == 0x08 ? address_ : NETMASK;
         uint32_t word;
         std::memcpy(&word, v, 4);
         respond(ch, 0, word);
@@ -211,7 +245,12 @@ bool VirtualNet::command(uint32_t ch, const uint32_t *p, uint32_t quads) {
         note(fmt("socket(%u, %u) = %d", arg(1), arg(2), fd));
         return true;
     }
-    case 0x0c:   // bind
+    case 0x0c: {   // bind(fd, family/port, address)
+        if (auto it = sockets_.find((int)arg(1)); it != sockets_.end()) it->second.port = (uint16_t)arg(2);
+        respond(ch, 0);
+        note(fmt("bind(%d, port %u) = 0", (int)arg(1), arg(2) & 0xffff));
+        return true;
+    }
     case 0x13:   // setsockopt
     case 0x1c:   // shutdown
         respond(ch, 0);
@@ -246,7 +285,7 @@ bool VirtualNet::command(uint32_t ch, const uint32_t *p, uint32_t quads) {
             // Every raw socket gets a copy, as from a real stack: pop'n 12 sends each ping on a
             // socket it closes at once and reads the replies on another (its ping thread, 0x197ab8).
             if (n >= 8 && d[0] == 8) {
-                const std::vector<uint8_t> reply = echo_reply(d, arg(5));
+                const std::vector<uint8_t> reply = echo_reply(d, arg(5), address_);
                 const uint32_t src = (uint32_t)reply[12] | reply[13] << 8 | reply[14] << 16 | (uint32_t)reply[15] << 24;
                 for (auto &[other_fd, other] : sockets_)
                     if (other.type == 3) other.datagrams.push_back({reply, src, 0});
@@ -259,10 +298,14 @@ bool VirtualNet::command(uint32_t ch, const uint32_t *p, uint32_t quads) {
                 s.dns = true;
                 auto r = dns_answer(d.data(), d.size(), &name);
                 if (!r.empty()) s.datagrams.push_back({std::move(r), SERVER_IP_RAW, 53});
-            } else if (arg(5) == SERVER_IP_BE && port == Lobby::PORT) {
+            } else if (arg(5) == SERVER_IP_BE && port == Lobby::PORT && lobby_here_) {
                 name = "lobby";
                 auto r = lobby_.handle(d.data(), d.size(), polls_ / 59.94);
                 if (!r.empty()) s.datagrams.push_back({std::move(r), SERVER_IP_RAW, Lobby::PORT});
+            } else if (cable) {   // the other cabinets', the lobby on the first, broadcasts
+                name = "lan";
+                if (!s.port) s.port = next_port_++;
+                to_lan_.push_back({be_of(address_), arg(5), s.port, port, d});
             }
             note(fmt("sendto(%d, %u bytes, %u.%u.%u.%u:%u) %s", fd, n, arg(5) >> 24, (arg(5) >> 16) & 255, (arg(5) >> 8) & 255,
                      arg(5) & 255, port, name.c_str()));

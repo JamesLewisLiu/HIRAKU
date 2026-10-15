@@ -82,6 +82,7 @@
 #include "python/eanet.h"
 #include "python/eaclient.h"
 #include "python/easerver.h"
+#include "python/lancable.h"
 #include "shell/cabinet.h"
 #include "shell/core.h"
 #include "shell/eaoptions.h"
@@ -271,6 +272,9 @@ public:
         if (name == "--picture-overlap") { picture_now_ = false; return true; }
         if (name == "--interlaced") { full_frames_ = false; return true; }
         if (name == "--fill-screen") { fill_screen_ = true; return true; }
+        if (name == "--lan-host") { lan_where_ = value(); lan_host_ = true; return true; }
+        if (name == "--lan-join") { lan_where_ = value(); lan_host_ = false; return true; }
+        if (name == "--lan-cabinets") { lan_cabinets_ = std::stoi(value()); return true; }
         if (name == "--autoplay") {
             autoplay_ = true;
             if (!has_autoplay(HK_GAME_ID)) fprintf(stderr, "autoplay: not available for %s yet (pop'n music 9 only)\n", HK_GAME_ID);
@@ -316,6 +320,11 @@ public:
                "                       picture at its true shape, 448 lines on 480\n"
                "  --autoplay           the game plays every song itself, as in its attract demo: every note GREAT\n"
                "                       (a mod for testing what clears unlock; pop'n music 9)\n"
+               "  --lan-host SOCKET    NET TAISEN between HIRAKU cabinets (pop'n 12-14): this is the first cabinet\n"
+               "                       (192.168.50.2, it keeps the lobby); wait at SOCKET (a path, or host:port for\n"
+               "                       TCP) for the others. They run in lockstep, a frame at a time\n"
+               "  --lan-join SOCKET    another cabinet on that LAN (192.168.50.3 on)\n"
+               "  --lan-cabinets N     with --lan-host: how many cabinets in all, 2 to 4 (default 2)\n"
                "  --pcsx2-set S/K=V    set one of the emulator's settings (its ini's section S, key K), for experiments\n"
                "  --eamuse local|URL   the older -ea / -url (below)\n" +
                std::string(hk::EaOptions::help()) +
@@ -433,6 +442,16 @@ public:
             server_ = std::make_unique<hk::py::EamuseServer>(run_dir_ + "/eamuse");
             // the cabinet's clock (init_emulator: 2003-06-01 12:00 JST) plus the machine's own time
             server_->now = [this] { return (int64_t)1054468800 + (int64_t)seconds(); };
+            if (!lan_where_.empty()) {   // NET TAISEN with cabinets in other processes (lancable.h)
+                if (!lan_.open(lan_where_, lan_host_, lan_cabinets_)) return false;
+                net_->set_cabinet(lan_.index());
+                net_->cable = [this](std::vector<hk::py::LanCable::Packet> &out, std::vector<hk::py::LanCable::Packet> &in) {
+                    lan_.exchange(out, in);
+                };
+            }
+        } else if (!lan_where_.empty()) {
+            fprintf(stderr, "--lan-host/--lan-join: pop'n music only, and not with --bare-board (the board has no network then)\n");
+            return false;
         }
         if (!FileSystem::WriteStringToFile(py1_path_.c_str(), py1)) { fprintf(stderr, "python: cannot write %s\n", py1_path_.c_str()); return false; }
 
@@ -817,6 +836,10 @@ private:
     std::unique_ptr<hk::py::CardReader> card_;
     FILE *card_log_ = nullptr;
     std::unique_ptr<hk::py::VirtualNet> net_;
+    hk::py::LanCable lan_;   // --lan-host/--lan-join
+    std::string lan_where_;
+    bool lan_host_ = false;
+    int lan_cabinets_ = 2;
     FILE *net_log_ = nullptr;
     std::unique_ptr<hk::py::EamuseServer> server_;
     std::vector<std::pair<uint32_t, uint32_t>> watch_;   // HK_PY_WATCH: address, last value

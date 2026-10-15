@@ -703,9 +703,11 @@ reader with its own 10-key; the PIN is checked by the server.
 
 Battles between cabinets, up to four players, CPUs in the empty seats. pop'n 12, 13 and 14 carry
 the same library (the strings `globby://`, `LobbyEntry()`, `>>NETVS MASTER/SLAVE/LOCALVS`); the
-addresses here are pop'n 12's. HIRAKU's server runs the mode for one cabinet: it is offered,
-played, and when nobody comes the game says so and starts the credit in CHALLENGE mode
-(`oracle/scripts/popn12-nettaisen.his`). Two cabinets meeting is not done yet.
+addresses here are pop'n 12's. In HIRAKU the mode is offered and played: alone, when nobody
+comes, the game says so and starts the credit in CHALLENGE mode (`oracle/scripts/popn12-nettaisen.his`);
+two HIRAKU cabinets on one LAN cable (`--lan-host`/`--lan-join`, `runtime/python/lancable.h`)
+meet through the first one's lobby and battle, a CPU in the third seat
+(`oracle/scripts/popn12-nettaisen-a.his`/`-b.his`, regress `popn12-nettaisen-a`/`-b`).
 
 - **When the mode is offered** (`0x19a300`, the mode wheel's NET対戦 and the title's `ICON_NET`):
   the event phase 2 or later (NET TAISEN MODE RELEASE), a card in, and on the network all of:
@@ -745,6 +747,14 @@ played, and when nobody comes the game says so and starts the credit in CHALLENG
   broadcasts a 0x1c-byte datagram to port 5700 (its own address and netmask: board commands 7 and
   8); a cabinet that has heard one shows a screen of its own first (`0x1644c8`, not read yet)
   and, for a local battle, calls those directly, no lobby.
+- **Two cabinets, as seen in HIRAKU** (`popn12-nettaisen-a`/`-b`): each hears the other's
+  broadcast at its card's OK, and from then on they exchange datagrams port 30000 to 5700 a few
+  times a second. In NET対戦, A (in song select first) finds the lobby empty, enters and waits; B
+  lists, finds A and calls it (SLAVE). Both leave song select together; the opponents' screen
+  (対戦者紹介) shows both players and a CPU, the song starts on both at the same frame, "通信中…"
+  while the scores go round, and each RESULT has all three scores. Each cabinet shows the others'
+  scores as they arrive, so they can differ a little between the screens (the CPU's 2885 and 2818
+  at one moment).
 - **After the credit:** `playerdata set` carries `<netvs music_num sheet_num caption fruit class
   class_skill badge get_ojama set_ojama rank stage_record member_name member_pref map_hi map_lo/>`
   (pop'n 13 and 14: their own fields).
