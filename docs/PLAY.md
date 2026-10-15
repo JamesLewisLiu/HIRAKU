@@ -707,6 +707,31 @@ Test mode's **DVD CHECK** plays and stops the Video CD. A credit is **3 coins** 
 
 Its regress cases: `bmiidx-clear` (the first boot, the DVD check and backup clear in test mode, the restart, attract), `bmiidx-play` (a game of 7KEYS after it) and `bmiidx-video` (the same with the video). They are checked against a MAME given the same serial port (oracle/mame-patches).
 
+### beatmania IIDX Substream, 2nd to 8th style
+
+These play too, ingested the same way: the MAME set and its three CHDs (PLAN.md section 21, TW-5).
+
+| Game | Set | Program CD | Player's disc | Hard disk |
+|---|---|---|---|---|
+| Substream | `bmiidxs` | `gc983a01` | Video CD `gc983a04` | `983hdda01` |
+| 2nd style | `bmiidx2` | `gc985a01` | Video CD `gc985a04` | `985hdda01` |
+| 4th style | `bmiidx4` | `a03jaa01` | Video CD `a03jaa02` | `a03jaa03` |
+| 5th style | `bmiidx5` | `a17jaa01` | Video CD `a17jaa02` | `a17jaa03` |
+| 6th style | `bmiidx6` | `b4ujab01` | DVD `b4ujaa02` | `b4ujaa03` |
+| 7th style | `bmiidx7a` | `b44jaa01` | DVD `b44jaa02` | `b44jaa03` |
+| 8th style | `bmiidx8` | `c44jaa01` | DVD `c44jaa02` | `c44jaa03` |
+
+```bash
+tools/ingest.py bmiidx6.7z b4ujab01.chd b4ujaa02.chd b4ujaa03.chd
+ninja -C build/cmake hiraku-bmiidx6
+```
+
+**Disk space:** the DVD styles keep about 10 GB each (a 4.5 GB DVD and the hard disk, whose zeros are stored as holes). 7th style's hard disk is 40 GB before that, so unpacking it needs that much free space at first. The images can live on another drive: unpack them there and link them into `dumps/<set>/` under the same names; the ingest keeps an image that is already there at the right size.
+
+**The first boot** stops at **E150**, as in 3rd style, then shows **1P START = BACKUP CLEAR**: press **1P Start** (1). The prompt comes later on some styles (about 50 s in for Substream, 7th and 8th style). 7th and 8th style then run a long device check before the title.
+
+**The background video:** from 6th style on, the player holds a DVD, and the stages play its chapters (MPEG-2, decoded with FFmpeg as the Video CD is). MAME shows none, and its player model reads the game's DVD chapter numbers as a Video CD's; the picture here follows the game's own numbers. Which clip goes with which song still needs checking against real cabinets: in 8th style the game asks for chapter 4 for 5.1.1., which is not that song's own clip.
+
 ## Konami Python 1: pop'n music 9–14 (in progress, M16)
 
 pop'n music 9 (`popn9`) runs on HIRAKU's Python core, and so do 10 (`popn10`), 11 (`popn11`), 12 Iroha (`popn12`), 13 Carnival (`popn13`) and 14 FEVER! (`popn14`): PCSX2 Reliquary's emulator hosted by HIRAKU's shell (PLAN.md §23, docs/PYTHON.md). It is built inside Reliquary's own build. You need:

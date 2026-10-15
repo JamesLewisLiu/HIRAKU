@@ -958,7 +958,10 @@ def xvd701_h(s):
              '\n'
              '\t// HIRAKU: the player\'s state after each command it takes: the chapter, STOP/PLAYING/PAUSE\n'
              '\t// (0/1/2), the power, and whether playback starts again at the chapter\'s beginning\n'
-             '\tstd::function<void(int chapter, int status, bool powered, bool from_start)> m_hk_state;\n',
+             '\tstd::function<void(int chapter, int status, bool powered, bool from_start)> m_hk_state;\n'
+             '\t// HIRAKU: each command the player takes, its 11 bytes, before it acts on it (a DVD\'s\n'
+             '\t// chapter: MAME reads the number as a Video CD\'s, divided by ten)\n'
+             '\tstd::function<void(const unsigned char *command)> m_hk_command;\n',
              'xvd701.h hook')
     s = edit(s, '\tint m_chapter;\n',
              '\tint m_chapter;\n\tbool m_hk_seek = false; // HIRAKU: this command (re)started the chapter\n', 'xvd701.h seek flag')
@@ -968,7 +971,8 @@ def xvd701_h(s):
 def xvd701_cpp(s):
     s = edit(s, '\tm_chapter = chapter;\n', '\tm_chapter = chapter;\n\tm_hk_seek = true; // HIRAKU\n', 'xvd701.cpp seek')
     s = edit(s, '\t\tm_command[10] == sum(m_command, sizeof(m_command) - 1))\n\t{\n',
-             '\t\tm_command[10] == sum(m_command, sizeof(m_command) - 1))\n\t{\n\t\tm_hk_seek = false; // HIRAKU\n',
+             '\t\tm_command[10] == sum(m_command, sizeof(m_command) - 1))\n\t{\n\t\tm_hk_seek = false; // HIRAKU\n'
+             '\t\tif (m_hk_command) m_hk_command(m_command); // HIRAKU\n',
              'xvd701.cpp command start')
     s = edit(s, '\t\t\tcreate_packet(STATUS_OK, response);\n\t\t}\n\t}\n}\n\nDEFINE_DEVICE_TYPE(JVC_XVD701',
              '\t\t\tcreate_packet(STATUS_OK, response);\n\t\t}\n\n'

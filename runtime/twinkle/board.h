@@ -27,7 +27,8 @@ struct Config {
     std::string dongle_type = "m24c02";    // x76f041 (1st style, Substream, Club 2) | m24c02 (2nd style on)
     std::string dvd_port = "uart";         // sio1 (1st style, MAME twinkle_dvd_type1) | uart (type2)
     std::string cd;                        // the program CD (.cue)
-    std::string video_cd;                  // the Video CD in the player
+    std::string video_cd;                  // the Video CD in the player (up to 5th style)
+    std::string video_dvd;                 // or the DVD (6th style on), an image of 2048-byte sectors
     // the background video (video.h; MAME shows none): the picture changes, the machine doesn't.
     // Off gives MAME's picture, for comparing with it.
     bool video = true;

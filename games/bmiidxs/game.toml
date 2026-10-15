@@ -1,0 +1,22 @@
+# beatmania IIDX Substream (GC983 VER. JAA), Konami 1999
+id = "bmiidxs"
+title = "beatmania IIDX Substream"
+family = "iidx"         # IIDX cabinet: 7 keys and a turntable per player, VEFX, Effect, 5 effector sliders
+mame = "bmiidxs"        # MAME set name, used by the oracle
+core = "twinkle"        # Twinkle (runtime/twinkle/, PLAN.md section 21)
+
+[roms]
+bios = "863a03.7b"      # Twinkle BIOS (27C040), the same chip in every set
+spu = "863a05.2x"       # the SPU board's 68000 program (27C4096), the same in every set
+dongle = "983a02"       # the security dongle's X76F041 (MAME BAD_DUMP, as the 1st style's)
+
+[board]
+dongle = "x76f041"      # MAME twinklex2: the 1st style's dongle...
+dvd_port = "uart"       # ...and the DVD player on the super I/O's second 16550, as 2nd style on
+
+[cd]
+chd = "gc983a01"        # the program CD, on the SCSI bus
+video_chd = "gc983a04"  # the Video CD in the external player (background videos)
+
+[hdd]
+chd = "983hdda01"       # the SPU board's hard disk: keysounds and music

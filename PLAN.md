@@ -1275,6 +1275,13 @@ The approach is the 573's (§19): MAME's devices on the shim, an interpreted CPU
 |---|---|---|---|---|---|---|---|
 | `bmiidx3` | 3rd style (GC992 JAC) | `twinklei` | `gc992-jac01` | `gc992-jaa04` | `992hdda01` | `992a02`, M24C02 EEPROM (plain) | **works** (`IMPERFECT_SOUND`); first boot stops at E150, 1P Start clears it (§16) |
 | `bmiidx` | 1st style (863 JAB), downloaded 2026-10-13 | `twinklex` | `gq863-jab01` | `gq863a04` (4 tracks) | `863hdda01` (3.2 GB) | `863a02`, X76F041, `BAD_DUMP` (write and config passwords unrecoverable; the read side is complete) | **`NOT_WORKING`**: the DVD player check needs RTS→CTS on the PS1's SIO1, which MAME's SIO lacks |
+| `bmiidx2` | 2nd style (GC985 JAA), downloaded 2026-10-14 | `twinklei` | `gc985a01` | `gc985a04` | `985hdda01` | `985a02`, M24C02 | works |
+| `bmiidxs` | Substream (GC983 JAA) | `twinklex2` | `gc983a01` | `gc983a04` | `983hdda01` | `983a02`, X76F041, `BAD_DUMP` | works |
+| `bmiidx4` | 4th style (GCA03 JAA) | `twinklei` | `a03jaa01` | `a03jaa02` | `a03jaa03` | `a03`, M24C02 | works |
+| `bmiidx5` | 5th style (GCA17 JAA) | `twinklei` | `a17jaa01` | `a17jaa02` | `a17jaa03` | `a17`, M24C02 | works |
+| `bmiidx6` | 6th style (GCB4U JAB) | `twinklei` | `b4ujab01` | DVD `b4ujaa02` | `b4ujaa03` | `b4u`, M24C02 | works (MAME: no picture, DVD chapters read as a Video CD's) |
+| `bmiidx7a` | 7th style (GCB44 JAA) | `twinklei` | `b44jaa01` | DVD `b44jaa02` | `b44jaa03` | `b44`, M24C02 | works (as 6th) |
+| `bmiidx8` | 8th style (GCC44 JAA) | `twinklei` | `c44jaa01` | DVD `c44jaa02` | `c44jaa03` | `c44`, M24C02 | works (as 6th) |
 
 - Both carry the BIOS `863a03.7b` (512 KiB) and the SPU program `863a05.2x` (512 KiB).
 - `bmiidx3` is in the rompath and verified (§16). `bmiidx` is only in `~/Downloads` so far: hard-link it into `~/bm3mame/roms-cores/bmiidx/` and run `-verifyroms` first. Its three CHDs have non-zero data SHA-1s.
@@ -1385,7 +1392,7 @@ The game already tells the player what to play. HIRAKU adds the picture. The mac
 - **6th, 7th, 8th style: DVD.** An MPEG-2 decoder (libmpeg2, GPL-2+, or FFmpeg's libavcodec, LGPL) and DVD-Video chapter navigation (the IFO tables). 8th style may use a different player (XV-S1100; MAME's code only mentions it).
 - **Club kits (`bmiidxc`, `bmiidxca`):** two program CDs; find out what the second one does.
 - *Ugoke! Purimucho* (touch panel, camera, printer) is out of scope.
-- **Media needed:** every set except `bmiidx3` and `bmiidx`. Recommended next: `bmiidx2` or `bmiidx4` (Video CD, MAME working), then `bmiidx6` for the DVD path.
+- **Media needed:** every set except `bmiidx3` and `bmiidx`. Recommended next: `bmiidx2` or `bmiidx4` (Video CD, MAME working), then `bmiidx6` for the DVD path. *(2026-10-14: all of these on hand except the club kits and the other revisions; see the progress below.)*
 
 ### Progress (2026-10-13): TW-0
 
@@ -1502,6 +1509,32 @@ beatmania IIDX 1st style (`bmiidx`) boots, plays and shows its videos; MAME stop
 - **Speed:** with its R3000 blocks recorded (6,907, from `bmiidx-clear` and `bmiidx-play`; exact against MAME), the scripted game takes 1.55 ms a frame on the desktop with the video, a stage 1.78 ms (p99 2.3).
 - **The Video CD from a cold disk:** the emulation waits for the frame it needs, and the decoder thread read the disc a sector at a time; on a busy disk (another session's runs, swap) single frames took 0.9 to 3 s, and TW-3's "host contention" stall was this. Each chapter is now asked of the kernel whole when it starts (`POSIX_FADV_WILLNEED`): from a cold cache the worst frame is 47 ms, as with the disc cached.
 - **Open:** a hands-on test. The other sets on the same SIO1 wiring (`bmiidxa`, the club kit's `bmiidxc` and `bmiidxca`) aren't on hand.
+
+### Progress (2026-10-15): TW-5, the rest of the catalogue on hand
+
+The owner downloaded the remaining sets on 2026-10-14. All 21 new CHDs match MAME's SHA-1s and all seven sets verify (`-verifyroms`; Substream's dongle `983a02` is MAME's `BAD_DUMP`, best available). Every style below boots, clears E150 and plays a scripted stage; the VCD styles and Substream with no change to the core.
+
+| Set | Style | Program CD | Player's disc | HDD | Clear prompt | Lockstep with MAME (stock pin) |
+|---|---|---|---|---|---|---|
+| `bmiidx2` | 2nd style (GC985 JAA) | `gc985a01` | Video CD `gc985a04` | `985hdda01` | ~f2300 | boot, play |
+| `bmiidx4` | 4th style (GCA03 JAA) | `a03jaa01` | Video CD `a03jaa02` | `a03jaa03` | ~f2280 | boot, play |
+| `bmiidx5` | 5th style (GCA17 JAA) | `a17jaa01` | Video CD `a17jaa02` | `a17jaa03` | ~f2300 | boot, play |
+| `bmiidxs` | Substream (GC983 JAA), `twinklex2` | `gc983a01` | Video CD `gc983a04` | `983hdda01` | ~f3100 | boot, play |
+| `bmiidx6` | 6th style (GCB4U JAB) | `b4ujab01` | DVD `b4ujaa02` | `b4ujaa03` | ~f2340 | boot, play |
+| `bmiidx7a` | 7th style (GCB44 JAA) | `b44jaa01` | DVD `b44jaa02` | `b44jaa03` (40 GB) | ~f2940 | boot, play |
+| `bmiidx8` | 8th style (GCC44 JAA) | `c44jaa01` | DVD `c44jaa02` | `c44jaa03` | ~f2940 | boot, play |
+
+- **Lockstep, all seven (checked 2026-10-15):** every frame of each boot and play run has the same main-RAM hash and time as MAME's run of the same script with the same clock (`out/oracle/<set>/boot`, `.../play`), 9,000–11,300 frames each. They are regress cases: `<set>-boot` and `<set>-play` for all seven, and `bmiidx6-video` with 6th style's DVD picture on.
+
+- **Media:** from 4th style on the set names the three disks 01 (program CD), 02 (the player's disc), 03 (the SPU board's hard disk). MAME keeps the DVDs as hard-disk CHDs (GDDD, 2048-byte sectors), so `tools/ingest.py` now picks the player's disc and the hard disk by their names, and writes a DVD as `video_dvd` in machine.txt.
+- **Disk space and the BX500:** the DVD styles' disks were extracted to the home NVMe (`~/hiraku-hdd/<set>/`, linked from `dumps/`): 7th style's hard disk is 40 GB logical (5.8 GB after hole punching). On 2026-10-15 01:17 the DATA SSD timed out under an hour of sustained writes (a DVD extract, four MAME runs, another session's regress) and went read-only (fsck clean, SMART clean); heavy IO on DATA is now one job at a time.
+
+**The DVD (6th style on), further than MAME.** MAME's player model (`xvd701`) shows no picture and assumes a Video CD: a seek's three digits are read as a Video CD's two (the chapter divided by ten). The DVD styles send three: 6th style asks for "085" for 5.1.1. (MAME: chapter 8), 7th "064" (MAME: 6), 8th "004" and "001" (MAME: 0, which its model answers with an error). MAME's replies, which the game sees, are unchanged; HIRAKU's picture follows the game's commands instead (`DvdState` in `runtime/twinkle/board.cpp`: xvd701's rules with the full chapter number; the commands come through a second HIRAKU hook in xvd701, `m_hk_command`, which `HK_TW_PLAYER=1` also prints).
+- **The disc:** ISO 9660 finds `VIDEO_TS`; `VIDEO_TS.IFO`'s title table gives title 1's title set; its IFO maps chapter N (part of title) to a program chain and program, the program to its first cell, the cell to its first sector in the title VOBs. All three discs hold one title (90, 79 and 80 chapters, one cell each). FFmpeg demuxes the VOBs (MPEG-PS) and decodes the MPEG-2 (720x480, 29.97 fps), on the same worker thread as the Video CD.
+- **Checks:** 6th style's chapter 85 and 7th style's chapter 64 are 5.1.1.'s own clip, its title in the picture ("dj nagureo: 5.1.1."). 8th style's chapter 4 is another clip: chapters 1-4 there are all 2:11 long, likely shared clips for older songs. That needs footage of a real 8th style cabinet.
+- **Open:** whether a real XV-D701 treats "004" as chapter 4 (MAME's model and the real player differ for chapters 1-9 on a DVD, and the game sees that reply). MAME's error reply is kept for lockstep; a switch to the real player's answer waits for evidence.
+
+**Speed:** with each style's R3000 blocks recorded from its boot and play scripts (`build/<set>/mips573.txt`, 6,000 to 12,600 blocks), the scripted games average 2.6 to 3.0 ms a frame with the video, the DVD styles at the top of that, on a desktop busy with a MAME run and another session; 3rd style took 2.7 ms in the same conditions (1.5 ms on a quiet machine, TW-4). Interpreted, about 4 ms. The MPEG-2 decode runs on the video worker thread, as the Video CD's does.
 
 ### Risks
 - **The mix is undocumented** (TW-3). Fallback: a plain "video behind the PS1 picture where it is black" mode, labelled as a guess.

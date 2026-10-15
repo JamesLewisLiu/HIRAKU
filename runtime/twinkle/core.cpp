@@ -63,7 +63,8 @@ public:
         get("dongle_type", cfg.dongle_type);
         get("dvd_port", cfg.dvd_port);
         cfg.cd = o.data_path(machine["cd"]);
-        cfg.video_cd = o.data_path(machine["video_cd"]);
+        if (!machine["video_cd"].empty()) cfg.video_cd = o.data_path(machine["video_cd"]);
+        if (!machine["video_dvd"].empty()) cfg.video_dvd = o.data_path(machine["video_dvd"]);
         cfg.hdd = o.data_path(machine["hdd"]);
         unsigned c = 0, h = 0, s = 0;
         if (sscanf(machine["hdd_chs"].c_str(), "%u,%u,%u", &c, &h, &s) != 3) {

@@ -146,6 +146,7 @@ void jvc_xvd701_device::rcv_complete()
 		m_command[10] == sum(m_command, sizeof(m_command) - 1))
 	{
 		m_hk_seek = false; // HIRAKU
+		if (m_hk_command) m_hk_command(m_command); // HIRAKU
 		if (m_command[3] == 0x0c && m_command[4] == 0x43 && m_command[5] == 0x6d)
 		{
 			// FF FF 21 0C 43 6D 00 00 00 00 25 PAUSE

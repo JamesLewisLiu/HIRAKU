@@ -65,9 +65,11 @@ QString Game::howTo() const {
             .arg(title, mame);
     if (core == "twinkle" && status == NotInstalled)   // Twinkle: the set, two CDs and the hard disk
         return QString("HIRAKU has no data for %1 yet. You need your own dumps: the MAME ROM set \"%2\" "
-                       "(.zip or .7z), its program CD and Video CD, and its hard disk (CHDs).\n\n"
+                       "(.zip or .7z), its program CD, the player's Video CD (or, from 6th style on, its DVD) "
+                       "and its hard disk (CHDs).\n\n"
                        "Drop them on this window, or File > Add game files. They are unpacked with MAME's "
-                       "chdman, which needs up to about 4 GB of space.")
+                       "chdman. A DVD style keeps about 10 GB; unpacking 7th style's 40 GB hard disk needs that much free "
+                       "space at first (its zeros become holes).")
             .arg(title, mame);
     if (core == "python") {   // Konami Python: PCSX2 Reliquary hosted, built in Reliquary's tree
         if (status == NotInstalled)

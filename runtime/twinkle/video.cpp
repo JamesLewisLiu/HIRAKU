@@ -12,24 +12,37 @@ extern "C" {
 #include <cstring>
 #include <fcntl.h>
 #include <fstream>
+#include <strings.h>
 
 namespace hk::twinkle {
 
 namespace {
 constexpr uint32_t RAW = 2352;        // a raw CD sector
-constexpr uint32_t FORM2_DATA = 2324; // a Mode 2 Form 2 sector's user data (the MPEG tracks)
 constexpr uint32_t ENTRIES_LBA = 151; // ENTRIES.VCD, at a fixed place on every Video CD
 constexpr int IO_SIZE = 32768;
 }
 
-VideoCD::~VideoCD() {
+PlayerVideo::~PlayerVideo() {
     stop_worker();
     if (m_bin) fclose(m_bin);
 }
 
-bool VideoCD::open(const std::string &cue) {
+bool PlayerVideo::open(const std::string &path) {
+    const bool cue = path.size() > 4 && strcasecmp(path.c_str() + path.size() - 4, ".cue") == 0;
+    if (!cue) {
+        m_bin = fopen(path.c_str(), "rb");
+        if (!m_bin) { fprintf(stderr, "video: cannot read %s\n", path.c_str()); return false; }
+        if (!open_dvd()) {
+            fclose(m_bin);
+            m_bin = nullptr;
+            return false;
+        }
+        av_log_set_level(AV_LOG_QUIET);
+        return true;
+    }
     // the .cue's one FILE, MODE2/2352 throughout (chdman's extractcd of a Video CD)
-    std::ifstream f(cue);
+    const std::string &cue_path = path;
+    std::ifstream f(cue_path);
     std::string line, bin;
     while (std::getline(f, line)) {
         auto p = line.find("FILE \"");
@@ -38,10 +51,10 @@ bool VideoCD::open(const std::string &cue) {
             bin = line.substr(p + 6, q - p - 6);
         }
     }
-    if (bin.empty()) { fprintf(stderr, "video: no FILE in %s\n", cue.c_str()); return false; }
+    if (bin.empty()) { fprintf(stderr, "video: no FILE in %s\n", cue_path.c_str()); return false; }
     if (bin[0] != '/') {
-        auto slash = cue.rfind('/');
-        if (slash != std::string::npos) bin = cue.substr(0, slash + 1) + bin;
+        auto slash = cue_path.rfind('/');
+        if (slash != std::string::npos) bin = cue_path.substr(0, slash + 1) + bin;
     }
     m_bin = fopen(bin.c_str(), "rb");
     if (!m_bin) { fprintf(stderr, "video: cannot read %s\n", bin.c_str()); return false; }
@@ -69,19 +82,111 @@ bool VideoCD::open(const std::string &cue) {
     return !m_entries.empty();
 }
 
-// The demuxer's input: each sector's MPEG data (Form 2: 2324 bytes after the header), on from the
-// chapter's first sector to the end of the disc, as a player plays on into the next entry
-int VideoCD::read(void *user, uint8_t *buf, int size) {
-    auto *self = static_cast<VideoCD *>(user);
+// A DVD-Video image (chdman's extracthd of MAME's DVD CHD: 2048-byte sectors). ISO 9660 finds
+// VIDEO_TS; VIDEO_TS.IFO's title table gives title 1's video title set; that set's IFO maps each
+// chapter (part of title) to a program chain and a program, the program to its first cell, and
+// the cell to its first sector in the set's title VOBs. Chapter N plays from there on, through
+// the title's VOBs, as a player plays on into the next chapter.
+bool PlayerVideo::open_dvd() {
+    m_dvd = true;
+    m_raw = 2048;
+    m_skip = 0;
+    m_payload = 2048;
+    fseek(m_bin, 0, SEEK_END);
+    const uint64_t bytes = (uint64_t)ftell(m_bin);
+    auto sectors = [&](uint32_t lba, uint32_t n) {
+        std::vector<uint8_t> b((size_t)n * 2048);
+        if ((uint64_t)(lba + n) * 2048 > bytes) return std::vector<uint8_t>();
+        fseek(m_bin, (long)lba * 2048, SEEK_SET);
+        if (fread(b.data(), 1, b.size(), m_bin) != b.size()) return std::vector<uint8_t>();
+        return b;
+    };
+    auto le32 = [](const uint8_t *p) { return (uint32_t)p[0] | p[1] << 8 | p[2] << 16 | (uint32_t)p[3] << 24; };
+    auto be32 = [](const uint8_t *p) { return (uint32_t)p[0] << 24 | p[1] << 16 | p[2] << 8 | p[3]; };
+    auto be16 = [](const uint8_t *p) { return (uint32_t)(p[0] << 8 | p[1]); };
+    auto fail = [&](const char *why) { fprintf(stderr, "video: not a DVD-Video image (%s)\n", why); return false; };
+
+    // ISO 9660: the primary volume descriptor at sector 16, its root directory, VIDEO_TS in it
+    std::vector<uint8_t> pvd = sectors(16, 1);
+    if (pvd.empty() || memcmp(&pvd[1], "CD001", 5) != 0) return fail("no ISO 9660 volume");
+    struct Entry { uint32_t lba = 0, size = 0; };
+    auto find = [&](Entry dir, const char *name, Entry &out) {
+        std::vector<uint8_t> d = sectors(dir.lba, (dir.size + 2047) / 2048);
+        const size_t want = strlen(name);
+        for (size_t i = 0; i < d.size();) {
+            const uint8_t len = d[i];
+            if (len == 0) { i = (i / 2048 + 1) * 2048; continue; }
+            if (i + 33 > d.size() || i + len > d.size()) break;
+            const uint8_t nl = d[i + 32];
+            const char *n = (const char *)&d[i + 33];
+            if (nl >= want && strncasecmp(n, name, want) == 0 && (nl == want || n[want] == ';')) {
+                out = {le32(&d[i + 2]), le32(&d[i + 10])};
+                return true;
+            }
+            i += len;
+        }
+        return false;
+    };
+    Entry root{le32(&pvd[156 + 2]), le32(&pvd[156 + 10])}, video_ts, vmg;
+    if (!find(root, "VIDEO_TS", video_ts) || !find(video_ts, "VIDEO_TS.IFO", vmg)) return fail("no VIDEO_TS.IFO");
+
+    // VIDEO_TS.IFO: TT_SRPT (its sector at 0xc4): title 1's video title set and its title there
+    std::vector<uint8_t> v = sectors(vmg.lba, (vmg.size + 2047) / 2048);
+    if (v.size() < 0x100 || memcmp(v.data(), "DVDVIDEO-VMG", 12) != 0) return fail("bad VIDEO_TS.IFO");
+    const size_t tt = (size_t)be32(&v[0xc4]) * 2048;
+    if (tt + 20 > v.size() || be16(&v[tt]) < 1) return fail("no titles");
+    const unsigned vts = v[tt + 8 + 6], vts_ttn = v[tt + 8 + 7];
+    char ifo_name[16];
+    snprintf(ifo_name, sizeof ifo_name, "VTS_%02u_0.IFO", vts);
+    Entry vtsi;
+    if (!find(video_ts, ifo_name, vtsi)) return fail(ifo_name);
+    std::vector<uint8_t> t = sectors(vtsi.lba, (vtsi.size + 2047) / 2048);
+    if (t.size() < 0x100 || memcmp(t.data(), "DVDVIDEO-VTS", 12) != 0) return fail("bad title set IFO");
+    // the title set's VOBs start at its IFO plus 0xc4; VTS_PTT_SRPT at 0xc8, VTS_PGCIT at 0xcc
+    const uint32_t vobs = vtsi.lba + be32(&t[0xc4]);
+    const size_t ptt = (size_t)be32(&t[0xc8]) * 2048, pgcit = (size_t)be32(&t[0xcc]) * 2048;
+    if (ptt + 8 > t.size() || pgcit + 8 > t.size()) return fail("title set IFO tables");
+    const unsigned ntitles = be16(&t[ptt]);
+    if (vts_ttn < 1 || vts_ttn > ntitles) return fail("title not in its title set");
+    const size_t first = ptt + be32(&t[ptt + 8 + 4 * (vts_ttn - 1)]);
+    const size_t last = vts_ttn < ntitles ? ptt + be32(&t[ptt + 8 + 4 * vts_ttn]) : ptt + be32(&t[ptt + 4]) + 1;
+    uint32_t end = 0;
+    for (size_t e = first; e + 4 <= last && e + 4 <= t.size(); e += 4) {
+        const unsigned pgcn = be16(&t[e]), pgn = be16(&t[e + 2]);
+        const size_t srp = pgcit + 8 + 8 * (size_t)(pgcn - 1);
+        if (pgcn < 1 || srp + 8 > t.size()) return fail("program chain");
+        const size_t pgc = pgcit + be32(&t[srp + 4]);
+        if (pgc + 0xec > t.size()) return fail("program chain");
+        const unsigned nprog = t[pgc + 2], ncell = t[pgc + 3];
+        const size_t prog_map = pgc + be16(&t[pgc + 0xe6]), cells = pgc + be16(&t[pgc + 0xe8]);
+        if (pgn < 1 || pgn > nprog || prog_map + nprog > t.size() || cells + 24 * (size_t)ncell > t.size())
+            return fail("program map");
+        const unsigned cell = t[prog_map + pgn - 1];
+        if (cell < 1 || cell > ncell) return fail("cell");
+        const uint8_t *c = &t[cells + 24 * (size_t)(cell - 1)];
+        m_entries.push_back(vobs + be32(c + 8));   // the cell's first VOBU
+        // the title's VOBs end after its last cell
+        for (unsigned k = 0; k < ncell; k++) end = std::max(end, vobs + be32(&t[cells + 24 * (size_t)k + 20]) + 1);
+    }
+    m_sectors = std::min<uint32_t>(end, (uint32_t)(bytes / 2048));
+    if (m_entries.empty()) return fail("no chapters");
+    return true;
+}
+
+// The demuxer's input: each sector's MPEG data (a Video CD's Form 2: 2324 bytes after the header;
+// a DVD's whole 2048), on from the chapter's first sector to the end of the disc (a DVD: of the
+// title's VOBs), as a player plays on into the next entry
+int PlayerVideo::read(void *user, uint8_t *buf, int size) {
+    auto *self = static_cast<PlayerVideo *>(user);
     int done = 0;
     while (done < size) {
         if (self->m_part_pos >= self->m_part.size()) {
             if (self->m_next_sector >= self->m_sectors) break;
             uint8_t raw[RAW];
-            fseek(self->m_bin, (long)self->m_next_sector * RAW, SEEK_SET);
-            if (fread(raw, 1, RAW, self->m_bin) != RAW) break;
+            fseek(self->m_bin, (long)self->m_next_sector * self->m_raw, SEEK_SET);
+            if (fread(raw, 1, self->m_raw, self->m_bin) != self->m_raw) break;
             self->m_next_sector++;
-            self->m_part.assign(raw + 24, raw + 24 + FORM2_DATA);
+            self->m_part.assign(raw + self->m_skip, raw + self->m_skip + self->m_payload);
             self->m_part_pos = 0;
         }
         const int n = std::min<int>(size - done, (int)(self->m_part.size() - self->m_part_pos));
@@ -92,7 +197,7 @@ int VideoCD::read(void *user, uint8_t *buf, int size) {
     return done ? done : AVERROR_EOF;
 }
 
-void VideoCD::close_decoder() {
+void PlayerVideo::close_decoder() {
     if (m_dec) avcodec_free_context(&m_dec);
     if (m_fmt) avformat_close_input(&m_fmt);
     if (m_io) {
@@ -104,13 +209,13 @@ void VideoCD::close_decoder() {
     m_stream = -1;
 }
 
-bool VideoCD::open_decoder(uint32_t sector) {
+bool PlayerVideo::open_decoder(uint32_t sector) {
     m_next_sector = sector;
     m_part.clear();
     m_part_pos = 0;
     m_flushing = false;
     auto *iobuf = static_cast<uint8_t *>(av_malloc(IO_SIZE));
-    m_io = avio_alloc_context(iobuf, IO_SIZE, 0, this, &VideoCD::read, nullptr, nullptr);
+    m_io = avio_alloc_context(iobuf, IO_SIZE, 0, this, &PlayerVideo::read, nullptr, nullptr);
     m_fmt = avformat_alloc_context();
     m_fmt->pb = m_io;
     if (avformat_open_input(&m_fmt, nullptr, av_find_input_format("mpeg"), nullptr) < 0) {
@@ -127,7 +232,8 @@ bool VideoCD::open_decoder(uint32_t sector) {
     avcodec_parameters_to_context(m_dec, par);
     m_dec->thread_count = 1;   // the frames in order, the same every run
     if (avcodec_open2(m_dec, codec, nullptr) < 0) return false;
-    // a Video CD's MPEG-1 is 29.97 frames a second (its stream header can claim 59.94)
+    // a Video CD's MPEG-1 and a DVD's MPEG-2 are 29.97 frames a second (a Video CD's stream header
+    // can claim 59.94)
     const AVRational fr = m_fmt->streams[m_stream]->avg_frame_rate;
     m_period = fr.num > 0 && fr.den > 0 ? (double)fr.den / fr.num : 1.0 / 29.97;
     m_pkt = av_packet_alloc();
@@ -135,7 +241,7 @@ bool VideoCD::open_decoder(uint32_t sector) {
     return true;
 }
 
-void VideoCD::worker(uint32_t sector) {
+void PlayerVideo::worker(uint32_t sector) {
     constexpr size_t AHEAD = 8;   // frames decoded ahead of the picture
     const bool ok = open_decoder(sector);
     {
@@ -163,7 +269,7 @@ void VideoCD::worker(uint32_t sector) {
     close_decoder();
 }
 
-void VideoCD::stop_worker() {
+void PlayerVideo::stop_worker() {
     if (m_thread.joinable()) {
         {
             std::lock_guard<std::mutex> lk(m_mu);
@@ -178,7 +284,7 @@ void VideoCD::stop_worker() {
     m_queue.clear();
 }
 
-void VideoCD::start_chapter(int chapter) {
+void PlayerVideo::start_chapter(int chapter) {
     stop_worker();
     m_index = -1;
     if (chapter < 1 || chapter > (int)m_entries.size()) return;
@@ -188,11 +294,11 @@ void VideoCD::start_chapter(int chapter) {
     // for seconds)
     const uint32_t from = m_entries[chapter - 1];
     const uint32_t to = chapter < (int)m_entries.size() ? m_entries[chapter] : m_sectors;
-    if (to > from) posix_fadvise(fileno(m_bin), (off_t)from * 2352, (off_t)(to - from) * 2352, POSIX_FADV_WILLNEED);
-    m_thread = std::thread(&VideoCD::worker, this, from);
+    if (to > from) posix_fadvise(fileno(m_bin), (off_t)from * m_raw, (off_t)(to - from) * m_raw, POSIX_FADV_WILLNEED);
+    m_thread = std::thread(&PlayerVideo::worker, this, from);
 }
 
-bool VideoCD::decode_next(Frame &f) {
+bool PlayerVideo::decode_next(Frame &f) {
     for (;;) {
         const int r = avcodec_receive_frame(m_dec, m_frame);
         if (r == 0) break;
@@ -227,7 +333,7 @@ bool VideoCD::decode_next(Frame &f) {
     return true;
 }
 
-void VideoCD::command(double t, int chapter, int status, bool powered, bool from_start) {
+void PlayerVideo::command(double t, int chapter, int status, bool powered, bool from_start) {
     m_commands++;
     double v = m_status == 1 ? t - m_t0 : m_pos;   // the video time when the command came
     if (from_start) {
@@ -241,7 +347,7 @@ void VideoCD::command(double t, int chapter, int status, bool powered, bool from
     m_powered = powered;
 }
 
-bool VideoCD::advance_to(double v) {
+bool PlayerVideo::advance_to(double v) {
     if (!m_thread.joinable()) return false;
     std::unique_lock<std::mutex> lk(m_mu);
     m_cv.wait(lk, [&] { return m_opened; });   // the frame period comes with the stream
@@ -258,7 +364,7 @@ bool VideoCD::advance_to(double v) {
     return m_index >= 0 && !m_cur.y.empty();
 }
 
-void VideoCD::composite(double t, uint32_t *rgb, int w, int h, const Picture &pic) {
+void PlayerVideo::composite(double t, uint32_t *rgb, int w, int h, const Picture &pic) {
     if (!m_thread.joinable() || !m_powered || m_status == 0) return;
     const double v = m_status == 1 ? t - m_t0 : m_pos;
     if (v < 0 || !advance_to(v)) return;

@@ -582,9 +582,22 @@ u8 trace_group_audio(u32 a) {
 }
 
 // ---- the machine --------------------------------------------------------------------------
+#if HK_TWINKLE_VIDEO
+// A DVD player's state from the game's commands (JLIP, as MAME's xvd701 decodes them), with the
+// chapter number as sent: three digits, where MAME's model takes a Video CD's two (it never knows
+// which disc is in). The rules are xvd701's: PLAY from STOP starts the chapter again, a seek starts
+// the chapter and plays unless paused, previous from chapter 1 stays at 1 when not playing.
+struct DvdState {
+    int chapter = 0, status = 0;   // STOP/PLAYING/PAUSE: 0/1/2
+    bool powered = false;
+    void command(const unsigned char *c, double t);
+};
+#endif
+
 struct Board {
 #if HK_TWINKLE_VIDEO
-    VideoCD video;
+    PlayerVideo video;
+    DvdState dvd;
 #endif
     std::unique_ptr<running_machine> machine;
     twinkle_state *state = nullptr;
@@ -596,6 +609,33 @@ struct Board {
     u64 sound_over = 0, sound_samples = 0;
     std::vector<u32> frame_rgb;
 } g;
+
+#if HK_TWINKLE_VIDEO
+void DvdState::command(const unsigned char *c, double t) {
+    bool restart = false;
+    auto seek = [&](int n) {
+        if (n <= 0) return;
+        chapter = n;
+        restart = true;
+        if (status != 2) status = 1;
+    };
+    if (c[3] == 0x0c && c[4] == 0x43 && c[5] == 0x6d) status = 2;                       // PAUSE
+    else if (c[3] == 0x0c && c[4] == 0x43 && c[5] == 0x75) {                            // PLAY
+        if (status == 0 && chapter <= 0) return;   // nothing to play: an error, nothing changes
+        if (status == 0) seek(chapter);
+        status = 1;
+    } else if (c[3] == 0x0c && c[4] == 0x44 && c[5] == 0x60) status = 0;                // STOP
+    else if (c[3] == 0x0c && c[4] == 0x50 && c[5] == 0x20)                              // a chapter
+        seek(c[6] % 10 * 100 + c[7] % 10 * 10 + c[8] % 10);
+    else if (c[3] == 0x0c && c[4] == 0x50 && c[5] == 0x61)                              // previous
+        seek(status != 1 && chapter - 1 == 0 ? 1 : chapter - 1);
+    else if (c[3] == 0x0c && c[4] == 0x50 && c[5] == 0x73) seek(chapter + 1);           // next
+    else if (c[3] == 0x3e && c[4] == 0x40 && c[5] == 0x60) powered = false;             // power off
+    else if (c[3] == 0x3e && c[4] == 0x40 && c[5] == 0x70) powered = true;              // power on
+    else return;
+    g.video.command(t, chapter, status, powered, restart);
+}
+#endif
 
 }  // namespace
 
@@ -642,7 +682,7 @@ bool init(const Config &cfg) {
 #if HK_TWINKLE_VIDEO
         twinkle_state &st = *g.state;
         if (g.video.is_open() && (st.m_mixer & 2)) {
-            VideoCD::Picture pic;
+            PlayerVideo::Picture pic;
             pic.brightness = (s8)st.m_bt812[0x08];
             pic.contrast = st.m_bt812[0x09];
             pic.saturation = st.m_bt812[0x0a];
@@ -666,15 +706,36 @@ bool init(const Config &cfg) {
     // the game's R3000 blocks, recompiled as on the 573 (HK_573_RECORD, HK_573_BLOCKS: sys573/mips.h)
     k573::mips::init(*st.m_maincpu);
 
+    // the player's commands (a HIRAKU edit of MAME's xvd701): HK_TW_PLAYER=1 prints each, with its
+    // machine time and frame; with a DVD they drive the picture (below)
+    auto *player = st.subdevice<jvc_xvd701_device>("rs232_dvd:xvd701");
+    static const bool log_player = getenv("HK_TW_PLAYER") != nullptr;
+    running_machine *mp = g.machine.get();
+    if (player) {
+        player->m_hk_command = [mp](const unsigned char *c) {
+            if (log_player) {
+                fprintf(stderr, "player f%llu t %.6f:", (unsigned long long)g.frames, mp->time().as_double());
+                for (int i = 0; i < 11; i++) fprintf(stderr, " %02x", c[i]);
+                fprintf(stderr, "\n");
+            }
 #if HK_TWINKLE_VIDEO
-    // the background video: the player's state from MAME's xvd701 (a HIRAKU edit), at machine time
-    if (cfg.video && !cfg.video_cd.empty()) {
-        auto *player = st.subdevice<jvc_xvd701_device>("rs232_dvd:xvd701");
-        if (player && g.video.open(cfg.video_cd)) {
-            running_machine *mp = g.machine.get();
-            player->m_hk_state = [mp](int chapter, int status, bool powered, bool from_start) {
-                g.video.command(mp->time().as_double(), chapter, status, powered, from_start);
-            };
+            if (g.video.is_open() && g.video.is_dvd()) g.dvd.command(c, mp->time().as_double());
+#endif
+        };
+    }
+
+#if HK_TWINKLE_VIDEO
+    // the background video. A Video CD follows the player's state from MAME's xvd701 (a HIRAKU
+    // edit), at machine time. A DVD follows the game's commands through DvdState: MAME's player
+    // reads every chapter number as a Video CD's (divided by ten), and its replies, which the game
+    // sees, stay MAME's.
+    const std::string &disc = !cfg.video_dvd.empty() ? cfg.video_dvd : cfg.video_cd;
+    if (cfg.video && !disc.empty()) {
+        if (player && g.video.open(disc)) {
+            if (!g.video.is_dvd())
+                player->m_hk_state = [mp](int chapter, int status, bool powered, bool from_start) {
+                    g.video.command(mp->time().as_double(), chapter, status, powered, from_start);
+                };
         } else if (!player) {
             fprintf(stderr, "video: no DVD player in the machine\n");
         }

@@ -18,6 +18,9 @@ public:
 	// HIRAKU: the player's state after each command it takes: the chapter, STOP/PLAYING/PAUSE
 	// (0/1/2), the power, and whether playback starts again at the chapter's beginning
 	std::function<void(int chapter, int status, bool powered, bool from_start)> m_hk_state;
+	// HIRAKU: each command the player takes, its 11 bytes, before it acts on it (a DVD's
+	// chapter: MAME reads the number as a Video CD's, divided by ten)
+	std::function<void(const unsigned char *command)> m_hk_command;
 protected:
 	virtual ioport_constructor device_input_ports() const override ATTR_COLD;
 	virtual void device_start() override ATTR_COLD;

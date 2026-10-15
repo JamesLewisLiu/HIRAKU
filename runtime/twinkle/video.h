@@ -3,9 +3,11 @@
 //
 // The game drives an external JVC DVD/Video CD player over a serial line; MAME's xvd701 models
 // that protocol, and tells HIRAKU the player's state after each command (a HIRAKU edit). This
-// plays the Video CD to match, decoded with FFmpeg (libavformat/libavcodec): chapter N is the
-// disc's entry N (ENTRIES.VCD; chapter 1 is the attract intro, AVSEQ01), and playback runs from
-// the machine time of the command that started it,
+// plays the disc to match, decoded with FFmpeg (libavformat/libavcodec). On a Video CD (up to 5th
+// style) chapter N is the disc's entry N (ENTRIES.VCD; chapter 1 is the attract intro, AVSEQ01);
+// on a DVD (6th style on: MPEG-2 in the VOBs of VIDEO_TS) it is chapter N of the first title, as
+// the title's IFO maps it to a cell and a sector. Playback runs from the machine time of the
+// command that started it,
 // so the picture at a given machine time is always the same. The sub board then shows the video
 // where the PlayStation's picture is black, while its overlay bit is on, through the Bt812's
 // brightness, contrast, saturation and hue (composite()).
@@ -30,11 +32,13 @@ struct AVFrame;
 
 namespace hk::twinkle {
 
-class VideoCD {
+class PlayerVideo {
 public:
-    ~VideoCD();
-    // the Video CD's .cue (one raw MODE2/2352 file); false: printed why
-    bool open(const std::string &cue);
+    ~PlayerVideo();
+    // the player's disc: a Video CD's .cue (one raw MODE2/2352 file), or a DVD-Video image (2048-byte
+    // sectors, ISO 9660); false: printed why
+    bool open(const std::string &path);
+    bool is_dvd() const { return m_dvd; }
     bool is_open() const { return m_bin != nullptr; }
     int chapters() const { return (int)m_entries.size(); }
 
@@ -63,6 +67,7 @@ private:
         unsigned w = 0, h = 0, cw = 0;   // display size; chroma plane width
         std::vector<uint8_t> y, cb, cr;
     };
+    bool open_dvd();
     static int read(void *self, uint8_t *buf, int size);   // the disc's MPEG data, sector by sector
     bool open_decoder(uint32_t sector);   // on the worker
     void close_decoder();
@@ -73,7 +78,11 @@ private:
     bool advance_to(double v);   // the frame for video time v (seconds into the chapter)
 
     FILE *m_bin = nullptr;
-    uint32_t m_sectors = 0;
+    bool m_dvd = false;
+    // a sector in the file: its size, then where its MPEG data starts and how long it is (a Video
+    // CD's raw Mode 2 sector: Form 2's 2324 bytes after the 24-byte header)
+    uint32_t m_raw = 2352, m_skip = 24, m_payload = 2324;
+    uint32_t m_sectors = 0;            // where the MPEG data ends (the disc; a DVD's title VOBs)
     std::vector<uint32_t> m_entries;   // each chapter's first sector
 
     AVFormatContext *m_fmt = nullptr;

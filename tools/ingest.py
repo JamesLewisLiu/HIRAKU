@@ -232,6 +232,9 @@ def ingest_twinkle(args) -> int:
     for flag, key in (("cd", "cd"), ("video_cd", "video_cd"), ("hdd", "hdd")):
         if getattr(args, flag, None):
             machine[key] = media_path(getattr(args, flag), outdir)
+    # a DVD (an image of 2048-byte sectors, not a .cue) is the player's disc from 6th style on
+    if machine.get("video_cd") and not machine["video_cd"].lower().endswith(".cue"):
+        machine["video_dvd"] = machine.pop("video_cd")
     # the disk's geometry (MAME's IDE disk reports it): the CHD's, else 16 heads and 63 sectors
     if getattr(args, "hdd_chs", None):
         machine["hdd_chs"] = ",".join(map(str, args.hdd_chs))
@@ -239,12 +242,13 @@ def ingest_twinkle(args) -> int:
         img = os.path.join(outdir, machine["hdd"]) if not machine["hdd"].startswith("/") else machine["hdd"]
         machine["hdd_chs"] = f"{os.path.getsize(img) // (16 * 63 * 512)},16,63"
     for key, what in (("cd", f"the program CD: add {game['cd']['chd']}.chd"),
-                      ("video_cd", f"the Video CD: add {game['cd']['video_chd']}.chd"),
+                      ("video_cd" if "video_dvd" not in machine else "video_dvd",
+                       f"the player's disc: add {game['cd']['video_chd']}.chd"),
                       ("hdd", f"the hard disk: add {game['hdd']['chd']}.chd")):
         if not machine.get(key):
             print(f"ERROR    no {what}")
             return 1
-    order = ["core", "family", *keys, "dongle_type", "dvd_port", "cd", "video_cd", "hdd", "hdd_chs"]
+    order = ["core", "family", *keys, "dongle_type", "dvd_port", "cd", "video_cd", "video_dvd", "hdd", "hdd_chs"]
     with open(machine_path, "w") as fh:
         for k in order:
             if k in machine:
@@ -636,9 +640,14 @@ def ingest_auto(args, inputs: list[str]) -> int:
         want = hint.get("cd", {})
         stem = lambda p: os.path.splitext(os.path.basename(p))[0]
         args.cd = next((p for p in cds if stem(p) == want.get("chd")), None)
-        args.video_cd = next((p for p in cds if stem(p) == want.get("video_chd")), None)
-        args.hdd = args.hdd or next((p for p, k in media if k == "hd"), None)
-        hd_chd = next((c for c in chds if chd.info(c).kind == "hd"), None)
+        # the player's disc: a Video CD, or (6th style on) a DVD, which MAME keeps as a hard disk CHD,
+        # so the SPU board's disk is told from it by name
+        args.video_cd = next((p for p, k in media if stem(p) == want.get("video_chd")), None)
+        hdd_name = hint.get("hdd", {}).get("chd")
+        args.hdd = args.hdd or next((p for p, k in media if k == "hd" and stem(p) == hdd_name), None) or \
+            next((p for p, k in media if k == "hd" and p != args.video_cd), None)
+        hd_chd = next((c for c in chds if stem(c) == hdd_name), None) or \
+            next((c for c in chds if chd.info(c).kind == "hd" and stem(c) != want.get("video_chd")), None)
         args.hdd_chs = chd.geometry(hd_chd) if hd_chd else None
         return ingest_twinkle(args)
     print(f"ERROR    {hint['id']} is a Firebeat game: its program CD is needed (none of the images holds one)")

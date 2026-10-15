@@ -136,6 +136,34 @@ CASES = {
     # the same game with the background video and the graffiti layer the game draws over it
     "bmiidx-video": ("bmiidx", 14000, ["--rtc", "1791957993", "--script", "oracle/scripts/bmiidx-play.his"],
                      "bmiidx-clear"),
+    # the rest of the catalogue (TW-5): each style's first power-on, E150, 1P Start, attract; then a
+    # game from what it left, a stage played to STAGE FAILED. All in lockstep with MAME at the pin
+    # (out/oracle/<set>/boot, .../play). Substream is twinklex2 (X76F041, the player on the UART).
+    "bmiidx2-boot": ("bmiidx2", 9000, ["--rtc", "1792014933", "--video", "off", "--script", "oracle/scripts/bmiidx2-boot.his"]),
+    "bmiidx2-play": ("bmiidx2", 10000, ["--rtc", "1792043957", "--video", "off", "--script", "oracle/scripts/bmiidx2-play.his"],
+                     "bmiidx2-boot"),
+    "bmiidx4-boot": ("bmiidx4", 9000, ["--rtc", "1792014933", "--video", "off", "--script", "oracle/scripts/bmiidx4-boot.his"]),
+    "bmiidx4-play": ("bmiidx4", 10000, ["--rtc", "1792045140", "--video", "off", "--script", "oracle/scripts/bmiidx4-play.his"],
+                     "bmiidx4-boot"),
+    "bmiidx5-boot": ("bmiidx5", 9000, ["--rtc", "1792014933", "--video", "off", "--script", "oracle/scripts/bmiidx5-boot.his"]),
+    "bmiidx5-play": ("bmiidx5", 10000, ["--rtc", "1792046165", "--video", "off", "--script", "oracle/scripts/bmiidx5-play.his"],
+                     "bmiidx5-boot"),
+    "bmiidxs-boot": ("bmiidxs", 10000, ["--rtc", "1792047212", "--video", "off", "--script", "oracle/scripts/bmiidxs-boot.his"]),
+    "bmiidxs-play": ("bmiidxs", 11300, ["--rtc", "1792048235", "--video", "off", "--script", "oracle/scripts/bmiidxs-play.his"],
+                     "bmiidxs-boot"),
+    # the DVD styles: the same, and 6th style's game with the picture MAME doesn't show, DVD chapter
+    # 85 (the game sends "085"; MAME's player takes it as a Video CD's 8) under the stage
+    "bmiidx6-boot": ("bmiidx6", 9000, ["--rtc", "1792049343", "--video", "off", "--script", "oracle/scripts/bmiidx6-boot.his"]),
+    "bmiidx6-play": ("bmiidx6", 10000, ["--rtc", "1792050235", "--video", "off", "--script", "oracle/scripts/bmiidx6-play.his"],
+                     "bmiidx6-boot"),
+    "bmiidx6-video": ("bmiidx6", 10000, ["--rtc", "1792050235", "--script", "oracle/scripts/bmiidx6-play.his"],
+                      "bmiidx6-boot"),
+    "bmiidx7a-boot": ("bmiidx7a", 10000, ["--rtc", "1792051272", "--video", "off", "--script", "oracle/scripts/bmiidx7a-boot.his"]),
+    "bmiidx7a-play": ("bmiidx7a", 11300, ["--rtc", "1792052201", "--video", "off", "--script", "oracle/scripts/bmiidx7a-play.his"],
+                      "bmiidx7a-boot"),
+    "bmiidx8-boot": ("bmiidx8", 10000, ["--rtc", "1792053239", "--video", "off", "--script", "oracle/scripts/bmiidx8-boot.his"]),
+    "bmiidx8-play": ("bmiidx8", 11300, ["--rtc", "1792054162", "--video", "off", "--script", "oracle/scripts/bmiidx8-play.his"],
+                     "bmiidx8-boot"),
     # Konami Python 1 (PLAN.md section 23): Reliquary hosted; BIOS, card boot, disk boot,
     # attract, coins, NORMAL mode, a song played through to CLEARED. Software GS.
     "popn9-play": ("popn9", 14000, ["--script", "oracle/scripts/popn9-play.his"]),

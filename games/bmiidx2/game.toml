@@ -1,0 +1,22 @@
+# beatmania IIDX 2nd style (GC985 VER. JAA), Konami 1999
+id = "bmiidx2"
+title = "beatmania IIDX 2nd style"
+family = "iidx"         # IIDX cabinet: 7 keys and a turntable per player, VEFX, Effect, 5 effector sliders
+mame = "bmiidx2"        # MAME set name, used by the oracle
+core = "twinkle"        # Twinkle (runtime/twinkle/, PLAN.md section 21)
+
+[roms]
+bios = "863a03.7b"      # Twinkle BIOS (27C040), the same chip in every set
+spu = "863a05.2x"       # the SPU board's 68000 program (27C4096), the same in every set
+dongle = "985a02"       # the security dongle's M24C02 EEPROM
+
+[board]
+dongle = "m24c02"       # MAME twinklei: I2C EEPROM (2nd style and later)
+dvd_port = "uart"       # the DVD player on the super I/O's second 16550 (Substream and later)
+
+[cd]
+chd = "gc985a01"        # the program CD, on the SCSI bus
+video_chd = "gc985a04"  # the Video CD in the external player (background videos)
+
+[hdd]
+chd = "985hdda01"       # the SPU board's hard disk: keysounds and music
