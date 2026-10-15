@@ -855,7 +855,406 @@ void psxgpu_device::FlatRectangle8x8()""", """			if( ( (int32_t)n_drawarea_x1 - 
 }
 
 void psxgpu_device::FlatRectangle8x8()""", "video/psx.cpp FlatRectangle fill")
+    return video_psx_cpp_worker(s)
+
+
+DRAWFNS = ['FlatPolygon', 'FlatTexturedPolygon', 'GouraudPolygon', 'GouraudTexturedPolygon', 'MonochromeLine',
+           'GouraudLine', 'FrameBufferRectangleDraw', 'FlatRectangle', 'FlatRectangle8x8', 'FlatRectangle16x16',
+           'FlatTexturedRectangle', 'Sprite8x8', 'Sprite16x16', 'Dot', 'TexturedDot', 'MoveImage']
+POLY = {'FlatPolygon', 'FlatTexturedPolygon', 'GouraudPolygon', 'GouraudTexturedPolygon'}
+TPAGE = {'FlatTexturedPolygon', 'GouraudTexturedPolygon'}
+
+
+def video_psx_h(s):
+    s = edit(s, '#include "machine/ram.h"\n', '#include "machine/ram.h"\n\n#include <atomic>\n#include <memory>\n#include <thread>\n', 'video/psx.h includes')
+    s = edit(s, '\tstatic constexpr feature_type imperfect_features() { return feature::GRAPHICS; }\n',
+             '\tstatic constexpr feature_type imperfect_features() { return feature::GRAPHICS; }\n\n'
+             '\tvirtual ~psxgpu_device(); // HIRAKU: the drawing thread\n', 'video/psx.h destructor')
+    s = edit(s, '\tvirtual void device_reset() override ATTR_COLD;\n',
+             '\tvirtual void device_reset() override ATTR_COLD;\n\tvirtual void device_stop() override; // HIRAKU\n', 'video/psx.h stop')
+    decls = ''.join(f'\tvoid {f}({" int n_points " if f in POLY else ""});\n' for f in DRAWFNS)
+    rdecls = decls.replace('\tvoid ', '\t\tvoid ')
+    ops = ', '.join(f'HK_{f}' for f in DRAWFNS)
+    wrappers = ''
+    for f in DRAWFNS:
+        arg = ' int n_points ' if f in POLY else ''
+        n = 'n_points' if f in POLY else '0'
+        tp = f' decode_tpage( m_packet.{f}.vertex[ 1 ].n_texture.w.h );' if f in TPAGE else ''
+        wrappers += f'\tvoid {f}({arg}) {{ hk_draw( HK_{f}, {n} );{tp} }}\n'
+    s = edit(s, '\tvoid decode_tpage( uint32_t tpage );\n' + decls, '''\tvoid decode_tpage( uint32_t tpage );
+
+	// HIRAKU: the drawing on a worker thread (PLAN.md section 19). The command parser, the status
+	// and every register stay here, on the emulation thread; what writes VRAM (the primitives,
+	// the CPU-to-VRAM image, MoveImage) goes into a queue with a copy of the state the drawing
+	// reads (draw_state), and raster draws it on the worker, in order. What reads VRAM (the
+	// screen update, VRAM-to-CPU) waits for the queue to empty, so it sees what MAME's would.
+	// The textured polygons' texture page reaches the status here as in MAME (decode_tpage()
+	// beside the queueing), and again in raster's own copy of the state.
+	// HK_GPU_THREAD=0: no worker; each item is drawn on the emulation thread as it is queued.
+	struct draw_state
+	{
+		int32_t m_n_tx, m_n_ty, n_abr, n_tp, n_ix, n_iy, n_ti;
+		uint32_t n_vramx, n_vramy, n_twy, n_twx, n_twh, n_tww;
+		uint32_t n_drawarea_x1, n_drawarea_y1, n_drawarea_x2, n_drawarea_y2;
+		int32_t n_drawoffset_x, n_drawoffset_y;
+		int m_n_gputype;
+		uint32_t n_gpustatus;
+		bool m_draw_stp, m_check_stp;
+		PACKET m_packet;
+	};
+	struct raster : draw_state
+	{
+		uint16_t *p_p_vram[ 1024 ];
+		template <typename... T> void logerror( T &&... ) const { }
+		void decode_tpage( uint32_t tpage );
+''' + rdecls + '''		void image( const uint32_t *p_data, uint32_t n_words );
+	};
+	enum : uint32_t { ''' + ops + ''', HK_IMAGE, HK_SKIP };
+''' + wrappers + '''	void hk_snapshot( draw_state &s ) const;
+	uint32_t *hk_reserve( uint32_t n_words );
+	void hk_publish();
+	void hk_draw( uint32_t op, int n_points );
+	void hk_image( uint32_t data );
+	void hk_close() { if( m_hk_image != nullptr ) hk_publish(); }
+	void hk_sync();
+	void hk_run();
+	void hk_worker();
+
+	static constexpr uint32_t HK_RING = 1 << 20; // words
+	static constexpr uint32_t HK_HEADER = 2 + ( sizeof( draw_state ) + 3 ) / 4;
+	std::unique_ptr<uint32_t[]> m_hk_ring;
+	std::atomic<uint64_t> m_hk_head{ 0 }; // published: the worker draws up to here
+	std::atomic<uint64_t> m_hk_tail{ 0 }; // drawn
+	std::atomic<uint32_t> m_hk_sleep{ 0 }, m_hk_wait{ 0 }; // the worker asleep; the emulation thread waiting
+	std::atomic<bool> m_hk_stop{ false };
+	uint64_t m_hk_write = 0; // the end of what is queued, published or not
+	uint32_t *m_hk_image = nullptr; // the open image item, words still being added
+	raster m_hk_raster;
+	std::thread m_hk_thread;
+
+''', 'video/psx.h raster')
+    # the tables never change once built, and raster (a nested class) reads them by name: static
+    a = s.index('\tuint16_t p_n_redshade[ MAX_LEVEL * MAX_SHADE ];')
+    b = s.index('\tdevcb_write_line m_vblank_handler;')
+    block = s[a:b]
+    block = '\t// HIRAKU: static, for raster\n' + '\n'.join(
+        l.replace('\tuint', '\tstatic inline uint', 1) if l.startswith('\tuint') else l for l in block.split('\n'))
+    s = s[:a] + block + s[b:]
     return s
+
+
+def video_psx_cpp_worker(s):
+    for f in DRAWFNS:
+        arg = ' int n_points ' if f in POLY else ''
+        s = edit(s, f'void psxgpu_device::{f}({arg})\n', f'void psxgpu_device::raster::{f}({arg})\n', f'video/psx.cpp {f}')
+    # raster's own decode_tpage: the same function, a second time
+    a = s.index('void psxgpu_device::decode_tpage( uint32_t tpage )\n')
+    b = s.index('#define SPRITESETUP', a)
+    s = s[:b] + '/* HIRAKU: the same, for raster */\n' + s[a:b].replace('psxgpu_device::decode_tpage', 'psxgpu_device::raster::decode_tpage') + s[b:]
+    # CPU-to-VRAM: the words queued; the counting stays (the parser needs the transfer's end)
+    s = edit(s, """				for( int n_pixel = 0; n_pixel < 2; n_pixel++ )
+				{
+					LOGMASKED(LOG_WRITE, "%s: send image to framebuffer ( pixel %u,%u = %u )\\n",
+						machine().describe_context(),
+						( n_vramx + m_packet.n_entry[ 1 ] ) & 1023,
+						( n_vramy + ( m_packet.n_entry[ 1 ] >> 16 ) ) & 1023,
+						data & 0xffff );
+
+					uint16_t *p_vram = p_p_vram[ ( n_vramy + ( m_packet.n_entry[ 1 ] >> 16 ) ) & 1023 ] + ( ( n_vramx + m_packet.n_entry[ 1 ] ) & 1023 );
+					WRITE_PIXEL( data & 0xffff )
+					n_vramx++;
+""", """				hk_image( data ); // HIRAKU: drawn by raster::image()
+				for( int n_pixel = 0; n_pixel < 2; n_pixel++ )
+				{
+					LOGMASKED(LOG_WRITE, "%s: send image to framebuffer ( pixel %u,%u = %u )\\n",
+						machine().describe_context(),
+						( n_vramx + m_packet.n_entry[ 1 ] ) & 1023,
+						( n_vramy + ( m_packet.n_entry[ 1 ] >> 16 ) ) & 1023,
+						data & 0xffff );
+
+					n_vramx++;
+""", 'video/psx.cpp image')
+    # any word but an image's data ends the open image item
+    s = edit(s, """		uint32_t data = *( p_ram );
+
+		LOG("PSX Packet #%u %08x\\n", n_gpu_buffer_offset, data);
+""", """		uint32_t data = *( p_ram );
+
+		if( m_hk_image != nullptr && ( n_gpu_buffer_offset != 3 || ( m_packet.n_entry[ 0 ] >> 24 ) != 0xa0 ) )
+			hk_close(); // HIRAKU
+		LOG("PSX Packet #%u %08x\\n", n_gpu_buffer_offset, data);
+""", 'video/psx.cpp image end')
+    s = edit(s, """void psxgpu_device::gpu_read( uint32_t *p_ram, int32_t n_size )
+{
+""", """void psxgpu_device::gpu_read( uint32_t *p_ram, int32_t n_size )
+{
+	if( ( n_gpustatus & ( 1L << 0x1b ) ) != 0 )
+		hk_sync(); // HIRAKU: VRAM to the CPU
+""", 'video/psx.cpp gpu_read')
+    s = edit(s, """uint32_t psxgpu_device::update_screen(screen_device &screen, bitmap_rgb32 &bitmap, const rectangle &cliprect)
+{
+""", """uint32_t psxgpu_device::update_screen(screen_device &screen, bitmap_rgb32 &bitmap, const rectangle &cliprect)
+{
+	hk_sync(); // HIRAKU
+""", 'video/psx.cpp update_screen')
+    s = edit(s, """	else
+	{
+		psx_gpu_init( 2 );
+	}
+}
+""", """	else
+	{
+		psx_gpu_init( 2 );
+	}
+
+	// HIRAKU: the drawing thread
+	std::copy_n( p_p_vram, 1024, m_hk_raster.p_p_vram );
+	m_hk_ring = std::make_unique<uint32_t[]>( HK_RING );
+	const char *thread = getenv( "HK_GPU_THREAD" );
+	if( thread == nullptr || strcmp( thread, "0" ) != 0 )
+		m_hk_thread = std::thread( &psxgpu_device::hk_worker, this );
+}
+""", 'video/psx.cpp start')
+    s = s.rstrip('\n') + '\n' + WORKER
+    return s
+
+
+WORKER = r'''
+// HIRAKU: the drawing thread (psx.h)
+
+psxgpu_device::~psxgpu_device()
+{
+	device_stop();
+}
+
+void psxgpu_device::device_stop()
+{
+	if( m_hk_thread.joinable() )
+	{
+		hk_sync();
+		m_hk_stop.store( true );
+		m_hk_sleep.store( 0 );
+		m_hk_sleep.notify_one();
+		m_hk_thread.join();
+	}
+}
+
+static inline void hk_pause()
+{
+#if defined( __x86_64__ ) || defined( __i386__ )
+	__builtin_ia32_pause();
+#elif defined( __aarch64__ )
+	asm volatile( "yield" );
+#endif
+}
+
+void psxgpu_device::hk_snapshot( draw_state &s ) const
+{
+	s.m_n_tx = m_n_tx; s.m_n_ty = m_n_ty; s.n_abr = n_abr; s.n_tp = n_tp; s.n_ix = n_ix; s.n_iy = n_iy; s.n_ti = n_ti;
+	s.n_vramx = n_vramx; s.n_vramy = n_vramy; s.n_twy = n_twy; s.n_twx = n_twx; s.n_twh = n_twh; s.n_tww = n_tww;
+	s.n_drawarea_x1 = n_drawarea_x1; s.n_drawarea_y1 = n_drawarea_y1; s.n_drawarea_x2 = n_drawarea_x2; s.n_drawarea_y2 = n_drawarea_y2;
+	s.n_drawoffset_x = n_drawoffset_x; s.n_drawoffset_y = n_drawoffset_y;
+	s.m_n_gputype = m_n_gputype; s.n_gpustatus = n_gpustatus;
+	s.m_draw_stp = m_draw_stp; s.m_check_stp = m_check_stp;
+	s.m_packet = m_packet;
+}
+
+// n_words free and contiguous at m_hk_write (an item never wraps: a skip item fills the ring's end)
+uint32_t *psxgpu_device::hk_reserve( uint32_t n_words )
+{
+	uint32_t pos = m_hk_write & ( HK_RING - 1 );
+	uint32_t need = n_words;
+	if( pos + n_words > HK_RING )
+		need += HK_RING - pos;
+	uint64_t tail = m_hk_tail.load( std::memory_order_acquire );
+	if( m_hk_write + need - tail > HK_RING )
+	{
+		if( !m_hk_thread.joinable() )
+			hk_run();
+		else
+		{
+			// full: wait for the worker
+			for( int spin = 0; m_hk_write + need - ( tail = m_hk_tail.load( std::memory_order_acquire ) ) > HK_RING; spin++ )
+			{
+				if( spin < 4096 )
+					hk_pause();
+				else
+				{
+					m_hk_wait.store( 1 );
+					if( m_hk_write + need - m_hk_tail.load() > HK_RING )
+						m_hk_wait.wait( 1 );
+					m_hk_wait.store( 0 );
+				}
+			}
+		}
+	}
+	if( pos + n_words > HK_RING )
+	{
+		m_hk_ring[ pos ] = HK_SKIP;
+		m_hk_ring[ pos + 1 ] = HK_RING - pos;
+		m_hk_write += HK_RING - pos;
+		pos = 0;
+	}
+	return &m_hk_ring[ pos ];
+}
+
+void psxgpu_device::hk_publish()
+{
+	uint32_t *item = m_hk_image != nullptr ? m_hk_image : &m_hk_ring[ m_hk_write & ( HK_RING - 1 ) ];
+	m_hk_write += item[ 1 ];
+	m_hk_image = nullptr;
+	m_hk_head.store( m_hk_write, std::memory_order_seq_cst );
+	if( !m_hk_thread.joinable() )
+		hk_run();
+	else if( m_hk_sleep.load( std::memory_order_seq_cst ) != 0 )
+	{
+		m_hk_sleep.store( 0 );
+		m_hk_sleep.notify_one();
+	}
+}
+
+void psxgpu_device::hk_draw( uint32_t op, int n_points )
+{
+	hk_close();
+	uint32_t *item = hk_reserve( HK_HEADER );
+	item[ 0 ] = op | ( n_points << 8 );
+	item[ 1 ] = HK_HEADER;
+	hk_snapshot( *reinterpret_cast<draw_state *>( &item[ 2 ] ) );
+	hk_publish();
+}
+
+void psxgpu_device::hk_image( uint32_t data )
+{
+	// the item's words stay at m_hk_write until it is published: [1] counts them
+	if( m_hk_image != nullptr && m_hk_image[ 1 ] < 0x4000 && ( m_hk_image - m_hk_ring.get() ) + m_hk_image[ 1 ] < HK_RING )
+	{
+		m_hk_image[ m_hk_image[ 1 ]++ ] = data;
+		return;
+	}
+	hk_close();
+	uint32_t *item = hk_reserve( HK_HEADER + 0x4000 );
+	item[ 0 ] = HK_IMAGE;
+	item[ 1 ] = HK_HEADER;
+	hk_snapshot( *reinterpret_cast<draw_state *>( &item[ 2 ] ) );
+	item[ item[ 1 ]++ ] = data;
+	m_hk_image = item;
+}
+
+// the queue drawn: VRAM as MAME's would be
+void psxgpu_device::hk_sync()
+{
+	hk_close();
+	if( !m_hk_thread.joinable() )
+		return;
+	const uint64_t head = m_hk_write;
+	for( int spin = 0; m_hk_tail.load( std::memory_order_acquire ) != head; spin++ )
+	{
+		if( spin < 4096 )
+			hk_pause();
+		else
+		{
+			m_hk_wait.store( 1 );
+			if( m_hk_tail.load() != head )
+				m_hk_wait.wait( 1 );
+			m_hk_wait.store( 0 );
+		}
+	}
+}
+
+// draw what is published
+void psxgpu_device::hk_run()
+{
+	uint64_t tail = m_hk_tail.load( std::memory_order_relaxed );
+	const uint64_t head = m_hk_head.load( std::memory_order_acquire );
+	raster &r = m_hk_raster;
+	while( tail != head )
+	{
+		const uint32_t *item = &m_hk_ring[ tail & ( HK_RING - 1 ) ];
+		const uint32_t op = item[ 0 ] & 0xff;
+		const int n_points = item[ 0 ] >> 8;
+		if( op != HK_SKIP )
+			static_cast<draw_state &>( r ) = *reinterpret_cast<const draw_state *>( &item[ 2 ] );
+		switch( op )
+		{
+		case HK_FlatPolygon: r.FlatPolygon( n_points ); break;
+		case HK_FlatTexturedPolygon: r.FlatTexturedPolygon( n_points ); break;
+		case HK_GouraudPolygon: r.GouraudPolygon( n_points ); break;
+		case HK_GouraudTexturedPolygon: r.GouraudTexturedPolygon( n_points ); break;
+		case HK_MonochromeLine: r.MonochromeLine(); break;
+		case HK_GouraudLine: r.GouraudLine(); break;
+		case HK_FrameBufferRectangleDraw: r.FrameBufferRectangleDraw(); break;
+		case HK_FlatRectangle: r.FlatRectangle(); break;
+		case HK_FlatRectangle8x8: r.FlatRectangle8x8(); break;
+		case HK_FlatRectangle16x16: r.FlatRectangle16x16(); break;
+		case HK_FlatTexturedRectangle: r.FlatTexturedRectangle(); break;
+		case HK_Sprite8x8: r.Sprite8x8(); break;
+		case HK_Sprite16x16: r.Sprite16x16(); break;
+		case HK_Dot: r.Dot(); break;
+		case HK_TexturedDot: r.TexturedDot(); break;
+		case HK_MoveImage: r.MoveImage(); break;
+		case HK_IMAGE: r.image( &item[ HK_HEADER ], item[ 1 ] - HK_HEADER ); break;
+		case HK_SKIP: break;
+		}
+		tail += item[ 1 ];
+		m_hk_tail.store( tail, std::memory_order_seq_cst );
+		if( m_hk_wait.load( std::memory_order_seq_cst ) != 0 )
+		{
+			m_hk_wait.store( 0 );
+			m_hk_wait.notify_one();
+		}
+	}
+}
+
+void psxgpu_device::hk_worker()
+{
+	for( int spin = 0; !m_hk_stop.load( std::memory_order_relaxed ); )
+	{
+		if( m_hk_head.load( std::memory_order_acquire ) != m_hk_tail.load( std::memory_order_relaxed ) )
+		{
+			hk_run();
+			spin = 0;
+		}
+		else if( spin++ < 256 )
+			hk_pause(); // a moment for the next item (a longer spin bought little, for much more CPU)
+		else
+		{
+			// idle: sleep until hk_publish() rings
+			m_hk_sleep.store( 1 );
+			if( m_hk_head.load() == m_hk_tail.load( std::memory_order_relaxed ) && !m_hk_stop.load() )
+				m_hk_sleep.wait( 1 );
+			m_hk_sleep.store( 0 );
+			spin = 0;
+		}
+	}
+}
+
+// the CPU-to-VRAM transfer's words (gpu_write's loop, writing)
+void psxgpu_device::raster::image( const uint32_t *p_data, uint32_t n_words )
+{
+	while( n_words-- > 0 )
+	{
+		uint32_t data = *( p_data++ );
+		for( int n_pixel = 0; n_pixel < 2; n_pixel++ )
+		{
+			uint16_t *p_vram = p_p_vram[ ( n_vramy + ( m_packet.n_entry[ 1 ] >> 16 ) ) & 1023 ] + ( ( n_vramx + m_packet.n_entry[ 1 ] ) & 1023 );
+			WRITE_PIXEL( data & 0xffff )
+			n_vramx++;
+			if( n_vramx >= ( m_packet.n_entry[ 2 ] & 0xffff ) )
+			{
+				n_vramx = 0;
+				n_vramy++;
+				if( n_vramy >= ( m_packet.n_entry[ 2 ] >> 16 ) )
+				{
+					n_vramx = 0;
+					n_vramy = 0;
+					break;
+				}
+			}
+			data >>= 16;
+		}
+	}
+}
+'''
 
 def atapihle_cpp(s):
     # a packet's byte count limit below one sector (the multi-session unit's firmware asks
@@ -988,7 +1387,8 @@ def main():
     for rel, fn in [('sound/swp30.cpp', swp30_cpp), ('sound/swp30.h', swp30_h),
                     ('cpu/psx/psx.cpp', psx_cpp), ('cpu/psx/psx.h', psx_h),
                     ('cpu/psx/mdec.cpp', mdec_cpp), ('cpu/psx/mdec.h', mdec_h),
-                    ('video/psx.cpp', video_psx_cpp), ('bus/ata/atapihle.cpp', atapihle_cpp),
+                    ('video/psx.cpp', video_psx_cpp), ('video/psx.h', video_psx_h),
+                    ('bus/ata/atapihle.cpp', atapihle_cpp),
                     ('machine/ins8250.cpp', ins8250_cpp), ('machine/ins8250.h', ins8250_h),
                     ('../3rdparty/minimp3/minimp3.h', minimp3_h),
                     ('bus/rs232/rs232.cpp', rs232_cpp),

@@ -759,6 +759,9 @@ device_t *hk_config_current(device_t *owner) {
 running_machine::running_machine() { m_config.m_machine = this; }
 
 running_machine::~running_machine() {
+    // MAME's stop_all_devices: every device stopped before any is freed (the PS1 GPU's drawing
+    // thread writes into a RAM device created after it)
+    for (device_t *d : m_devices) d->device_stop();
     for (auto it = m_devices.rbegin(); it != m_devices.rend(); ++it) delete *it;
 }
 

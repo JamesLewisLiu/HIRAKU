@@ -14,6 +14,10 @@
 
 #include "machine/ram.h"
 
+#include <atomic>
+#include <memory>
+#include <thread>
+
 #define PSXGPU_DEBUG_VIEWER ( 0 )
 
 DECLARE_DEVICE_TYPE(CXD8514Q,  cxd8514q_device)
@@ -43,6 +47,8 @@ public:
 
 	static constexpr feature_type imperfect_features() { return feature::GRAPHICS; }
 
+	virtual ~psxgpu_device(); // HIRAKU: the drawing thread
+
 protected:
 	static constexpr unsigned MAX_LEVEL = 32;
 	static constexpr unsigned MID_LEVEL = (MAX_LEVEL / 2) << 8;
@@ -55,6 +61,7 @@ protected:
 	virtual void device_start() override ATTR_COLD;
 	virtual void device_post_load() override;
 	virtual void device_reset() override ATTR_COLD;
+	virtual void device_stop() override; // HIRAKU
 	virtual void device_config_complete() override;
 
 	// device_palette_interface overrides
@@ -202,22 +209,88 @@ private:
 
 	void updatevisiblearea();
 	void decode_tpage( uint32_t tpage );
-	void FlatPolygon( int n_points );
-	void FlatTexturedPolygon( int n_points );
-	void GouraudPolygon( int n_points );
-	void GouraudTexturedPolygon( int n_points );
-	void MonochromeLine();
-	void GouraudLine();
-	void FrameBufferRectangleDraw();
-	void FlatRectangle();
-	void FlatRectangle8x8();
-	void FlatRectangle16x16();
-	void FlatTexturedRectangle();
-	void Sprite8x8();
-	void Sprite16x16();
-	void Dot();
-	void TexturedDot();
-	void MoveImage();
+
+	// HIRAKU: the drawing on a worker thread (PLAN.md section 19). The command parser, the status
+	// and every register stay here, on the emulation thread; what writes VRAM (the primitives,
+	// the CPU-to-VRAM image, MoveImage) goes into a queue with a copy of the state the drawing
+	// reads (draw_state), and raster draws it on the worker, in order. What reads VRAM (the
+	// screen update, VRAM-to-CPU) waits for the queue to empty, so it sees what MAME's would.
+	// The textured polygons' texture page reaches the status here as in MAME (decode_tpage()
+	// beside the queueing), and again in raster's own copy of the state.
+	// HK_GPU_THREAD=0: no worker; each item is drawn on the emulation thread as it is queued.
+	struct draw_state
+	{
+		int32_t m_n_tx, m_n_ty, n_abr, n_tp, n_ix, n_iy, n_ti;
+		uint32_t n_vramx, n_vramy, n_twy, n_twx, n_twh, n_tww;
+		uint32_t n_drawarea_x1, n_drawarea_y1, n_drawarea_x2, n_drawarea_y2;
+		int32_t n_drawoffset_x, n_drawoffset_y;
+		int m_n_gputype;
+		uint32_t n_gpustatus;
+		bool m_draw_stp, m_check_stp;
+		PACKET m_packet;
+	};
+	struct raster : draw_state
+	{
+		uint16_t *p_p_vram[ 1024 ];
+		template <typename... T> void logerror( T &&... ) const { }
+		void decode_tpage( uint32_t tpage );
+		void FlatPolygon( int n_points );
+		void FlatTexturedPolygon( int n_points );
+		void GouraudPolygon( int n_points );
+		void GouraudTexturedPolygon( int n_points );
+		void MonochromeLine();
+		void GouraudLine();
+		void FrameBufferRectangleDraw();
+		void FlatRectangle();
+		void FlatRectangle8x8();
+		void FlatRectangle16x16();
+		void FlatTexturedRectangle();
+		void Sprite8x8();
+		void Sprite16x16();
+		void Dot();
+		void TexturedDot();
+		void MoveImage();
+		void image( const uint32_t *p_data, uint32_t n_words );
+	};
+	enum : uint32_t { HK_FlatPolygon, HK_FlatTexturedPolygon, HK_GouraudPolygon, HK_GouraudTexturedPolygon, HK_MonochromeLine, HK_GouraudLine, HK_FrameBufferRectangleDraw, HK_FlatRectangle, HK_FlatRectangle8x8, HK_FlatRectangle16x16, HK_FlatTexturedRectangle, HK_Sprite8x8, HK_Sprite16x16, HK_Dot, HK_TexturedDot, HK_MoveImage, HK_IMAGE, HK_SKIP };
+	void FlatPolygon( int n_points ) { hk_draw( HK_FlatPolygon, n_points ); }
+	void FlatTexturedPolygon( int n_points ) { hk_draw( HK_FlatTexturedPolygon, n_points ); decode_tpage( m_packet.FlatTexturedPolygon.vertex[ 1 ].n_texture.w.h ); }
+	void GouraudPolygon( int n_points ) { hk_draw( HK_GouraudPolygon, n_points ); }
+	void GouraudTexturedPolygon( int n_points ) { hk_draw( HK_GouraudTexturedPolygon, n_points ); decode_tpage( m_packet.GouraudTexturedPolygon.vertex[ 1 ].n_texture.w.h ); }
+	void MonochromeLine() { hk_draw( HK_MonochromeLine, 0 ); }
+	void GouraudLine() { hk_draw( HK_GouraudLine, 0 ); }
+	void FrameBufferRectangleDraw() { hk_draw( HK_FrameBufferRectangleDraw, 0 ); }
+	void FlatRectangle() { hk_draw( HK_FlatRectangle, 0 ); }
+	void FlatRectangle8x8() { hk_draw( HK_FlatRectangle8x8, 0 ); }
+	void FlatRectangle16x16() { hk_draw( HK_FlatRectangle16x16, 0 ); }
+	void FlatTexturedRectangle() { hk_draw( HK_FlatTexturedRectangle, 0 ); }
+	void Sprite8x8() { hk_draw( HK_Sprite8x8, 0 ); }
+	void Sprite16x16() { hk_draw( HK_Sprite16x16, 0 ); }
+	void Dot() { hk_draw( HK_Dot, 0 ); }
+	void TexturedDot() { hk_draw( HK_TexturedDot, 0 ); }
+	void MoveImage() { hk_draw( HK_MoveImage, 0 ); }
+	void hk_snapshot( draw_state &s ) const;
+	uint32_t *hk_reserve( uint32_t n_words );
+	void hk_publish();
+	void hk_draw( uint32_t op, int n_points );
+	void hk_image( uint32_t data );
+	void hk_close() { if( m_hk_image != nullptr ) hk_publish(); }
+	void hk_sync();
+	void hk_run();
+	void hk_worker();
+
+	static constexpr uint32_t HK_RING = 1 << 20; // words
+	static constexpr uint32_t HK_HEADER = 2 + ( sizeof( draw_state ) + 3 ) / 4;
+	std::unique_ptr<uint32_t[]> m_hk_ring;
+	std::atomic<uint64_t> m_hk_head{ 0 }; // published: the worker draws up to here
+	std::atomic<uint64_t> m_hk_tail{ 0 }; // drawn
+	std::atomic<uint32_t> m_hk_sleep{ 0 }, m_hk_wait{ 0 }; // the worker asleep; the emulation thread waiting
+	std::atomic<bool> m_hk_stop{ false };
+	uint64_t m_hk_write = 0; // the end of what is queued, published or not
+	uint32_t *m_hk_image = nullptr; // the open image item, words still being added
+	raster m_hk_raster;
+	std::thread m_hk_thread;
+
 	void psx_gpu_init( int n_gputype );
 	void gpu_reset();
 	void gpu_read( uint32_t *p_ram, int32_t n_size );
@@ -265,33 +338,34 @@ private:
 
 	uint16_t *p_p_vram[ 1024 ];
 
-	uint16_t p_n_redshade[ MAX_LEVEL * MAX_SHADE ];
-	uint16_t p_n_greenshade[ MAX_LEVEL * MAX_SHADE ];
-	uint16_t p_n_blueshade[ MAX_LEVEL * MAX_SHADE ];
-	uint16_t p_n_redlevel[ 0x10000 ];
-	uint16_t p_n_greenlevel[ 0x10000 ];
-	uint16_t p_n_bluelevel[ 0x10000 ];
+	// HIRAKU: static, for raster
+	static inline uint16_t p_n_redshade[ MAX_LEVEL * MAX_SHADE ];
+	static inline uint16_t p_n_greenshade[ MAX_LEVEL * MAX_SHADE ];
+	static inline uint16_t p_n_blueshade[ MAX_LEVEL * MAX_SHADE ];
+	static inline uint16_t p_n_redlevel[ 0x10000 ];
+	static inline uint16_t p_n_greenlevel[ 0x10000 ];
+	static inline uint16_t p_n_bluelevel[ 0x10000 ];
 
-	uint16_t p_n_f025[ MAX_LEVEL * MAX_SHADE ];
-	uint16_t p_n_f05[ MAX_LEVEL * MAX_SHADE ];
-	uint16_t p_n_f1[ MAX_LEVEL * MAX_SHADE ];
-	uint16_t p_n_redb05[ 0x10000 ];
-	uint16_t p_n_greenb05[ 0x10000 ];
-	uint16_t p_n_blueb05[ 0x10000 ];
-	uint16_t p_n_redb1[ 0x10000 ];
-	uint16_t p_n_greenb1[ 0x10000 ];
-	uint16_t p_n_blueb1[ 0x10000 ];
-	uint16_t p_n_redaddtrans[ MAX_LEVEL * MAX_LEVEL ];
-	uint16_t p_n_greenaddtrans[ MAX_LEVEL * MAX_LEVEL ];
-	uint16_t p_n_blueaddtrans[ MAX_LEVEL * MAX_LEVEL ];
-	uint16_t p_n_redsubtrans[ MAX_LEVEL * MAX_LEVEL ];
-	uint16_t p_n_greensubtrans[ MAX_LEVEL * MAX_LEVEL ];
-	uint16_t p_n_bluesubtrans[ MAX_LEVEL * MAX_LEVEL ];
+	static inline uint16_t p_n_f025[ MAX_LEVEL * MAX_SHADE ];
+	static inline uint16_t p_n_f05[ MAX_LEVEL * MAX_SHADE ];
+	static inline uint16_t p_n_f1[ MAX_LEVEL * MAX_SHADE ];
+	static inline uint16_t p_n_redb05[ 0x10000 ];
+	static inline uint16_t p_n_greenb05[ 0x10000 ];
+	static inline uint16_t p_n_blueb05[ 0x10000 ];
+	static inline uint16_t p_n_redb1[ 0x10000 ];
+	static inline uint16_t p_n_greenb1[ 0x10000 ];
+	static inline uint16_t p_n_blueb1[ 0x10000 ];
+	static inline uint16_t p_n_redaddtrans[ MAX_LEVEL * MAX_LEVEL ];
+	static inline uint16_t p_n_greenaddtrans[ MAX_LEVEL * MAX_LEVEL ];
+	static inline uint16_t p_n_blueaddtrans[ MAX_LEVEL * MAX_LEVEL ];
+	static inline uint16_t p_n_redsubtrans[ MAX_LEVEL * MAX_LEVEL ];
+	static inline uint16_t p_n_greensubtrans[ MAX_LEVEL * MAX_LEVEL ];
+	static inline uint16_t p_n_bluesubtrans[ MAX_LEVEL * MAX_LEVEL ];
 
-	uint32_t p_n_g0r0[ 0x10000 ];
-	uint32_t p_n_b0[ 0x10000 ];
-	uint32_t p_n_r1[ 0x10000 ];
-	uint32_t p_n_b1g1[ 0x10000 ];
+	static inline uint32_t p_n_g0r0[ 0x10000 ];
+	static inline uint32_t p_n_b0[ 0x10000 ];
+	static inline uint32_t p_n_r1[ 0x10000 ];
+	static inline uint32_t p_n_b1g1[ 0x10000 ];
 
 	devcb_write_line m_vblank_handler;
 	uint32_t m_vclk[2];
