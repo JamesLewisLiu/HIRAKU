@@ -8,7 +8,8 @@
                                              or ID=all / ID=none for all of them
     tools/unlock.py GAME --json              the same, for the launcher
 
-  --nvram DIR   the save (default: ~/.local/share/hiraku/GAME, as the game window uses)
+  --nvram DIR   the save (default: ~/.local/share/hiraku/GAME, as the game window uses; in a
+                portable install, user/data/GAME)
 
 The game must not be running: it writes its NVRAM back when it exits. An unlock is the bytes
 the game itself writes when an operator enters the code (unlocks.toml says how each was found).
@@ -39,6 +40,9 @@ def load(game: str) -> dict:
 
 
 def default_nvram(game: str) -> str:
+    # as runtime/shell/userdir.h: a portable install (a HIRAKU folder holding user/) keeps its saves in there
+    if os.path.isdir(os.path.join(ROOT, "user")):
+        return os.path.join(ROOT, "user", "data", game)
     base = os.environ.get("XDG_DATA_HOME") or os.path.expanduser("~/.local/share")
     return os.path.join(base, "hiraku", game)
 

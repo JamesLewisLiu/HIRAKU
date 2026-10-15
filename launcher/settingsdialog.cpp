@@ -242,11 +242,16 @@ SettingsDialog::SettingsDialog(QWidget *parent) : QDialog(parent) {
     m_root = new QLineEdit(s.value("paths/root").toString());
     m_root->setPlaceholderText(cfg::rootDir());
     fp->addRow("HIRAKU folder:", withBrowse(m_root, true, this));
+    if (cfg::portable()) {   // the folder is the install: settings and saves are in its user/
+        m_root->parentWidget()->setEnabled(false);
+        m_root->setToolTip("A portable install (it has a folder named user): it always runs from its own folder, "
+                           "and keeps its settings and saves in user/.");
+    }
     m_bin = new QLineEdit(s.value("paths/bin").toString());
     m_bin->setPlaceholderText(cfg::binDir());
     fp->addRow("Game executables:", withBrowse(m_bin, true, this));
     m_nvram = new QLineEdit(s.value("paths/nvram").toString());
-    m_nvram->setPlaceholderText("default: ~/.local/share/hiraku");
+    m_nvram->setPlaceholderText(cfg::portable() ? "default: user/data in the HIRAKU folder" : "default: ~/.local/share/hiraku");
     fp->addRow("Saves (NVRAM):", withBrowse(m_nvram, true, this));
     v->addWidget(paths);
 

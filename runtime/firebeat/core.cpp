@@ -12,6 +12,7 @@
 #include "../core/runtime.h"
 #include "../core/sched.h"
 #include "../shell/core.h"
+#include "../shell/userdir.h"
 #include "../spu/spu.h"
 #include "board.h"
 #include "synth.h"
@@ -83,7 +84,7 @@ public:
         if (o.trace) cfg.trace_dir = o.out;
         cfg.ata_log = o.ata_log;
         fb::init(cfg);
-        if (cfg.family == "kbm") synth::init(cfg.rom_dir, soundfont_, synth_stand_in_);
+        if (cfg.family == "kbm") synth::init(cfg.rom_dir, soundfont_, synth_stand_in_, hk::user_data_dir(o.root));
 
         // sound: the SPU board when the machine has one, otherwise the board's YMZ280B
         if (!machine["spu_rom"].empty()) {

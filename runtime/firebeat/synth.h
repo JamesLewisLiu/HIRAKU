@@ -15,9 +15,9 @@ namespace hk::synth {
 
 // rom_dir: the MAME set's files (XT446 program, wave ROMs, sin table).
 // soundfont: for the stand-in, a .sf2 file, or "" to search $HK_SOUNDFONT,
-// /usr/share/soundfonts and ~/.local/share/hiraku. stand_in forces it.
-// Returns false (and stays silent) with neither.
-bool init(const std::string &rom_dir, const std::string &soundfont, bool stand_in);
+// /usr/share/soundfonts and user_dir (shell/userdir.h: ~/.local/share/hiraku, or a portable
+// install's user/data). stand_in forces it. Returns false (and stays silent) with neither.
+bool init(const std::string &rom_dir, const std::string &soundfont, bool stand_in, const std::string &user_dir);
 bool active();
 void midi(uint8_t byte);                       // one byte of the MIDI stream, in time order
 void render(float *lr, int frames, float gain);   // add 44.1 kHz stereo

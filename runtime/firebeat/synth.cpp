@@ -137,11 +137,10 @@ void channel_message(uint8_t st, uint8_t d0, uint8_t d1) {
     }
 }
 
-std::string find_font(const std::string &path) {
+std::string find_font(const std::string &path, const std::string &user_dir) {
     if (!path.empty()) return path;
     if (const char *e = getenv("HK_SOUNDFONT"); e && *e) return e;
-    std::vector<std::string> dirs = {"/usr/share/soundfonts", "/usr/share/sounds/sf2"};
-    if (const char *home = getenv("HOME")) dirs.push_back(std::string(home) + "/.local/share/hiraku");
+    std::vector<std::string> dirs = {"/usr/share/soundfonts", "/usr/share/sounds/sf2", user_dir};
     for (auto &d : dirs) {
         std::error_code ec;
         for (auto &f : std::filesystem::directory_iterator(d, ec))
@@ -152,8 +151,8 @@ std::string find_font(const std::string &path) {
 
 }  // namespace
 
-bool init(const std::string &path) {
-    g_font = find_font(path);
+bool init(const std::string &path, const std::string &user_dir) {
+    g_font = find_font(path, user_dir);
     if (g_font.empty()) {
         fprintf(stderr, "synth: no SoundFont (install one, e.g. soundfont-fluid, or pass --soundfont FILE): keyboard notes are silent\n");
         return false;
@@ -225,7 +224,7 @@ std::string describe() { return g_synth ? "FluidSynth, " + g_font : "silent"; }
 
 #else
 
-bool init(const std::string &) {
+bool init(const std::string &, const std::string &) {
     fprintf(stderr, "synth: built without FluidSynth: keyboard notes are silent\n");
     return false;
 }
@@ -237,7 +236,7 @@ std::string describe() { return "silent (no FluidSynth)"; }
 #endif
 }  // namespace fluid
 
-bool init(const std::string &rom_dir, const std::string &soundfont, bool stand_in) {
+bool init(const std::string &rom_dir, const std::string &soundfont, bool stand_in, const std::string &user_dir) {
     if (!stand_in) {
         auto card = std::make_unique<Xt446>();
         std::string err;
@@ -249,7 +248,7 @@ bool init(const std::string &rom_dir, const std::string &soundfont, bool stand_i
         }
         fprintf(stderr, "synth: no XT446 ROMs (%s in %s): using the SoundFont stand-in\n", err.c_str(), rom_dir.c_str());
     }
-    return fluid::init(soundfont);
+    return fluid::init(soundfont, user_dir);
 }
 
 bool active() { return g_card || fluid::active(); }

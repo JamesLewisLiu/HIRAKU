@@ -40,8 +40,9 @@
 //     --audio-buffer N  the device buffer in frames (default 128): the sound server's quantum, or with
 //                       --audio-device the ALSA period (a ring of four). Smaller is sooner, until it crackles
 //     --nvram DIR       keep the machine's NVRAM in DIR: loaded at start, saved on exit.
-//                       Default with --window: ~/.local/share/hiraku/<game>; otherwise none (every
-//                       run starts from the ROM set's defaults, so scripted runs are reproducible)
+//                       Default with --window: ~/.local/share/hiraku/<game> (a portable install's
+//                       user/data/<game>: shell/userdir.h); otherwise none (every run starts from
+//                       the ROM set's defaults, so scripted runs are reproducible)
 //   plus the core's own options (--help lists them).
 //
 // The machine is described by dumps/<game>/machine.txt and dumps/<game>/rom/,
@@ -65,6 +66,7 @@
 #include "host/macro.h"
 #include "host/script.h"
 #include "shell/core.h"
+#include "shell/userdir.h"
 #ifdef HK_WITH_SDL
 #include "host/lights.h"
 #include "host/window.h"
@@ -167,23 +169,28 @@ void mkdirs(const std::string &path) {
         if (k == path.size() || path[k] == '/') mkdir(path.substr(0, k).c_str(), 0755);
 }
 
-// The HIRAKU root (dumps/, games/, out/): $HIRAKU_ROOT, else the checkout the binary
-// was built from, else the folder holding the binary or its parent (a copied build).
+// The HIRAKU root (dumps/, games/, out/): $HIRAKU_ROOT (the launcher passes its own), else a
+// portable install holding the binary (shell/userdir.h; before the checkout, which a package
+// built on this PC would otherwise take), else the checkout the binary was built from, else the
+// folder holding the binary or its parent (a copied build).
 std::string find_root() {
     if (const char *r = getenv("HIRAKU_ROOT"); r && *r) return r;
     struct stat st;
     auto has_dumps = [&st](const std::string &d) { return stat((d + "/dumps").c_str(), &st) == 0 && S_ISDIR(st.st_mode); };
-    if (has_dumps(HK_ROOT)) return HK_ROOT;
+    std::string dir, up;
     char exe[4096];
     ssize_t n = readlink("/proc/self/exe", exe, sizeof exe - 1);
     if (n > 0) {
         exe[n] = 0;
-        std::string dir = exe;
+        dir = exe;
         dir.erase(dir.rfind('/'));
-        if (has_dumps(dir)) return dir;
-        std::string up = dir.substr(0, dir.rfind('/'));
-        if (!up.empty() && has_dumps(up)) return up;
+        up = dir.substr(0, dir.rfind('/'));
     }
+    for (const std::string &d : {dir, up})
+        if (!d.empty() && has_dumps(d) && hk::portable(d)) return d;
+    if (has_dumps(HK_ROOT)) return HK_ROOT;
+    for (const std::string &d : {dir, up})
+        if (!d.empty() && has_dumps(d)) return d;
     return HK_ROOT;
 }
 
@@ -249,11 +256,7 @@ int main(int argc, char **argv) {
     mkdirs(out);
     opt.out = out;
 
-    if (!nvram_given && window_scale) {
-        const char *xdg = getenv("XDG_DATA_HOME"), *home = getenv("HOME");
-        std::string base = xdg && *xdg ? std::string(xdg) : std::string(home ? home : ".") + "/.local/share";
-        nvram_dir = base + "/hiraku/" + game;
-    }
+    if (!nvram_given && window_scale) nvram_dir = hk::user_data_dir(opt.root) + "/" + game;
     opt.nvram_dir = nvram_dir;
     if (!nvram_dir.empty()) {
         mkdirs(nvram_dir);

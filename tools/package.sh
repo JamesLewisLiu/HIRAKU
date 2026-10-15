@@ -2,7 +2,11 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # A copy of a build for another Linux PC (a test laptop):
 #
-#   tools/package.sh BUILD_DIR OUT.tar.xz
+#   tools/package.sh BUILD_DIR OUT.tar.xz [portable]
+#
+# portable: the package has a folder hiraku/user, which makes it a portable install
+# (runtime/shell/userdir.h): its settings and saves stay in that folder, not in ~/.config and
+# ~/.local/share, so it moves (or goes on a USB stick) as one.
 #
 # BUILD_DIR should be configured for it:
 #   cmake -S . -B BUILD_DIR -G Ninja -DCMAKE_DISABLE_FIND_PACKAGE_PkgConfig=ON \
@@ -17,11 +21,14 @@
 set -euo pipefail
 build=${1:?build dir}
 out=${2:?output .tar.xz}
+mode=${3:-}
+case $mode in ""|portable) ;; *) echo "the third argument is 'portable' or nothing" >&2; exit 2 ;; esac
 root=$(cd "$(dirname "$0")/.." && pwd)
 stage=$(mktemp -d)
 trap 'rm -rf "$stage"' EXIT
 d=$stage/hiraku
 mkdir -p "$d/bin/lib" "$d/dumps"
+[ "$mode" = portable ] && mkdir -p "$d/user/config" "$d/user/data"
 for f in "$build"/hiraku "$build"/hiraku-*; do
   [ -x "$f" ] && [ -f "$f" ] || continue
   case $(basename "$f") in hiraku-recomp) continue ;; esac
@@ -66,7 +73,14 @@ Game data, either way:
 - or copy it from a PC that has it ingested:
       tools/pack-data.py /path/to/this/hiraku GAME...
   (dumps/GAME/ and its disc images, with relative paths in machine.txt). Saved settings and NVRAM live in
-~/.local/share/hiraku/GAME (copy them over for games that need a first-boot setup).
+~/.local/share/hiraku/GAME (copy them over for games that need a first-boot setup), and the
+launcher's settings in ~/.config/hiraku.
+
+A portable install: with a folder named user in this folder (tools/package.sh ... portable makes
+one; or create it), the saves go in user/data/GAME and the launcher's settings in user/config, and
+this folder always runs as itself wherever it is moved: copy it to another PC or a USB stick and
+everything comes along. To bring an existing setup in, copy ~/.local/share/hiraku/* to user/data/
+and ~/.config/hiraku/* to user/config/.
 
 Konami Python games (bin/hiraku-popn9 … hiraku-popn14): Vulkan or OpenGL drivers from the system;
 --renderer vk (or gl) draws on the GPU, the default software renderer on the CPU.
@@ -83,7 +97,7 @@ mean, percentiles and the worst frame). A repeatable test, no window:
     bin/hiraku-bm1stmix --frames 12600 --script scripts/bm1stmix-play.his
     bin/hiraku-popn8 --frames 7200
 A run without a window starts from blank NVRAM unless given --nvram DIR (kbm, ppp
-and pop'n 6 need theirs: --nvram ~/.local/share/hiraku/kbm).
+and pop'n 6 need theirs: --nvram ~/.local/share/hiraku/kbm, or user/data/kbm when portable).
 
 Smooth frames (display sync, on by default): on a 60, 120 or 240 Hz display every frame
 stays up the same number of refreshes, and pop'n runs 2.6 % faster to match (docs/PLAY.md,

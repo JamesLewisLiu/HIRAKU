@@ -96,6 +96,8 @@ for the games that have a `games/<id>/macros.txt`.
 
 **Saves:** NVRAM (operator settings, rankings) lives in `~/.local/share/hiraku/bm3final/`. It is saved on Esc, on window close and on Ctrl-C. Use `--nvram DIR` to keep it elsewhere.
 
+**A portable install.** A HIRAKU folder that holds a folder named `user` keeps everything that is yours inside it: the saves in `user/data/<game>/` (instead of `~/.local/share/hiraku/<game>/`), and the launcher's settings, controls, lights and picture settings in `user/config/` (instead of `~/.config/hiraku/`). It also always runs as itself: the launcher and the games take that folder as their root wherever it is, and the launcher's "HIRAKU folder" setting is greyed out. So the folder can be copied to another PC or a USB stick with everything in it. `tools/package.sh BUILD OUT.tar.xz portable` builds a package with the folder; for an existing copy, create it, then copy `~/.local/share/hiraku/*` into `user/data/` and `~/.config/hiraku/*` into `user/config/` to bring a setup along. Elsewhere, these docs give the usual places; in a portable install, read them as `user/data` and `user/config`. The programs still use the system's graphics drivers, sound server and (for the launcher) Qt.
+
 **Persistence is unconfirmed.** In MAME and in HIRAKU alike, the scripted sessions so far never made the game write its NVRAM. It probably writes only when a setting or a ranking changes, and none of those sessions changed either. Check whether a test-mode change or a new high score survives a restart.
 
 ## The picture

@@ -13,7 +13,38 @@
 
 namespace cfg {
 
+namespace {
+// The root found without the settings (which may live in it): $HIRAKU_ROOT, else the checkout the
+// launcher was built from, else the launcher's folder or its parent (a copied build).
+QString foundRoot() {
+    QString env = qEnvironmentVariable("HIRAKU_ROOT");
+    if (!env.isEmpty() && QDir(env + "/games").exists()) return env;
+    if (QDir(QString(HK_ROOT) + "/dumps").exists()) return QString(HK_ROOT);
+    QDir app(QCoreApplication::applicationDirPath());
+    if (app.exists("dumps")) return app.absolutePath();
+    if (app.cdUp() && app.exists("dumps")) return app.absolutePath();
+    return QString(HK_ROOT);
+}
+
+// A portable install's folder, or "": the launcher's own folder or its parent when it holds a
+// folder `user` (first: a package built on this PC must not take the checkout it came from),
+// else the root above when it does
+QString portableRoot() {
+    static const QString r = [] {
+        QDir app(QCoreApplication::applicationDirPath());
+        if (app.exists("user") && app.exists("games")) return app.absolutePath();
+        if (app.cdUp() && app.exists("user") && app.exists("games")) return app.absolutePath();
+        QDir f(foundRoot());
+        return f.exists("user") ? f.absolutePath() : QString();
+    }();
+    return r;
+}
+}  // namespace
+
+bool portable() { return !portableRoot().isEmpty(); }
+
 QString configDir() {
+    if (portable()) return portableRoot() + "/user/config";
     return QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) + "/hiraku";
 }
 
@@ -23,19 +54,13 @@ QSettings &settings() {
 }
 
 QString rootDir() {
-    // the setting, else $HIRAKU_ROOT, else the checkout the launcher was built from,
-    // else the launcher's folder or its parent (a copied build): as the game binaries.
-    // A setting or $HIRAKU_ROOT without games/ is skipped: one left from another copy of
-    // HIRAKU (an older package moved or deleted) would otherwise show an empty list.
+    // a portable install is its own root, wherever it was moved. Otherwise the setting, else as
+    // the game binaries find theirs (foundRoot). A setting without games/ is skipped: one left
+    // from another copy of HIRAKU (an older package moved or deleted) would show an empty list.
+    if (portable()) return portableRoot();
     QString r = settings().value("paths/root").toString();
     if (!r.isEmpty() && QDir(r + "/games").exists()) return r;
-    QString env = qEnvironmentVariable("HIRAKU_ROOT");
-    if (!env.isEmpty() && QDir(env + "/games").exists()) return env;
-    if (QDir(QString(HK_ROOT) + "/dumps").exists()) return QString(HK_ROOT);
-    QDir app(QCoreApplication::applicationDirPath());
-    if (app.exists("dumps")) return app.absolutePath();
-    if (app.cdUp() && app.exists("dumps")) return app.absolutePath();
-    return QString(HK_ROOT);
+    return foundRoot();
 }
 
 QString binDir() {
@@ -47,7 +72,9 @@ QString nvramBase() { return settings().value("paths/nvram").toString(); }
 
 QString nvramDir(const QString &game) {
     QString base = nvramBase();
-    if (base.isEmpty()) base = QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation) + "/hiraku";
+    if (base.isEmpty())
+        base = portable() ? portableRoot() + "/user/data"
+                          : QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation) + "/hiraku";
     return base + "/" + game;
 }
 
