@@ -153,6 +153,21 @@ void VirtualNet::set_cabinet(int index) {
     lobby_here_ = index == 0;
 }
 
+// The first datagram waiting, to a recvfrom: its bytes, its length, and the sender
+void VirtualNet::take_datagram(Socket &s, uint32_t ch, uint32_t buf, uint32_t len, uint32_t from_addr) {
+    Datagram g = std::move(s.datagrams.front());
+    s.datagrams.erase(s.datagrams.begin());
+    std::vector<uint8_t> &d = g.data;
+    d.resize(std::min<size_t>(d.size(), len));
+    io_.write(buf, d.data(), (uint32_t)d.size());
+    uint8_t from[4] = {};
+    io_.read(from_addr, from, 4);
+    uint32_t from_word;
+    std::memcpy(&from_word, from, 4);
+    respond(ch, (int32_t)d.size(), g.from, (from_word & 0xffff0000) | g.port);
+    if (log) log(fmt("ch%u 17 recvfrom = %zu", ch, d.size()));
+}
+
 void VirtualNet::poll() {
     polls_++;
     if (cable) {
@@ -161,6 +176,16 @@ void VirtualNet::poll() {
         to_lan_.clear();
         for (LanCable::Packet &p : in) from_lan(p);
     }
+    for (auto &[fd, s] : sockets_)   // datagram recvs waiting: one arrived, or the timeout ran out
+        if (s.type == 2 && s.waiting && (!s.datagrams.empty() || polls_ >= s.wait_until)) {
+            s.waiting = false;
+            if (!s.datagrams.empty()) {
+                take_datagram(s, s.wait_ch, s.wait_buf, s.wait_len, s.wait_from);
+            } else {
+                respond(s.wait_ch, -1);
+                if (log) log(fmt("ch%u 17 recvfrom(%d) timed out", s.wait_ch, fd));
+            }
+        }
     take_answers();
 }
 
@@ -251,7 +276,17 @@ bool VirtualNet::command(uint32_t ch, const uint32_t *p, uint32_t quads) {
         note(fmt("bind(%d, port %u) = 0", (int)arg(1), arg(2) & 0xffff));
         return true;
     }
-    case 0x13:   // setsockopt
+    case 0x13:   // setsockopt(fd << 16 | level, option << 16 | size, value...)
+        // option 0x200 at level ffff: the receive timeout, seconds and microseconds; kept in
+        // whole frames, the time the LAN moves in (a shorter one times out at once)
+        if ((arg(1) & 0xffff) == 0xffff && arg(2) >> 16 == 0x200)
+            if (auto it = sockets_.find((int)(arg(1) >> 16)); it != sockets_.end()) {
+                const double us = arg(3) == 0xffffffffu ? 1e18 : arg(3) * 1e6 + arg(4);
+                it->second.timeout_frames = (uint64_t)(us * 59.94 / 1e6);
+            }
+        respond(ch, 0);
+        note(fmt("%08x %08x %08x %08x = 0", arg(1), arg(2), arg(3), arg(4)));
+        return true;
     case 0x1c:   // shutdown
         respond(ch, 0);
         note(fmt("%08x %08x %08x = 0", arg(1), arg(2), arg(3)));
@@ -326,22 +361,21 @@ bool VirtualNet::command(uint32_t ch, const uint32_t *p, uint32_t quads) {
             if (s.datagrams.empty()) {
                 // the resolver and the ping thread poll (0: nothing yet); NET TAISEN's sockets wait
                 // with a timeout, and empty their queue by reading until one times out (pop'n 12 0x199c88)
+                // with a timeout of a frame or more the recv waits, at most that long (a datagram from
+                // another cabinet comes at a frame's end)
+                if (!s.dns && s.type == 2 && s.timeout_frames) {
+                    s.waiting = true;
+                    s.wait_ch = ch, s.wait_buf = arg(2), s.wait_len = arg(3), s.wait_from = arg(5);
+                    s.wait_until = polls_ + s.timeout_frames;
+                    note(fmt("recvfrom(%d) waits", fd));
+                    return true;
+                }
                 const int32_t r = s.dns || s.type == 3 ? 0 : -1;
                 respond(ch, r);
                 note(fmt("recvfrom(%d) nothing = %d", fd, r));
                 return true;
             }
-            Datagram g = std::move(s.datagrams.front());
-            s.datagrams.erase(s.datagrams.begin());
-            std::vector<uint8_t> &d = g.data;
-            d.resize(std::min<size_t>(d.size(), arg(3)));
-            io_.write(arg(2), d.data(), (uint32_t)d.size());
-            uint8_t from[4] = {};
-            io_.read(arg(5), from, 4);
-            uint32_t from_word;
-            std::memcpy(&from_word, from, 4);
-            respond(ch, (int32_t)d.size(), g.from, (from_word & 0xffff0000) | g.port);
-            note(fmt("recvfrom(%d) = %zu", fd, d.size()));
+            take_datagram(s, ch, arg(2), arg(3), arg(5));
             return true;
         }
         if (s.pending.empty() && s.in_flight) {   // the answer is on its way: the recv waits for it
@@ -362,6 +396,8 @@ bool VirtualNet::command(uint32_t ch, const uint32_t *p, uint32_t quads) {
     }
     case 0x1d: {   // close
         const int fd = (int)arg(1);
+        if (auto it = sockets_.find(fd); it != sockets_.end() && it->second.waiting && it->second.type == 2)
+            respond(it->second.wait_ch, -1);   // a recv waiting on it fails
         sockets_.erase(fd);
         respond(ch, 0);
         note(fmt("close(%d)", fd));

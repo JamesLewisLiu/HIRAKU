@@ -9,7 +9,8 @@
 //   - UDP to 192.168.50.1 at Lobby::PORT: NET TAISEN's lobby (pop'n 12-14, lobby.h), answered at
 //     once; datagrams to other cabinets and broadcasts go on the LAN cable to cabinets in other
 //     processes (lancable.h: then this cabinet is 192.168.50.2 + its number, and only the
-//     first cabinet keeps the lobby), else nowhere, as on a LAN with no other cabinet;
+//     first cabinet keeps the lobby), else nowhere, as on a LAN with no other cabinet. A recvfrom
+//     waits for its socket's timeout (in whole frames), as the board's;
 //   - TCP: each HTTP request the game sends goes to a handler, with the host and port it
 //     connected to (docs/EAMUSE3.md). The handler answers at once (the server in the core:
 //     reproducible) or later (a real server on the network); a recv waits for the answer, as
@@ -85,6 +86,9 @@ private:
         bool answered = false;     // the handler has answered (and will close: HTTP/1.0)
         bool waiting = false;      // a recv is parked: channel, buffer, length
         uint32_t wait_ch = 0, wait_buf = 0, wait_len = 0;
+        uint32_t wait_from = 0;            // datagram: where recvfrom wants the sender's address
+        uint64_t wait_until = 0;           // and the frame its timeout runs out
+        uint64_t timeout_frames = 0;       // its receive timeout (setsockopt 0x200), in whole frames
         std::vector<Datagram> datagrams;   // datagram: answers not read yet
         bool dns = false;                  // it asked DNS: an empty recvfrom gives 0, not a timeout
         uint16_t port = 0;                 // datagram: the port it is bound to (or was given)
@@ -93,6 +97,7 @@ private:
     void http_progress(Socket &s);
     void take_answers();
     void from_lan(LanCable::Packet &p);
+    void take_datagram(Socket &s, uint32_t ch, uint32_t buf, uint32_t len, uint32_t from_addr);
     void deliver(Socket &s, uint32_t ch, uint32_t buf, uint32_t len);
     std::vector<uint8_t> dns_answer(const uint8_t *q, size_t n, std::string *name);
     Target target_of(uint32_t ip_be, uint16_t port) const;

@@ -701,7 +701,8 @@ reader with its own 10-key; the PIN is checked by the server.
 
 ## NET TAISEN (pop'n music 12–14)
 
-Battles between cabinets, up to four players, CPUs in the empty seats. pop'n 12, 13 and 14 carry
+Battles between cabinets, three players to a match (the battle's three score slots), CPUs in the
+empty seats. pop'n 12, 13 and 14 carry
 the same library (the strings `globby://`, `LobbyEntry()`, `>>NETVS MASTER/SLAVE/LOCALVS`); the
 addresses here are pop'n 12's. In HIRAKU the mode is offered and played: alone, when nobody
 comes, the game says so and starts the credit in CHALLENGE mode (`oracle/scripts/popn12-nettaisen.his`);
@@ -755,6 +756,14 @@ meet through the first one's lobby and battle, a CPU in the third seat
   while the scores go round, and each RESULT has all three scores. Each cabinet shows the others'
   scores as they arrive, so they can differ a little between the screens (the CPU's 2885 and 2818
   at one moment).
+- **Three and four cabinets, as seen in HIRAKU:** three meet as two do (B and C each list, find A
+  and call it) and play with no CPU; the three RESULTs agree. A full match takes its master out of
+  the lobby, so a fourth cabinet finds the lobby empty, enters it and waits for a match of its own:
+  with nobody else, CHALLENGE mode.
+- **Receive timeouts:** the battle's sockets set one (`setsockopt` level ffff, option 0x200,
+  seconds and microseconds): the lobby's 1 s a try and 1 ms to empty its queue, another 50 ms. A
+  recv waits for a datagram that long; answered at once instead, a lobby request from another
+  cabinet (one frame away) went out again before its answer came.
 - **After the credit:** `playerdata set` carries `<netvs music_num sheet_num caption fruit class
   class_skill badge get_ojama set_ojama rank stage_record member_name member_pref map_hi map_lo/>`
   (pop'n 13 and 14: their own fields).
