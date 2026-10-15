@@ -25,6 +25,11 @@ public:
 
 	void reset_playback();
 
+	// HIRAKU: the first `n` samples (fewer: as far as is certain) the next sound_stream_update()
+	// will put out, worked out ahead of it on copies; for the host's --fine-sound
+	// (runtime/sys573/board.cpp). Returns how many are ready, at `l` and `r`.
+	int hk_predict(int n, const float *&l, const float *&r);
+
 protected:
 	virtual void device_start() override ATTR_COLD;
 	virtual void device_reset() override ATTR_COLD;
@@ -89,6 +94,16 @@ private:
 	float gain_ll, gain_rr;
 
 	std::unique_ptr<mp3_audio> mp3dec;
+
+	// HIRAKU: hk_predict()'s copies, valid until the stream next updates (or the data, the
+	// gains or the playback change)
+	bool m_hk_valid = false, m_hk_end = false;
+	std::vector<float> m_hk_out[2];
+	std::array<uint8_t, 0xe00> m_hk_data;
+	std::array<short, 1152*2> m_hk_samples;
+	uint32_t m_hk_data_count = 0;
+	int32_t m_hk_sample_count = 0, m_hk_samples_idx = 0, m_hk_channels = 2;
+	std::unique_ptr<mp3_audio> m_hk_dec;
 };
 
 

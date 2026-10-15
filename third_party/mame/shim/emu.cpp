@@ -1006,15 +1006,18 @@ attotime sound_stream::sample_to_time(u64 index) const {
     return attotime((s64)secs, attos);
 }
 
+u64 sound_stream::index_at(const attotime &t) const {
+    const attotime::i128 part = (attotime::i128)t.attoseconds() * m_sample_rate;
+    u64 q, r;
+    return (u64)t.seconds() * m_sample_rate +
+           (attotime::div64(part, ATTOSECONDS_PER_SECOND, q, r) ? q : (u64)(part / ATTOSECONDS_PER_SECOND)) + 1;
+}
+
 void sound_stream::update() {
     if (!m_device->machine().m_exact || !m_sample_rate || m_in_update) return;
     const attotime now = m_device->machine().time();
     if (now.is_zero()) return;
-    const attotime::i128 part = (attotime::i128)now.attoseconds() * m_sample_rate;
-    u64 q, r;
-    const u64 idx = (u64)now.seconds() * m_sample_rate +
-                    (attotime::div64(part, ATTOSECONDS_PER_SECOND, q, r) ? q : (u64)(part / ATTOSECONDS_PER_SECOND));
-    const s64 n = (s64)(idx - m_write_sample) + 1;   // up to and including the current sample
+    const s64 n = (s64)(index_at(now) - m_write_sample);   // up to and including the current sample
     if (n <= 0) return;
     m_samples_to_update = (s32)n;
     m_in_update = true;

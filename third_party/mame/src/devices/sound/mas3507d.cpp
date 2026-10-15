@@ -367,6 +367,7 @@ void mas3507d_device::mem_write(int bank, uint32_t adr, uint32_t val)
 	case 0x0032f: LOGCONFIG("MAS3507D: OutputConfig = %05x\n", val); break;
 	case 0x107f8:
 		gain_ll = gain_to_percentage(val);
+		m_hk_valid = false; // HIRAKU
 		LOGCONFIG("MAS3507D: left->left   gain = %05x (%d dB, %f%%)\n", val, gain_to_db(val), gain_ll);
 		break;
 	case 0x107f9:
@@ -377,6 +378,7 @@ void mas3507d_device::mem_write(int bank, uint32_t adr, uint32_t val)
 		break;
 	case 0x107fb:
 		gain_rr = gain_to_percentage(val);
+		m_hk_valid = false; // HIRAKU
 		LOGCONFIG("MAS3507D: right->right gain = %05x (%d dB, %f%%)\n", val, gain_to_db(val), gain_rr);
 		break;
 	default: LOGCONFIG("MAS3507D: %d:%04x = %05x\n", bank, adr, val); break;
@@ -390,6 +392,7 @@ void mas3507d_device::reg_write(uint32_t adr, uint32_t val)
 	case 0xaa:
 		LOGCONFIG("MAS3507D: Mute/bypass = %05x\n", val);
 		is_muted = val == 1;
+		m_hk_valid = false; // HIRAKU
 		break;
 	case 0xe6: LOGCONFIG("MAS3507D: StartupConfig = %05x\n", val); break;
 	case 0xe7: LOGCONFIG("MAS3507D: Kprescale = %05x\n", val); break;
@@ -415,6 +418,8 @@ void mas3507d_device::sid_w(uint8_t byte)
 	}
 
 	mp3data[mp3data_count++] = byte;
+	if (m_hk_end || (m_hk_valid && !mp3dec->hk_found_stream()))
+		m_hk_valid = false;   // HIRAKU: hk_predict() may get further
 
 	cb_demand(mp3data_count < mp3data.size());
 }
@@ -475,6 +480,7 @@ void mas3507d_device::append_buffer(sound_stream &stream, int &pos, int scount)
 
 void mas3507d_device::reset_playback()
 {
+	m_hk_valid = false; // HIRAKU
 	std::fill(mp3data.begin(), mp3data.end(), 0);
 	std::fill(samples.begin(), samples.end(), 0);
 
@@ -485,8 +491,75 @@ void mas3507d_device::reset_playback()
 	samples_idx = 0;
 }
 
+// HIRAKU: the samples the next sound_stream_update() will put out first, ahead of it, for the
+// host's --fine-sound (runtime/sys573/board.cpp). The decoder decodes a frame when its stream
+// updates and asks for more data then, which the board sees, so the stream can't be updated
+// sooner; this runs fill_buffer() and append_buffer() on copies (the decoder's state, its data
+// and its frame) and leaves the device as it was. It stops where the outcome isn't certain: a
+// frame the copy can't decode while a stream plays (its data may still be on the way), or one at
+// another sample rate. Before a stream is found (nothing plays) the update puts out silence, and
+// so does this, until data comes.
+int mas3507d_device::hk_predict(int n, const float *&l, const float *&r)
+{
+	if (!m_hk_dec)
+		m_hk_dec = std::make_unique<mp3_audio>(m_hk_data.data());
+	if (!m_hk_valid) {
+		m_hk_valid = true;
+		m_hk_end = false;
+		m_hk_out[0].clear();
+		m_hk_out[1].clear();
+		m_hk_data = mp3data;
+		m_hk_data_count = mp3data_count;
+		m_hk_dec->hk_copy_state(*mp3dec);
+		m_hk_samples = samples;
+		m_hk_sample_count = sample_count;
+		m_hk_samples_idx = samples_idx;
+		m_hk_channels = frame_channels;
+	}
+
+	const sound_stream::sample_t sample_scale = 1.0 / 32768.0;
+	const sound_stream::sample_t mute_scale = is_muted ? 0.0 : 1.0;
+	while (int(m_hk_out[0].size()) < n && !m_hk_end) {
+		if (m_hk_sample_count == 0) {
+			int pos = 0, frame_sample_rate = 0;
+			bool decoded_frame = m_hk_dec->decode_buffer(pos, m_hk_data_count, &m_hk_samples[0], m_hk_sample_count, frame_sample_rate, m_hk_channels);
+			m_hk_samples_idx = 0;
+			if (!decoded_frame || m_hk_sample_count == 0) {
+				if (m_hk_sample_count <= 0) {
+					if (m_hk_dec->hk_found_stream()) {
+						m_hk_end = true;   // data may still come before the update
+						break;
+					}
+					m_hk_out[0].resize(n, 0.0f);   // no stream yet: silence
+					m_hk_out[1].resize(n, 0.0f);
+					break;
+				}
+			} else {
+				std::copy(m_hk_data.begin() + pos, m_hk_data.end(), m_hk_data.begin());
+				m_hk_data_count -= pos;
+				if (u32(frame_sample_rate) != stream->sample_rate()) {
+					m_hk_end = true;   // the update changes the stream's rate here
+					break;
+				}
+			}
+		}
+
+		const int bytes_per_sample = std::min(m_hk_channels, 2);
+		while (m_hk_sample_count > 0 && int(m_hk_out[0].size()) < n) {
+			m_hk_out[0].push_back(sound_stream::sample_t(m_hk_samples[m_hk_samples_idx * bytes_per_sample]) * sample_scale * mute_scale * gain_ll);
+			m_hk_out[1].push_back(sound_stream::sample_t(m_hk_samples[m_hk_samples_idx * bytes_per_sample + (bytes_per_sample >> 1)]) * sample_scale * mute_scale * gain_rr);
+			if (++m_hk_samples_idx >= m_hk_sample_count)
+				m_hk_sample_count = 0;
+		}
+	}
+	l = m_hk_out[0].data();
+	r = m_hk_out[1].data();
+	return int(std::min<size_t>(n, m_hk_out[0].size()));
+}
+
 void mas3507d_device::sound_stream_update(sound_stream &stream)
 {
+	m_hk_valid = false; // HIRAKU
 	int csamples = stream.samples();
 	int pos = 0;
 

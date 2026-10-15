@@ -25,6 +25,11 @@ public:
 
 	void clear();
 
+	// HIRAKU: this decoder's state made a copy of `o`'s (not its data: each decodes from its own
+	// base), so mas3507d's hk_predict() can decode ahead on a copy, leaving the real one as it was
+	void hk_copy_state(const mp3_audio &o);
+	bool hk_found_stream() const { return m_found_stream; }
+
 private:
 	struct mp3dec_local_t;
 

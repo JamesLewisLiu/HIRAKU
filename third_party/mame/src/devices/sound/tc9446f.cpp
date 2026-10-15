@@ -177,6 +177,8 @@ void tc9446f_device::audio_w(uint8_t byte)
 
 	mp3data[mp3data_count++] = byte;
 	stream_update();
+	if (m_hk_end || m_hk_silent)
+		m_hk_valid = false;   // HIRAKU: hk_predict() may get further
 }
 
 int tc9446f_device::mp3_find_frame(int offset)
@@ -287,6 +289,7 @@ void tc9446f_device::append_buffer(sound_stream &stream, int& pos, int scount)
 
 void tc9446f_device::reset_playback()
 {
+	m_hk_valid = false; // HIRAKU
 	std::fill(mp3data.begin(), mp3data.end(), 0);
 	std::fill(samples.begin(), samples.end(), 0);
 
@@ -304,8 +307,62 @@ void tc9446f_device::reset_playback()
 	cb_demand(mp3data_count < mp3data.size());
 }
 
+// HIRAKU: the samples the next sound_stream_update() will put out first, ahead of it, for the
+// host's --fine-sound (runtime/sys573/board.cpp), as mas3507d's: fill_buffer() and
+// append_buffer() on copies, leaving the device as it was. Until the decoder streams
+// (DECODER_STREAM_BUFFER) the update puts out silence, and so does this; a frame the copy can't
+// decode (its data may still be on the way) or one at another rate ends it.
+int tc9446f_device::hk_predict(int n, const float *&l, const float *&r)
+{
+	if (!m_hk_valid) {
+		m_hk_valid = true;
+		m_hk_end = m_hk_silent = false;
+		m_hk_out[0].clear();
+		m_hk_out[1].clear();
+		m_hk_data = mp3data;
+		m_hk_data_count = mp3data_count;
+		m_hk_dec = mp3_dec;
+		m_hk_info = mp3_info;
+		m_hk_samples = samples;
+		m_hk_sample_count = sample_count;
+		m_hk_samples_idx = samples_idx;
+	}
+
+	while (int(m_hk_out[0].size()) < n && !m_hk_end) {
+		if (m_hk_sample_count == 0) {
+			if (mp3_decoder_state != DECODER_STREAM_BUFFER) {
+				m_hk_silent = true;
+				m_hk_out[0].resize(n, 0.0f);
+				m_hk_out[1].resize(n, 0.0f);
+				break;
+			}
+			memset(&m_hk_info, 0, sizeof(mp3dec_frame_info_t));
+			m_hk_sample_count = mp3dec_decode_frame(&m_hk_dec, &m_hk_data[0], m_hk_data_count, &m_hk_samples[0], &m_hk_info);
+			m_hk_samples_idx = 0;
+			if (m_hk_sample_count == 0 || uint32_t(m_hk_info.hz) != current_rate) {
+				m_hk_end = true;
+				break;
+			}
+			std::copy(m_hk_data.begin() + m_hk_info.frame_bytes, m_hk_data.end(), m_hk_data.begin());
+			m_hk_data_count -= m_hk_info.frame_bytes;
+		}
+
+		const int bytes_per_sample = m_hk_info.channels > 2 ? 2 : m_hk_info.channels;
+		while (m_hk_sample_count > 0 && int(m_hk_out[0].size()) < n) {
+			m_hk_out[0].push_back(float(double(s32(m_hk_samples[m_hk_samples_idx * bytes_per_sample])) / 32768));
+			m_hk_out[1].push_back(float(double(s32(m_hk_samples[m_hk_samples_idx * bytes_per_sample + (bytes_per_sample >> 1)])) / 32768));
+			if (++m_hk_samples_idx >= m_hk_sample_count)
+				m_hk_sample_count = 0;
+		}
+	}
+	l = m_hk_out[0].data();
+	r = m_hk_out[1].data();
+	return int(std::min<size_t>(n, m_hk_out[0].size()));
+}
+
 void tc9446f_device::sound_stream_update(sound_stream &stream)
 {
+	m_hk_valid = false; // HIRAKU
 	int csamples = stream.samples();
 	int pos = 0;
 

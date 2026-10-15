@@ -1700,6 +1700,9 @@ public:
     attotime start_time() const { return sample_to_time(start_index()); }
     attotime end_time() const { return sample_to_time(end_index()); }
     void update();
+    // HIRAKU: how many samples the stream holds once updated to `t` (update() brings it to its
+    // index at the machine's time, that sample included)
+    u64 index_at(const attotime &t) const;
 
     void put(int out, int index, float v) { m_buf[out][index] = v; }
     void put_int(int out, int index, s32 v, s32 max) { put(out, index, float(double(v) / max)); }

@@ -46,6 +46,13 @@ void mp3_audio::clear()
 	m_found_stream = false;
 }
 
+// HIRAKU
+void mp3_audio::hk_copy_state(const mp3_audio &o)
+{
+	*dec = *o.dec;
+	m_found_stream = o.m_found_stream;
+}
+
 bool mp3_audio::decode_buffer(int &pos, int limit, short *output, int &output_samples, int &sample_rate, int &channels)
 {
 	mp3dec_frame_info_t info = {};

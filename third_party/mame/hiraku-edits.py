@@ -1460,6 +1460,167 @@ def xvd701_cpp(s):
     return s
 
 
+def mp3_audio_h(s):
+    s = edit(s, '''	void clear();
+
+private:''', '''	void clear();
+
+	// HIRAKU: this decoder's state made a copy of `o`'s (not its data: each decodes from its own
+	// base), so mas3507d's hk_predict() can decode ahead on a copy, leaving the real one as it was
+	void hk_copy_state(const mp3_audio &o);
+	bool hk_found_stream() const { return m_found_stream; }
+
+private:''', 'mp3_audio.h hk_copy_state')
+    return s
+
+
+def mp3_audio_cpp(s):
+    s = edit(s, '''void mp3_audio::clear()
+{
+	mp3dec_init(dec.get());
+	m_found_stream = false;
+}
+''', '''void mp3_audio::clear()
+{
+	mp3dec_init(dec.get());
+	m_found_stream = false;
+}
+
+// HIRAKU
+void mp3_audio::hk_copy_state(const mp3_audio &o)
+{
+	*dec = *o.dec;
+	m_found_stream = o.m_found_stream;
+}
+''', 'mp3_audio.cpp hk_copy_state')
+    return s
+
+
+def mas3507d_h(s):
+    s = edit(s, '''	void reset_playback();
+
+protected:''', '''	void reset_playback();
+
+	// HIRAKU: the first `n` samples (fewer: as far as is certain) the next sound_stream_update()
+	// will put out, worked out ahead of it on copies; for the host's --fine-sound
+	// (runtime/sys573/board.cpp). Returns how many are ready, at `l` and `r`.
+	int hk_predict(int n, const float *&l, const float *&r);
+
+protected:''', 'mas3507d.h hk_predict')
+    s = edit(s, '''	std::unique_ptr<mp3_audio> mp3dec;
+};''', '''	std::unique_ptr<mp3_audio> mp3dec;
+
+	// HIRAKU: hk_predict()'s copies, valid until the stream next updates (or the data, the
+	// gains or the playback change)
+	bool m_hk_valid = false, m_hk_end = false;
+	std::vector<float> m_hk_out[2];
+	std::array<uint8_t, 0xe00> m_hk_data;
+	std::array<short, 1152*2> m_hk_samples;
+	uint32_t m_hk_data_count = 0;
+	int32_t m_hk_sample_count = 0, m_hk_samples_idx = 0, m_hk_channels = 2;
+	std::unique_ptr<mp3_audio> m_hk_dec;
+};''', 'mas3507d.h members')
+    return s
+
+
+MAS3507D_PREDICT = r'''
+// HIRAKU: the samples the next sound_stream_update() will put out first, ahead of it, for the
+// host's --fine-sound (runtime/sys573/board.cpp). The decoder decodes a frame when its stream
+// updates and asks for more data then, which the board sees, so the stream can't be updated
+// sooner; this runs fill_buffer() and append_buffer() on copies (the decoder's state, its data
+// and its frame) and leaves the device as it was. It stops where the outcome isn't certain: a
+// frame the copy can't decode while a stream plays (its data may still be on the way), or one at
+// another sample rate. Before a stream is found (nothing plays) the update puts out silence, and
+// so does this, until data comes.
+int mas3507d_device::hk_predict(int n, const float *&l, const float *&r)
+{
+	if (!m_hk_dec)
+		m_hk_dec = std::make_unique<mp3_audio>(m_hk_data.data());
+	if (!m_hk_valid) {
+		m_hk_valid = true;
+		m_hk_end = false;
+		m_hk_out[0].clear();
+		m_hk_out[1].clear();
+		m_hk_data = mp3data;
+		m_hk_data_count = mp3data_count;
+		m_hk_dec->hk_copy_state(*mp3dec);
+		m_hk_samples = samples;
+		m_hk_sample_count = sample_count;
+		m_hk_samples_idx = samples_idx;
+		m_hk_channels = frame_channels;
+	}
+
+	const sound_stream::sample_t sample_scale = 1.0 / 32768.0;
+	const sound_stream::sample_t mute_scale = is_muted ? 0.0 : 1.0;
+	while (int(m_hk_out[0].size()) < n && !m_hk_end) {
+		if (m_hk_sample_count == 0) {
+			int pos = 0, frame_sample_rate = 0;
+			bool decoded_frame = m_hk_dec->decode_buffer(pos, m_hk_data_count, &m_hk_samples[0], m_hk_sample_count, frame_sample_rate, m_hk_channels);
+			m_hk_samples_idx = 0;
+			if (!decoded_frame || m_hk_sample_count == 0) {
+				if (m_hk_sample_count <= 0) {
+					if (m_hk_dec->hk_found_stream()) {
+						m_hk_end = true;   // data may still come before the update
+						break;
+					}
+					m_hk_out[0].resize(n, 0.0f);   // no stream yet: silence
+					m_hk_out[1].resize(n, 0.0f);
+					break;
+				}
+			} else {
+				std::copy(m_hk_data.begin() + pos, m_hk_data.end(), m_hk_data.begin());
+				m_hk_data_count -= pos;
+				if (u32(frame_sample_rate) != stream->sample_rate()) {
+					m_hk_end = true;   // the update changes the stream's rate here
+					break;
+				}
+			}
+		}
+
+		const int bytes_per_sample = std::min(m_hk_channels, 2);
+		while (m_hk_sample_count > 0 && int(m_hk_out[0].size()) < n) {
+			m_hk_out[0].push_back(sound_stream::sample_t(m_hk_samples[m_hk_samples_idx * bytes_per_sample]) * sample_scale * mute_scale * gain_ll);
+			m_hk_out[1].push_back(sound_stream::sample_t(m_hk_samples[m_hk_samples_idx * bytes_per_sample + (bytes_per_sample >> 1)]) * sample_scale * mute_scale * gain_rr);
+			if (++m_hk_samples_idx >= m_hk_sample_count)
+				m_hk_sample_count = 0;
+		}
+	}
+	l = m_hk_out[0].data();
+	r = m_hk_out[1].data();
+	return int(std::min<size_t>(n, m_hk_out[0].size()));
+}
+'''
+
+
+def mas3507d_cpp(s):
+    # the prediction starts again whenever what it copied changes
+    s = edit(s, '''	mp3data[mp3data_count++] = byte;
+
+	cb_demand(mp3data_count < mp3data.size());
+}''', '''	mp3data[mp3data_count++] = byte;
+	if (m_hk_end || (m_hk_valid && !mp3dec->hk_found_stream()))
+		m_hk_valid = false;   // HIRAKU: hk_predict() may get further
+
+	cb_demand(mp3data_count < mp3data.size());
+}''', 'mas3507d.cpp sid_w')
+    s = edit(s, '''		gain_ll = gain_to_percentage(val);''', '''		gain_ll = gain_to_percentage(val);
+		m_hk_valid = false; // HIRAKU''', 'mas3507d.cpp gain_ll')
+    s = edit(s, '''		gain_rr = gain_to_percentage(val);''', '''		gain_rr = gain_to_percentage(val);
+		m_hk_valid = false; // HIRAKU''', 'mas3507d.cpp gain_rr')
+    s = edit(s, '''		is_muted = val == 1;''', '''		is_muted = val == 1;
+		m_hk_valid = false; // HIRAKU''', 'mas3507d.cpp mute')
+    s = edit(s, '''void mas3507d_device::reset_playback()
+{''', '''void mas3507d_device::reset_playback()
+{
+	m_hk_valid = false; // HIRAKU''', 'mas3507d.cpp reset_playback')
+    s = edit(s, '''void mas3507d_device::sound_stream_update(sound_stream &stream)
+{''', MAS3507D_PREDICT.lstrip('\n') + '''
+void mas3507d_device::sound_stream_update(sound_stream &stream)
+{
+	m_hk_valid = false; // HIRAKU''', 'mas3507d.cpp hk_predict')
+    return s
+
+
 def main():
     if len(sys.argv) != 2:
         sys.exit(__doc__)
@@ -1472,7 +1633,9 @@ def main():
                     ('machine/ins8250.cpp', ins8250_cpp), ('machine/ins8250.h', ins8250_h),
                     ('../3rdparty/minimp3/minimp3.h', minimp3_h),
                     ('bus/rs232/rs232.cpp', rs232_cpp),
-                    ('bus/rs232/xvd701.h', xvd701_h), ('bus/rs232/xvd701.cpp', xvd701_cpp)]:
+                    ('bus/rs232/xvd701.h', xvd701_h), ('bus/rs232/xvd701.cpp', xvd701_cpp),
+                    ('sound/mp3_audio.h', mp3_audio_h), ('sound/mp3_audio.cpp', mp3_audio_cpp),
+                    ('sound/mas3507d.h', mas3507d_h), ('sound/mas3507d.cpp', mas3507d_cpp)]:
         p = root / rel
         text = p.read_text()
         if 'HIRAKU' in text:

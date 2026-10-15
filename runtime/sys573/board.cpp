@@ -744,6 +744,12 @@ struct Board {
         double pos = 0;
         float peak = 0;           // its largest |sample|, and its rate (the report)
         u32 rate = 0;
+        std::vector<float> in[2];   // its samples at its own rate, on their way to q
+        // --fine-sound: the decoder's hk_predict(), the samples handed on ahead of its stream's
+        // next update (from its first), and how many were, and turned out otherwise
+        std::function<int(int, const float *&, const float *&)> predict;
+        std::vector<float> ahead[2];
+        u64 predicted = 0, differed = 0;
     };
     std::vector<Decoder> decoders;
     u64 frames = 0;
@@ -906,9 +912,9 @@ void set_audio_sink(AudioSink s) { g.audio_sink = std::move(s); }
 // update_irq_event), reads of its registers update the stream first, and every regress case shows
 // the same pictures. The sound is too on ddr2m-play and drmn10m-play, bit for bit; on ddr3mj-play
 // the SPU's differs a little from 195 s on (2.7 % of samples, correlation 0.99; why is open). The
-// digital board's MP3
-// decoders still update only at MAME's 50 Hz (decoding asks the board for more data, which the
-// machine sees), and the mix waits for them, so for now this helps the analog board only.
+// MP3 decoders (the digital board's, the multi-session unit's) still update only at MAME's 50 Hz:
+// decoding asks the board for more data, which the machine sees. Their samples up to now are
+// worked out ahead of the update on copies (hk_predict, below), and checked when it comes.
 [[noreturn]] void run() {
     running_machine &m = *g.machine;
     const attotime step = attotime::from_msec(1);
@@ -927,35 +933,69 @@ void set_audio_sink(AudioSink s) { g.audio_sink = std::move(s); }
                 for (sound_stream *s : m.m_streams) {
                     if (s->m_device == g.state->m_spu.target()) spu = s;
                     else if (dynamic_cast<cdda_device *>(s->m_device) && s->sample_rate() == 44100) cd = s;
-                    else if (dynamic_cast<mas3507d_device *>(s->m_device)) g.decoders.push_back({s, 1.0f, false});
-                    else if (dynamic_cast<tc9446f_device *>(s->m_device)) g.decoders.push_back({s, 0.65f, true});
+                    else if (auto *mas = dynamic_cast<mas3507d_device *>(s->m_device)) {
+                        g.decoders.push_back({s, 1.0f, false});
+                        g.decoders.back().predict = [mas](int n, const float *&l, const float *&r) { return mas->hk_predict(n, l, r); };
+                    } else if (auto *tc = dynamic_cast<tc9446f_device *>(s->m_device)) {
+                        g.decoders.push_back({s, 0.65f, true});
+                        g.decoders.back().predict = [tc](int n, const float *&l, const float *&r) { return tc->hk_predict(n, l, r); };
+                    }
                 }
             for (Board::Decoder &d : g.decoders) {
-                // what its 50 Hz updates produced, never more: the decoders decode and ask for data
-                // as their streams update, so updating one here would change the machine
+                // what its 50 Hz updates produced: the decoders decode and ask for data as their
+                // streams update, so updating one here would change the machine
                 auto &ml = d.stream->m_out[0], &mr = d.stream->m_out[1];
-                const size_t avail = std::min(ml.size(), mr.size());
+                const size_t real = std::min(ml.size(), mr.size());
+                // --fine-sound: what was handed on ahead of the update, now that it has made it.
+                // It's the same unless the game changed something in between (a new song's first
+                // milliseconds, a volume); those samples have been played, so the update's own
+                // are dropped either way, and the sound keeps its time
+                const size_t k = std::min(real, d.ahead[0].size());
+                for (size_t i = 0; i < k; i++)
+                    if (ml[i] != d.ahead[0][i] || mr[i] != d.ahead[1][i]) d.differed++;
+                d.ahead[0].erase(d.ahead[0].begin(), d.ahead[0].begin() + (ptrdiff_t)k);
+                d.ahead[1].erase(d.ahead[1].begin(), d.ahead[1].begin() + (ptrdiff_t)k);
+                for (size_t i = k; i < real; i++) d.peak = std::max({d.peak, std::fabs(ml[i]), std::fabs(mr[i])});
+                d.in[0].insert(d.in[0].end(), ml.begin() + (ptrdiff_t)k, ml.begin() + (ptrdiff_t)real);
+                d.in[1].insert(d.in[1].end(), mr.begin() + (ptrdiff_t)k, mr.begin() + (ptrdiff_t)real);
+                ml.erase(ml.begin(), ml.begin() + (ptrdiff_t)real);
+                mr.erase(mr.begin(), mr.begin() + (ptrdiff_t)real);
+                // ... and the samples from its next update up to now, worked out ahead of it
+                if (audio_step && d.predict) {
+                    const u64 have = d.stream->m_write_sample + d.ahead[0].size(), want = d.stream->index_at(m.time());
+                    if (want > have) {
+                        const float *pl, *pr;
+                        const size_t from = d.ahead[0].size();
+                        const size_t got = (size_t)d.predict((int)(from + (want - have)), pl, pr);
+                        for (size_t i = from; i < got; i++) {
+                            d.ahead[0].push_back(pl[i]), d.ahead[1].push_back(pr[i]);
+                            d.in[0].push_back(pl[i]), d.in[1].push_back(pr[i]);
+                        }
+                        if (got > from) d.predicted += got - from;
+                    }
+                }
+                const size_t avail = d.in[0].size();
                 const u32 rate = d.stream->sample_rate();
                 d.rate = rate;
-                for (size_t i = 0; i < avail; i++) d.peak = std::max({d.peak, std::fabs(ml[i]), std::fabs(mr[i])});
                 size_t used = avail;
+                const std::vector<float> &il = d.in[0], &ir = d.in[1];
                 if (rate == 44100 || !rate) {
-                    d.q[0].append(ml.data(), ml.data() + avail);
-                    d.q[1].append(mr.data(), mr.data() + avail);
+                    d.q[0].append(il.data(), il.data() + avail);
+                    d.q[1].append(ir.data(), ir.data() + avail);
                 } else {   // linear, from rate to 44.1 kHz
                     const double step = rate / 44100.0;
                     while (d.pos + 1 < (double)avail) {
                         const size_t i = (size_t)d.pos;
                         const float f = (float)(d.pos - (double)i);
-                        d.q[0].push_back(ml[i] + (ml[i + 1] - ml[i]) * f);
-                        d.q[1].push_back(mr[i] + (mr[i + 1] - mr[i]) * f);
+                        d.q[0].push_back(il[i] + (il[i + 1] - il[i]) * f);
+                        d.q[1].push_back(ir[i] + (ir[i + 1] - ir[i]) * f);
                         d.pos += step;
                     }
                     used = std::min(avail, (size_t)d.pos);
                     d.pos -= (double)used;
                 }
-                ml.erase(ml.begin(), ml.begin() + used);
-                mr.erase(mr.begin(), mr.begin() + used);
+                d.in[0].erase(d.in[0].begin(), d.in[0].begin() + (ptrdiff_t)used);
+                d.in[1].erase(d.in[1].begin(), d.in[1].begin() + (ptrdiff_t)used);
             }
             if (spu) {
                 // the CD stream to now, so the SPU's samples don't wait for its 50 Hz update (the
@@ -1088,6 +1128,13 @@ std::string sound_report() {
         out += b;
     }
     if (!msu.empty()) out += "; the unit's MP3s peak at " + msu + ", at " + std::to_string(msu_rate) + " Hz";
+    if (g.cfg.fine_sound) {   // the MP3 handed on ahead of the decoders' updates (run())
+        u64 predicted = 0, differed = 0;
+        for (const Board::Decoder &d : g.decoders) predicted += d.predicted, differed += d.differed;
+        snprintf(b, sizeof b, "\nsound: %llu MP3 samples handed on ahead of their decoder's update, %llu of them not as it made them",
+                 (unsigned long long)predicted, (unsigned long long)differed);
+        out += b;
+    }
     return out;
 }
 

@@ -41,6 +41,14 @@ protected:
 
 	virtual void sound_stream_update(sound_stream &stream) override;
 
+public:
+	// HIRAKU: the first `n` samples (fewer: as far as is certain) the next sound_stream_update()
+	// will put out, worked out ahead of it on copies; for the host's --fine-sound
+	// (runtime/sys573/board.cpp). Returns how many are ready, at `l` and `r`.
+	int hk_predict(int n, const float *&l, const float *&r);
+
+protected:
+
 private:
 	int mp3_find_frame(int offset);
 	void stream_update();
@@ -75,6 +83,17 @@ private:
 	uint32_t mp3data_count, current_rate;
 	uint32_t decoded_frame_count, decoded_samples;
 	int32_t sample_count, samples_idx;
+
+	// HIRAKU: hk_predict()'s copies, valid until the stream next updates (or data or a reset
+	// changes what they were copied from)
+	bool m_hk_valid = false, m_hk_end = false, m_hk_silent = false;
+	std::vector<float> m_hk_out[2];
+	std::array<uint8_t, 0x4000> m_hk_data;
+	std::array<mp3d_sample_t, MINIMP3_MAX_SAMPLES_PER_FRAME> m_hk_samples;
+	mp3dec_t m_hk_dec;
+	mp3dec_frame_info_t m_hk_info;
+	uint32_t m_hk_data_count = 0;
+	int32_t m_hk_sample_count = 0, m_hk_samples_idx = 0;
 };
 
 DECLARE_DEVICE_TYPE(TC9446F, tc9446f_device)
