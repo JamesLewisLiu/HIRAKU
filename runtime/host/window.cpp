@@ -2,11 +2,13 @@
 #include "window.h"
 
 #include <SDL3/SDL.h>
+#include <dlfcn.h>
 
 #include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <cmath>
+#include <cstring>
 #include <string>
 #include <vector>
 #include <cstdlib>
@@ -167,36 +169,181 @@ void window_set_audio_output(const std::string &device, int frames) {
     g_audio_buffer = frames;
 }
 
+namespace {
+// A sound card of our own (--audio-device): HIRAKU writes to it through ALSA itself, as aplay does,
+// a period at a time into a ring of four kept full. SDL's own ALSA output keeps a ring of two
+// periods, and a USB card's driver starves on that, playing stale sound without reporting it (a
+// USB S/PDIF adapter played 4 s of sound in 6.6 s at 64 frames x 2, in 4.1 s at 64 x 4; at 64 x 3
+// still 5.2). libasound is loaded at run time, as SDL loads it: no build dependency.
+namespace alsa {
+struct pcm;
+struct hw;
+using uframes = unsigned long;
+struct Api {
+    int (*open)(pcm **, const char *, int, int);
+    int (*close)(pcm *);
+    int (*hw_malloc)(hw **);
+    void (*hw_free)(hw *);
+    int (*hw_any)(pcm *, hw *);
+    int (*set_access)(pcm *, hw *, int);
+    int (*set_format)(pcm *, hw *, int);
+    int (*set_channels)(pcm *, hw *, unsigned);
+    int (*set_rate_near)(pcm *, hw *, unsigned *, int *);
+    int (*set_period_near)(pcm *, hw *, uframes *, int *);
+    int (*set_buffer_near)(pcm *, hw *, uframes *);
+    int (*get_period)(const hw *, uframes *, int *);
+    int (*get_buffer)(const hw *, uframes *);
+    int (*hw_params)(pcm *, hw *);
+    int (*wait)(pcm *, int);
+    long (*avail_update)(pcm *);
+    long (*writei)(pcm *, const void *, uframes);
+    int (*recover)(pcm *, int, int);
+    int (*drop)(pcm *);
+    const char *(*strerror)(int);
+} api;
+pcm *g_pcm = nullptr;
+int g_period = 0, g_frame_bytes = 0;
+unsigned g_card_rate = 0;
+std::atomic<uint64_t> g_written{0}, g_xruns{0};   // frames written after the ring's first fill, underruns
+uint64_t g_t0 = 0;                                 // when the ring was first full
+std::atomic<bool> g_stop{false};
+std::thread g_thread;
+
+bool load(std::string &why) {
+    static void *lib = dlopen("libasound.so.2", RTLD_NOW | RTLD_LOCAL);
+    if (!lib) return why = "no libasound.so.2", false;
+    bool ok = true;
+    auto get = [&](auto &f, const char *name) {
+        f = reinterpret_cast<std::remove_reference_t<decltype(f)>>(dlsym(lib, name));
+        if (!f) ok = false, why = std::string("libasound has no ") + name;
+    };
+    get(api.open, "snd_pcm_open"), get(api.close, "snd_pcm_close"), get(api.hw_malloc, "snd_pcm_hw_params_malloc");
+    get(api.hw_free, "snd_pcm_hw_params_free"), get(api.hw_any, "snd_pcm_hw_params_any");
+    get(api.set_access, "snd_pcm_hw_params_set_access"), get(api.set_format, "snd_pcm_hw_params_set_format");
+    get(api.set_channels, "snd_pcm_hw_params_set_channels"), get(api.set_rate_near, "snd_pcm_hw_params_set_rate_near");
+    get(api.set_period_near, "snd_pcm_hw_params_set_period_size_near");
+    get(api.set_buffer_near, "snd_pcm_hw_params_set_buffer_size_near");
+    get(api.get_period, "snd_pcm_hw_params_get_period_size"), get(api.get_buffer, "snd_pcm_hw_params_get_buffer_size");
+    get(api.hw_params, "snd_pcm_hw_params"), get(api.wait, "snd_pcm_wait"), get(api.avail_update, "snd_pcm_avail_update");
+    get(api.writei, "snd_pcm_writei"), get(api.recover, "snd_pcm_recover"), get(api.drop, "snd_pcm_drop");
+    get(api.strerror, "snd_strerror");
+    return ok;
+}
+
+// each time a period of the ring is free: that much from the stream (silence for what it lacks:
+// the stream's get callback counts that as a break), written
+void run(SDL_AudioStream *stream) {
+    SDL_SetCurrentThreadPriority(SDL_THREAD_PRIORITY_TIME_CRITICAL);
+    std::vector<uint8_t> buf((size_t)g_period * g_frame_bytes);
+    const int bytes = (int)buf.size();
+    while (!g_stop.load(std::memory_order_relaxed)) {
+        long avail = api.avail_update(g_pcm);
+        if (avail < 0) {
+            g_xruns.fetch_add(1, std::memory_order_relaxed);
+            api.recover(g_pcm, (int)avail, 1);
+            continue;
+        }
+        if (avail < g_period) {
+            api.wait(g_pcm, 100);
+            continue;
+        }
+        const int got = std::max(0, SDL_GetAudioStreamData(stream, buf.data(), bytes));
+        if (got < bytes) memset(buf.data() + got, 0, (size_t)(bytes - got));
+        const long n = api.writei(g_pcm, buf.data(), (uframes)g_period);
+        if (n < 0) {
+            g_xruns.fetch_add(1, std::memory_order_relaxed);
+            api.recover(g_pcm, (int)n, 1);
+        } else {
+            g_written.fetch_add((uint64_t)n, std::memory_order_relaxed);
+        }
+    }
+}
+
+// `device` alone at `src`'s rate (or the nearest it has), periods of `period` frames: a stream
+// converting `src` to it, which a thread of ours plays. "" or why not
+std::string open(const std::string &device, const SDL_AudioSpec &src, int period, SDL_AudioStream *&stream, std::string &what) {
+    std::string why;
+    if (!load(why)) return why;
+    int e = api.open(&g_pcm, device.c_str(), 0 /* playback */, 0);
+    if (e < 0) return g_pcm = nullptr, api.strerror(e);
+    hw *h = nullptr;
+    api.hw_malloc(&h);
+    api.hw_any(g_pcm, h);
+    e = api.set_access(g_pcm, h, 3 /* RW_INTERLEAVED */);
+    // float, 32 or 16 bits, whichever the card takes first
+    const struct { int alsa; SDL_AudioFormat sdl; int bytes; const char *name; } formats[] = {
+        {14, SDL_AUDIO_F32LE, 4, "float"}, {10, SDL_AUDIO_S32LE, 4, "32-bit"}, {2, SDL_AUDIO_S16LE, 2, "16-bit"}};
+    const char *fname = nullptr;
+    SDL_AudioSpec dst{SDL_AUDIO_S16LE, 2, src.freq};
+    for (const auto &f : formats)
+        if (e >= 0 && api.set_format(g_pcm, h, f.alsa) >= 0) {
+            dst.format = f.sdl, g_frame_bytes = 2 * f.bytes, fname = f.name;
+            break;
+        }
+    unsigned rate = (unsigned)src.freq;
+    uframes p = (uframes)period, ring = 0;
+    if (e >= 0 && !fname) e = -22;
+    if (e >= 0) e = api.set_channels(g_pcm, h, 2);
+    if (e >= 0) e = api.set_rate_near(g_pcm, h, &rate, nullptr);
+    if (e >= 0) e = api.set_period_near(g_pcm, h, &p, nullptr);
+    if (e >= 0) ring = 4 * p, e = api.set_buffer_near(g_pcm, h, &ring);
+    if (e >= 0) e = api.hw_params(g_pcm, h);
+    if (e >= 0) api.get_period(h, &p, nullptr), api.get_buffer(h, &ring);
+    api.hw_free(h);
+    if (e < 0) {
+        api.close(g_pcm);
+        g_pcm = nullptr;
+        return api.strerror(e);
+    }
+    g_period = (int)p;
+    dst.freq = (int)rate;
+    stream = SDL_CreateAudioStream(&src, &dst);
+    char b[160];
+    snprintf(b, sizeof b, "%s, %u Hz, ring %lu frames (%.1f ms) in periods of %lu", fname, rate, ring, ring * 1000.0 / rate, p);
+    what = b;
+    // the ring full of silence, then the thread keeps it full
+    std::vector<uint8_t> zero((size_t)ring * g_frame_bytes, 0);
+    api.writei(g_pcm, zero.data(), ring);
+    g_card_rate = rate;
+    g_t0 = prof::now_ns();
+    g_stop = false;
+    g_thread = std::thread(run, stream);
+    return "";
+}
+
+void close() {
+    if (!g_pcm) return;
+    g_stop = true;
+    if (g_thread.joinable()) g_thread.join();
+    api.drop(g_pcm);
+    api.close(g_pcm);
+    g_pcm = nullptr;
+}
+}  // namespace alsa
+}  // namespace
+
 bool window_open(const char *title, int scale, const std::string &bindings, int target_ms, bool fullscreen, int rate) {
     g_rate = rate;
-    // the device's buffer: the sound server's quantum (PipeWire: node.latency) or, on a sound card
-    // of our own, the ALSA period (SDL keeps two)
+    // the device's buffer: the sound server's quantum (PipeWire: node.latency)
     SDL_SetHint(SDL_HINT_AUDIO_DEVICE_SAMPLE_FRAMES, std::to_string(g_audio_buffer > 0 ? g_audio_buffer : 128).c_str());
-    if (!g_audio_device.empty()) {   // the card itself, through ALSA: no sound server in between
-        SDL_SetHint(SDL_HINT_AUDIO_DRIVER, "alsa");
-        SDL_SetHint(SDL_HINT_AUDIO_ALSA_DEFAULT_PLAYBACK_DEVICE, g_audio_device.c_str());
-    }
     if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO)) return false;
     input_init(bindings);
     SDL_AudioSpec spec{SDL_AUDIO_F32, 2, g_rate};
-    g_audio = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &spec, nullptr, nullptr);
-    if (!g_audio_device.empty()) {
-        if (g_audio) {
-            g_audio_output = g_audio_device + " (the card alone, through ALSA)";
+    if (!g_audio_device.empty()) {   // the card itself, through ALSA: no sound server in between
+        std::string what, why = alsa::open(g_audio_device, spec, g_audio_buffer > 0 ? g_audio_buffer : 128, g_audio, what);
+        if (why.empty()) {
+            g_audio_output = g_audio_device + " (the card alone, through ALSA: " + what + ")";
+            g_device_frames = alsa::g_period;
         } else {   // busy (the sound server has it open while anything plays), or no such device
             fprintf(stderr, "audio: %s: %s; the system's default output instead (the sound server lets go of a card "
-                            "a few seconds after the last sound on it stops)\n", g_audio_device.c_str(), SDL_GetError());
-            SDL_QuitSubSystem(SDL_INIT_AUDIO);
-            SDL_ResetHint(SDL_HINT_AUDIO_DRIVER);
-            SDL_ResetHint(SDL_HINT_AUDIO_ALSA_DEFAULT_PLAYBACK_DEVICE);
-            if (SDL_InitSubSystem(SDL_INIT_AUDIO))
-                g_audio = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &spec, nullptr, nullptr);
+                            "a few seconds after the last sound on it stops)\n", g_audio_device.c_str(), why.c_str());
         }
     }
+    if (!g_audio) g_audio = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &spec, nullptr, nullptr);
     if (g_audio_output.empty() && g_audio) g_audio_output = std::string("the system's default (") + SDL_GetCurrentAudioDriver() + ")";
     if (g_audio) {
         SDL_AudioSpec dev{};
-        SDL_GetAudioDeviceFormat(SDL_GetAudioStreamDevice(g_audio), &dev, &g_device_frames);
+        if (SDL_GetAudioStreamDevice(g_audio)) SDL_GetAudioDeviceFormat(SDL_GetAudioStreamDevice(g_audio), &dev, &g_device_frames);
         g_target_frames = g_rate * target_ms / 1000;
         // start with the target lead of silence: the first frames' window setup
         // would otherwise find an empty queue (and grow the target for nothing)
@@ -533,6 +680,13 @@ std::string audio_describe() {
                      (unsigned long long)g_ast.gap_hist[6], (unsigned long long)g_ast.gap_hist[7]);
     for (int c = 0; c < prof::NCAT; c++)
         n += snprintf(b + n, sizeof b - n, " %s %.0f ms", prof::NAMES[c], g_ast.low_ns[c] / 1e6);
+    if (alsa::g_pcm && alsa::g_t0) {   // the card's own pace: a starving card takes fewer frames than its rate
+        const double secs = (prof::now_ns() - alsa::g_t0) / 1e9;
+        n += snprintf(b + n, sizeof b - n,
+                      "\naudio: the card took %.1f %% of its rate's frames over %.0f s (100: it plays what it's given), %llu underruns",
+                      secs > 0 ? 100.0 * (double)alsa::g_written.load() / (secs * alsa::g_card_rate) : 0.0, secs,
+                      (unsigned long long)alsa::g_xruns.load());
+    }
     if (g_present.n) {
         const PresentStats &p = g_present;
         double mean = p.sum / p.n, sd = std::sqrt(std::max(0.0, p.sum2 / p.n - mean * mean));
@@ -564,6 +718,7 @@ std::string audio_describe() {
 
 void window_close() {
     pacing::shutdown();
+    alsa::close();
     if (g_audio) SDL_DestroyAudioStream(g_audio);
     if (g_tex) SDL_DestroyTexture(g_tex);
     if (g_ren) SDL_DestroyRenderer(g_ren);

@@ -175,9 +175,9 @@ SettingsDialog::SettingsDialog(QWidget *parent) : QDialog(parent) {
         m_audioBuffer->addItem(f ? QString("%1 frames (%2 ms)").arg(f).arg(f * 1000.0 / 48000, 0, 'f', 1)
                                  : QString("Default (128 frames, 2.7 ms)"), f);
     m_audioBuffer->setCurrentIndex(std::max(0, m_audioBuffer->findData(s.value("audio/buffer", 0).toInt())));
-    m_audioBuffer->setToolTip("The sound device's buffer (the sound server's quantum, or the card's period when it's "
-                              "alone). Smaller is sooner, until it crackles; the queue above grows by itself after a "
-                              "crackle. Times at 48 kHz.");
+    m_audioBuffer->setToolTip("The sound device's buffer (the sound server's quantum, or, with the card alone, its "
+                              "period: HIRAKU keeps four of them queued on the card, which USB cards need). Smaller is "
+                              "sooner, until it crackles; the queue above grows by itself after a crackle. Times at 48 kHz.");
     fa->addRow("Device buffer:", m_audioBuffer);
     m_fineSound = new QCheckBox("Sound every millisecond on System 573 and Twinkle (not MAME's)");
     m_fineSound->setChecked(s.value("audio/fineSound", false).toBool());

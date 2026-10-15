@@ -38,7 +38,7 @@
 //                       device name such as hw:CARD=Generic,DEV=0 (aplay -l lists them; the launcher's
 //                       Settings > Audio too). If it's busy, the system's default output instead
 //     --audio-buffer N  the device buffer in frames (default 128): the sound server's quantum, or with
-//                       --audio-device the ALSA period (two of them). Smaller is sooner, until it crackles
+//                       --audio-device the ALSA period (a ring of four). Smaller is sooner, until it crackles
 //     --nvram DIR       keep the machine's NVRAM in DIR: loaded at start, saved on exit.
 //                       Default with --window: ~/.local/share/hiraku/<game>; otherwise none (every
 //                       run starts from the ROM set's defaults, so scripted runs are reproducible)

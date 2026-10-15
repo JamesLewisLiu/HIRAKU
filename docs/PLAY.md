@@ -171,9 +171,13 @@ between: the lowest latency, and nothing else plays on it meanwhile. `aplay -l` 
 (`card 1: Generic ... device 0` is `hw:CARD=Generic,DEV=0`). If the sound server still has the
 card open (it lets go a few seconds after the last sound on it stops), the game says so and uses
 the default instead. `--audio-buffer N` sets the device buffer in frames (default 128, 2.7 ms at
-48 kHz): the sound server's quantum, or the card's period (SDL keeps two). Smaller is sooner,
-until it crackles; the queue above still grows by itself after an underrun. The exit report's
-first `audio:` line says what was opened.
+48 kHz): the sound server's quantum, or the card's period. On a card of its own HIRAKU writes
+through ALSA itself, keeping a ring of four periods full (at 64 frames, 256 frames or 5.3 ms): a
+USB card's driver starves on fewer and plays stale sound without reporting it, which made SDL's
+own ALSA output (two periods) unusable on USB cards below 384 frames. Smaller is sooner, until it
+crackles; the queue above still grows by itself after an underrun. The exit report's first
+`audio:` line says what was opened, and with a card alone, an `audio: the card took ...` line
+says whether it kept pace (100 %) and how often it ran dry.
 
 **System 573 and Twinkle: `--fine-sound`** (launcher: Settings > Audio > "Sound every millisecond"). These cores run MAME's devices, and MAME hands their sound on 50 times a second. So by default the sound reaches the PC in 20 ms pieces, which adds up to 20 ms of latency, uneven from moment to moment, and the controls are read once per piece. `--fine-sound` hands it on every millisecond instead:
 - The machine runs the same (the regress cases show the same pictures).
