@@ -1762,6 +1762,7 @@ Each phase ends with `tools/regress.py check popn9-play` bit-identical, unless i
   - **Picture:** 5 frames after the press.
   - **Keysound (button 5): ~2 ms after the vsync at which the press is applied.** The game polls just after the vsync and starts the voice at once. Button 1 made no sound difference at that point of the song.
   - What the host adds on top: up to a frame until the press is read (the game polls once a frame, as on the cabinet), the audio queue (8 ms by default), the display.
+  - **Display sync off (2026-10-15):** the shell's audio wait came between a frame's ~2 ms burst and its picture (the core hands each vsync's sound on just before the frame hook), so a picture came ~17 ms after the controls were read. With `Core::audio_per_frame()` the window waits after the picture instead and holds each picture to the p99 of recent frames' work: 17.3 → 5.4 ms (p50) from the frame's start to the picture, the same cadence (`runtime/host/window.cpp`). With display sync it was already a burst: gameplay frames p50 1.9 ms, p99 4.3 (software GS; Vulkan 3.0 / 4.4, its readback makes the GS wait 1.5 ms against 0.9).
 - **Against stock Reliquary (`pcsx2-qt`, same build, same settings, same pop'n 9 attract from power-on), 2026-10-13:**
 
   | | pcsx2-qt | hiraku-popn9 | |

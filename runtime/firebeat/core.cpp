@@ -179,6 +179,9 @@ public:
 
     bool set_input(const std::string &name, int value) override { return fb::set_input(name, value); }
     void turntable_add(int player, int delta) override { fb::turntable_add(player, delta); }
+    // Keyboardmania's XT446, rendered on a worker, adds its part at the frame's end (board.cpp
+    // audio_release()); otherwise the sound comes every 2 ms of machine time
+    bool audio_per_frame() const override { return synth::deferred(); }
     const std::vector<uint8_t> &lamp_state() const override { return fb::lamp_state(); }
     uint64_t lamp_changes() const override { return fb::lamp_changes(); }
 

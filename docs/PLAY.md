@@ -212,6 +212,15 @@ drawn. The exit report's `video:` line shows how evenly: at the game's rate (mea
 display: at 60 Hz one frame shown twice every 0.66 s; at 144 Hz frames alternate 2 and 3
 refreshes; at 240 Hz about one frame in ten stays up 5 refreshes instead of 4.
 
+Some cores hand their sound on once per frame: DJ Main, the Python games (pop'n music 9-14) and
+Keyboardmania with the XT446 card. For them, free-running, the window waits for the sound after
+showing a frame and before the next one runs: the frame is emulated in a quick burst with the
+controls just read, then shown, held to a steady time after its start (the slow end of recent
+frames' work) so the pictures keep their cadence. Before, the wait came between a frame's
+emulation and its picture, a whole frame (~17 ms) from the controls to the picture; now 2.6 ms
+on DJ Main, ~5 ms on pop'n 9, 9 ms on Keyboardmania (whose synth card is heavy). The exit report's
+`video: from a frame starting` line shows it, in either mode.
+
 ## Recording and testing
 
 ```bash

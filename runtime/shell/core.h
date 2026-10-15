@@ -79,6 +79,11 @@ public:
     // The sample rate of what the audio sink gets: the machine's own where the
     // host can take it as it is (DJ Main's sound chips run at 48 kHz).
     virtual int audio_rate() const { return 44100; }
+    // The sound comes to the audio sink once per video frame, just before the frame hook (the
+    // whole frame's), not as the machine makes it. Without display sync the window then waits for
+    // the sound before letting the next frame run, not before showing this one
+    // (runtime/host/window.cpp, window_frame), so the picture comes a frame sooner.
+    virtual bool audio_per_frame() const { return false; }
     // Move player's turntable by `delta` encoder counts (cores without one ignore it).
     virtual void turntable_add(int player, int delta) = 0;
     // Lamps as the game last drove them, in cab::lamps(family()) order (1 = lit),

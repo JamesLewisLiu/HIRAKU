@@ -42,6 +42,41 @@ int g_device_frames = 0;
 bool g_quit = false;
 bool g_display_sync = true;       // display pacing (pacing.h)
 double g_ratio = 1.0;             // the audio stream's frequency ratio: the game's speed, steered
+// Display sync off, and the core hands its sound on once per frame (Core::audio_per_frame): the
+// window waits for the sound after showing a frame, before the next one runs (window_frame), and
+// push_chunk doesn't wait. Waiting in push_chunk, which the core calls just before the frame hook,
+// put that wait between a frame's ~2 ms of emulation and its picture: a frame (16.7 ms) from the
+// controls being read to the picture, where display sync takes a few milliseconds.
+bool g_frame_paced = false;
+uint64_t g_frame_start_ns = 0;    // when the window last let a frame run (the controls just read)
+uint64_t g_last_push_end = 0;     // the host's work since then is what must fit (push_chunk)
+
+// With g_frame_paced, each picture is held until a steady time after its frame started: the slow
+// end of recent frames' emulation and drawing (as display sync's burst budget, pacing.cpp), so the
+// pictures keep the game's cadence while a frame's work varies (pop'n 9: 1-8 ms with the GS).
+struct FrameBudget {
+    std::vector<int64_t> samples = std::vector<int64_t>(256, 0);
+    size_t at = 0;
+    int64_t budget = 0;           // ns; 0 until 64 frames are in
+    void add(int64_t ns) {
+        samples[at++ % samples.size()] = ns;
+        if (at % 64) return;      // the 99th percentile of the recent ones, plus 0.5 ms
+        std::vector<int64_t> s(samples.begin(), samples.begin() + (long)std::min(at, samples.size()));
+        std::nth_element(s.begin(), s.begin() + (long)(s.size() * 99 / 100), s.end());
+        budget = std::min(s[s.size() * 99 / 100] + 500'000, (int64_t)12'000'000);
+    }
+    // the picture is ready: wait until its time
+    void hold(uint64_t start_ns) {
+        if (!start_ns) return;
+        const int64_t ready = (int64_t)(prof::now_ns() - start_ns);
+        add(ready);
+        if (budget > ready) {
+            const uint64_t w0 = prof::ticks();
+            SDL_DelayPrecise((Uint64)(budget - ready));
+            prof::g_wait_ticks += prof::ticks() - w0;
+        }
+    }
+} g_frame_budget;
 double g_last_vsec = -1;
 void (*g_glFlush)() = nullptr;
 auto g_last_poll = std::chrono::steady_clock::now();
@@ -164,6 +199,26 @@ struct PresentStats {
     }
 } g_present;
 
+// From the window letting a frame run (the controls just read: the games read theirs at the
+// frame's start) to that frame's picture handed to the display, in 0.1 ms steps up to 50 ms.
+// The display adds its own on top (pacing.h: commit to screen).
+struct StartToPicture {
+    uint64_t hist[501] = {}, n = 0;
+    double sum = 0;
+    void add(uint64_t start_ns) {
+        const uint64_t t = prof::now_ns();
+        if (!start_ns || g_fast || t < g_settle_until) return;
+        const double ms = (t - start_ns) / 1e6;
+        hist[std::min(500, (int)(ms * 10))]++, n++, sum += ms;
+    }
+    double percentile(double q) const {
+        uint64_t need = (uint64_t)(q * (double)n), acc = 0;
+        for (int k = 0; k <= 500; k++)
+            if ((acc += hist[k]) > need) return (k + 1) / 10.0;
+        return 50.0;
+    }
+} g_start_to_picture;
+
 // Display pacing: steer the sound's playback rate to the game's speed, keeping the queue at its
 // target where it is lowest (as the burst starts).
 void steer_audio() {
@@ -205,8 +260,12 @@ bool window_frame(const uint32_t *rgb, int w, int h, double vsec) {
             if (g_glFlush) g_glFlush();   // the GPU draws while we wait for the commit time
             pacing::wait_commit();
             pacing::commit();
+        } else if (g_frame_paced && !g_fast) {
+            if (g_glFlush) g_glFlush();
+            g_frame_budget.hold(g_frame_start_ns);
         }
         SDL_GL_SwapWindow(g_win);
+        g_start_to_picture.add(g_frame_start_ns);
         if (sync) pacing::committed();
         if (shown != g_shown) {
             g_shown = shown;
@@ -231,8 +290,12 @@ bool window_frame(const uint32_t *rgb, int w, int h, double vsec) {
             SDL_FlushRenderer(g_ren);
             pacing::wait_commit();
             pacing::commit();
+        } else if (g_frame_paced && !g_fast) {
+            SDL_FlushRenderer(g_ren);
+            g_frame_budget.hold(g_frame_start_ns);
         }
         SDL_RenderPresent(g_ren);
+        g_start_to_picture.add(g_frame_start_ns);
         if (sync) pacing::committed();
     }
     if (!sync) g_present.add(vsec);
@@ -252,6 +315,8 @@ bool window_frame(const uint32_t *rgb, int w, int h, double vsec) {
         SDL_SetWindowTitle(g_win, t.c_str());
     }
     poll();
+    g_frame_start_ns = 0;
+    g_frame_paced = false;
     if (g_quit) return false;
     if (g_fast) return true;    // fast-forward: no pacing at all
     if (sync) {                 // the display's grid paces time; the sound follows
@@ -259,10 +324,29 @@ bool window_frame(const uint32_t *rgb, int w, int h, double vsec) {
         poll();
         pacing::pump();
         steer_audio();
+        g_frame_start_ns = prof::now_ns();
         return !g_quit;
     }
     if (g_audio && g_ratio != 1.0) SDL_SetAudioStreamFrequencyRatio(g_audio, 1.0f), g_ratio = 1.0;
-    if (g_audio) return true;   // audio paces time (audio_push)
+    if (g_audio && core().audio_per_frame()) {
+        // the sound paces time, as in audio_push, but here: until the queue is down to its
+        // target, then the next frame runs (with this frame's controls read last) and is shown
+        // as soon as it's drawn. The queue's lowest point is the same as waiting in push_chunk.
+        g_frame_paced = true;
+        const uint64_t w0 = prof::ticks();
+        while (SDL_GetAudioStreamQueued(g_audio) > g_target_frames * 8 && !g_quit) {
+            poll();
+            SDL_DelayPrecise(250'000);   // 0.25 ms
+        }
+        prof::g_wait_ticks += prof::ticks() - w0;
+        poll();
+        g_frame_start_ns = g_last_push_end = prof::now_ns();   // the wait isn't host work
+        return !g_quit;
+    }
+    if (g_audio) {              // audio paces time (audio_push)
+        g_frame_start_ns = prof::now_ns();
+        return true;
+    }
 
     // no audio device: pace virtual time to real time on video frames
     auto now = std::chrono::steady_clock::now();
@@ -274,6 +358,7 @@ bool window_frame(const uint32_t *rgb, int w, int h, double vsec) {
         prof::g_wait_ticks += prof::ticks() - w0;
     }
     else if (now - due > std::chrono::milliseconds(250)) g_t0 += now - due;   // fell behind: don't try to catch up
+    g_frame_start_ns = prof::now_ns();
     return true;
 }
 
@@ -285,7 +370,6 @@ struct AudioStats {
     uint64_t gap_hist[8] = {};   // work time per chunk: <1,<2,<4,<8,<16,<32,<64,>=64 ms
     uint64_t low_ns[prof::NCAT] = {};
 } g_ast;
-uint64_t g_last_push_end = 0;
 bool g_log_stalls = getenv("HK_LOG_STALLS") != nullptr;
 
 // One chunk to the device, with pacing, underrun accounting and input polling.
@@ -320,9 +404,10 @@ void push_chunk(const float *lr, int frames) {
     }
     SDL_PutAudioStreamData(g_audio, lr, frames * 8);
     // audio is the clock: wait while more than the target is queued, polling controls
-    // (with display pacing, the display is the clock: window_frame waits instead)
+    // (with display pacing, the display is the clock, and with a core whose sound comes once
+    // per frame the window waits after the frame: window_frame waits instead)
     const uint64_t w0 = prof::ticks();
-    while (!pacing::active() && SDL_GetAudioStreamQueued(g_audio) > g_target_frames * 8 && !g_quit) {
+    while (!pacing::active() && !g_frame_paced && SDL_GetAudioStreamQueued(g_audio) > g_target_frames * 8 && !g_quit) {
         poll();
         SDL_DelayPrecise(250'000);   // 0.25 ms
     }
@@ -373,7 +458,22 @@ std::string audio_describe() {
                  (unsigned long long)p.hist[2], (unsigned long long)p.hist[3], (unsigned long long)p.hist[4],
                  (unsigned long long)p.hist[5]);
     }
-    return std::string(b) + "\n" + pacing::describe();
+    std::string out = std::string(b) + "\n" + pacing::describe();
+    if (const StartToPicture &l = g_start_to_picture; l.n) {
+        snprintf(b, sizeof b,
+                 "\nvideo: from a frame starting (the controls read) to its picture handed to the display: mean %.1f ms, "
+                 "p50 %.1f, p99 %.1f (%s)",
+                 l.sum / (double)l.n, l.percentile(0.5), l.percentile(0.99),
+                 pacing::active() ? "display sync"
+                 : g_frame_paced  ? "the sound once per frame: waited for after the picture"
+                                  : "the sound paces the machine as it comes");
+        out += b;
+        if (g_frame_paced && g_frame_budget.budget) {
+            snprintf(b, sizeof b, ", each picture held to %.1f ms after its frame's start", g_frame_budget.budget / 1e6);
+            out += b;
+        }
+    }
+    return out;
 }
 
 void window_close() {

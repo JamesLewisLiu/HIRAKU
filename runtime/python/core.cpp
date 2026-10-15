@@ -541,6 +541,7 @@ public:
         return true;
     }
     int audio_rate() const override { return 48000; }
+    bool audio_per_frame() const override { return true; }   // on_vsync()
     void turntable_add(int, int) override {}
     const std::vector<uint8_t> &lamp_state() const override { return lamps_; }
     uint64_t lamp_changes() const override { return lamp_changes_; }
