@@ -269,6 +269,8 @@ public:
         if (name == "--no-picture") { no_picture_ = true; return true; }
         if (name == "--bare-board") { bare_board_ = true; return true; }
         if (name == "--picture-overlap") { picture_now_ = false; return true; }
+        if (name == "--interlaced") { full_frames_ = false; return true; }
+        if (name == "--fill-screen") { fill_screen_ = true; return true; }
         if (name == "--autoplay") {
             autoplay_ = true;
             if (!has_autoplay(HK_GAME_ID)) fprintf(stderr, "autoplay: not available for %s yet (pop'n music 9 only)\n", HK_GAME_ID);
@@ -306,6 +308,12 @@ public:
                "  --picture-overlap    hand over the previous vsync's picture, so the GS overlaps the EE: less\n"
                "                       time per frame, a frame (16.7 ms) more latency. The default waits for each\n"
                "                       vsync's own picture\n"
+               "  --interlaced         let the game draw only the lines of the TV field it shows (its SCANMSK), as\n"
+               "                       on the cabinet: the other lines stay a frame old, which combs when shown\n"
+               "                       progressive. The default draws every line of every frame (as at 480p)\n"
+               "  --fill-screen        stretch the game's picture over the whole 4:3 screen (as PCSX2 does). The\n"
+               "                       default places it in the TV's raster, black around it as on a TV: the\n"
+               "                       picture at its true shape, 448 lines on 480\n"
                "  --autoplay           the game plays every song itself, as in its attract demo: every note GREAT\n"
                "                       (a mod for testing what clears unlock; pop'n music 9)\n"
                "  --pcsx2-set S/K=V    set one of the emulator's settings (its ini's section S, key K), for experiments\n"
@@ -448,6 +456,7 @@ public:
         };
         Hiraku::p1io_output = [](const u32 *payload, u32 quads) { self_->on_p1io_output(payload, quads); };
         if (const char *f = getenv("HK_PY_P1IO_LOG")) p1io_log_ = fopen(f, "w");
+        Hiraku::full_frames = full_frames_;
         if (!no_picture_) Hiraku::gs_frame = [](const u32 *rgba, u32 w, u32 h) { self_->on_gs_frame(rgba, w, h); };
         if (const char *f = getenv("HK_PY_CARD_LOG")) card_log_ = fopen(f, "w");
         if (const char *f = getenv("HK_PY_NET_LOG")) net_log_ = fopen(f, "w");
@@ -542,6 +551,7 @@ public:
     }
     int audio_rate() const override { return 48000; }
     bool audio_per_frame() const override { return true; }   // on_vsync()
+    void display_cover(int, int, double &cw, double &ch) const override { cw = cover_w_, ch = cover_h_; }
     void turntable_add(int, int) override {}
     const std::vector<uint8_t> &lamp_state() const override { return lamps_; }
     uint64_t lamp_changes() const override { return lamp_changes_; }
@@ -746,12 +756,29 @@ private:
                 std::swap(pic_, gs_pic_);
                 pic_w_ = gs_w_, pic_h_ = gs_h_;
                 gs_fresh_ = false;
+                update_cover();
             } else if (pic_.empty()) {
                 pic_.assign((size_t)gs_w_ * gs_h_, 0u);   // before the first picture: black
                 pic_w_ = gs_w_, pic_h_ = gs_h_;
             }
         }
         if (frame_hook_) frame_hook_(frame_, pic_.data(), pic_w_, pic_h_);
+    }
+
+    // display_cover(): the GS's display area inside an NTSC TV's raster. The PCRTC counts width in
+    // its 54 MHz clocks (2560 for a 640 or a 512 picture), and a TV's 4:3 is the whole active
+    // line, 52.7 us or 2844 clocks (ITU-R BT.601, PCSX2's overscan area: 711 pixels of 4 clocks),
+    // by 480 lines (240 a field). The games are centred in it, so the picture is placed centred.
+    void update_cover() {
+        cover_w_ = cover_h_ = 1.0;
+        if (fill_screen_) return;
+        auto reg = [](unsigned off) { uint64_t v; memcpy(&v, PS2MEM_GS + off, 8); return v; };
+        const uint64_t pmode = reg(0x00), smode1 = reg(0x10), smode2 = reg(0x20);
+        if (((smode1 >> 13) & 3) != 2) return;   // not NTSC
+        const uint64_t display = reg((pmode & 2) ? 0xa0 : 0x80);   // circuit 2's area if it's on, else 1's
+        const double dw = (double)((display >> 32) & 0xfff) + 1, dh = (double)((display >> 44) & 0x7ff) + 1;
+        cover_w_ = std::clamp(dw / 2844.0, 0.1, 1.0);
+        cover_h_ = std::clamp(dh / ((smode2 & 1) ? 480.0 : 240.0), 0.1, 1.0);
     }
 
     // --autoplay: the game's own demo play. At each song's start pop'n music 9 sets its autoplay
@@ -858,6 +885,8 @@ private:
     }
     GSRendererType renderer_ = GSRendererType::SW;
     bool interp_ = false, pcsx2_log_ = false, no_picture_ = false, picture_now_ = true, autoplay_ = false;
+    bool full_frames_ = true, fill_screen_ = false;
+    double cover_w_ = 1.0, cover_h_ = 1.0;   // display_cover() of pic_
     bool bare_board_ = false;   // --bare-board: no card unit or e-AMUSEMENT network, as plain Reliquary
     std::span<const u8> font_data_;   // mapped for the process's life
     std::map<std::string, u32> binds_;

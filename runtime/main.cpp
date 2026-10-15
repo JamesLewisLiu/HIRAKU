@@ -32,7 +32,8 @@
 //     --bindings FILE   controls (see runtime/host/input.h)
 //     --lights FILE     drive HID controller LEDs from the cabinet lamps (see runtime/host/lights.h)
 //     --lights-socket P publish the lamps on a UNIX socket at path P (docs/LIGHTS.md)
-//     --audio-ms N      initial audio queue target (default 8); grows by 1 ms per underrun, up to 30
+//     --audio-ms N      initial audio queue target (default 8); grows by 1 ms per underrun (the device
+//                       asking for more than is queued; not in the first 10 s), up to 30
 //     --audio-device D  the sound card itself, through ALSA, with no sound server in between: an ALSA
 //                       device name such as hw:CARD=Generic,DEV=0 (aplay -l lists them; the launcher's
 //                       Settings > Audio too). If it's busy, the system's default output instead

@@ -10,7 +10,7 @@
  #include "SIO/Pad/Pad.h"
  #include "SIO/Sio.h"
  #include "SIO/Sio0.h"
-@@ -3069,8 +3072,61 @@
+@@ -3069,8 +3072,62 @@
  	R5900SymbolImporter.OnElfLoadedInMemory();
  }
  
@@ -60,6 +60,7 @@
 +void (*Hiraku::vsync_posted)() = nullptr;
 +void (*Hiraku::audio_sample)(float, float) = nullptr;
 +void (*Hiraku::gs_frame)(const u32*, u32, u32) = nullptr;
++bool Hiraku::full_frames = false;
 +void (*Hiraku::p1io_output)(const u32*, u32) = nullptr;
 +bool (*Hiraku::uart_write)(const u8*, u32) = nullptr;
 +bool (*Hiraku::net_command)(u32, const u32*, u32) = nullptr;
@@ -139,6 +140,25 @@
  	// snapshot
  	if (!m_snapshot.empty())
  	{
+--- a/pcsx2/GS/GSState.cpp
++++ b/pcsx2/GS/GSState.cpp
+@@ -6,6 +6,7 @@
+ #include "GS/GSGL.h"
+ #include "GS/GSPerfMon.h"
+ #include "GS/GSUtil.h"
++#include "HirakuHooks.h"
+ 
+ #include "common/Console.h"
+ #include "common/BitUtils.h"
+@@ -1964,6 +1965,8 @@
+ void GSState::GIFRegHandlerSCANMSK(const GIFReg* RESTRICT r)
+ {
+ 	m_env.SCANMSK = r->SCANMSK;
++	if (Hiraku::full_frames) [[unlikely]] // HIRAKU: every line drawn (HirakuHooks.h)
++		m_env.SCANMSK.MSK = 0;
+ 
+ 	if (m_env.SCANMSK.MSK & 2)
+ 		m_scanmask_used = 2;
 --- a/pcsx2/CDVD/CDVD.cpp
 +++ b/pcsx2/CDVD/CDVD.cpp
 @@ -1242,6 +1242,9 @@
@@ -242,7 +262,7 @@
  else()
 --- a/pcsx2/HirakuHooks.h
 +++ b/pcsx2/HirakuHooks.h
-@@ -0,0 +1,40 @@
+@@ -0,0 +1,44 @@
 +// SPDX-License-Identifier: GPL-3.0+
 +// HIRAKU (local patch, not upstream): taps for running this emulator as a HIRAKU
 +// machine core (runtime/python/ in HIRAKU). All are null unless a host sets them.
@@ -264,6 +284,10 @@
 +	// GS thread, after each vsync's present: the displayed picture at the internal
 +	// resolution, unscaled, RGBA8 (R in the low byte). nullptr/0x0 for a blank frame.
 +	extern void (*gs_frame)(const u32* rgba, u32 width, u32 height);
++	// GS: true to draw every line of every frame. A game rendering for an interlaced TV may
++	// mask the lines of the field not shown (SCANMSK), leaving them a frame old; with this set,
++	// the GS ignores the mask, and each frame is a whole progressive picture (as at 480p).
++	extern bool full_frames;
 +	// CPU thread (IOP time), each JAMMA output command the game sends to the Python 1
 +	// interface board: its output latches (lamps, coin counters) in the payload. The board
 +	// answers each one with an input report, so this is also the game's input poll.

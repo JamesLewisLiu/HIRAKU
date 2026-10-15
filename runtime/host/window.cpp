@@ -4,6 +4,7 @@
 #include <SDL3/SDL.h>
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <cmath>
 #include <string>
@@ -22,6 +23,10 @@ namespace hk::host {
 
 namespace {
 uint64_t g_settle_until = 0;   // window/renderer setup right after opening: not a stall
+std::atomic<uint64_t> g_device_pulls{0}, g_device_short{0};   // the device's pulls, and those the queue fell short of
+std::atomic<uint64_t> g_device_short_late{0};                  // ... of those, after the game's boot (g_tune_from)
+uint64_t g_short_seen = 0;        // g_device_short when the target last grew for it
+uint64_t g_tune_from = 0;          // the queue target self-tunes from here on (window_open + 10 s)
 SDL_Window *g_win = nullptr;
 SDL_Renderer *g_ren = nullptr;
 SDL_Texture *g_tex = nullptr;
@@ -32,6 +37,7 @@ std::vector<std::string> g_picture_config;
 picture::Mode g_mode = picture::Mode::off, g_shown = picture::Mode::off;
 SDL_AudioStream *g_audio = nullptr;
 int g_tw = 0, g_th = 0;
+SDL_FRect g_dst{};                // where the frame goes in the logical presentation (SDL renderer path)
 std::chrono::steady_clock::time_point g_t0;
 bool g_started = false;
 
@@ -196,8 +202,20 @@ bool window_open(const char *title, int scale, const std::string &bindings, int 
         // would otherwise find an empty queue (and grow the target for nothing)
         std::vector<float> silence((size_t)g_target_frames * 2, 0.0f);
         SDL_PutAudioStreamData(g_audio, silence.data(), (int)(silence.size() * sizeof(float)));
+        // the device's own view: a pull the queue can't fill breaks the sound. The queue level
+        // when a chunk arrives misses most of these: with a core whose sound comes once per frame
+        // the queue runs dry between chunks and is full again when the next one is counted
+        SDL_SetAudioStreamGetCallback(g_audio, [](void *, SDL_AudioStream *s, int, int total) {
+            g_device_pulls.fetch_add(1, std::memory_order_relaxed);
+            const uint64_t t = prof::now_ns();
+            if (SDL_GetAudioStreamAvailable(s) < total && !g_fast && t >= g_settle_until) {
+                g_device_short.fetch_add(1, std::memory_order_relaxed);
+                if (t >= g_tune_from) g_device_short_late.fetch_add(1, std::memory_order_relaxed);
+            }
+        }, nullptr);
         SDL_ResumeAudioStreamDevice(g_audio);
         g_settle_until = prof::now_ns() + 250'000'000;
+        g_tune_from = prof::now_ns() + 10'000'000'000ull;
     }
     g_title = title;
     macro::on_change([](const std::string &name) {
@@ -295,7 +313,10 @@ void window_present(const uint32_t *rgb, int w, int h, double vsec) {
         const double aspect = display_aspect(w, h);
         int vw = ww, vh = (int)std::lround(ww / aspect);
         if (vh > wh) vh = wh, vw = (int)std::lround(wh * aspect);
-        vw = std::max(1, vw), vh = std::max(1, vh);
+        // and of that, the part the frame covers (Core::display_cover)
+        double cw, ch;
+        core().display_cover(w, h, cw, ch);
+        vw = std::max(1, (int)std::lround(vw * cw)), vh = std::max(1, (int)std::lround(vh * ch));
         picture::Mode shown = picture::draw(rgb, w, h, (ww - vw) / 2, (wh - vh) / 2, vw, vh, ww, wh, g_mode);
         if (sync) {
             if (g_glFlush) g_glFlush();   // the GPU draws while we wait for the commit time
@@ -317,9 +338,13 @@ void window_present(const uint32_t *rgb, int w, int h, double vsec) {
         if (g_tex) SDL_DestroyTexture(g_tex);
         g_tex = SDL_CreateTexture(g_ren, SDL_PIXELFORMAT_XRGB8888, SDL_TEXTUREACCESS_STREAMING, w, h);
         SDL_SetTextureScaleMode(g_tex, SDL_SCALEMODE_NEAREST);
-        // the logical size at the monitor's shape: the texture stretches to it (as above)
-        SDL_SetRenderLogicalPresentation(g_ren, std::max(1, (int)std::lround(h * display_aspect(w, h))), h,
+        // the logical size at the monitor's shape (as above), the frame's own part of it in g_dst
+        double cw, ch;
+        core().display_cover(w, h, cw, ch);
+        const float lh = (float)(h / ch), lw = (float)std::lround(lh * display_aspect(w, h));
+        SDL_SetRenderLogicalPresentation(g_ren, std::max(1, (int)lw), std::max(1, (int)std::lround(lh)),
                                          SDL_LOGICAL_PRESENTATION_LETTERBOX);
+        g_dst = {(lw - (float)(lw * cw)) / 2, (lh - (float)h) / 2, (float)(lw * cw), (float)h};
         g_tw = w;
         g_th = h;
     }
@@ -327,7 +352,7 @@ void window_present(const uint32_t *rgb, int w, int h, double vsec) {
         prof::Scope ps(prof::PRESENT);
         SDL_UpdateTexture(g_tex, nullptr, rgb, w * 4);
         SDL_RenderClear(g_ren);
-        SDL_RenderTexture(g_ren, g_tex, nullptr, nullptr);
+        SDL_RenderTexture(g_ren, g_tex, nullptr, &g_dst);
         if (sync) {
             SDL_FlushRenderer(g_ren);
             pacing::wait_commit();
@@ -439,10 +464,15 @@ void push_chunk(const float *lr, int frames) {
         g_ast.worst_gap_ms = std::max(g_ast.worst_gap_ms, gap);
         int queued = SDL_GetAudioStreamQueued(g_audio) / 8;
         g_ast.chunks++;
-        if (queued == 0) {
-            g_ast.empty++;
-            // self-tuning: an underrun means the machine needs more lead on this host
-            if (g_target_frames < g_rate * 30 / 1000) g_target_frames += g_rate / 1000;   // +1 ms, up to 30 ms
+        if (queued == 0) g_ast.empty++;
+        const uint64_t short_pulls = g_device_short.load(std::memory_order_relaxed);
+        if (queued == 0 || short_pulls != g_short_seen) {
+            // self-tuning: an underrun means the machine needs more lead on this host. Not while
+            // the game boots (its loads, the display's pacing settling), and not for a stall no
+            // lead would cover
+            if (t >= g_tune_from && gap < 100 && g_target_frames < g_rate * 30 / 1000)
+                g_target_frames += g_rate / 1000;   // +1 ms, up to 30 ms
+            g_short_seen = short_pulls;
         }
         if (queued < g_rate / 1000) {   // under 1 ms left: about to crackle
             g_ast.low++;
@@ -490,11 +520,14 @@ std::string audio_describe() {
     int n = snprintf(b, sizeof b,
                      "audio: %s, device buffer %d frames (%.1f ms), queue target %d frames (%.1f ms, after self-tuning)\n"
                      "audio: %llu chunks, %llu ran low (<1 ms queued), %llu found the queue empty; worst gap %.1f ms\n"
+                     "audio: the device pulled %llu times, %llu of them more than was queued (a break in the sound), %llu after the first 10 s\n"
                      "audio: host work per chunk  <1:%llu <2:%llu <4:%llu <8:%llu <16:%llu <32:%llu <64:%llu >=64:%llu ms\n"
                      "audio: during low chunks:",
                      g_audio_output.c_str(), g_device_frames, g_device_frames * 1000.0 / g_rate, g_target_frames, g_target_frames * 1000.0 / g_rate,
                      (unsigned long long)g_ast.chunks, (unsigned long long)g_ast.low, (unsigned long long)g_ast.empty,
-                     g_ast.worst_gap_ms, (unsigned long long)g_ast.gap_hist[0], (unsigned long long)g_ast.gap_hist[1],
+                     g_ast.worst_gap_ms, (unsigned long long)g_device_pulls.load(), (unsigned long long)g_device_short.load(),
+                     (unsigned long long)g_device_short_late.load(),
+                     (unsigned long long)g_ast.gap_hist[0], (unsigned long long)g_ast.gap_hist[1],
                      (unsigned long long)g_ast.gap_hist[2], (unsigned long long)g_ast.gap_hist[3],
                      (unsigned long long)g_ast.gap_hist[4], (unsigned long long)g_ast.gap_hist[5],
                      (unsigned long long)g_ast.gap_hist[6], (unsigned long long)g_ast.gap_hist[7]);

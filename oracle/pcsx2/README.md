@@ -16,7 +16,7 @@ oracle/pcsx2/run.py popn9 --frames 3000 --snap-every 0 --interp          # the s
   - Six dependencies (KDDockWidgets, plutovg, plutosvg, rapidyaml, libbacktrace, ECM) are built into `$HK_PYTHON_WORK/deps` at the versions and SHA-256s of Reliquary's CI. The rest are Arch packages.
   - Each heavy step runs under `systemd-run` with 10 GB and -j8. The main build peaks at 1.3 GB and takes ~1.5 min.
   - The zip lacks the paraLLEl-GS submodule, so that renderer and Wayland pointer locking are left out.
-- `reliquary-oracle.patch` (eight files):
+- `reliquary-oracle.patch` (nine files):
   - a per-vsync hook in `VMManager.cpp`: `HK_FRAMEHASH=<file>` appends `frame ee_hash iop_hash` (FNV-1a over the 32 MiB EE and 2 MiB IOP RAM) every `HK_FRAMEHASH_EVERY` vsyncs; `HK_STOP_FRAME=<n>` exits at vsync n. Works in `pcsx2-qt` and in `hiraku-<game>` alike;
   - `pcsx2/HirakuHooks.h`: the taps the core uses, all null otherwise:
     - the vsync, before and after it is posted to the GS (`VMManager.cpp`, `Counters.cpp`);
@@ -24,6 +24,7 @@ oracle/pcsx2/run.py popn9 --frames 3000 --snap-every 0 --interp          # the s
     - the interface board's output command, which carries the lamps and is the input poll (`KonamiPython1.cpp`);
     - the interface board's serial port (the e-AMUSEMENT card reader/writer and 10-key): the host can answer the game's writes itself, and longer answers are then delivered whole (`KonamiPython1.cpp`);
     - the interface board's socket commands (it has the network port): the host can answer them itself, for e-AMUSEMENT without host sockets (`KonamiPython1.cpp`);
+    - `full_frames`: the GS ignores the games' SCANMSK, so every line is drawn every frame (`GSState.cpp`). The pop'n games draw only the lines of the TV field shown; the core sets this unless run with `--interlaced`;
   - the derived MagicGate keystore is printed only with `PCSX2_PRINT_KEYSTORE` set (stock Reliquary always prints it to stdout);
   - `-DHIRAKU_DIR=<checkout>` in the top `CMakeLists.txt` adds `runtime/python/`.
 - `run.py`: one run of a `.py1` set from the collection (`HK_PYTHON_SETS`, default `~/Downloads/konami-python-1-collection`).

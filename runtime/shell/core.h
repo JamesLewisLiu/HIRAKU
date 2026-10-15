@@ -104,6 +104,10 @@ public:
     // board can switch video modes (the PlayStation-based System 573 and Twinkle show 320x240,
     // 512x480 and 640x480 on the same 4:3 tube), so its pixels aren't square. 0: square pixels.
     virtual double display_aspect() const { return 4.0 / 3.0; }
+    // The part of that screen a w x h frame covers, width and height as fractions, centred: 1, 1
+    // when it fills the screen. The Python core's frames are the GS's display area, which on a TV
+    // sits inside a wider and taller raster with black around it.
+    virtual void display_cover(int w, int h, double &cw, double &ch) const { (void)w, (void)h, cw = ch = 1.0; }
 };
 
 Core &core();   // defined by the core this binary is built with
