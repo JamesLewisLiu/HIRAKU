@@ -748,17 +748,22 @@ same number.
     character, though both games number their songs alike (below). So the answer is the record in
     pop'n 14's layout: the name, 13's option and character (0x20, 0x22) at 0x1c, 0x1e, and each
     song's word at 0x24 + 4n; the server keeps the same.
-- **Clear marks are shared** (below); each game keeps its own player otherwise: scores, options
+- **Clear marks and scores are shared** (below); each game keeps its own player otherwise: options
   and a name changed in one game stay there. Characters and options: pop'n 14 takes pop'n 13's,
   the others start from the game's defaults. ee'MALL tickets don't carry over (the games say so).
 
 ### Shared clear marks
 
 - **One song numbering:** each game's song table (entries with pointers to a genre name and a
-  comment) gives the same genre at the same index in all six games (pop'n 9 and 10: 325 and 390
-  entries; 11: 450; 12 and 13: 472; 14: 700), the differences being spelling only (kana or
-  kanji, "(PS)"-style tags), except pop'n 14's 457-459, other genres than 13's. The songs sent in
-  play agree (pop'n 14's 393 is アンパンマン, on screen and in its table).
+  comment) has the same song at the same index in all six games (pop'n 9 and 10: 325 and 390
+  entries; 11: 450; 12: 595; 13: 649; 14: 700), the differences being spelling only (kana or
+  kanji, "(PS)"-style tags) and "-" entries left where a song was taken out (9's 252 and 257;
+  12-14's 244-246, 252, 254, 257, 260, 262-263, 328-329, 337-338, 392; 11-14's 428). An
+  entry's words at 8 and 0xc are the song's ids, the same in 11, 12 and 13; pop'n 14 gave 18
+  songs new ones (450-492; ten of them rated anew, so charted anew presumably) and rewrote the
+  genres and comments of the songs from other games (13's "SURGE LINE" is 14's ギターポップ).
+  The songs sent in play agree (pop'n 14's 393 is アンパンマン, on screen and in its table;
+  pop'n 12's 542 ドラゴンボールＺ).
 - **The marks:** two bits a chart, 1 a clear and 2-3 the better medals, in the low byte of a song's
   word: pop'n 12, 13, 14 in one order (bits 0-1, 2-3, 4-5, 6-7), pop'n 10 and 11 with the last
   two charts the other way round. pop'n 9 keeps a cleared bit a chart, byte 0x416 + song, bits 0-3
@@ -776,9 +781,25 @@ same number.
   then saves them with its own at the end of a credit (pop'n 9-11 save the whole player). Checked:
   marks put in pop'n 9, 10, 11 and 13 reached all six games (in RAM for 12-14), and pop'n 9, 10 and
   11 played a credit with them and saved them.
-- **Not shared yet:** scores (pop'n 12-14's `score` per chart are the server's; pop'n 14 sends
-  sheet numbers 13 doesn't use, so the charts' numbering needs working out first), and pop'n 13's
-  and 14's other flags.
+- **Not shared:** pop'n 13's and 14's other flags in a song's word (0x100-0x4000).
+
+### Shared scores
+
+- **Where scores are:** pop'n 12-14 send each song played (`<music num sheet data score/>` in
+  `playerdata set`) and ask a chart's best before playing it (`playerdata score music_num
+  sheet_num`); the server keeps them (`pscore-GAME-PLAYER`). pop'n 9-11 keep no scores: their
+  players (1.6-2.6 KB) hold the marks, and no call of theirs carries a song's score.
+- **The sheet is the chart,** alike in the three (the same code: `0x1b3958`, `0x1810e60`,
+  `0x17fdfa0`), and its levels' place in the song table: 0 Normal, 1 Hyper, 2 5 buttons,
+  3 EX, 4-5 battle; 5 one mode's (the game's mode 2 with an option's 0x2000). Charts 0-3 are the
+  marks' two-bit places. pop'n 13 and 14 play their own 5-button charts as 6 (marked by flag
+  0x200 alone; 7 the same with 0x100), not pop'n 12's 2. Played: GRADIUS (418) on 5 buttons is
+  313 notes in pop'n 12 (sheet 2) and 167 in both 13 and 14 (sheet 6); 9 buttons' Normal is
+  sheet 0 (pop'n 12; pop'n 13 in NET TAISEN).
+- **The server** answers `score` with the best of the card's pop'n 12, 13 and 14 scores (pop'n 12
+  by card, 13 and 14 by the card's ref id) for that song and sheet; another game's only for songs
+  both have, and pop'n 14's own for the 18 songs it gave new ids. Checked: pop'n 12 asking
+  GRADIUS's sheet 0 got pop'n 13's 77777.
 
 ## NET TAISEN (pop'n music 12–14)
 

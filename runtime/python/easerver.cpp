@@ -13,6 +13,7 @@
 #include <fstream>
 #include <algorithm>
 #include <iterator>
+#include <set>
 
 namespace hk::py {
 
@@ -1030,15 +1031,16 @@ std::string EamuseServer::answer_game(const std::string &game, const Request &r)
 // marks travel; each game's own bits (flags, scores) stay its own.
 namespace {
 
-// the songs each game has (from its song table); pop'n 14's 457-459 are other songs than 13's
+// the songs each game has (its song table's entries but the "-" ones left in place of songs taken
+// out; pop'n 14 renamed some genres and comments, the songs the same)
 struct SongRanges { const char *game; std::vector<std::pair<int, int>> ranges; };
 const SongRanges SONGS[] = {
-    {"C00", {{0, 120}, {122, 149}, {151, 220}, {222, 251}, {253, 256}, {258, 324}}},
-    {"C20", {{0, 120}, {122, 149}, {151, 220}, {222, 256}, {258, 385}, {387, 389}}},
+    {"C00", {{0, 251}, {253, 256}, {258, 324}}},
+    {"C20", {{0, 389}}},
     {"D11", {{0, 427}, {429, 449}}},
-    {"E12", {{0, 243}, {247, 251}, {253, 253}, {255, 256}, {258, 259}, {261, 261}, {264, 327}, {330, 336}, {339, 391}, {393, 427}, {429, 449}, {457, 464}, {466, 467}, {469, 471}}},
-    {"E13", {{0, 243}, {247, 251}, {253, 253}, {255, 256}, {258, 259}, {261, 261}, {264, 327}, {330, 336}, {339, 391}, {393, 427}, {429, 449}, {457, 464}, {466, 467}, {469, 471}}},
-    {"F14", {{0, 243}, {247, 251}, {253, 253}, {255, 256}, {258, 259}, {261, 261}, {264, 327}, {330, 336}, {339, 391}, {393, 427}, {429, 456}, {460, 496}, {500, 500}, {511, 515}, {517, 517}, {520, 521}, {530, 530}, {532, 533}, {536, 699}}},
+    {"E12", {{0, 243}, {247, 251}, {253, 253}, {255, 256}, {258, 259}, {261, 261}, {264, 327}, {330, 336}, {339, 391}, {393, 427}, {429, 594}}},
+    {"E13", {{0, 243}, {247, 251}, {253, 253}, {255, 256}, {258, 259}, {261, 261}, {264, 327}, {330, 336}, {339, 391}, {393, 427}, {429, 648}}},
+    {"F14", {{0, 243}, {247, 251}, {253, 253}, {255, 256}, {258, 259}, {261, 261}, {264, 327}, {330, 336}, {339, 391}, {393, 427}, {429, 699}}},
 };
 
 bool has_song(const std::string &game, size_t n) {
@@ -1155,6 +1157,33 @@ std::string EamuseServer::with_shared_marks(const std::string &game, const std::
         from = e;
     }
     return out + data.substr(from);
+}
+
+// Scores (docs/EAMUSE3.md, "Shared scores"): pop'n 12, 13 and 14 number their charts alike, the
+// sheet sent being the chart (0x1b3958, 0x1810e60, 0x17fdfa0: the same code in all three): 0-3
+// Normal, Hyper, 5 buttons, EX (the song word's two-bit places), 5 one mode's; 13 and 14 play
+// their own 5-button charts as 6 (GRADIUS: 167 notes, 12's sheet 2 313), and have a 7. pop'n
+// 9-11 keep no scores (their players, 1.6-2.6 KB, have room for the marks only). So a game
+// asking a chart's best gets its own or another's of the card, same song and sheet, for songs
+// both games have.
+long EamuseServer::shared_score(const std::string &game, const std::string &key, const std::string &song, const std::string &sheet) const {
+    std::string card = game == "E12" ? key : "", ref = game == "E12" ? "" : key;
+    for (const Record &c : from_lines(read_file("cards"))) {
+        if (game == "E12" && attr(c, "cardid") == key) ref = attr(c, "refid");
+        if (game != "E12" && attr(c, "refid") == key) card = attr(c, "cardid");
+    }
+    const long n = std::strtol(song.c_str(), nullptr, 10);
+    // the songs pop'n 14 gave new ids (and some new levels): its charts of them its own
+    static const std::set<long> F14_ANEW = {450, 451, 452, 455, 457, 460, 461, 462, 465, 466, 469, 477, 478, 481, 484, 485, 487, 492};
+    long best = 0;
+    for (const char *g : {"E12", "E13", "F14"}) {
+        const std::string &who = std::string(g) == "E12" ? card : ref;
+        const bool other = game != g, f14 = game == "F14" || std::string(g) == "F14";
+        if (!safe_name(who) || (other && (!has_song(game, (size_t)n) || !has_song(g, (size_t)n) || (f14 && F14_ANEW.count(n))))) continue;
+        for (const Record &e : from_lines(read_file(std::string("pscore-") + g + "-" + who)))
+            if (attr(e, "num") == song && attr(e, "sheet") == sheet) best = std::max(best, num(e, "score"));
+    }
+    return best;
 }
 
 std::string EamuseServer::answer_playerdata(const std::string &game, const Request &r) {
@@ -1284,12 +1313,8 @@ std::string EamuseServer::answer_playerdata(const std::string &game, const Reque
         write_file(file, rec);
         return open + "/>";
     }
-    if (f == "score") {   // one chart's best: <E12 score/> (0x192a00)
-        long best = 0;
-        for (const Record &e : from_lines(read_file(scores_file)))
-            if (attr(e, "num") == attr(r.attrs, "music_num") && attr(e, "sheet") == attr(r.attrs, "sheet_num")) best = num(e, "score");
-        return open + " score=\"" + std::to_string(best) + "\"/>";
-    }
+    if (f == "score")   // one chart's best: <E12 score/> (0x192a00), the card's in pop'n 12-14
+        return open + " score=\"" + std::to_string(shared_score(game, card, attr(r.attrs, "music_num"), attr(r.attrs, "sheet_num"))) + "\"/>";
     // conv (old_card_id new_card_id name ...): a player carried over from the game before
     // (docs/EAMUSE3.md, "One card for all"). The game converts the older record it was given (get
     // with that game's model) for itself and keeps it only in memory; its credit's set sends only
