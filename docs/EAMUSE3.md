@@ -688,7 +688,8 @@ reader with its own 10-key; the PIN is checked by the server.
   32-bit word per song (`0x17fdfa0`); no password.
 - **`F14 game get`** also reads `net_event`, `ir_ranking` and `shop_event_ranking` (`0x17e9308`).
   `net_event` 1 means the internet ranking runs (`0x17fdc78`): the attract mode then shows the course
-  boards, and courses' results and high scores go online. HIRAKU answers `net_event="1"`.
+  boards, and courses' results and high scores go online; 2 means NET TAISEN runs instead (below,
+  "NET TAISEN"). HIRAKU answers 2, or what the data folder's `net_event-F14` says.
 - **`F14 rank get`:** 13 EXPERT courses of 0x1e4 bytes as pop'n 12's (the prefecture before the
   place), a 0x1894-byte table (`0x17db420`, at `0x15f28f8`), and no shop board.
 - **`F14 rank exp`** sends `ref_id course_num chara_num option stage_score cool great good bad combo
@@ -765,6 +766,28 @@ different PCs meet online through `hiraku-eamuse`'s relay (below, "Online").
   seconds and microseconds): the lobby's 1 s a try and 1 ms to empty its queue, another 50 ms. A
   recv waits for a datagram that long; answered at once instead, a lobby request from another
   cabinet (one frame away) went out again before its answer came.
+- **pop'n 13 and 14** (checked in HIRAKU: one cabinet, and two on a LAN cable, regress
+  `popn13-nettaisen-a`/`-b`, `popn14-nettaisen-a`/`-b`):
+  - **When the mode is offered:** no event phase; `game get`'s `net_event` must be 2 (13's
+    `0x17edd48`, 14's `0x17ddef8`), with the lobby's URL parsed and `game get` answered. `net_event`
+    is the network event running, one at a time: 1 the INTERNET RANKING (every use asks for exactly
+    1: the IR icon, the attract mode's course boards, course results online), 2 NET TAISEN. HIRAKU
+    answers 2 unless the data folder's `net_event-E13` or `net_event-F14` holds another number.
+  - **`game get`'s fields:** 13 (`0x17f8bf0`, read into `0x190bc70`): `phase extra_event net_event
+    renew_f id_announce_f message local_matching_enable matching_sec room_num ojama_msec ojama_gauge
+    cpu_level`. 14 (`0x17e9308`, at `0x19033a0`): `phase net_event ir_ranking shop_event_ranking
+    message local_matching_enable matching_sec ojama_gauge_rate cpu_level` (up to ten)
+    `downlimit_win downlimit_class job_exp_rate cpu_higher_release job_sp_rate` (up to 18).
+  - **Where the cabinet is reached:** 13 asks `portfw get` as 12 does; 14 reads it from `facility
+    get`'s `<portfw><globalip/><globalport/>`. The core puts the cabinet's own address there (on a
+    LAN cable, 192.168.50.2 + its number; online, the relay's), whatever the server said.
+  - **The credit:** 13: NET対戦 one left of ENJOY on the mode wheel ("リアルタイム3人対戦"), a
+    six-page explainer, ROOM SELECT, song select while the lobby looks, the opponents (対戦者紹介),
+    the battle, RESULT. 14: one left of ENJOY too, an eight-page explainer, ROOM SELECT, a shop
+    explainer, JOB SELECT, song select, MATCHING (the opponents, their jobs), the battle, RESULT.
+    Alone, both say nobody came and start CHALLENGE mode.
+  - **全国対戦 or 店内対戦:** a pop'n 13 cabinet that has heard another's broadcast asks first,
+    nationwide (the lobby) or in-shop (the LAN, no lobby); left to its timer it takes nationwide.
 - **Online** (`runtime/python/netrelay.h`): `hiraku-eamuse` keeps the lobby and a relay on TCP
   port 5740, the port its `globby` URL names. Each cabinet with `-url` pointing at it connects
   there at start, and the relay gives it an address of its own, 10.57.0.N. The cabinet puts that

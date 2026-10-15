@@ -186,6 +186,17 @@ CASES = {
                                              "--lan-host", "out/regress/work/popn12-lan.sock"], "popn12-phases", "popn12-nettaisen-b"),
     "popn12-nettaisen-b": ("popn12", 27000, ["--script", "oracle/scripts/popn12-nettaisen-b.his",
                                              "--lan-join", "out/regress/work/popn12-lan.sock"], "popn12-phases", "popn12-nettaisen-a"),
+    # the same for pop'n 13 and 14 (no event phase needed); 14's e-AMUSEMENT PASS numbers fixed
+    "popn13-eamuse-on": ("popn13", 4710, ["--script", "oracle/scripts/popn13-eamuse-on.his"]),
+    "popn13-nettaisen-a": ("popn13", 28600, ["--script", "oracle/scripts/popn13-nettaisen-a.his",
+                                             "--lan-host", "out/regress/work/popn13-lan.sock"], "popn13-eamuse-on", "popn13-nettaisen-b"),
+    "popn13-nettaisen-b": ("popn13", 28600, ["--script", "oracle/scripts/popn13-nettaisen-b.his",
+                                             "--lan-join", "out/regress/work/popn13-lan.sock"], "popn13-eamuse-on", "popn13-nettaisen-a"),
+    "popn14-eamuse-on": ("popn14", 4710, ["--script", "oracle/scripts/popn14-eamuse-on.his", "-card0", "E004010000001401"]),
+    "popn14-nettaisen-a": ("popn14", 29300, ["--script", "oracle/scripts/popn14-nettaisen-a.his", "-card0", "E004010000001401",
+                                             "--lan-host", "out/regress/work/popn14-lan.sock"], "popn14-eamuse-on", "popn14-nettaisen-b"),
+    "popn14-nettaisen-b": ("popn14", 29300, ["--script", "oracle/scripts/popn14-nettaisen-b.his", "-card0", "E004010000001402",
+                                             "--lan-join", "out/regress/work/popn14-lan.sock"], "popn14-eamuse-on", "popn14-nettaisen-a"),
 }
 
 # Twinkle: the cases above run MAME's program CD drive (--mame-cd), so they stay in lockstep

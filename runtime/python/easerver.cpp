@@ -936,14 +936,24 @@ std::string EamuseServer::answer_game(const std::string &game, const Request &r)
     if (type == "game" && f == "get") {   // phase: as pop'n 10's message.get (-1: the cabinet's own)
         const std::string ph = read_file("phase-" + game);
         const long phase = ph.empty() ? -1 : std::strtol(ph.c_str(), nullptr, 10);
-        // pop'n 14 also reads net_event (0x17e9308): 1, the internet ranking running (0x17fdc78:
-        // the attract mode's course boards, the courses' results and high scores online)
-        std::string flags = game == "F14" ? " net_event=\"1\"" : "";
-        // pop'n 12: NET TAISEN on (0x191160): play_enable, cabinets of one shop may meet
-        // (local_matching_enable), seconds to look for opponents, and every class in room 0, so
-        // anyone meets anyone (room_num: ten rooms; the mask 1 << room goes to the lobby). ojama_msec,
-        // ojama_gauge and cpu_level are left out: the game's own (1000 ms at least, 0x126f38)
-        if (game == "E12") flags += " play_enable=\"1\" local_matching_enable=\"1\" matching_sec=\"30\" room_num=\"0,0,0,0,0,0,0,0,0,0\"";
+        // pop'n 13 and 14 also read net_event (14's 0x17e9308), the network event running: 1 the
+        // INTERNET RANKING (14's 0x17fdc78: the attract mode's course boards, the courses' results
+        // and high scores online; every use asks for exactly 1), 2 NET TAISEN, one or the other.
+        // 2 unless the data folder's net_event-GAME says otherwise
+        std::string flags;
+        // NET TAISEN on (docs/EAMUSE3.md): pop'n 12 by play_enable (0x191160); pop'n 13 and 14 by
+        // net_event 2 (13's 0x17edd48, 14's 0x17ddef8). Cabinets of
+        // one shop may meet (local_matching_enable), seconds to look for opponents, and every class
+        // in room 0 so anyone meets anyone (room_num, 12 and 13: ten rooms; the mask 1 << room goes
+        // to the lobby). ojama_msec, ojama_gauge(_rate), cpu_level and 14's others are left out:
+        // the game's own (pop'n 12: an ojama 1000 ms at least, 0x126f38)
+        if (game == "E12") flags += " play_enable=\"1\"";
+        if (game == "E13" || game == "F14") {
+            const std::string ne = read_file("net_event-" + game);
+            flags += " net_event=\"" + std::to_string(ne.empty() ? 2 : std::strtol(ne.c_str(), nullptr, 10)) + "\"";
+        }
+        if (game == "E12" || game == "E13" || game == "F14") flags += " local_matching_enable=\"1\" matching_sec=\"30\"";
+        if (game == "E12" || game == "E13") flags += " room_num=\"0,0,0,0,0,0,0,0,0,0\"";
         return open + " phase=\"" + std::to_string(phase) + "\"" + flags + " message=\"" + esc(message()) + "\"/>";
     }
     if (type == "player") {   // mileage and 9 tickets per card (player_set sends them); course: 4 numbers

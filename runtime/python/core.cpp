@@ -884,7 +884,8 @@ private:
                 hk::py::EamuseServer::set_attr(xml, "gpcb_id", ea_.pcbid);
             }
             numbering = xml.find("<numbering") != std::string::npos && xml.find("method=\"assign\"") != std::string::npos;
-            portfw = xml.find("<portfw") != std::string::npos && xml.find("method=\"get\"") != std::string::npos;
+            portfw = (xml.find("<portfw") != std::string::npos || xml.find("<facility") != std::string::npos) &&
+                     xml.find("method=\"get\"") != std::string::npos;
             // pop'n 13 numbers a new card with cardmng.getnewid (a card id and its player's ref id):
             // with -card0 it asks the server about that number instead (inquire registers a card
             // it doesn't know), and the answer gets the number as the card id
@@ -907,14 +908,25 @@ private:
             };
             return "";
         }
-        if (portfw && relay_.is_open()) {
-            // online: other cabinets reach this one at the relay's address for it (netrelay.h),
-            // its battle socket's port
-            const uint32_t a = relay_.address();
+        // NET TAISEN: where other cabinets reach this one, the relay's address for it online
+        // (netrelay.h) or its own on a LAN cable (lancable.h), its battle socket's port; in
+        // portfw get's answer (pop'n 12 and 13) and in facility get's <portfw> (pop'n 14)
+        const uint32_t reach = relay_.is_open() ? relay_.address() : lan_.is_open() ? 0xc0a83202u + (uint32_t)lan_.index() : 0;
+        if (portfw && reach) {
             char ip[20];
-            snprintf(ip, sizeof ip, "%u.%u.%u.%u", a >> 24, (a >> 16) & 255, (a >> 8) & 255, a & 255);
+            snprintf(ip, sizeof ip, "%u.%u.%u.%u", reach >> 24, (reach >> 16) & 255, (reach >> 8) & 255, reach & 255);
+            if (net_log_) {
+                std::lock_guard<std::mutex> l(net_log_mutex_);
+                fprintf(net_log_, "%llu NET TAISEN: other cabinets reach this one at %s:5700 (in the answer)\n", (unsigned long long)frame_, ip);
+                fflush(net_log_);
+            }
             done = [done = std::move(done), ip = std::string(ip)](std::string answer) {
                 hk::py::EamuseServer::edit(answer, [&](std::string &xml) {
+                    if (const size_t g = xml.find("<globalip>"); g != std::string::npos) {   // facility
+                        const size_t e = xml.find("</globalip>", g);
+                        if (e != std::string::npos) xml.replace(g + 10, e - g - 10, ip);
+                        return;
+                    }
                     const size_t at = xml.find("<portfw");
                     if (at == std::string::npos) return;
                     const size_t end = xml.find('>', at);
