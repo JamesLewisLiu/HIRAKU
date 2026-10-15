@@ -208,7 +208,8 @@ void dcr_written(uint32_t n, uint32_t v) {
                     default: hk_w32(&dummy, dst, hk_r32(&dummy, src)); break;
                     }
                 }
-                charge(count * 2);
+                // no time charged: MAME's ppc4xx_dma_exec does a memory-to-memory transfer at once
+                // (it was 2 cycles a unit, a guess: ~76 ms over pop'n music's 2.5 M-word GCU uploads)
                 g_cpu.dcrs[0xc0 + ch * 8 + 1] = 0;
                 g_cpu.dcrs[0xc0 + ch * 8 + 2] = dst;
                 g_cpu.dcrs[0xc0 + ch * 8 + 3] = src;

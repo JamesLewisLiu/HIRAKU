@@ -631,6 +631,8 @@ Firebeat runs recompiled code, so it can't be in lockstep with MAME. What can be
 - **Fix:** `Timer::again(period)` re-arms from the tick the firing was due at; those five use it.
 - **Result:** the loads take 3,017 and 1,542 ms (MAME 3,015 and 1,532). pop'n 7's first piece of music now correlates 0.999 with MAME's (0.97 before). Its second piece still starts ~14 ms late: the main CPU's commands drift ~0.1 s against MAME's between loads, still to find. beatmania III is unchanged (5–8 frames early).
 
+**The PPC403's own DMA (2026-10-15).** That main-CPU drift came in steps of 33–85 ms, each where the game uploads to the GCU: about 2.5 M words by the PPC403's memory-to-memory DMA (`mtdcr` at 0x8002c8f4 in pop'n 7), not by a CPU loop. HIRAKU charged 2 cycles a unit, a guess from M2; MAME's `ppc4xx_dma_exec` does the transfer at once, charging nothing. Now HIRAKU charges nothing either. The main CPU's commands then stay within ~10 ms of MAME's over all three loads (they drifted 0.18 s), the 1.5 s load takes 1,531.8 ms (MAME 1,531.9), and pop'n 7's second piece of music starts 5 ms late (13.8 ms early at first, then 15.5 and 14 ms late). beatmania III: 7–8 frames early, as before.
+
 ## 19. System 573 roadmap (M14, written 2026-10-12)
 
 The approach is DJ Main's (§17): port MAME's devices, interpret the CPU, and match MAME cycle for cycle before anything else. Then make it cheap enough for an N100.
