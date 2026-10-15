@@ -67,6 +67,7 @@ public:
 
     const std::string &family() const override { return dj::family(); }
     void set_frame_hook(FrameHook h) override { dj::set_frame_hook(std::move(h)); }
+    bool set_present_hook(PresentHook h) override { dj::set_present_hook(std::move(h)); return true; }
     void set_audio_sink(AudioSink s) override { dj::set_audio_sink(std::move(s)); }
     void set_on_fatal(std::function<void()> f) override { on_fatal_ = std::move(f); }
     [[noreturn]] void run() override { dj::run(); }

@@ -165,6 +165,16 @@ On exit, the console prints the buffer it actually got.
 
 **Sound server settings:** the first reports came before the performance fixes in this release. Re-test with the defaults first. On PipeWire the server quantum adds its own latency; a smaller one (`PIPEWIRE_LATENCY=256/48000`) is worth trying, but only if the default is already clean.
 
+**Your own sound card, and its buffer** (launcher: Settings > Audio > Output, Device buffer).
+`--audio-device hw:CARD=Generic,DEV=0` opens that card through ALSA with no sound server in
+between: the lowest latency, and nothing else plays on it meanwhile. `aplay -l` lists the cards
+(`card 1: Generic ... device 0` is `hw:CARD=Generic,DEV=0`). If the sound server still has the
+card open (it lets go a few seconds after the last sound on it stops), the game says so and uses
+the default instead. `--audio-buffer N` sets the device buffer in frames (default 128, 2.7 ms at
+48 kHz): the sound server's quantum, or the card's period (SDL keeps two). Smaller is sooner,
+until it crackles; the queue above still grows by itself after an underrun. The exit report's
+first `audio:` line says what was opened.
+
 **System 573 and Twinkle: `--fine-sound`** (launcher: Settings > Audio > "Sound every millisecond"). These cores run MAME's devices, and MAME hands their sound on 50 times a second. So by default the sound reaches the PC in 20 ms pieces, which adds up to 20 ms of latency, uneven from moment to moment, and the controls are read once per piece. `--fine-sound` hands it on every millisecond instead:
 - The machine runs the same (the regress cases show the same pictures).
 - On beatmania IIDX the keysounds then start when the game triggers them. MAME's RF5C400 starts them at its previous update, up to 20 ms early, so the sound no longer matches MAME's recordings.
@@ -211,6 +221,26 @@ drawn. The exit report's `video:` line shows how evenly: at the game's rate (mea
 -0.005 ms), within about ±3 ms (sd 1.3 ms, the sound card's 2.8 ms blocks). On a fixed-refresh
 display: at 60 Hz one frame shown twice every 0.66 s; at 144 Hz frames alternate 2 and 3
 refreshes; at 240 Hz about one frame in ten stays up 5 refreshes instead of 4.
+
+**The picture at the end of vertical blank.** A game changes its picture in the vertical blank
+(its vblank interrupt flips pages, scrolls), and the monitor shows the result from the blank's
+end. The window shows each core's picture as of then, where the frame's digests and snapshots
+keep the start of the blank (the oracle's moment): beatmania III, pop'n 4-8, ParaParaParadise,
+Keyboardmania, DJ Main, the System 573 and Twinkle. Not the Python games: PCSX2 draws at the
+vsync. With display sync, the frame's emulation up to the blank's end is all that has to come
+before the picture: on the 573 the burst budget fell from 3.5 to 2.0 ms (ddr2m). Firebeat games
+draw in their vblank interrupt, so they gain nothing there. Free-running, every core's picture
+comes ~2 ms after its frame starts instead of a frame (~17 ms) later.
+
+**Direct scanout.** In fullscreen (F11) the compositor can put HIRAKU's picture on the screen
+without compositing it, which should bring it sooner. HIRAKU gives it what it needs (an opaque buffer
+the size of the screen, no pointer, the window marked as a game) and the exit report says how
+many frames went out that way (`video: N frames shown, M of them straight from HIRAKU's
+picture`). On KDE it also takes nothing over the game. A colour profile (System Settings > Display >
+Color profile, from EDID or ICC) or "prefer accuracy" most likely keeps KWin compositing, since it
+then converts every frame's colours: on the desktop this was written on (KWin 6.7, EDID profile,
+prefer accuracy) no frame went out directly, fullscreen or not. Fullscreen at 240 Hz, KWin still
+showed each picture 5.3 ms after HIRAKU handed it over (the exit report's "commit to screen").
 
 Some cores hand their sound on once per frame: DJ Main, the Python games (pop'n music 9-14) and
 Keyboardmania with the XT446 card. For them, free-running, the window waits for the sound after

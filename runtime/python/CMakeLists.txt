@@ -28,7 +28,8 @@ find_path(HK_WAYLAND_CLIENT_INCLUDE wayland-client.h)
 find_library(HK_WAYLAND_CLIENT_LIB wayland-client)
 if(HK_WAYLAND_CLIENT_INCLUDE AND HK_WAYLAND_CLIENT_LIB)
 	target_sources(hk_python_shell PRIVATE ${HK}/third_party/wayland/presentation-time-protocol.c
-	                                       ${HK}/third_party/wayland/fifo-v1-protocol.c)
+	                                       ${HK}/third_party/wayland/fifo-v1-protocol.c
+	                                       ${HK}/third_party/wayland/content-type-v1-protocol.c)
 	target_include_directories(hk_python_shell PRIVATE ${HK}/third_party/wayland ${HK_WAYLAND_CLIENT_INCLUDE})
 	target_link_libraries(hk_python_shell PRIVATE ${HK_WAYLAND_CLIENT_LIB})
 	target_compile_definitions(hk_python_shell PRIVATE HK_WITH_WAYLAND=1)

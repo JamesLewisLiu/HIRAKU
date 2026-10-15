@@ -19,6 +19,7 @@
 
 #include "fifo-v1-client.h"
 #include "presentation-time-client.h"
+#include "content-type-v1-client.h"
 #endif
 
 namespace hk::host::pacing {
@@ -49,6 +50,8 @@ bool g_overrun = false;        // this frame wasn't ready at its commit time
 
 uint64_t n_frames = 0, n_presented = 0, n_on_time = 0, n_late = 0, n_overrun = 0, n_resync = 0, n_discarded = 0,
          n_moved = 0;
+uint64_t n_shown = 0, n_zero_copy = 0;   // every frame's presentation feedback, either mode: shown, and
+                                         // of them scanned out straight from our buffer (not composited)
 std::string g_state;           // the last announced state, to print changes once
 bool g_debug = getenv("HK_PACING_DEBUG") != nullptr;
 
@@ -142,6 +145,10 @@ wl_registry *g_reg = nullptr;
 wp_presentation *g_pres = nullptr;
 wp_fifo_manager_v1 *g_fifo_mgr = nullptr;
 wp_fifo_v1 *g_fifo = nullptr;   // holds each frame for its refreshes (fifo-v1), when the compositor has it
+// The surface's content type, "game" (content-type-v1): the compositor may then treat it as one
+// (KWin: direct scanout and adaptive sync are for fullscreen games)
+wp_content_type_manager_v1 *g_ct_mgr = nullptr;
+wp_content_type_v1 *g_ct = nullptr;
 wl_surface *g_surface = nullptr;
 clockid_t g_clock = CLOCK_MONOTONIC;
 // Feedbacks not yet answered: destroyed before the queue, or the compositor's answer arriving
@@ -164,10 +171,12 @@ int64_t clock_to_steady(int64_t t) {
 const wp_presentation_feedback_listener feedback_listener = {
     [](void *, struct wp_presentation_feedback *, wl_output *) {},
     [](void *data, struct wp_presentation_feedback *fb, uint32_t sec_hi, uint32_t sec_lo, uint32_t nsec, uint32_t refresh,
-       uint32_t, uint32_t, uint32_t) {
+       uint32_t, uint32_t, uint32_t flags) {
         auto *p = (Pending *)data;
         int64_t t = (int64_t)(((uint64_t)sec_hi << 32) | sec_lo) * 1'000'000'000 + nsec;
-        presented(clock_to_steady(t), p->committed, p->target, p->overrun, refresh, p->k);
+        n_shown++;
+        if (flags & WP_PRESENTATION_FEEDBACK_KIND_ZERO_COPY) n_zero_copy++;
+        if (p->k) presented(clock_to_steady(t), p->committed, p->target, p->overrun, refresh, p->k);   // k 0: observe()
         delete p;
         g_live.erase(fb);
         wp_presentation_feedback_destroy(fb);
@@ -192,6 +201,8 @@ const wl_registry_listener registry_listener = {
             wp_presentation_add_listener(g_pres, &presentation_listener, nullptr);
         } else if (std::string(iface) == wp_fifo_manager_v1_interface.name && !getenv("HK_PACING_NO_FIFO")) {
             g_fifo_mgr = (wp_fifo_manager_v1 *)wl_registry_bind(reg, name, &wp_fifo_manager_v1_interface, 1);
+        } else if (std::string(iface) == wp_content_type_manager_v1_interface.name) {
+            g_ct_mgr = (wp_content_type_manager_v1 *)wl_registry_bind(reg, name, &wp_content_type_manager_v1_interface, 1);
         }
     },
     [](void *, wl_registry *, uint32_t) {},
@@ -213,7 +224,11 @@ void wayland_init() {
     wl_registry_add_listener(g_reg, &registry_listener, nullptr);
     wl_display_roundtrip_queue(g_wd, g_q);   // the globals
     wl_display_roundtrip_queue(g_wd, g_q);   // the presentation clock
-    if (g_fifo_mgr && g_pres) g_fifo = wp_fifo_manager_v1_get_fifo(g_fifo_mgr, g_surface);
+    if (g_enabled && g_fifo_mgr && g_pres) g_fifo = wp_fifo_manager_v1_get_fifo(g_fifo_mgr, g_surface);
+    if (g_ct_mgr) {   // applies from the next commit (the first frame)
+        g_ct = wp_content_type_manager_v1_get_surface_content_type(g_ct_mgr, g_surface);
+        wp_content_type_v1_set_content_type(g_ct, WP_CONTENT_TYPE_V1_TYPE_GAME);
+    }
 }
 
 void wayland_shutdown() {
@@ -223,6 +238,8 @@ void wayland_shutdown() {
         wp_presentation_feedback_destroy(fb);
     }
     g_live.clear();
+    if (g_ct) wp_content_type_v1_destroy(g_ct);
+    if (g_ct_mgr) wp_content_type_manager_v1_destroy(g_ct_mgr);
     if (g_fifo) wp_fifo_v1_destroy(g_fifo);
     if (g_fifo_mgr) wp_fifo_manager_v1_destroy(g_fifo_mgr);
     if (g_pres) wp_presentation_destroy(g_pres);
@@ -230,6 +247,7 @@ void wayland_shutdown() {
     if (g_wrap) wl_proxy_wrapper_destroy(g_wrap);
     if (g_q) wl_event_queue_destroy(g_q);
     g_pres = nullptr, g_reg = nullptr, g_wrap = nullptr, g_q = nullptr, g_wd = nullptr, g_fifo = nullptr, g_fifo_mgr = nullptr;
+    g_ct = nullptr, g_ct_mgr = nullptr;
 }
 #endif
 
@@ -242,7 +260,7 @@ void init(SDL_Window *win, bool enabled) {
     if (const char *s = getenv("HK_DISPLAY_SYNC_SKEW")) g_max_skew = atof(s);
     refresh_from_mode();
 #ifdef HK_WITH_WAYLAND
-    if (enabled) wayland_init();
+    wayland_init();   // with display sync off too: the content type, and whether frames go out directly
 #endif
     if (!enabled) announce("disabled", "off (--display-sync off): frames are shown as they come");
 }
@@ -384,6 +402,25 @@ void wait_next() {
     const int64_t start = g_target + (int64_t)g_k * g_T - g_lead - g_budget;
     sleep_until(start);
     g_burst_start = std::max(start, (int64_t)prof::now_ns());
+}
+
+void observe() {
+#ifdef HK_WITH_WAYLAND
+    if (!g_pres) return;
+    pump();
+    struct wp_presentation_feedback *fb = wp_presentation_feedback(g_pres, g_surface);
+    wp_presentation_feedback_add_listener(fb, &feedback_listener, new Pending{0, false, 0, (int64_t)prof::now_ns()});
+    g_live.insert(fb);
+#endif
+}
+
+std::string scanout_describe() {
+    if (!n_shown) return {};
+    char b[320];
+    snprintf(b, sizeof b, "video: %llu frames shown, %llu of them straight from HIRAKU's picture (direct scanout, not composited)%s",
+             (unsigned long long)n_shown, (unsigned long long)n_zero_copy,
+             n_zero_copy * 2 < n_shown ? "; the compositor scans a window out directly when it is fullscreen (F11) with nothing over it" : "");
+    return b;
 }
 
 std::string describe() {

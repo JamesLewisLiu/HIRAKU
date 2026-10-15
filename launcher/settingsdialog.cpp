@@ -22,6 +22,10 @@
 #include <QVBoxLayout>
 
 #include "config.h"
+
+#include <QFile>
+#include <QMap>
+#include <QTextStream>
 #include "picturedialog.h"
 
 namespace {
@@ -78,6 +82,32 @@ QWidget *withPick(QLineEdit *e, QWidget *parent) {
 
 }  // namespace
 
+// The sound cards' playback devices, as ALSA names ("hw:CARD=Generic,DEV=0") and labels, from
+// /proc/asound: what `--audio-device` opens alone, with no sound server in between.
+static QList<QPair<QString, QString>> alsaPlaybackDevices() {
+    QMap<int, QPair<QString, QString>> cards;   // number -> (id, name)
+    QFile cf("/proc/asound/cards");
+    if (cf.open(QIODevice::ReadOnly)) {
+        static const QRegularExpression line(R"(^\s*(\d+)\s+\[([^\]]+)\]:\s*[^-]*-\s*(.*)$)");
+        for (const QString &l : QTextStream(&cf).readAll().split('\n'))
+            if (auto m = line.match(l); m.hasMatch()) cards[m.captured(1).toInt()] = {m.captured(2).trimmed(), m.captured(3).trimmed()};
+    }
+    QList<QPair<QString, QString>> out;
+    QFile pf("/proc/asound/pcm");
+    if (pf.open(QIODevice::ReadOnly)) {
+        static const QRegularExpression line(R"(^(\d+)-(\d+):\s*([^:]*):[^:]*:(.*)$)");
+        for (const QString &l : QTextStream(&pf).readAll().split('\n')) {
+            auto m = line.match(l);
+            if (!m.hasMatch() || !m.captured(4).contains("playback")) continue;
+            const int card = m.captured(1).toInt(), dev = m.captured(2).toInt();
+            if (!cards.contains(card)) continue;
+            const QString name = QString("hw:CARD=%1,DEV=%2").arg(cards[card].first).arg(dev);
+            out.append({name, QString("%1: %2 (%3)").arg(cards[card].second, m.captured(3).trimmed(), name)});
+        }
+    }
+    return out;
+}
+
 SettingsDialog::SettingsDialog(QWidget *parent) : QDialog(parent) {
     setWindowTitle("Settings");
     resize(560, 0);
@@ -130,6 +160,25 @@ SettingsDialog::SettingsDialog(QWidget *parent) : QDialog(parent) {
     m_audioMs->setValue(s.value("audio/ms", 8).toInt());
     m_audioMs->setToolTip("The audio queue the game starts with. It grows by itself after an underrun (docs/PLAY.md, Latency).");
     fa->addRow("Starting audio queue:", m_audioMs);
+    m_audioDevice = new QComboBox;
+    m_audioDevice->addItem("The system's default (the sound server)", QString());
+    const QString device = s.value("audio/device").toString();
+    for (const auto &[name, label] : alsaPlaybackDevices()) m_audioDevice->addItem("Alone: " + label, name);
+    if (!device.isEmpty() && m_audioDevice->findData(device) < 0) m_audioDevice->addItem("Alone: " + device, device);
+    m_audioDevice->setCurrentIndex(std::max(0, m_audioDevice->findData(device)));
+    m_audioDevice->setToolTip("A sound card alone: the game opens it through ALSA with no sound server in between, for "
+                              "the lowest latency; nothing else plays on it meanwhile. If it's busy (the sound server lets "
+                              "go of a card a few seconds after the last sound on it), the game uses the default instead.");
+    fa->addRow("Output:", m_audioDevice);
+    m_audioBuffer = new QComboBox;
+    for (int f : {0, 32, 48, 64, 96, 128, 192, 256, 512})
+        m_audioBuffer->addItem(f ? QString("%1 frames (%2 ms)").arg(f).arg(f * 1000.0 / 48000, 0, 'f', 1)
+                                 : QString("Default (128 frames, 2.7 ms)"), f);
+    m_audioBuffer->setCurrentIndex(std::max(0, m_audioBuffer->findData(s.value("audio/buffer", 0).toInt())));
+    m_audioBuffer->setToolTip("The sound device's buffer (the sound server's quantum, or the card's period when it's "
+                              "alone). Smaller is sooner, until it crackles; the queue above grows by itself after a "
+                              "crackle. Times at 48 kHz.");
+    fa->addRow("Device buffer:", m_audioBuffer);
     m_fineSound = new QCheckBox("Sound every millisecond on System 573 and Twinkle (not MAME's)");
     m_fineSound->setChecked(s.value("audio/fineSound", false).toBool());
     m_fineSound->setToolTip("MAME hands these machines' sound on 50 times a second, which adds up to 20 ms of "
@@ -230,6 +279,8 @@ void SettingsDialog::accept() {
     s.setValue("video/picture", m_picture->currentData().toString());
     s.setValue("audio/ms", m_audioMs->value());
     s.setValue("audio/fineSound", m_fineSound->isChecked());
+    s.setValue("audio/device", m_audioDevice->currentData().toString());
+    s.setValue("audio/buffer", m_audioBuffer->currentData().toInt());
     s.setValue("audio/soundfont", m_soundfont->text().trimmed());
     s.setValue("lights/socket", m_socket->isChecked());
     s.setValue("paths/root", m_root->text().trimmed());

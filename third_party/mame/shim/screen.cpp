@@ -115,6 +115,11 @@ void screen_device::vblank_begin(s32) {
 }
 
 void screen_device::vblank_end(s32) {
+    if (m_hk_vblank_end && !m_update.isnull()) {
+        m_hk_end_bitmap.resize(m_bitmap.width(), m_bitmap.height());
+        m_update(*this, m_hk_end_bitmap, m_visarea);
+        m_hk_vblank_end(*this, m_hk_end_bitmap);
+    }
     for (auto &cb : m_vblank_callbacks) cb(*this, false);
     m_screen_vblank(0);
     m_frame_number++;

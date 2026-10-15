@@ -205,7 +205,8 @@ if(SDL3_FOUND)
   find_library(WAYLAND_CLIENT_LIB wayland-client)
   if(WAYLAND_CLIENT_INCLUDE AND WAYLAND_CLIENT_LIB)
     target_sources(hiraku_host PRIVATE third_party/wayland/presentation-time-protocol.c
-                                       third_party/wayland/fifo-v1-protocol.c)
+                                       third_party/wayland/fifo-v1-protocol.c
+                                       third_party/wayland/content-type-v1-protocol.c)
     target_include_directories(hiraku_host PRIVATE third_party/wayland ${WAYLAND_CLIENT_INCLUDE})
     target_link_libraries(hiraku_host PRIVATE ${WAYLAND_CLIENT_LIB})
     target_compile_definitions(hiraku_host PRIVATE HK_WITH_WAYLAND=1)

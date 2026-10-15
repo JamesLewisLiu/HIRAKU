@@ -49,6 +49,7 @@ uint8_t g_ext_irq_enable = 0x3f, g_ext_irq_active = 0;
 uint8_t g_control = 0;
 uint32_t g_cabinet_info = 0;
 FrameHook g_frame_hook;
+PresentHook g_present_hook;
 uint64_t g_frame = 0;
 std::vector<uint32_t> g_fb;
 
@@ -619,43 +620,57 @@ uint64_t frame_ticks() {
     return (uint64_t)(period * CPU_HZ + 0.5);
 }
 
+// The GCU's picture now, into `out` (w x h). Keyboardmania: two portrait monitors (MAME ROT270),
+// left and right side by side; each w x h screen becomes h x w, (x, y) -> (y, w - 1 - x)
+void draw_picture(std::vector<uint32_t> &out, int &ow, int &oh) {
+    prof::Scope ps(prof::DRAW);
+    const int w = g_gcu->hvisible(), h = g_gcu->vvisible();
+    if (!g_gcu2) {
+        out.resize((size_t)w * h);
+        g_gcu->draw(out.data(), w, h);
+        ow = w, oh = h;
+        return;
+    }
+    static std::vector<uint32_t> half;
+    ow = 2 * h, oh = w;
+    out.resize((size_t)ow * oh);
+    half.resize((size_t)w * h);
+    for (int k = 0; k < 2; k++) {
+        (k ? g_gcu2 : g_gcu)->draw(half.data(), w, h);
+        // in 32x32 tiles, so that neither the reads nor the column writes thrash the cache
+        constexpr int T = 32;
+        for (int y0 = 0; y0 < h; y0 += T)
+            for (int x0 = 0; x0 < w; x0 += T)
+                for (int x = x0; x < std::min(x0 + T, w); x++) {
+                    uint32_t *d = &out[(size_t)(w - 1 - x) * ow + (size_t)k * h];
+                    for (int y = y0; y < std::min(y0 + T, h); y++) d[y] = half[(size_t)y * w + x];
+                }
+    }
+}
+
+// The end of vertical blank: the picture as the monitor then shows it, the game's flip in its
+// vblank interrupt included, for the window (set_present_hook). The timer runs with or without
+// the window, so a run goes the same either way.
+void vblank_end_fire();
+Timer g_vblank_end("vblank end", vblank_end_fire);
+std::vector<uint32_t> g_present_fb;
+void vblank_end_fire() {
+    if (!g_present_hook) return;
+    int w, h;
+    draw_picture(g_present_fb, w, h);
+    g_present_hook(g_present_fb.data(), w, h);
+}
+
 void vblank_fire() {
     audio_release();
     g_frame++;
     g_vblank.again(frame_ticks());
+    g_vblank_end.in((uint64_t)((double)g_gcu->htotal() * (g_gcu->vtotal() - g_gcu->vvisible()) / g_gcu->pixclock() * CPU_HZ + 0.5));
     g_gcu->vblank(true);
     if (g_frame_hook) {
-        int w = g_gcu->hvisible(), h = g_gcu->vvisible();
-        if (!g_gcu2) {
-            g_fb.resize((size_t)w * h);
-            {
-                prof::Scope ps(prof::DRAW);
-                g_gcu->draw(g_fb.data(), w, h);
-            }
-            g_frame_hook(g_frame, g_fb.data(), w, h);
-            return;
-        }
-        // Keyboardmania: two portrait monitors (MAME ROT270), left and right side by side;
-        // each w x h screen becomes h x w, (x, y) -> (y, w - 1 - x)
-        static std::vector<uint32_t> half;
-        const int ow = 2 * h;
-        g_fb.resize((size_t)ow * w);
-        half.resize((size_t)w * h);
-        {
-            prof::Scope ps(prof::DRAW);
-            for (int k = 0; k < 2; k++) {
-                (k ? g_gcu2 : g_gcu)->draw(half.data(), w, h);
-                // in 32x32 tiles, so that neither the reads nor the column writes thrash the cache
-                constexpr int T = 32;
-                for (int y0 = 0; y0 < h; y0 += T)
-                    for (int x0 = 0; x0 < w; x0 += T)
-                        for (int x = x0; x < std::min(x0 + T, w); x++) {
-                            uint32_t *d = &g_fb[(size_t)(w - 1 - x) * ow + (size_t)k * h];
-                            for (int y = y0; y < std::min(y0 + T, h); y++) d[y] = half[(size_t)y * w + x];
-                        }
-            }
-        }
-        g_frame_hook(g_frame, g_fb.data(), ow, w);
+        int w, h;
+        draw_picture(g_fb, w, h);
+        g_frame_hook(g_frame, g_fb.data(), w, h);
     }
 }
 
@@ -936,6 +951,7 @@ void turntable_add(int player, int delta) {
 }
 
 void set_frame_hook(FrameHook h) { g_frame_hook = std::move(h); }
+void set_present_hook(PresentHook h) { g_present_hook = std::move(h); }
 void set_audio_sink(AudioSink sink) { g_audio_sink = std::move(sink); }
 uint64_t ymz_key_ons() { return g_ymz ? g_ymz->key_ons : 0; }
 uint64_t midi_out_bytes() { return g_midi_out_bytes; }

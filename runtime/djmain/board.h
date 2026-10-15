@@ -35,6 +35,9 @@ bool init(const Config &cfg);                  // false: a message was printed
 using FrameHook = std::function<void(uint64_t frame, const uint32_t *rgb, int w, int h)>;
 using AudioSink = std::function<void(const float *lr, int frames)>;   // 48 kHz stereo (K054539::RATE)
 void set_frame_hook(FrameHook h);
+// The picture at the end of vertical blank (Core::set_present_hook), every frame.
+using PresentHook = std::function<void(const uint32_t *rgb, int w, int h)>;
+void set_present_hook(PresentHook h);
 void set_audio_sink(AudioSink s);
 [[noreturn]] void run();
 

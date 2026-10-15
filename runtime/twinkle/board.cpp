@@ -603,6 +603,8 @@ struct Board {
     twinkle_state *state = nullptr;
     Config cfg;
     FrameHook frame_hook;
+    PresentHook present_hook;
+    std::vector<u32> present_rgb;
     AudioSink audio_sink;
     u64 frames = 0;
     float sound_peak = 0;
@@ -639,6 +641,36 @@ void DvdState::command(const unsigned char *c, double t) {
 
 }  // namespace
 
+// The picture: the screen's visible area from `bm`, and the sub board's overlay, the player's
+// picture where the PlayStation draws black, at the machine's time.
+void picture(screen_device &screen, const bitmap_rgb32 &bm, std::vector<u32> &out, int &w, int &h, bool frame) {
+    const rectangle &vis = screen.visible_area();
+    w = vis.width(), h = vis.height();
+    out.resize((size_t)w * h);
+    u32 *__restrict dst = out.data();
+    for (int y = 0; y < h; y++) {
+        const u32 *__restrict src = &bm.pix(vis.top() + y, vis.left());
+        for (int x = 0; x < w; x++) dst[x] = src[x] | 0xff000000u;
+        dst += w;
+    }
+#if HK_TWINKLE_VIDEO
+    twinkle_state &st = *g.state;
+    if (g.video.is_open() && (st.m_mixer & 2)) {
+        PlayerVideo::Picture pic;
+        pic.brightness = (s8)st.m_bt812[0x08];
+        pic.contrast = st.m_bt812[0x09];
+        pic.saturation = st.m_bt812[0x0a];
+        pic.hue = (s8)st.m_bt812[0x0b];
+        g.video.composite(screen.machine().time().as_double(), out.data(), w, h, pic);
+        if (frame && getenv("HK_TW_VIDEO_AT") && g.frames == (u64)atoll(getenv("HK_TW_VIDEO_AT")))
+            fprintf(stderr, "frame %llu t %.6f %dx%d bri %d con %d sat %d hue %d\n", (unsigned long long)g.frames,
+                    screen.machine().time().as_double(), w, h, pic.brightness, pic.contrast, pic.saturation, pic.hue);
+    }
+#else
+    (void)frame;
+#endif
+}
+
 bool init(const Config &cfg) {
     g.cfg = cfg;
     hk_psx_sio1_uart = cfg.dvd_port == "sio1";   // SIO1 with CTS for the player (TW-5)
@@ -669,30 +701,8 @@ bool init(const Config &cfg) {
     st.m_screen->m_hk_frame = [](screen_device &screen) {
         g.frames++;
         if (!g.frame_hook) return;
-        const rectangle &vis = screen.visible_area();
-        const int w = vis.width(), h = vis.height();
-        g.frame_rgb.resize((size_t)w * h);
-        u32 *__restrict dst = g.frame_rgb.data();
-        for (int y = 0; y < h; y++) {
-            const u32 *__restrict src = &screen.m_bitmap.pix(vis.top() + y, vis.left());
-            for (int x = 0; x < w; x++) dst[x] = src[x] | 0xff000000u;
-            dst += w;
-        }
-        // the sub board's overlay: the player's picture where the PlayStation draws black
-#if HK_TWINKLE_VIDEO
-        twinkle_state &st = *g.state;
-        if (g.video.is_open() && (st.m_mixer & 2)) {
-            PlayerVideo::Picture pic;
-            pic.brightness = (s8)st.m_bt812[0x08];
-            pic.contrast = st.m_bt812[0x09];
-            pic.saturation = st.m_bt812[0x0a];
-            pic.hue = (s8)st.m_bt812[0x0b];
-            g.video.composite(screen.machine().time().as_double(), g.frame_rgb.data(), w, h, pic);
-            if (getenv("HK_TW_VIDEO_AT") && g.frames == (u64)atoll(getenv("HK_TW_VIDEO_AT")))
-                fprintf(stderr, "frame %llu t %.6f %dx%d bri %d con %d sat %d hue %d\n", (unsigned long long)g.frames,
-                        screen.machine().time().as_double(), w, h, pic.brightness, pic.contrast, pic.saturation, pic.hue);
-        }
-#endif
+        int w, h;
+        picture(screen, screen.m_bitmap, g.frame_rgb, w, h, true);
         g.frame_hook(g.frames, g.frame_rgb.data(), w, h);
     };
     m.m_after_nvram_load = [&m] {
@@ -762,6 +772,14 @@ bool init(const Config &cfg) {
 }
 
 void set_frame_hook(FrameHook h) { g.frame_hook = std::move(h); }
+void set_present_hook(PresentHook h) {
+    g.present_hook = std::move(h);
+    g.state->m_screen->m_hk_vblank_end = [](screen_device &screen, bitmap_rgb32 &bm) {
+        int w, h;
+        picture(screen, bm, g.present_rgb, w, h, false);
+        g.present_hook(g.present_rgb.data(), w, h);
+    };
+}
 void set_audio_sink(AudioSink s) { g.audio_sink = std::move(s); }
 
 [[noreturn]] void run() {

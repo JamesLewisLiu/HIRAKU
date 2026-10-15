@@ -36,6 +36,9 @@ std::chrono::steady_clock::time_point g_t0;
 bool g_started = false;
 
 int g_rate = 44100;               // the core's audio rate (Core::audio_rate)
+std::string g_audio_device;       // window_set_audio_output: an ALSA device to have alone ("": the default)
+int g_audio_buffer = 0;           // ... and the device buffer in frames (0: 128)
+std::string g_audio_output;       // what it got, for the report
 int g_target_frames = 0;          // audio queued ahead, when audio paces
 bool g_fast = false;              // Tab held: run as fast as possible (audio is dropped)
 int g_device_frames = 0;
@@ -105,6 +108,10 @@ void poll() {
                    : g_mode == picture::Mode::light ? picture::Mode::full : picture::Mode::off;
         if (e.type == SDL_EVENT_WINDOW_DISPLAY_CHANGED || e.type == SDL_EVENT_DISPLAY_CURRENT_MODE_CHANGED)
             pacing::display_changed();
+        // no pointer over the game in fullscreen (it would also keep the compositor from
+        // scanning the picture out directly, where the pointer isn't a plane of its own)
+        if (e.type == SDL_EVENT_WINDOW_ENTER_FULLSCREEN) SDL_HideCursor();
+        if (e.type == SDL_EVENT_WINDOW_LEAVE_FULLSCREEN) SDL_ShowCursor();
         if (e.type == SDL_EVENT_JOYSTICK_ADDED) input_joystick_added(e.jdevice.which);
         input_event(e);
     }
@@ -121,6 +128,12 @@ bool open_gl(const char *title, int scale) {
     SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
     SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 0);
     SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 0);
+    // opaque, 8 bits a channel: a buffer the compositor can scan out directly in fullscreen,
+    // skipping its own composition (and a frame's worth of its latency)
+    SDL_GL_SetAttribute(SDL_GL_RED_SIZE, 8);
+    SDL_GL_SetAttribute(SDL_GL_GREEN_SIZE, 8);
+    SDL_GL_SetAttribute(SDL_GL_BLUE_SIZE, 8);
+    SDL_GL_SetAttribute(SDL_GL_ALPHA_SIZE, 0);
     g_win = SDL_CreateWindow(title, 640 * scale, 480 * scale, SDL_WINDOW_RESIZABLE | SDL_WINDOW_OPENGL);
     if (g_win) g_gl = SDL_GL_CreateContext(g_win);
     if (g_gl) SDL_GL_SetSwapInterval(0);   // as with the renderer: presenting never waits for the display
@@ -143,13 +156,38 @@ void window_set_picture(const std::string &mode, const std::string &shaders_dir,
 
 void window_set_display_sync(bool on) { g_display_sync = on; }
 
+void window_set_audio_output(const std::string &device, int frames) {
+    g_audio_device = device;
+    g_audio_buffer = frames;
+}
+
 bool window_open(const char *title, int scale, const std::string &bindings, int target_ms, bool fullscreen, int rate) {
     g_rate = rate;
-    SDL_SetHint(SDL_HINT_AUDIO_DEVICE_SAMPLE_FRAMES, "128");   // ask for a small device buffer
+    // the device's buffer: the sound server's quantum (PipeWire: node.latency) or, on a sound card
+    // of our own, the ALSA period (SDL keeps two)
+    SDL_SetHint(SDL_HINT_AUDIO_DEVICE_SAMPLE_FRAMES, std::to_string(g_audio_buffer > 0 ? g_audio_buffer : 128).c_str());
+    if (!g_audio_device.empty()) {   // the card itself, through ALSA: no sound server in between
+        SDL_SetHint(SDL_HINT_AUDIO_DRIVER, "alsa");
+        SDL_SetHint(SDL_HINT_AUDIO_ALSA_DEFAULT_PLAYBACK_DEVICE, g_audio_device.c_str());
+    }
     if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO)) return false;
     input_init(bindings);
     SDL_AudioSpec spec{SDL_AUDIO_F32, 2, g_rate};
     g_audio = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &spec, nullptr, nullptr);
+    if (!g_audio_device.empty()) {
+        if (g_audio) {
+            g_audio_output = g_audio_device + " (the card alone, through ALSA)";
+        } else {   // busy (the sound server has it open while anything plays), or no such device
+            fprintf(stderr, "audio: %s: %s; the system's default output instead (the sound server lets go of a card "
+                            "a few seconds after the last sound on it stops)\n", g_audio_device.c_str(), SDL_GetError());
+            SDL_QuitSubSystem(SDL_INIT_AUDIO);
+            SDL_ResetHint(SDL_HINT_AUDIO_DRIVER);
+            SDL_ResetHint(SDL_HINT_AUDIO_ALSA_DEFAULT_PLAYBACK_DEVICE);
+            if (SDL_InitSubSystem(SDL_INIT_AUDIO))
+                g_audio = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &spec, nullptr, nullptr);
+        }
+    }
+    if (g_audio_output.empty() && g_audio) g_audio_output = std::string("the system's default (") + SDL_GetCurrentAudioDriver() + ")";
     if (g_audio) {
         SDL_AudioSpec dev{};
         SDL_GetAudioDeviceFormat(SDL_GetAudioStreamDevice(g_audio), &dev, &g_device_frames);
@@ -241,10 +279,13 @@ static double display_aspect(int w, int h) {
     return a > 0 ? a : (double)w / h;
 }
 
-bool window_frame(const uint32_t *rgb, int w, int h, double vsec) {
+bool g_sync = false;   // display pacing for the frame last presented
+
+void window_present(const uint32_t *rgb, int w, int h, double vsec) {
     const double period = g_last_vsec < 0 || g_fast ? 0.0 : vsec - g_last_vsec;
     g_last_vsec = vsec;
     const bool sync = pacing::frame(period) && !g_fast;
+    g_sync = sync;
     if (g_gl) {
         prof::Scope ps(prof::PRESENT);
         int ww = 0, wh = 0;
@@ -264,6 +305,7 @@ bool window_frame(const uint32_t *rgb, int w, int h, double vsec) {
             if (g_glFlush) g_glFlush();
             g_frame_budget.hold(g_frame_start_ns);
         }
+        if (!sync) pacing::observe();
         SDL_GL_SwapWindow(g_win);
         g_start_to_picture.add(g_frame_start_ns);
         if (sync) pacing::committed();
@@ -294,6 +336,7 @@ bool window_frame(const uint32_t *rgb, int w, int h, double vsec) {
             SDL_FlushRenderer(g_ren);
             g_frame_budget.hold(g_frame_start_ns);
         }
+        if (!sync) pacing::observe();
         SDL_RenderPresent(g_ren);
         g_start_to_picture.add(g_frame_start_ns);
         if (sync) pacing::committed();
@@ -314,6 +357,10 @@ bool window_frame(const uint32_t *rgb, int w, int h, double vsec) {
         if (!g_macro.empty()) t += " - typing: " + g_macro;
         SDL_SetWindowTitle(g_win, t.c_str());
     }
+}
+
+bool window_next(double vsec) {
+    const bool sync = g_sync;
     poll();
     g_frame_start_ns = 0;
     g_frame_paced = false;
@@ -360,6 +407,11 @@ bool window_frame(const uint32_t *rgb, int w, int h, double vsec) {
     else if (now - due > std::chrono::milliseconds(250)) g_t0 += now - due;   // fell behind: don't try to catch up
     g_frame_start_ns = prof::now_ns();
     return true;
+}
+
+bool window_frame(const uint32_t *rgb, int w, int h, double vsec) {
+    window_present(rgb, w, h, vsec);
+    return window_next(vsec);
 }
 
 // Underrun accounting: the queue level when each chunk arrives, and what the
@@ -436,11 +488,11 @@ std::string audio_describe() {
     if (!g_audio) return "no audio device";
     char b[2048];
     int n = snprintf(b, sizeof b,
-                     "audio: device buffer %d frames (%.1f ms), queue target %d frames (%.1f ms, after self-tuning)\n"
+                     "audio: %s, device buffer %d frames (%.1f ms), queue target %d frames (%.1f ms, after self-tuning)\n"
                      "audio: %llu chunks, %llu ran low (<1 ms queued), %llu found the queue empty; worst gap %.1f ms\n"
                      "audio: host work per chunk  <1:%llu <2:%llu <4:%llu <8:%llu <16:%llu <32:%llu <64:%llu >=64:%llu ms\n"
                      "audio: during low chunks:",
-                     g_device_frames, g_device_frames * 1000.0 / g_rate, g_target_frames, g_target_frames * 1000.0 / g_rate,
+                     g_audio_output.c_str(), g_device_frames, g_device_frames * 1000.0 / g_rate, g_target_frames, g_target_frames * 1000.0 / g_rate,
                      (unsigned long long)g_ast.chunks, (unsigned long long)g_ast.low, (unsigned long long)g_ast.empty,
                      g_ast.worst_gap_ms, (unsigned long long)g_ast.gap_hist[0], (unsigned long long)g_ast.gap_hist[1],
                      (unsigned long long)g_ast.gap_hist[2], (unsigned long long)g_ast.gap_hist[3],
@@ -459,6 +511,7 @@ std::string audio_describe() {
                  (unsigned long long)p.hist[5]);
     }
     std::string out = std::string(b) + "\n" + pacing::describe();
+    if (std::string sc = pacing::scanout_describe(); !sc.empty()) out += "\n" + sc;
     if (const StartToPicture &l = g_start_to_picture; l.n) {
         snprintf(b, sizeof b,
                  "\nvideo: from a frame starting (the controls read) to its picture handed to the display: mean %.1f ms, "

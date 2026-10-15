@@ -16,7 +16,7 @@ public:
 private:
     QSpinBox *m_scale, *m_audioMs;
     QCheckBox *m_fullscreen, *m_displaySync, *m_fineSound, *m_socket, *m_hideLauncher;
-    QComboBox *m_picture;
+    QComboBox *m_picture, *m_audioDevice, *m_audioBuffer;
     QLineEdit *m_soundfont, *m_root, *m_bin, *m_nvram, *m_extra;
     // e-AMUSEMENT, as spicecfg's Network page (runtime/shell/eaoptions.h)
     QCheckBox *m_smartea;

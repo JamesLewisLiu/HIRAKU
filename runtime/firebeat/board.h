@@ -52,6 +52,9 @@ Inputs &inputs();
 // Called at the start of each vertical blank, with the composed frame.
 using FrameHook = std::function<void(uint64_t frame, const uint32_t *rgb, int w, int h)>;
 void set_frame_hook(FrameHook h);
+// The picture at the end of vertical blank (Core::set_present_hook), every frame.
+using PresentHook = std::function<void(const uint32_t *rgb, int w, int h)>;
+void set_present_hook(PresentHook h);
 // The board's own sound (YMZ280B), 44.1 kHz interleaved stereo. Games with an SPU
 // play through it instead (spu::set_audio_sink); there this stays unset.
 using AudioSink = std::function<void(const float *lr, int frames)>;

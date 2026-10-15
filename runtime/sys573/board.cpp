@@ -719,6 +719,8 @@ struct Board {
     sys573_state *state = nullptr;
     Config cfg;
     FrameHook frame_hook;
+    PresentHook present_hook;
+    std::vector<u32> present_rgb;
     AudioSink audio_sink;
     // the MP3 decoders: the digital board's MAS3507D and the multi-session unit's four TC9446Fs,
     // each at 44.1 kHz, resampled for the host when the MP3 is another rate (the emulation never
@@ -760,6 +762,20 @@ struct Board {
 } g;
 
 std::string nv(const char *name) { return g.cfg.nvram_dir.empty() ? std::string() : g.cfg.nvram_dir + "/" + name; }
+
+// The picture: the screen's visible area from `bm`
+void picture(screen_device &screen, const bitmap_rgb32 &bm, std::vector<u32> &out, int &w, int &h) {
+    const rectangle &vis = screen.visible_area();
+    w = vis.width(), h = vis.height();
+    out.resize((size_t)w * h);
+    // raw rows: through pix() and the vectors, every store reloads the bitmap's pointers
+    u32 *__restrict dst = out.data();
+    for (int y = 0; y < h; y++) {
+        const u32 *__restrict src = &bm.pix(vis.top() + y, vis.left());
+        for (int x = 0; x < w; x++) dst[x] = src[x] | 0xff000000u;
+        dst += w;
+    }
+}
 
 }  // namespace
 
@@ -853,16 +869,8 @@ bool init(const Config &cfg) {
                 fflush(msu_hash);
             }
         if (!g.frame_hook) return;
-        const rectangle &vis = screen.visible_area();
-        const int w = vis.width(), h = vis.height();
-        g.frame_rgb.resize((size_t)w * h);
-        // raw rows: through pix() and the vectors, every store reloads the bitmap's pointers
-        u32 *__restrict dst = g.frame_rgb.data();
-        for (int y = 0; y < h; y++) {
-            const u32 *__restrict src = &screen.m_bitmap.pix(vis.top() + y, vis.left());
-            for (int x = 0; x < w; x++) dst[x] = src[x] | 0xff000000u;
-            dst += w;
-        }
+        int w, h;
+        picture(screen, screen.m_bitmap, g.frame_rgb, w, h);
         g.frame_hook(g.frames, g.frame_rgb.data(), w, h);
     };
     m.m_after_nvram_load = [&m] {
@@ -901,6 +909,14 @@ bool init(const Config &cfg) {
 }
 
 void set_frame_hook(FrameHook h) { g.frame_hook = std::move(h); }
+void set_present_hook(PresentHook h) {
+    g.present_hook = std::move(h);
+    g.state->m_screen->m_hk_vblank_end = [](screen_device &screen, bitmap_rgb32 &bm) {
+        int w, h;
+        picture(screen, bm, g.present_rgb, w, h);
+        g.present_hook(g.present_rgb.data(), w, h);
+    };
+}
 void set_audio_sink(AudioSink s) { g.audio_sink = std::move(s); }
 
 // --fine-sound (Config::fine_sound): the sound for the host every millisecond of machine time.

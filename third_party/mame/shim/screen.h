@@ -60,6 +60,11 @@ public:
     // VBLANK start after it is drawn, before the VBLANK callbacks (MAME's frame update)
     bitmap_rgb32 m_bitmap;
     std::function<void(screen_device &)> m_hk_frame;
+    // HIRAKU: the frame drawn again at VBLANK end, as the monitor then shows it (the game's flip
+    // during the blank included), before the VBLANK-end callbacks; set only for the window
+    // (Core::set_present_hook). The update reads the machine's state and changes none of it.
+    std::function<void(screen_device &, bitmap_rgb32 &)> m_hk_vblank_end;
+    bitmap_rgb32 m_hk_end_bitmap;
 
 protected:
     void device_start() override;

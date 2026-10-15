@@ -49,6 +49,13 @@ public:
     virtual const std::string &family() const = 0;   // selects controls and lamps (shell/cabinet.h)
 
     virtual void set_frame_hook(FrameHook h) = 0;
+    // The picture as the end of vertical blank leaves it, which the monitor then shows through
+    // the frame's active lines: the game's flip during the blank (in its vblank interrupt) is in
+    // it, where the frame hook's picture (vblank start) has it a frame later. A core that can, calls
+    // `h` at every vblank end and returns true; the shell then shows the window this picture. The
+    // frame hook stays at vblank start for everything else (digests, scripts, snapshots).
+    using PresentHook = std::function<void(const uint32_t *rgb, int w, int h)>;
+    virtual bool set_present_hook(PresentHook) { return false; }
     virtual void set_audio_sink(AudioSink s) = 0;
     // Called by the core when it cannot continue, before it exits.
     virtual void set_on_fatal(std::function<void()> f) = 0;

@@ -33,6 +33,11 @@
 //     --lights FILE     drive HID controller LEDs from the cabinet lamps (see runtime/host/lights.h)
 //     --lights-socket P publish the lamps on a UNIX socket at path P (docs/LIGHTS.md)
 //     --audio-ms N      initial audio queue target (default 8); grows by 1 ms per underrun, up to 30
+//     --audio-device D  the sound card itself, through ALSA, with no sound server in between: an ALSA
+//                       device name such as hw:CARD=Generic,DEV=0 (aplay -l lists them; the launcher's
+//                       Settings > Audio too). If it's busy, the system's default output instead
+//     --audio-buffer N  the device buffer in frames (default 128): the sound server's quantum, or with
+//                       --audio-device the ALSA period (two of them). Smaller is sooner, until it crackles
 //     --nvram DIR       keep the machine's NVRAM in DIR: loaded at start, saved on exit.
 //                       Default with --window: ~/.local/share/hiraku/<game>; otherwise none (every
 //                       run starts from the ROM set's defaults, so scripted runs are reproducible)
@@ -199,7 +204,8 @@ int main(int argc, char **argv) {
     std::vector<std::string> macro_specs;
     bool display_sync = true;
     bool nvram_given = false;
-    int audio_ms = 8;
+    int audio_ms = 8, audio_buffer = 0;
+    std::string audio_device;
     for (int k = 1; k < argc; k++) {
         std::string a = argv[k];
         // one dash is two, as spice2x writes its options (-url, -p, -card0: shell/eaoptions.h)
@@ -228,6 +234,8 @@ int main(int argc, char **argv) {
         else if (a == "--display-sync") display_sync = val() != "off";
         else if (a == "--nvram") { nvram_dir = val(); nvram_given = true; }
         else if (a == "--audio-ms") audio_ms = std::stoi(val());
+        else if (a == "--audio-device") audio_device = val();
+        else if (a == "--audio-buffer") audio_buffer = std::stoi(val());
         else if (a == "--window") window_scale = (k + 1 < argc && argv[k + 1][0] != '-') ? std::stoi(val()) : 2;
         else if (a == "--help" || a == "-h") {
             printf("hiraku-%s [options]: see runtime/main.cpp for the common options. This core also takes:\n%s",
@@ -322,6 +330,7 @@ int main(int argc, char **argv) {
 #ifdef HK_WITH_SDL
     host::window_set_picture(picture_mode, opt.root + "/shaders", picture_config);
     host::window_set_display_sync(display_sync);
+    host::window_set_audio_output(audio_device, audio_buffer);
     if (window_scale && !host::window_open(("HIRAKU - " + game).c_str(), window_scale, bindings, audio_ms, fullscreen, machine.audio_rate())) {
         fprintf(stderr, "cannot open a window\n");
         return 1;
@@ -338,6 +347,16 @@ int main(int argc, char **argv) {
     static std::atomic<bool> stop_requested{false};
     std::signal(SIGINT, [](int) { stop_requested = true; });
     std::signal(SIGTERM, [](int) { stop_requested = true; });
+#ifdef HK_WITH_SDL
+    // a core that can show the window its picture at the end of vertical blank does: the picture
+    // the monitor then shows, the game's flip during the blank included, which the frame hook's
+    // (vblank start) has only a frame later, after the frame's active lines have been emulated.
+    // The frame hook below then only paces and reads the controls.
+    const bool present_at_vblank_end =
+        window_scale && machine.set_present_hook([&](const uint32_t *rgb, int w, int h) {
+            host::window_present(rgb, w, h, machine.seconds());
+        });
+#endif
     machine.set_frame_hook([&](uint64_t f, const uint32_t *rgb, int w, int h) {
         frame_times.frame(f);
         if (digest)
@@ -363,7 +382,8 @@ int main(int argc, char **argv) {
             }
         }
 #ifdef HK_WITH_SDL
-        if (window_scale && !host::window_frame(rgb, w, h, machine.seconds())) {
+        if (window_scale && !(present_at_vblank_end ? host::window_next(machine.seconds())
+                                                    : host::window_frame(rgb, w, h, machine.seconds()))) {
             machine.shutdown();
             lights_off();
             report();

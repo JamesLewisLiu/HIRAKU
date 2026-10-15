@@ -58,6 +58,7 @@ uint64_t g_cycles = 0;          // CPU clocks at the start of the current m68k_e
 bool g_in_execute = false;
 uint64_t g_frame = 0;
 FrameHook g_frame_hook;
+PresentHook g_present_hook;
 AudioSink g_audio;
 Stats g_stats;
 std::vector<uint8_t> g_lamps;
@@ -714,6 +715,7 @@ bool init(const Config &cfg) {
 }
 
 void set_frame_hook(FrameHook h) { g_frame_hook = std::move(h); }
+void set_present_hook(PresentHook h) { g_present_hook = std::move(h); }
 void set_audio_sink(AudioSink s) { g_audio = std::move(s); }
 
 void run() {
@@ -730,6 +732,11 @@ void run() {
             if (g_ata_event && g_cycles >= g_ata_busy_until) ata_busy_done();
         }
     };
+    // The vertical blank: the 34 lines after the 384 visible ones (418 in all). At its end the
+    // monitor starts showing the picture as the game left it (its vblank interrupt may flip
+    // pages and scroll): that is the window's picture (set_present_hook). The run stops there in
+    // any case, so a run with the window goes as one without.
+    constexpr uint64_t VBLANK_CYCLES = 34 * 660;
     for (;;) {
         run_until((g_frame + 1) * FRAME_CYCLES);
         g_frame++;
@@ -737,6 +744,11 @@ void run() {
         screen_update();
         sound_flush();
         if (g_frame_hook) g_frame_hook(g_frame, g_screen.data(), SCREEN_W, SCREEN_H);
+        run_until(g_frame * FRAME_CYCLES + VBLANK_CYCLES);
+        if (g_present_hook) {
+            screen_update();
+            g_present_hook(g_screen.data(), SCREEN_W, SCREEN_H);
+        }
     }
 }
 

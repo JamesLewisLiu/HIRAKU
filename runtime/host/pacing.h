@@ -57,6 +57,12 @@ void committed();
 void wait_next();
 // Read the compositor's presentation events (after SDL's event pump).
 void pump();
+// Display sync off: ask for this frame's presentation feedback anyway (right before the swap), to
+// count the frames that went to the screen directly (scanout_describe).
+void observe();
 std::string describe();
+// How many frames were shown, and how many of them straight from HIRAKU's buffer (direct scanout,
+// not composited: a fullscreen window with nothing over it); "" if the compositor doesn't say.
+std::string scanout_describe();
 
 }  // namespace hk::host::pacing
