@@ -178,6 +178,15 @@ CASES = {
     "popn14-play": ("popn14", 14000, ["--script", "oracle/scripts/popn14-play.his"]),
 }
 
+# Twinkle: the cases above run MAME's program CD drive (--mame-cd), so they stay in lockstep
+# with MAME; each game again on the cabinet's 4x drive (the default: a READ's data a sector at a
+# time, as the drive reads it; PLAN.md section 21), from the same NVRAM
+for _c, (_game, _frames, _args, *_rest) in list(CASES.items()):
+    if _game.startswith("bmiidx"):
+        CASES[_c] = (_game, _frames, ["--mame-cd"] + _args, *_rest)
+        if _c.endswith("-play"):
+            CASES[_c + "-drive"] = (_game, _frames, _args, *_rest)
+
 # report lines that describe the host, not the machine
 HOST_LINES = ("profile:", "audio:", "nvram:")
 HOST_TIME = re.compile(r" in [0-9.]+ s of host time")   # kbm's synth line

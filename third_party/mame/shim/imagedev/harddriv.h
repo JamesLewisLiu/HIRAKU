@@ -33,6 +33,8 @@ private:
     int m_fd = -1;
     u64 m_sectors = 0;
     u64 m_readahead = ~u64(0);   // the 8 MiB stretch last read ahead
+    const u8 *m_map = nullptr;   // the image, mapped (a sector is then a copy, not a system call)
+    size_t m_map_size = 0;
     hard_disk_file::info m_info;
     std::unordered_map<u32, std::vector<u8>> m_written;
 };

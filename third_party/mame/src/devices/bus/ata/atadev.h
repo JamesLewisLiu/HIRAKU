@@ -52,6 +52,9 @@ class device_ata_interface : public device_interface
 {
 public:
 	virtual void read_dma(PAIR16 &data) = 0;
+	// HIRAKU: what read_dma() would give for as many words as it can take from the device's
+	// buffer with no other effect, at once; 0 when it can't say (then read_dma())
+	virtual int hk_read_dma_burst(uint16_t *dst, int max) { return 0; }
 	virtual void read_cs0(offs_t offset, PAIR16 &data) = 0;
 	virtual void read_cs1(offs_t offset, PAIR16 &data) = 0;
 

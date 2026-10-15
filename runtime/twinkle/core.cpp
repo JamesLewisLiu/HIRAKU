@@ -32,6 +32,7 @@ public:
         if (name == "--rtc") { rtc_ = std::stoll(value()); return true; }
         if (name == "--mame-mix") { mame_mix_ = true; return true; }
         if (name == "--fine-sound") { fine_sound_ = true; return true; }
+        if (name == "--mame-cd") { mame_cd_ = true; return true; }
         if (name == "--video") {
             const std::string v = value();
             if (v != "on" && v != "off") { fprintf(stderr, "--video: on or off\n"); exit(2); }
@@ -46,7 +47,9 @@ public:
                "  --fine-sound      hand the sound to the host every millisecond, not at MAME's 50 Hz stream\n"
                "                    updates: lower, steadier latency, and keysounds start when the game triggers\n"
                "                    them (MAME's RF5C400 starts them at its previous update, up to 20 ms early)\n"
-               "  --video on|off    the background video from the Video CD (default on; MAME shows none)\n";
+               "  --video on|off    the background video from the Video CD (default on; MAME shows none)\n"
+               "  --mame-cd         MAME's program CD drive: no read time, every byte at the SCSI bus's pace\n"
+               "                    (default: the XM-5401's 4x, a sector at a time as the drive reads it)\n";
     }
 
     bool init(const Options &o) override {
@@ -83,6 +86,7 @@ public:
         if (o.trace) cfg.trace_dir = o.out;
         if (mame_mix_) cfg.mix_gain = 1.0f;
         cfg.fine_sound = fine_sound_;
+        if (mame_cd_) cfg.cd_rate = 0;
         cfg.video = video_;
         if (!twinkle::init(cfg)) return false;
         printf("hiraku %s: Twinkle, MAME's PS1 (its recompiled blocks) and 68000\n", o.game.c_str());
@@ -123,6 +127,7 @@ private:
     long long rtc_ = -1;
     bool mame_mix_ = false;
     bool fine_sound_ = false;
+    bool mame_cd_ = false;
     bool video_ = true;
 };
 

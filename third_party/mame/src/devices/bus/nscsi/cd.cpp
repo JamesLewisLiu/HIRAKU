@@ -197,6 +197,7 @@ uint8_t nscsi_cdrom_device::scsi_get_data(int id, int pos)
 
 	if(id != 2)
 		return nscsi_full_device::scsi_get_data(id, pos);
+	m_hk_sent = pos + 1; // HIRAKU: the read's progress
 
 	const int sector = (lba * bytes_per_block + pos) / bytes_per_sector;
 	const int extra_pos = (lba * bytes_per_block) % bytes_per_sector;
@@ -316,8 +317,45 @@ void nscsi_cdrom_device::return_no_cd()
 	scsi_status_complete(SS_CHECK_CONDITION);
 }
 
+// HIRAKU: the drive's read speed (hk_set_read_rate())
+void nscsi_cdrom_device::hk_read_begins(int size)
+{
+	m_hk_reading = m_hk_rate != 0 && size > 0;
+	m_hk_size = size;
+	m_hk_sent = 0;
+	m_hk_start = machine().time();
+}
+
+// the data phase starts when the first sector is read
+attotime nscsi_cdrom_device::scsi_data_command_delay()
+{
+	if (m_hk_reading && m_hk_sent == 0)
+		return attotime::from_ticks(1, m_hk_rate);
+	return nscsi_full_device::scsi_data_command_delay();
+}
+
+// after the last byte of a sector, the next one waits until the drive has read it: sector k (from
+// 0) is there one sector's time after sector k - 1, the first one a sector's time after the command
+attotime nscsi_cdrom_device::scsi_data_byte_period()
+{
+	if (m_hk_reading)
+	{
+		if (m_hk_sent >= m_hk_size)
+			m_hk_reading = false; // the status phase follows at once
+		else if (m_hk_sent % bytes_per_sector == 0)
+		{
+			const attotime ready = m_hk_start + attotime::from_ticks(m_hk_sent / bytes_per_sector + 1, m_hk_rate);
+			const attotime now = machine().time();
+			if (ready > now)
+				return ready - now;
+		}
+	}
+	return nscsi_full_device::scsi_data_byte_period();
+}
+
 void nscsi_cdrom_device::scsi_command()
 {
+	m_hk_reading = false; // HIRAKU
 	int blocks;
 
 	// check for media change
@@ -355,6 +393,7 @@ void nscsi_cdrom_device::scsi_command()
 
 		LOG("command READ start=%08x blocks=%04x\n", lba, blocks);
 
+		hk_read_begins(blocks*bytes_per_block); // HIRAKU
 		scsi_data_in(2, blocks*bytes_per_block);
 		scsi_status_complete(SS_GOOD);
 		break;
@@ -500,6 +539,7 @@ void nscsi_cdrom_device::scsi_command()
 			break;
 		}
 
+		hk_read_begins(blocks*bytes_per_block); // HIRAKU
 		scsi_data_in(2, blocks*bytes_per_block);
 		scsi_status_complete(SS_GOOD);
 		break;

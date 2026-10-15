@@ -138,6 +138,16 @@ uint16_t abstract_ata_interface_device::read_dma()
 	return data.w;
 }
 
+// HIRAKU: the selected device's (the others leave read_dma()'s data alone)
+int abstract_ata_interface_device::hk_read_dma_burst(uint16_t *dst, int max)
+{
+	for (auto & elem : m_slot)
+		if (elem->dev() != nullptr)
+			if (int n = elem->dev()->hk_read_dma_burst(dst, max))
+				return n;
+	return 0;
+}
+
 uint16_t abstract_ata_interface_device::internal_read_cs0(offs_t offset)
 {
 	PAIR16 data; data.w = m_default_data;

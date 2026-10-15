@@ -31,6 +31,7 @@ public:
 
 	// device_ata_interface implementation
 	virtual void read_dma(PAIR16 &data) override { dma_r(data); }
+	virtual int hk_read_dma_burst(uint16_t *dst, int max) override { return hk_dma_burst(dst, max); } // HIRAKU
 	virtual void read_cs0(offs_t offset, PAIR16 &data) override { command_r(offset, data); }
 	virtual void read_cs1(offs_t offset, PAIR16 &data) override { control_r(offset, data); }
 

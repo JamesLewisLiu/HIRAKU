@@ -208,6 +208,7 @@ void twinkle_state::device_add_mconfig(machine_config &config) {
 
     auto &scsi = NSCSI_BUS(config, "scsi");
     auto &cdrom = NSCSI_XM5401(config, "cdrom");
+    cdrom.hk_set_read_rate(c.cd_rate);
     scsi.set_external_device(4, cdrom);
     NCR53CF96(config, m_ncr53cf96, 32_MHz_XTAL / 2);
     scsi.set_external_device(7, *m_ncr53cf96);
@@ -466,13 +467,20 @@ void twinkle_state::spu_ata_irq(int state) {
     if (state && (m_spu_ctrl & 0x0400)) m_audiocpu->set_input_line(M68K_IRQ_6, ASSERT_LINE);
 }
 
-// MAME: the hard disk's DMA goes straight into wave RAM, all of it at once
+// MAME: the hard disk's DMA goes straight into wave RAM, all of it at once. The words before the
+// end of each of the drive's buffers come in one go (hk_read_dma_burst(): read_dma()'s words, one
+// at a time), the last one through read_dma(), which refills the buffer or ends the transfer.
 void twinkle_state::spu_ata_dmarq(int state) {
     if (m_spu_ata_dmarq == state) return;
     m_spu_ata_dmarq = state;
     if (!m_spu_ata_dmarq) return;
     m_ata->write_dmack(ASSERT_LINE);
     while (m_spu_ata_dmarq) {
+        u16 burst[256];
+        const int n = m_ata->hk_read_dma_burst(burst, 256);
+        u16 *const wave = m_waveram.target();
+        for (int i = 0; i < n; i++) wave[m_wave_bank + m_spu_ata_dma++] = burst[i];
+        if (n) continue;
         const u16 data = m_ata->read_dma();
         m_waveram[m_wave_bank + m_spu_ata_dma] = data;
         m_spu_ata_dma++;

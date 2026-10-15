@@ -55,6 +55,9 @@ public:
 	ata_slot_device &slot(int index);
 
 	uint16_t read_dma();
+	// HIRAKU: what read_dma() would give for as many words as it can take from the device's
+	// buffer with no other effect, at once; 0 when it can't say (then read_dma())
+	int hk_read_dma_burst(uint16_t *dst, int max);
 	void write_dma(uint16_t data);
 	void write_dmack(int state);
 

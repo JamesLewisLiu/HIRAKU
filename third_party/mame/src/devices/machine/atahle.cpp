@@ -531,6 +531,27 @@ void device_ata_hle_interface::dma_r(PAIR16 &data)
 		LOG("%s device %d dma_r 0x%04x (ignored !selected)\n", device().machine().describe_context(), dev(), data.w);
 }
 
+// HIRAKU: dma_r() for the words before the buffer's last, at once: each takes dma_r()'s
+// read_data() branch (nothing those checks look at changes until the buffer ends) and only moves
+// m_buffer_offset on. The last word, which refills the buffer or ends the transfer, and any case
+// with another effect (single-word DMA's DMARQ) are left to dma_r().
+int device_ata_hle_interface::hk_dma_burst(uint16_t *dst, int max)
+{
+	if (!device_selected() || !m_dmack || m_8bit_data_transfers || device().machine().side_effects_disabled())
+		return 0;
+	if (single_word_dma_mode() >= 0 || (!m_dmarq && (multi_word_dma_mode() >= 0 || ultra_dma_mode() >= 0)))
+		return 0;
+	if ((m_status & IDE_STATUS_BSY) || !(m_status & IDE_STATUS_DRQ))
+		return 0;
+	int n = 0;
+	while (n < max && int(m_buffer_offset) + 2 < int(m_buffer_size))
+	{
+		dst[n++] = m_buffer[m_buffer_offset] | (m_buffer[m_buffer_offset + 1] << 8);
+		m_buffer_offset += 2;
+	}
+	return n;
+}
+
 void device_ata_hle_interface::command_r(offs_t offset, PAIR16 &data, uint16_t mem_mask)
 {
 	if (device_selected() || (m_single_device && always_respond()))

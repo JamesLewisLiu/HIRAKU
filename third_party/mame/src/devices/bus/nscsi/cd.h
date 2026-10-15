@@ -17,6 +17,12 @@ class nscsi_cdrom_device : public nscsi_full_device
 public:
 	nscsi_cdrom_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock = 0);
 
+	// HIRAKU: the drive's read speed. With sectors_per_second > 0, READ's data comes a sector at
+	// a time, each when the drive would have read it (the first after one sector's time), at the
+	// bus's speed within a sector; 0 (the default) is MAME's model: every byte as fast as the bus
+	// takes it
+	void hk_set_read_rate(uint32_t sectors_per_second) { m_hk_rate = sectors_per_second; }
+
 	void set_block_size(u32 block_size);
 
 protected:
@@ -43,6 +49,9 @@ protected:
 	virtual uint8_t scsi_get_data(int id, int pos) override;
 	virtual void scsi_put_data(int buf, int offset, uint8_t data) override;
 	virtual bool scsi_command_done(uint8_t command, uint8_t length) override;
+	virtual attotime scsi_data_byte_period() override; // HIRAKU
+	virtual attotime scsi_data_command_delay() override; // HIRAKU
+	void hk_read_begins(int size);
 
 	virtual void return_no_cd();
 	static int to_msf(int frame);
@@ -83,6 +92,12 @@ private:
 	std::string m_write_path;
 	std::vector<toolbox_directory_entry> m_directory;
 	std::vector<uint8_t> m_xfer_buffer;
+
+	// HIRAKU: the read in progress, for the read speed
+	uint32_t m_hk_rate = 0;
+	bool m_hk_reading = false;
+	int m_hk_size = 0, m_hk_sent = 0;
+	attotime m_hk_start;
 };
 
 class nscsi_cdrom_2x_device : public nscsi_cdrom_device

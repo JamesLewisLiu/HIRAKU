@@ -1619,6 +1619,177 @@ void mas3507d_device::sound_stream_update(sound_stream &stream)
 {
 	m_hk_valid = false; // HIRAKU''', 'mas3507d.cpp hk_predict')
     return s
+def bus_nscsi_cd_h(s):
+    s = edit(s, """	nscsi_cdrom_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock = 0);
+""", """	nscsi_cdrom_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock = 0);
+
+	// HIRAKU: the drive's read speed. With sectors_per_second > 0, READ's data comes a sector at
+	// a time, each when the drive would have read it (the first after one sector's time), at the
+	// bus's speed within a sector; 0 (the default) is MAME's model: every byte as fast as the bus
+	// takes it
+	void hk_set_read_rate(uint32_t sectors_per_second) { m_hk_rate = sectors_per_second; }
+""", 'bus/nscsi/cd.h rate')
+    s = edit(s, """	virtual void scsi_put_data(int buf, int offset, uint8_t data) override;
+	virtual bool scsi_command_done(uint8_t command, uint8_t length) override;
+""", """	virtual void scsi_put_data(int buf, int offset, uint8_t data) override;
+	virtual bool scsi_command_done(uint8_t command, uint8_t length) override;
+	virtual attotime scsi_data_byte_period() override; // HIRAKU
+	virtual attotime scsi_data_command_delay() override; // HIRAKU
+	void hk_read_begins(int size);
+""", 'bus/nscsi/cd.h overrides')
+    s = edit(s, """	std::vector<uint8_t> m_xfer_buffer;
+};
+""", """	std::vector<uint8_t> m_xfer_buffer;
+
+	// HIRAKU: the read in progress, for the read speed
+	uint32_t m_hk_rate = 0;
+	bool m_hk_reading = false;
+	int m_hk_size = 0, m_hk_sent = 0;
+	attotime m_hk_start;
+};
+""", 'bus/nscsi/cd.h state')
+    return s
+
+
+def bus_nscsi_cd_cpp(s):
+    n = s.count("\t\tscsi_data_in(2, blocks*bytes_per_block);\n")
+    if n != 2:
+        sys.exit(f"hiraku-edits: bus/nscsi/cd.cpp READ: anchor found {n} times, expected twice")
+    s = s.replace("\t\tscsi_data_in(2, blocks*bytes_per_block);\n",
+                  "\t\thk_read_begins(blocks*bytes_per_block); // HIRAKU\n\t\tscsi_data_in(2, blocks*bytes_per_block);\n")
+    s = edit(s, """	if(id != 2)
+		return nscsi_full_device::scsi_get_data(id, pos);
+""", """	if(id != 2)
+		return nscsi_full_device::scsi_get_data(id, pos);
+	m_hk_sent = pos + 1; // HIRAKU: the read's progress
+""", 'bus/nscsi/cd.cpp progress')
+    s = edit(s, """void nscsi_cdrom_device::scsi_command()
+{
+""", """// HIRAKU: the drive's read speed (hk_set_read_rate())
+void nscsi_cdrom_device::hk_read_begins(int size)
+{
+	m_hk_reading = m_hk_rate != 0 && size > 0;
+	m_hk_size = size;
+	m_hk_sent = 0;
+	m_hk_start = machine().time();
+}
+
+// the data phase starts when the first sector is read
+attotime nscsi_cdrom_device::scsi_data_command_delay()
+{
+	if (m_hk_reading && m_hk_sent == 0)
+		return attotime::from_ticks(1, m_hk_rate);
+	return nscsi_full_device::scsi_data_command_delay();
+}
+
+// after the last byte of a sector, the next one waits until the drive has read it: sector k (from
+// 0) is there one sector's time after sector k - 1, the first one a sector's time after the command
+attotime nscsi_cdrom_device::scsi_data_byte_period()
+{
+	if (m_hk_reading)
+	{
+		if (m_hk_sent >= m_hk_size)
+			m_hk_reading = false; // the status phase follows at once
+		else if (m_hk_sent % bytes_per_sector == 0)
+		{
+			const attotime ready = m_hk_start + attotime::from_ticks(m_hk_sent / bytes_per_sector + 1, m_hk_rate);
+			const attotime now = machine().time();
+			if (ready > now)
+				return ready - now;
+		}
+	}
+	return nscsi_full_device::scsi_data_byte_period();
+}
+
+void nscsi_cdrom_device::scsi_command()
+{
+	m_hk_reading = false; // HIRAKU
+""", 'bus/nscsi/cd.cpp model')
+    return s
+
+
+# the ATA hard disk's DMA a buffer at a time (Twinkle's SPU board loads its keysounds by DMA,
+# word by word through the interface's slots, two virtual calls and four mode checks each)
+ATA_BURST_DOC = """	// HIRAKU: what read_dma() would give for as many words as it can take from the device's
+	// buffer with no other effect, at once; 0 when it can't say (then read_dma())
+"""
+
+
+def bus_ata_atadev_h(s):
+    return edit(s, """	virtual void read_dma(PAIR16 &data) = 0;
+""", """	virtual void read_dma(PAIR16 &data) = 0;
+""" + ATA_BURST_DOC + """	virtual int hk_read_dma_burst(uint16_t *dst, int max) { return 0; }
+""", 'bus/ata/atadev.h burst')
+
+
+def bus_ata_hdd_h(s):
+    return edit(s, """	ide_hdd_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock = 0);
+
+	// device_ata_interface implementation
+	virtual void read_dma(PAIR16 &data) override { dma_r(data); }
+""", """	ide_hdd_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock = 0);
+
+	// device_ata_interface implementation
+	virtual void read_dma(PAIR16 &data) override { dma_r(data); }
+	virtual int hk_read_dma_burst(uint16_t *dst, int max) override { return hk_dma_burst(dst, max); } // HIRAKU
+""", 'bus/ata/hdd.h burst')
+
+
+def bus_ata_ataintf_h(s):
+    return edit(s, """	uint16_t read_dma();
+""", """	uint16_t read_dma();
+""" + ATA_BURST_DOC + """	int hk_read_dma_burst(uint16_t *dst, int max);
+""", 'bus/ata/ataintf.h burst')
+
+
+def bus_ata_ataintf_cpp(s):
+    return edit(s, """uint16_t abstract_ata_interface_device::internal_read_cs0(offs_t offset)
+""", """// HIRAKU: the selected device's (the others leave read_dma()'s data alone)
+int abstract_ata_interface_device::hk_read_dma_burst(uint16_t *dst, int max)
+{
+	for (auto & elem : m_slot)
+		if (elem->dev() != nullptr)
+			if (int n = elem->dev()->hk_read_dma_burst(dst, max))
+				return n;
+	return 0;
+}
+
+uint16_t abstract_ata_interface_device::internal_read_cs0(offs_t offset)
+""", 'bus/ata/ataintf.cpp burst')
+
+
+def machine_atahle_h(s):
+    return edit(s, """	void dma_r(PAIR16 &data);
+""", """	void dma_r(PAIR16 &data);
+	int hk_dma_burst(uint16_t *dst, int max); // HIRAKU
+""", 'machine/atahle.h burst')
+
+
+def machine_atahle_cpp(s):
+    return edit(s, """void device_ata_hle_interface::command_r(offs_t offset, PAIR16 &data, uint16_t mem_mask)
+""", """// HIRAKU: dma_r() for the words before the buffer's last, at once: each takes dma_r()'s
+// read_data() branch (nothing those checks look at changes until the buffer ends) and only moves
+// m_buffer_offset on. The last word, which refills the buffer or ends the transfer, and any case
+// with another effect (single-word DMA's DMARQ) are left to dma_r().
+int device_ata_hle_interface::hk_dma_burst(uint16_t *dst, int max)
+{
+	if (!device_selected() || !m_dmack || m_8bit_data_transfers || device().machine().side_effects_disabled())
+		return 0;
+	if (single_word_dma_mode() >= 0 || (!m_dmarq && (multi_word_dma_mode() >= 0 || ultra_dma_mode() >= 0)))
+		return 0;
+	if ((m_status & IDE_STATUS_BSY) || !(m_status & IDE_STATUS_DRQ))
+		return 0;
+	int n = 0;
+	while (n < max && int(m_buffer_offset) + 2 < int(m_buffer_size))
+	{
+		dst[n++] = m_buffer[m_buffer_offset] | (m_buffer[m_buffer_offset + 1] << 8);
+		m_buffer_offset += 2;
+	}
+	return n;
+}
+
+void device_ata_hle_interface::command_r(offs_t offset, PAIR16 &data, uint16_t mem_mask)
+""", 'machine/atahle.cpp burst')
 
 
 def main():
@@ -1635,7 +1806,11 @@ def main():
                     ('bus/rs232/rs232.cpp', rs232_cpp),
                     ('bus/rs232/xvd701.h', xvd701_h), ('bus/rs232/xvd701.cpp', xvd701_cpp),
                     ('sound/mp3_audio.h', mp3_audio_h), ('sound/mp3_audio.cpp', mp3_audio_cpp),
-                    ('sound/mas3507d.h', mas3507d_h), ('sound/mas3507d.cpp', mas3507d_cpp)]:
+                    ('sound/mas3507d.h', mas3507d_h), ('sound/mas3507d.cpp', mas3507d_cpp),
+                    ('bus/nscsi/cd.h', bus_nscsi_cd_h), ('bus/nscsi/cd.cpp', bus_nscsi_cd_cpp),
+                    ('bus/ata/atadev.h', bus_ata_atadev_h), ('bus/ata/hdd.h', bus_ata_hdd_h),
+                    ('bus/ata/ataintf.h', bus_ata_ataintf_h), ('bus/ata/ataintf.cpp', bus_ata_ataintf_cpp),
+                    ('machine/atahle.h', machine_atahle_h), ('machine/atahle.cpp', machine_atahle_cpp)]:
         p = root / rel
         text = p.read_text()
         if 'HIRAKU' in text:

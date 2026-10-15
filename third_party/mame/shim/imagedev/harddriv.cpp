@@ -2,6 +2,7 @@
 #include "imagedev/harddriv.h"
 
 #include <fcntl.h>
+#include <sys/mman.h>
 #include <unistd.h>
 
 #include <map>
@@ -20,6 +21,7 @@ harddisk_image_device::harddisk_image_device(const machine_config &mconfig, cons
     : device_t(mconfig, HARDDISK, tag, owner, clock), device_image_interface(mconfig, *this) {}
 
 harddisk_image_device::~harddisk_image_device() {
+    if (m_map) munmap((void *)m_map, m_map_size);
     if (m_fd >= 0) close(m_fd);
 }
 
@@ -37,6 +39,9 @@ void harddisk_image_device::device_start() {
     m_info.sectors = it->second.s;
     m_info.sectorbytes = 512;
     m_sectors = (u64)lseek(m_fd, 0, SEEK_END) / 512;
+    m_map_size = m_sectors * 512;
+    void *p = m_map_size ? mmap(nullptr, m_map_size, PROT_READ, MAP_PRIVATE, m_fd, 0) : MAP_FAILED;
+    if (p != MAP_FAILED) m_map = (const u8 *)p;   // else pread(), a sector at a time
 }
 
 bool harddisk_image_device::read(u32 lba, void *buffer) {
@@ -51,6 +56,10 @@ bool harddisk_image_device::read(u32 lba, void *buffer) {
     if (stretch != m_readahead) {
         m_readahead = stretch;
         posix_fadvise(m_fd, (off_t)(stretch << 23), 2 << 23, POSIX_FADV_WILLNEED);
+    }
+    if (m_map) {
+        memcpy(buffer, m_map + (size_t)lba * 512, 512);
+        return true;
     }
     return pread(m_fd, buffer, 512, (off_t)lba * 512) == 512;
 }

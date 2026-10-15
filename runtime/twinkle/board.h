@@ -42,6 +42,11 @@ struct Config {
     // stream updates; the RF5C400's keysounds then start when the game triggers them (board.cpp,
     // run()). Off is MAME's.
     bool fine_sound = false;
+    // The program CD's read speed, in sectors a second: the XM-5401 is a 4x drive (300). A READ's
+    // data then comes a sector at a time, as the drive reads it. MAME's drive has no read time,
+    // every byte at the SCSI bus's pace, ~3 MB/s, a burst of events that made a load ~17 ms of host
+    // work a frame. 0 (--mame-cd) is MAME's model, for comparing with it.
+    int cd_rate = 300;
     std::string nvram_dir;                 // RTC (backup RAM), dongle ("" = blank each run)
     int64_t rtc_time = 0;                  // the RTC's time at power-on (seconds since 1970)
     std::string trace_dir;                 // --trace: an oracle-format MMIO trace there (mmio.bin)

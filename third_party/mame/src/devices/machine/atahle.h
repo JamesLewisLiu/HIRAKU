@@ -25,6 +25,7 @@ protected:
 	TIMER_CALLBACK_MEMBER(empty_tick);
 
 	void dma_r(PAIR16 &data);
+	int hk_dma_burst(uint16_t *dst, int max); // HIRAKU
 	void command_r(offs_t offset, PAIR16 &data, uint16_t mem_mask = ~0);
 	void control_r(offs_t offset, PAIR16 &data, uint16_t mem_mask = ~0);
 
