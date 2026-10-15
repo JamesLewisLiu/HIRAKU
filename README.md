@@ -1,55 +1,83 @@
-# HIRAKU
+<p align="center">
+  <img src="launcher/res/logo.png" alt="HIRAKU" width="720">
+</p>
 
-Static recompilation of Konami Firebeat arcade games (beatmania III, pop'n music 4–8 / Animelo / Mickey Tunes, ParaParaParadise, and Keyboardmania as a stretch goal) into native Linux executables.
+<p align="center"><b>“HIRAKU” is all about giggles and fun. Enjoy!!</b></p>
 
-Since 2026-10-12 the same front end also runs **DJ Main** games (beatmania 1st mix, pop'n music 1), whose 16 MHz 68EC020 is interpreted rather than recompiled: each platform is a "core" behind one shell (`runtime/shell/core.h`).
+HIRAKU runs Konami's BEMANI arcade games as native Linux programs. It covers five arcade boards, from DJ Main (1997) to Konami Python (2002–2006), all behind one launcher.
 
-HIRAKU ships no game data. You provide your own dumps. The tools extract the program from your disc image, translate its PowerPC code to C, and link it against a runtime that stands in for the arcade board.
+- **Firebeat** games are statically recompiled: each game's PowerPC program is translated to C and linked against a runtime that stands in for the board.
+- **DJ Main, System 573, Twinkle and Python** run as cores behind the same shell (`runtime/shell/core.h`). Each core is an interpreter, a recompiler fed by recordings, or a hosted emulator.
 
-- Plan and status: [PLAN.md](PLAN.md)
-- Kernel notes: [docs/KERNEL.md](docs/KERNEL.md)
+HIRAKU ships no game data. You provide your own dumps. The tools take the program from your discs and ROM sets, and the build turns it into a game you can start from the launcher.
 
-## Status
+## What it runs
 
-Done so far:
-- **M0:** infrastructure.
-- **M1:** translator and interpreter.
-- **M2:** kernel glue, interrupts, devices.
-- **M3:** rendering checked against MAME.
-- **M4:** sound board.
-- **M5:** playable in real time.
+| Board | How HIRAKU runs it | Games | Where it stands |
+|---|---|---|---|
+| **Firebeat** (PPC403) | PowerPC → C static recompilation; the SPU's 68000 is interpreted | beatmania III, APPEND CORE REMIX, 6th MIX, 7th MIX, The Final | Play, with sound, keyboard, controllers and lamps |
+| | | ParaParaParadise, v1.1, 1st Mix Plus, ParaParaDancing | Play: song select, a stage danced on the sensor bars, results |
+| | | pop'n music 4–8, Animelo 1/2, Mickey Tunes! | Boot to attract with sound; pop'n 8 tested through song select and full songs |
+| | | Keyboardmania 1st/2nd/3rd Mix, Keyboardheaven | Boot to attract; the XT446 synth card (an embedded MU100B) is emulated; autoplay clears a song 135/135 GREAT |
+| **DJ Main** (68EC020, 1997–2002) | Interpreted (Musashi), about 1 ms of host time a frame | 29 sets: beatmania 1st mix → THE FINAL, complete MIX 1/2, CORE REMIX, DCT, hiphopmania, beatstage, pop'n music 1–3, pop'n stage EX | All the sets tried reach attract. beatmania 1st–3rd MIX and pop'n music 1 match MAME clock for clock through a whole game: same RAM, pixels and samples |
+| **System 573** (PlayStation-based) | MIPS interpreter plus C++ compiled from recorded blocks; MAME's PS1 devices | Dance Dance Revolution 2ndMIX, 3rdMIX | Play, including the first-boot flash install with the install cassette |
+| | | DrumMania 10th Mix, GuitarFreaks 11th Mix | **Further than MAME:** they play, including DrumMania × GuitarFreaks session play, the e-AMUSEMENT network unit, and cards |
+| **Twinkle** (beatmania IIDX) | The same PS1 core plus the 68000/RF5C400 sound board | beatmania IIDX 1st style, Substream, 2nd–8th style | Play in lockstep with MAME. **Further than MAME:** the background videos play, and 1st style runs (MAME stops it at E600) |
+| **Konami Python 1** (PS2-based) | PCSX2 Reliquary, hosted by HIRAKU's shell | pop'n music 9, 10, 11, 12 Iroha, 13 Carnival, 14 FEVER! | Play, with e-AMUSEMENT cards, the event unlocks, and NET TAISEN between cabinets |
 
-beatmania III The Final runs natively with sound, keyboard and joystick controls. **How to play: [docs/PLAY.md](docs/PLAY.md).** See [PLAN.md](PLAN.md) for what's next.
+The per-game guides are in [docs/PLAY.md](docs/PLAY.md): which files each game needs, its first-boot steps, controls and quirks.
 
-## The launcher
+## Highlights
 
-`build/cmake/hiraku` (built when Qt 6 is installed) lists the supported games and shows which ones are ready to play. From there you can:
-- play a game (double-click), stop it, and read its log;
-- map keys and controller inputs to each cabinet's controls: click, then press;
-- map cabinet lamps to controller LEDs, and watch a running game's lamps live ([docs/LIGHTS.md](docs/LIGHTS.md));
-- set window size, fullscreen, audio and folders.
+- **e-AMUSEMENT, brought back.** HIRAKU includes its own server for Konami's long-closed network. You can register a card, save your player, and keep rankings. On pop'n music 9–14 the server runs inside the game. To share cards and rankings between PCs, run `hiraku-eamuse`. DrumMania and GuitarFreaks use it through their network unit.
+- **pop'n NET TAISEN.** pop'n music 12–14's online battles work between HIRAKU cabinets, up to three to a match. Cabinets connect through a virtual LAN cable, on one PC or across a network, or online through `hiraku-eamuse`, which also runs the lobby and relays the matches.
+- **Events and unlocks.** In the launcher, right-click a game > **Unlocks**. It sets the event phase as an operator's codes would, and shows each event's progress, such as Sugoroku de 8, HOSHI NI NEGAIO, POPN TOURIST and NINPOUCHO. It can also type the cabinet's button codes for you (Ctrl+1…9).
+- **Low latency.** Audio is the clock, and the sound queue tunes itself to the smallest lead your PC can play without crackle. You can also send sound straight to an ALSA card with no sound server in between (`--audio-device`). On 573 and Twinkle, `--fine-sound` hands the sound on every millisecond. Pictures are shown at vblank end, and frame pacing is aware of Wayland.
+- **Efficient.** HIRAKU targets N100-class mini PCs and judges its changes by their worst frames, not their average. Profile-guided builds (`tools/pgo.py`) cut CPU use further: Keyboardmania −19 %, DDR −27 %.
+- **Controls and lights.** Map keyboards, IIDX/pop'n controllers and analog turntables to each cabinet's controls with click-then-press. You can drive controller LEDs from the cabinet's lamps and watch them live ([docs/LIGHTS.md](docs/LIGHTS.md)).
+- **The picture.** Every game is shown at 4:3, as on its monitor. Two CRT shaders are built in: crt-guest-advanced-fast and crt-royale. F10 cycles through them in-game.
+- **Checked against MAME.** Every change is held to bit-identical per-frame picture and sound hashes (`tools/regress.py`). New boards are brought up in lockstep against a scripted MAME oracle.
+- **Portable.** `tools/package.sh` builds a package for other Linux PCs that brings its own Qt. In a portable install, your saves and settings live in the HIRAKU folder, so the folder can go on a USB stick. The cores also build and pass the regression cases on 64-bit ARM Linux.
 
-`hiraku popn7` starts a game straight away. Settings and mappings are kept in `~/.config/hiraku/`.
+## Getting started
+
+You need CMake, Ninja, clang, SDL3 and, for the launcher, Qt 6. Optional: FFmpeg's libraries (IIDX background videos) and FluidSynth (Keyboardmania's stand-in synth). The Python core is built inside PCSX2 Reliquary's own source tree (see [docs/PLAY.md](docs/PLAY.md#konami-python-1-popn-music-914-in-progress-m16)).
 
 ```bash
-tools/ingest.py path/to/program-disc.cue --romset path/to/bm3final.zip --hdd path/to/hdd.img   # → dumps/<game>/
-analyze/ghidra.sh bm3final                  # → build/bm3final/manifest.json
-analyze/prep.py bm3final                    # → build/bm3final/recomp.txt
-cmake -S . -B build/cmake -G Ninja && ninja -C build/cmake
-cmake -B build/arm64 -G Ninja -DCMAKE_TOOLCHAIN_FILE=cmake/aarch64-linux-gnu.cmake && ninja -C build/arm64 -j2   # 64-bit ARM Linux (headless; runs here under qemu)
-HK_REGRESS_BIN=build/arm64 tools/regress.py check   # the ARM build against the same baseline
+cmake -S . -B build/cmake -G Ninja -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
+ninja -C build/cmake
+build/cmake/hiraku                          # the launcher
+```
+
+To add a game, drop its files on the launcher's window: the MAME ROM set (`.zip`/`.7z`), its CHDs, or disc images (`.cue`/`.bin`, `.iso`, `.img`). You can also use **File > Add game files**, or `tools/ingest.py FILE...` from a terminal. The ingester recognises the game and what each image is. Firebeat games then need their program recompiled once:
+
+```bash
+analyze/ghidra.sh bm3final && analyze/prep.py bm3final && ninja -C build/cmake hiraku-bm3final
+```
+
+The launcher shows which games are ready, and what a game that isn't ready still needs. `hiraku popn7` starts a game straight away, and `build/cmake/hiraku-<game> --window` runs one without the launcher. Settings live in `~/.config/hiraku/`, and saves in `~/.local/share/hiraku/<game>/`. In a portable install, both live in the HIRAKU folder's `user/` instead.
+
+## For developers
+
+```bash
 ctest --test-dir build/cmake                # instruction semantics vs QEMU
 tools/regress.py record; tools/regress.py check   # runs stay bit-identical (per-frame picture + sound hashes)
 tools/regress.py bench                      # share of a core, and host work per frame (mean / p99 / worst)
-build/cmake/hiraku                          # the launcher (Qt 6)
-build/cmake/hiraku-bm3final --window        # real time with sound; F2 test, 5 coin, 1 start, Z S X D C keys
+tools/pgo.py                                # profile-guided rebuild, trained on the regress cases you have
 build/cmake/hiraku-bm3final --script oracle/scripts/bm3final-practice.his --wav out/practice.wav
 build/cmake/hiraku-bm3final --frames 1800 --snap-every 300 --trace   # headless, PPM frames + MMIO trace
+cmake -B build/arm64 -G Ninja -DCMAKE_TOOLCHAIN_FILE=cmake/aarch64-linux-gnu.cmake && ninja -C build/arm64 -j2
+HK_REGRESS_BIN=build/arm64 tools/regress.py check   # the ARM build against the same baseline
 ```
 
-- How translation works: [docs/RECOMP.md](docs/RECOMP.md)
+- Plan, status and per-board notes: [PLAN.md](PLAN.md)
+- Playing, per game: [docs/PLAY.md](docs/PLAY.md)
+- How Firebeat translation works: [docs/RECOMP.md](docs/RECOMP.md); the kernel: [docs/KERNEL.md](docs/KERNEL.md)
+- Konami Python: [docs/PYTHON.md](docs/PYTHON.md); e-AMUSEMENT and NET TAISEN: [docs/EAMUSE3.md](docs/EAMUSE3.md)
 - The MAME oracle: [oracle/README.md](oracle/README.md)
 
 ## Licence
 
-GPL-3.0-or-later (see `LICENSE`). Code derived from MAME keeps its BSD-3-Clause notices.
+GPL-3.0-or-later (see `LICENSE`). Code taken from other projects keeps its own licence and notices. This includes MAME (BSD-3-Clause), Musashi (MIT), PCSX2 Reliquary (GPL-3.0-or-later), minimp3 (CC0) and libretro's slang-shaders (GPL-2.0-or-later). The full list is in the launcher's Help > About HIRAKU.
+
+beatmania, pop'n music, Keyboardmania, ParaParaParadise, GuitarFreaks, DrumMania, Dance Dance Revolution, beatmania IIDX and e-AMUSEMENT are trademarks of Konami. HIRAKU is not affiliated with or endorsed by Konami.
