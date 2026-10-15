@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // A local e-AMUSE3 server for Python 1 pop'n (easerver.h).
 #include "python/easerver.h"
+#include "python/lobby.h"
 
 #include <sys/stat.h>
 
@@ -734,6 +735,12 @@ std::string EamuseServer::answer_later(const std::string &game, const Request &r
                                         "eemall", "shopinf", "message", "cardmng", "cardreis", "facility"};
         std::string items;
         for (const char *mod : modules) items += std::string("<item name=\"") + mod + "\" url=\"http://" + esc(host) + "/\"/>";
+        // NET TAISEN (pop'n 12-14): portfw, where the world reaches the cabinet (a call's module must
+        // be listed, or the library fails it at once: -10, 0x184ed0); globby, the lobby (0x199400),
+        // UDP on this server's host (lobby.h)
+        if (game == "E12" || game == "E13" || game == "F14")
+            items += "<item name=\"portfw\" url=\"http://" + esc(host) + "/\"/>" +
+                     "<item name=\"globby\" url=\"globby://" + esc(host.substr(0, host.find(':'))) + ":" + std::to_string(Lobby::PORT) + "/\"/>";
         return "<services expire=\"600\" status=\"0\">" + items + "</services>";
     }
     if (m == "facility" && f == "get") {   // pop'n 14 (0x17d6860): the shop, as text elements in three groups
@@ -878,7 +885,15 @@ std::string EamuseServer::answer_later(const std::string &game, const Request &r
     }
     if (m == "shopinf" && f == "getsservip") return "<shopinf status=\"0\"/>";   // no shop servers (0x19f2a8)
     if (m == "eemall" && f == "check") return "<eemall status=\"0\"/>";   // pop'n 11 (0x18c098)
-    if (m == "portfw" && f == "get") return "<portfw status=\"0\"/>";     // pop'n 11: no port forward (0x18c4c8)
+    if (m == "portfw" && f == "get") {   // pop'n 11: no port forward (0x18c4c8)
+        // pop'n 12-14: where the world reaches the cabinet's NET TAISEN (0x190520): on HIRAKU's LAN,
+        // no router between, its own address, and the port its battle socket listens on (5700)
+        if (game == "E12" || game == "E13" || game == "F14") {
+            const std::string ip = attr(r.attrs, "privateip");
+            return "<portfw status=\"0\" globalip=\"" + esc(ip.empty() ? "192.168.50.2" : ip) + "\" port=\"5700\"/>";
+        }
+        return "<portfw status=\"0\"/>";
+    }
     if (m == game) return answer_game(game, r);   // pop'n 11 on: <D11 type=.. method=..>
     return "";
 }
@@ -923,7 +938,12 @@ std::string EamuseServer::answer_game(const std::string &game, const Request &r)
         const long phase = ph.empty() ? -1 : std::strtol(ph.c_str(), nullptr, 10);
         // pop'n 14 also reads net_event (0x17e9308): 1, the internet ranking running (0x17fdc78:
         // the attract mode's course boards, the courses' results and high scores online)
-        const std::string flags = game == "F14" ? " net_event=\"1\"" : "";
+        std::string flags = game == "F14" ? " net_event=\"1\"" : "";
+        // pop'n 12: NET TAISEN on (0x191160): play_enable, cabinets of one shop may meet
+        // (local_matching_enable), seconds to look for opponents, and every class in room 0, so
+        // anyone meets anyone (room_num: ten rooms; the mask 1 << room goes to the lobby). ojama_msec,
+        // ojama_gauge and cpu_level are left out: the game's own (1000 ms at least, 0x126f38)
+        if (game == "E12") flags += " play_enable=\"1\" local_matching_enable=\"1\" matching_sec=\"30\" room_num=\"0,0,0,0,0,0,0,0,0,0\"";
         return open + " phase=\"" + std::to_string(phase) + "\"" + flags + " message=\"" + esc(message()) + "\"/>";
     }
     if (type == "player") {   // mileage and 9 tickets per card (player_set sends them); course: 4 numbers

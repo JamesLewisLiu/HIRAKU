@@ -1917,6 +1917,13 @@ The owner's media arrived (Reliquary `.py1` sets beside popn9). Survey, then sup
 - **Lamps and inputs** [V]: each game's LAMP CHECK steps through the same word-8 bits in the same order as pop'n 9 (`pypopn` holds); pop'n 14's INPUT CHECK lights SW1–9 and SERVICE for buttons 1–9 and service.
 - **Host cost:** like pop'n 9, ~2.4 ms of CPU-thread work per frame on average (software GS, headless).
 - **pop'n 9 only, so far:** `--autoplay` (it now says so for other games), unlocks, and the e-AMUSEMENT server's calls. From the programs' strings: 10/11 add `game` and drop `parts`; 12 adds `lobby` and `playerdata`; 13 `cardmng`; 14 `facility`.
+- **NET TAISEN, pop'n 12–14 (owner asked 2026-10-15):** battles between cabinets, up to four, through a lobby (`globby://`, UDP) or on one shop's LAN (broadcasts), the cabinets then talking to each other over UDP. The three games share one library. Protocol: docs/EAMUSE3.md, "NET TAISEN".
+  1. **One cabinet (done, 2026-10-15)** [V]: `runtime/python/lobby.{h,cpp}`, the lobby (entry, list, leave, kept per room for the entry's seconds), on HIRAKU's LAN at 192.168.50.1:5740. The virtual LAN answers datagrams to it, keeps each datagram's sender, and an empty `recvfrom` on a non-DNS UDP socket now times out (-1), as the game's sockets expect (it drains a queue by reading until one does). The server lists `portfw` and `globby`, answers `portfw get` with the board's address and port 5700, and gives pop'n 12 `play_enable` in `game get`. NET対戦 is on the mode wheel; the credit runs ROOM SELECT, song select while the lobby looks, then "nobody came" and CHALLENGE mode (`oracle/scripts/popn12-nettaisen.his`). The 7 Python regress cases identical; the card credits of pop'n 9, 11, 13 and 14 as before.
+  2. **Two cabinets on one LAN:** a cable between two HIRAKU processes like the 573 session's (`runtime/sys573/link`): each its own address (.2, .3), datagrams carried at frame boundaries in lockstep, so a battle replays exactly and can be a regress case. Peer datagrams pass untouched.
+  3. **Three or four:** a hub every process joins.
+  4. **Online:** the lobby in `hiraku-eamuse`, and peer datagrams relayed through it (no host sockets in the virtual LAN, no NAT to cross). Until then `-url` with `hiraku-eamuse` offers the mode, but its lobby doesn't answer.
+  5. **pop'n 13 and 14:** `play_enable` in their `game get`, their addresses and `<netvs>` fields.
+  6. **Results:** `<netvs>` merged into the player record (pop'n 12's part from ~0x5f0).
 
 ### Decisions (owner, 2026-10-13)
 

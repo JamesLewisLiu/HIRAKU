@@ -540,7 +540,7 @@ the `local` service.
   `phase` as pop'n 10's `message.get` (-1 leaves the cabinet's own; HIRAKU's file `phase-D11`).
 - **`D11 player set`** sends `card_id mileage ticket="t0,...,t8,"`; **`player get`** reads them back,
   with `course="c0,c1,c2,c3"`: `<D11 mileage ticket course/>`. HIRAKU keeps `player-D11-CARD`.
-- **`eemall.check`:** `<eemall/>`. **`portfw.get`** (`privateip`): `<portfw globalip port/>`; none is fine.
+- **`eemall.check`:** `<eemall/>`. **`portfw.get`** (`privateip`): `<portfw globalip port/>`; none is fine (pop'n 12–14's NET TAISEN needs them, below).
 
 **pop'n music 12** (`E12`; checked in HIRAKU: a new card registered, a credit saved, the card read
 back with its PIN; `oracle/scripts/popn12-eamuse-on.his`, `popn12-card-new.his`, `popn12-card-again.his`).
@@ -698,6 +698,56 @@ reader with its own 10-key; the PIN is checked by the server.
   its counter, FEVER ROBO's gauge): `<F14/>`; HIRAKU keeps the latest per shop.
 - **Not done yet:** `playerdata conv` (a pop'n 13 player brought over), `expire`, `bindcard`,
   `cardreis.altercard`.
+
+## NET TAISEN (pop'n music 12–14)
+
+Battles between cabinets, up to four players, CPUs in the empty seats. pop'n 12, 13 and 14 carry
+the same library (the strings `globby://`, `LobbyEntry()`, `>>NETVS MASTER/SLAVE/LOCALVS`); the
+addresses here are pop'n 12's. HIRAKU's server runs the mode for one cabinet: it is offered,
+played, and when nobody comes the game says so and starts the credit in CHALLENGE mode
+(`oracle/scripts/popn12-nettaisen.his`). Two cabinets meeting is not done yet.
+
+- **When the mode is offered** (`0x19a300`, the mode wheel's NET対戦 and the title's `ICON_NET`):
+  the event phase 2 or later (NET TAISEN MODE RELEASE), a card in, and on the network all of:
+  - `E12 game get` answered with `play_enable` 1 (`0x191160`, read into `0x2d4748`: `phase`,
+    `message`, `renew_f`, `xmas_f`, `play_enable`, `local_matching_enable`, `matching_sec`,
+    `room_num` (up to ten, comma-separated), `ojama_msec`, `ojama_gauge`, `cpu_level`);
+  - the services list's `globby` item, a URL `globby://HOST:PORT/` (`0x199400`: a dotted address or
+    a name for DNS);
+  - **`portfw get`** (`privateip`) answered `<portfw globalip="A.B.C.D" port="N"/>`
+    (`0x190520`): where the world reaches the cabinet's battle socket. The services list must name
+    `portfw`, as any module a call uses (else the library fails the call at once, -10, `0x184ed0`).
+    Status 122 or 123: the mode stays off.
+  HIRAKU answers `play_enable` 1, `local_matching_enable` 1, `matching_sec` 30, every room 0, and
+  leaves out the rest (the game's own: an ojama lasts 1000 ms at least, `0x126f38`); `globalip` is
+  the board's own address, `port` 5700, the lobby at the server's host, UDP 5740 (HIRAKU's choice).
+- **The credit:** NET対戦, an explainer (red skips), ROOM SELECT (the player's level rooms; a room
+  is `1 << room_num[i]` in the lobby), then song select with `matching_sec` to find opponents
+  ("受付中"), then the battle, or CHALLENGE mode if nobody came.
+- **The lobby** (UDP, from the cabinet's port 3200, one answer awaited per datagram, three tries,
+  `0x199860`): a 12-byte header, `lob0`, the length (big-endian, all of it), a CRC-16/X-25 of the
+  whole datagram taken with the field at 0 (`0x1adfd0`), a sequence number, the kind, a 0. The
+  answer repeats the sequence number and has kind 0 (else "Replay type mismatched", `0x199d98`).
+  - **list** (kind 1, 0x10 bytes): the room mask. Answered with the cabinets in its rooms, 0x1c
+    bytes each from offset 0xc: the room mask, the address, the port (big-endian), the cabinet's 16
+    bytes (below), two zeros; a zero entry ends it (`0x19d380`; at most 0x1bf0 bytes). The cabinet
+    itself in the list is skipped; one other there and the cabinet joins it (`SLAVE`).
+  - **entry** (kind 0, 0x28 bytes, `0x199ed8`): the room mask, `globalip`, `port`, how many seconds
+    to keep it (`matching_sec` × 3 + 5), 16 bytes of the cabinet's own (its address on the LAN
+    first). After an entry the cabinet waits for others to call (`MASTER`).
+  - **leave** (kind 2, 0x14 bytes): the address and port, when the time runs out.
+- **Between cabinets** (`0x19a628`, `0x19a948`): UDP from port 30000 to the other's port 5700
+  (`globalip`'s; on one LAN, the 16 bytes' address), a 3-byte tag, `0`, the length, a CRC as the
+  lobby's, a byte that turns a 16-byte XOR key (`0x2ef8c0`) over the rest (`0x19ab20`). Six kinds,
+  0x18 to 0x1cc bytes (`0x19adc8`); the game's log names the players, standby, the countdown,
+  ojama and dialogs among them.
+- **On one shop's LAN** (`LOCALVS`, `0x19fdc0`, `0x19f9e0`): after a new card's OK the cabinet
+  broadcasts a 0x1c-byte datagram to port 5700 (its own address and netmask: board commands 7 and
+  8); a cabinet that has heard one shows a screen of its own first (`0x1644c8`, not read yet)
+  and, for a local battle, calls those directly, no lobby.
+- **After the credit:** `playerdata set` carries `<netvs music_num sheet_num caption fruit class
+  class_skill badge get_ojama set_ojama rank stage_record member_name member_pref map_hi map_lo/>`
+  (pop'n 13 and 14: their own fields).
 
 ## Not known yet
 

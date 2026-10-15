@@ -6,6 +6,8 @@
 //   - the board's addresses: 192.168.50.2/24, gateway and DNS 192.168.50.1;
 //   - DNS (UDP 53): "services..." is 192.168.50.1; any other name gets an address of its own
 //     on the LAN (192.168.50.10 on), remembered, so a connection to it names its host again;
+//   - UDP to 192.168.50.1 at Lobby::PORT: NET TAISEN's lobby (pop'n 12-14, lobby.h), answered at
+//     once; datagrams anywhere else go nowhere, as on a LAN with no other cabinet;
 //   - TCP: each HTTP request the game sends goes to a handler, with the host and port it
 //     connected to (docs/EAMUSE3.md). The handler answers at once (the server in the core:
 //     reproducible) or later (a real server on the network); a recv waits for the answer, as
@@ -22,6 +24,8 @@
 #include <mutex>
 #include <string>
 #include <vector>
+
+#include "python/lobby.h"
 
 namespace hk::py {
 
@@ -56,6 +60,11 @@ public:
     std::function<void(const std::string &)> log;
 
 private:
+    struct Datagram {
+        std::vector<uint8_t> data;
+        uint32_t from = 0;      // the sender's address, as the board's status block carries it
+        uint16_t port = 0;      // and port
+    };
     struct Socket {
         uint64_t id = 0;           // unique, unlike the descriptor
         int type = 0;              // 1 stream, 2 datagram, 3 raw (ICMP)
@@ -67,10 +76,12 @@ private:
         bool answered = false;     // the handler has answered (and will close: HTTP/1.0)
         bool waiting = false;      // a recv is parked: channel, buffer, length
         uint32_t wait_ch = 0, wait_buf = 0, wait_len = 0;
-        std::vector<std::vector<uint8_t>> datagrams;   // datagram: answers not read yet
+        std::vector<Datagram> datagrams;   // datagram: answers not read yet
+        bool dns = false;                  // it asked DNS: an empty recvfrom gives 0, not a timeout
     };
     void respond(uint32_t channel, int32_t ret, uint32_t w2 = 0, uint32_t w3 = 0);
     void http_progress(Socket &s);
+    void take_answers();
     void deliver(Socket &s, uint32_t ch, uint32_t buf, uint32_t len);
     std::vector<uint8_t> dns_answer(const uint8_t *q, size_t n, std::string *name);
     Target target_of(uint32_t ip_be, uint16_t port) const;
@@ -78,6 +89,8 @@ private:
     Io io_;
     Http http_;
     std::map<int, Socket> sockets_;
+    Lobby lobby_;
+    uint64_t polls_ = 0;   // frames: the lobby's clock
     uint64_t next_id_ = 1;
     std::map<std::string, uint32_t> name_ip_;   // DNS names given out, and back
     std::map<uint32_t, std::string> ip_name_;

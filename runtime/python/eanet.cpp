@@ -129,7 +129,7 @@ void VirtualNet::http_progress(Socket &s) {
         std::lock_guard<std::mutex> l(done_mutex_);
         done_.emplace_back(id, std::move(answer));
     });
-    poll();   // an answer given at once is there at once
+    take_answers();   // an answer given at once is there at once
 }
 
 void VirtualNet::deliver(Socket &s, uint32_t ch, uint32_t buf, uint32_t len) {
@@ -148,6 +148,11 @@ void VirtualNet::deliver(Socket &s, uint32_t ch, uint32_t buf, uint32_t len) {
 }
 
 void VirtualNet::poll() {
+    polls_++;
+    take_answers();
+}
+
+void VirtualNet::take_answers() {
     std::vector<std::pair<uint64_t, std::string>> done;
     {
         std::lock_guard<std::mutex> l(done_mutex_);
@@ -242,18 +247,25 @@ bool VirtualNet::command(uint32_t ch, const uint32_t *p, uint32_t quads) {
             // socket it closes at once and reads the replies on another (its ping thread, 0x197ab8).
             if (n >= 8 && d[0] == 8) {
                 const std::vector<uint8_t> reply = echo_reply(d, arg(5));
+                const uint32_t src = (uint32_t)reply[12] | reply[13] << 8 | reply[14] << 16 | (uint32_t)reply[15] << 24;
                 for (auto &[other_fd, other] : sockets_)
-                    if (other.type == 3) other.datagrams.push_back(reply);
+                    if (other.type == 3) other.datagrams.push_back({reply, src, 0});
             }
             note(fmt("ping(%d, %u bytes) %u.%u.%u.%u", fd, n, arg(5) >> 24, (arg(5) >> 16) & 255, (arg(5) >> 8) & 255, arg(5) & 255));
         } else if (s.type == 2) {
             std::string name;
             const uint16_t port = (uint16_t)arg(4);
             if (port == 53) {
+                s.dns = true;
                 auto r = dns_answer(d.data(), d.size(), &name);
-                if (!r.empty()) s.datagrams.push_back(std::move(r));
+                if (!r.empty()) s.datagrams.push_back({std::move(r), SERVER_IP_RAW, 53});
+            } else if (arg(5) == SERVER_IP_BE && port == Lobby::PORT) {
+                name = "lobby";
+                auto r = lobby_.handle(d.data(), d.size(), polls_ / 59.94);
+                if (!r.empty()) s.datagrams.push_back({std::move(r), SERVER_IP_RAW, Lobby::PORT});
             }
-            note(fmt("sendto(%d, %u bytes, port %u) %s", fd, n, port, name.c_str()));
+            note(fmt("sendto(%d, %u bytes, %u.%u.%u.%u:%u) %s", fd, n, arg(5) >> 24, (arg(5) >> 16) & 255, (arg(5) >> 8) & 255,
+                     arg(5) & 255, port, name.c_str()));
         } else {
             s.request.append(reinterpret_cast<const char *>(d.data()), d.size());
             note(fmt("send(%d, %u bytes)", fd, n));
@@ -268,17 +280,24 @@ bool VirtualNet::command(uint32_t ch, const uint32_t *p, uint32_t quads) {
         if (it == sockets_.end()) { respond(ch, -1); note(fmt("fd %d: no such socket", fd)); return true; }
         Socket &s = it->second;
         if (s.type == 2 || s.type == 3) {
-            if (s.datagrams.empty()) { respond(ch, 0); note(fmt("recvfrom(%d) nothing", fd)); return true; }
-            std::vector<uint8_t> d = std::move(s.datagrams.front());
+            if (s.datagrams.empty()) {
+                // the resolver and the ping thread poll (0: nothing yet); NET TAISEN's sockets wait
+                // with a timeout, and empty their queue by reading until one times out (pop'n 12 0x199c88)
+                const int32_t r = s.dns || s.type == 3 ? 0 : -1;
+                respond(ch, r);
+                note(fmt("recvfrom(%d) nothing = %d", fd, r));
+                return true;
+            }
+            Datagram g = std::move(s.datagrams.front());
             s.datagrams.erase(s.datagrams.begin());
+            std::vector<uint8_t> &d = g.data;
             d.resize(std::min<size_t>(d.size(), arg(3)));
             io_.write(arg(2), d.data(), (uint32_t)d.size());
             uint8_t from[4] = {};
             io_.read(arg(5), from, 4);
             uint32_t from_word;
             std::memcpy(&from_word, from, 4);
-            const uint32_t src = s.type == 3 && d.size() >= 16 ? (uint32_t)d[12] | d[13] << 8 | d[14] << 16 | (uint32_t)d[15] << 24 : SERVER_IP_RAW;
-            respond(ch, (int32_t)d.size(), src, (from_word & 0xffff0000) | (s.type == 3 ? 0 : 53));
+            respond(ch, (int32_t)d.size(), g.from, (from_word & 0xffff0000) | g.port);
             note(fmt("recvfrom(%d) = %zu", fd, d.size()));
             return true;
         }
