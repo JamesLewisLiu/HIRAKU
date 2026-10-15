@@ -45,6 +45,60 @@ for f in "$build"/hiraku "$build"/hiraku-*; do
     done
   fi
 done
+# The launcher (bin/hiraku) with its own Qt, so a PC without Qt 6.12 runs it: the Qt libraries
+# and everything they need but the system's own (glibc, the graphics and windowing stack, fonts,
+# D-Bus, glib, OpenSSL, sound) in bin/qt/lib, the plugins it uses in bin/qt/plugins (qt.conf).
+# No run paths can be written into copied libraries here (no patchelf), so bin/hiraku is a
+# script that sets LD_LIBRARY_PATH for bin/hiraku.bin, which puts the user's own back once Qt is
+# up (launcher/main.cpp): the games and tools it starts never see the bundled Qt.
+bundle_qt() {
+  local qtplugins=/usr/lib/qt6/plugins
+  [ -d "$qtplugins" ] || qtplugins=$(dirname "$(ldd "$d/bin/hiraku.bin" | awk '/libQt6Core/ {print $3}')")/qt6/plugins
+  mkdir -p "$d/bin/qt/lib" "$d/bin/qt/plugins"
+  local p
+  for p in platforms/libqwayland.so platforms/libqxcb.so platforms/libqoffscreen.so \
+           wayland-shell-integration/libxdg-shell.so wayland-decoration-client/libbradient.so \
+           wayland-graphics-integration-client/libqt-plugin-wayland-egl.so \
+           xcbglintegrations/libqxcb-egl-integration.so xcbglintegrations/libqxcb-glx-integration.so \
+           platformthemes/libqxdgdesktopportal.so platforminputcontexts/libcomposeplatforminputcontextplugin.so \
+           tls/libqopensslbackend.so tls/libqcertonlybackend.so; do
+    [ -f "$qtplugins/$p" ] || continue
+    mkdir -p "$d/bin/qt/plugins/$(dirname "$p")"
+    cp -L "$qtplugins/$p" "$d/bin/qt/plugins/$p"
+  done
+  { ldd "$d/bin/hiraku.bin"; find "$d/bin/qt/plugins" -name '*.so' -exec ldd {} \; ; } |
+    awk '$2 == "=>" && $3 ~ /^\// {print $3}' | sort -u | while read -r lib; do
+      local n; n=$(basename "$lib")
+      case $n in
+        libxcb-icccm*|libxcb-image*|libxcb-keysyms*|libxcb-render-util*|libxcb-util*|libxcb-cursor*|libxcb-ewmh*) ;;
+        ld-linux*|libc.so*|libm.so*|libdl.so*|libpthread.so*|librt.so*|libresolv.so*|libutil.so*|libanl.so*|libmvec.so*) continue ;;
+        libGL*|libGLX*|libOpenGL*|libEGL*|libGLES*|libdrm*|libgbm*|libvulkan*) continue ;;
+        libwayland-*|libX*|libxcb*|libxkbcommon*|libxshmfence*) continue ;;
+        libfontconfig*|libfreetype*|libharfbuzz*|libgraphite2*|libexpat*|libz.so*|libffi*) continue ;;
+        libdbus-1*|libsystemd*|libudev*|libglib-2.0*|libgobject-2.0*|libgio-2.0*|libgmodule-2.0*|libgthread-2.0*) continue ;;
+        libSDL3*) continue ;;   # in bin/lib, for the games too
+        libssl*|libcrypto*|libasound*|libpulse*|libselinux*|libmount*|libblkid*|libuuid*|libcap.so*) continue ;;
+      esac
+      cp -L "$lib" "$d/bin/qt/lib/$n"
+    done
+  printf '[Paths]\nPrefix = qt\nPlugins = plugins\n' > "$d/bin/qt.conf"
+  cat > "$d/bin/hiraku" <<'WRAP'
+#!/bin/sh
+# HIRAKU's launcher with the Qt in bin/qt (tools/package.sh; launcher/main.cpp puts these back)
+here=$(dirname "$(readlink -f "$0")")
+HK_SAVED_ENV=1; export HK_SAVED_ENV
+[ "${LD_LIBRARY_PATH+set}" = set ] && { HK_SAVED_LD_LIBRARY_PATH=$LD_LIBRARY_PATH; export HK_SAVED_LD_LIBRARY_PATH; }
+[ "${QT_PLUGIN_PATH+set}" = set ] && { HK_SAVED_QT_PLUGIN_PATH=$QT_PLUGIN_PATH; export HK_SAVED_QT_PLUGIN_PATH; }
+LD_LIBRARY_PATH="$here/qt/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"; export LD_LIBRARY_PATH
+unset QT_PLUGIN_PATH
+exec "$here/hiraku.bin" "$@"
+WRAP
+  chmod +x "$d/bin/hiraku"
+}
+if [ -f "$d/bin/hiraku" ]; then
+  mv "$d/bin/hiraku" "$d/bin/hiraku.bin"
+  bundle_qt
+fi
 sdl=""
 for f in "$build"/hiraku "$build"/hiraku-*; do   # the first binary that has SDL (hiraku-eamuse hasn't)
   [ -n "$sdl" ] || sdl=$(ldd "$f" 2>/dev/null | awk '/libSDL3/ {print $3}')
@@ -64,8 +118,9 @@ cat > "$d/README.txt" <<'EOF'
 HIRAKU, a build for another Linux PC.
 
 Needs glibc 2.38 or later (Ubuntu 24.04, Fedora 39, Debian 13, Arch and newer).
-SDL3 is included. The launcher (bin/hiraku) needs Qt 6.12 or later from the system;
-the games run without it.
+SDL3 is included, and the launcher's Qt (bin/qt: bin/hiraku is a script that starts
+bin/hiraku.bin with it). From the system: the graphics drivers, X11 or Wayland, fontconfig,
+D-Bus, glib and OpenSSL, which every desktop has.
 
 Game data, either way:
 - ingest here, as on the main PC (Python 3.11+, 7z, and chdman for CHDs):

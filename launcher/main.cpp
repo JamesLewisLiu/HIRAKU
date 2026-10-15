@@ -9,10 +9,31 @@
 #include <QIcon>
 #include <QTimer>
 
+#include <cstdlib>
+#include <string>
+
 #include "mainwindow.h"
+
+// A package with its own Qt (tools/package.sh) starts the launcher through bin/hiraku, a script
+// that points LD_LIBRARY_PATH at bin/qt/lib and clears QT_PLUGIN_PATH, keeping the values it found
+// in HK_SAVED_<name> (absent: it was unset). The loader read LD_LIBRARY_PATH when this process
+// started, and Qt its plugin path when the application was made, so both can now go back as they
+// were: the games, the tools and whatever opens a folder start with the user's own environment,
+// not the bundled Qt.
+static void restore_environment() {
+    if (!getenv("HK_SAVED_ENV")) return;
+    for (const char *name : {"LD_LIBRARY_PATH", "QT_PLUGIN_PATH"}) {
+        const std::string saved = std::string("HK_SAVED_") + name;
+        if (const char *v = getenv(saved.c_str())) setenv(name, v, 1);
+        else unsetenv(name);
+        unsetenv(saved.c_str());
+    }
+    unsetenv("HK_SAVED_ENV");
+}
 
 int main(int argc, char **argv) {
     QApplication app(argc, argv);
+    restore_environment();
     QApplication::setApplicationName("hiraku");
     QApplication::setApplicationDisplayName("HIRAKU");
     QApplication::setDesktopFileName("hiraku");
