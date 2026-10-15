@@ -975,21 +975,23 @@ Each phase has an exit test. Sizes are assisted-effort guesses; DJ Main went fas
     - **Done (2026-10-15): the GPU draws on a worker thread** (`third_party/mame/hiraku-edits.py`, `video/psx.*`).
       - MAME's command parser, the status, every register and DMA stay on the emulation thread, in step with the CPU. What writes VRAM goes into a queue instead: each primitive, `MoveImage`, and the CPU-to-VRAM words, with a copy of the state the drawing reads (texture page and window, drawing area and offset, mask bits, the packet).
       - The drawing functions are MAME's own, moved into a `raster` object that holds that copy; the shade and blend tables became static so both sides share them.
-      - The worker draws the queue in order. The screen update and VRAM-to-CPU transfers wait for it to empty, so VRAM is what MAME's would be at every read. A textured polygon's texture page reaches the status on the emulation thread, as in MAME.
+      - The worker draws the queue in order. VRAM-to-CPU transfers wait for it to empty. The screen update waits only for queued items that may write the rows and columns it shows: each item carries the rectangle it can write (the drawing area for primitives, which clip to it; its own rectangle for a fill, a copy or an upload). Games draw the next picture into the other buffer, so the screen update rarely waits. Either way, every read sees VRAM as MAME's would. A textured polygon's texture page reaches the status on the emulation thread, as in MAME.
+      - MAME's `FlatRectangle16x16` tests the row before adding the drawing offset, so its rows are taken as unbounded.
       - The queue: a 4 MiB ring. The worker spins briefly when idle, then sleeps on a futex. `HK_GPU_THREAD=0` draws each item on the emulation thread as it is queued.
       - The shim now stops every device before freeing any (MAME's order): the GPU's RAM is freed before the GPU.
       - **Exact:** all 44 573 and Twinkle regress cases are identical with the worker, and `ddr2m-play` without it.
       - **Speed, desktop:**
 
-        | Run | Without | With | CPU, all threads |
-        |---|---|---|---|
-        | ddr2m attract and demo, 9,000 frames | 3.40 s | 3.12 s (−8 %) | 3.3 → 4.0 s |
-        | its demo play (frames 5,400–9,000), mean frame | 0.475 ms | 0.415 ms (−13 %) | |
-        | `bmiidx3-play` (with its RAM hash), mean frame | 2.61 ms | 2.34 ms (−10 %) | 26.2 → 27.6 s |
+        | Run | Without | Waiting for the whole queue (a339312) | Waiting for what it shows | CPU, all threads |
+        |---|---|---|---|---|
+        | ddr2m attract and demo, 9,000 frames | 3.31 s | 3.12 s | 2.88 s (−13 %) | 3.2 → 3.6 s |
+        | its demo play (frames 5,400–9,000), mean frame | 0.46 ms | 0.415 ms | 0.375 ms (−19 %; median 0.39 → 0.24) | |
+        | `bmiidx3-play` (with its RAM hash), mean frame | 2.63 ms | 2.34 ms | 2.30 ms (−12.5 %) | 26.2 → 27.3 s |
 
-      - **What limits it:** the games queue most of a frame's drawing late in the frame, so the screen update at vblank still waits for about 70 µs in four frames out of ten. The worker draws ~25 % slower than inline (another core's caches).
+      - Waiting for the whole queue, the screen update waited ~70 µs in four frames out of ten: ddr2m (30 fps) queues its drawing around scanline 45, but in host time late in the frame, after the game's logic. That drawing goes to the back buffer.
+      - Handing the picture over a frame later would also have removed the wait, but cost a frame of display latency.
+      - ddr2m's p99 frame rose a little (1.2 → 1.35–1.45 ms): the worker draws ~25 % slower than inline (another core's caches), which shows when a frame does wait.
     - **Next:**
-      - the scanout pipelined: the picture handed to the host a frame later, so the screen update stops waiting for the drawing. The host's frame hook would then take the picture apart from the frame's inputs and script;
       - exact fast-forward of the vblank wait loop: within a timeslice nothing but the CPU touches RAM;
       - record more of each game (songs, menus);
       - measure on N100-class hardware;

@@ -70,6 +70,7 @@ void psxgpu_device::device_start()
 
 	// HIRAKU: the drawing thread
 	std::copy_n( p_p_vram, 1024, m_hk_raster.p_p_vram );
+	m_hk_rows = ( m_ram->size() / 1024 ) / sizeof( uint16_t );
 	m_hk_ring = std::make_unique<uint32_t[]>( HK_RING );
 	const char *thread = getenv( "HK_GPU_THREAD" );
 	if( thread == nullptr || strcmp( thread, "0" ) != 0 )
@@ -620,7 +621,6 @@ void psxgpu_device::device_post_load()
 
 uint32_t psxgpu_device::update_screen(screen_device &screen, bitmap_rgb32 &bitmap, const rectangle &cliprect)
 {
-	hk_sync(); // HIRAKU
 	uint32_t n_x;
 	uint32_t n_y;
 	int n_top;
@@ -735,6 +735,7 @@ uint32_t psxgpu_device::update_screen(screen_device &screen, bitmap_rgb32 &bitma
 		if( ( n_gpustatus & ( 1 << 0x15 ) ) != 0 )
 		{
 			/* 24bit */
+			hk_sync(); // HIRAKU
 			n_line = n_lines;
 			while( n_line > 0 )
 			{
@@ -763,6 +764,7 @@ uint32_t psxgpu_device::update_screen(screen_device &screen, bitmap_rgb32 &bitma
 		else
 		{
 			/* 15bit */
+			hk_sync_area( n_x + n_displaystartx, n_columns, n_y + n_displaystarty, n_lines ); // HIRAKU: what it reads
 			n_line = n_lines;
 			while( n_line > 0 )
 			{
@@ -3691,6 +3693,42 @@ void psxgpu_device::hk_publish()
 	uint32_t *item = m_hk_image != nullptr ? m_hk_image : &m_hk_ring[ m_hk_write & ( HK_RING - 1 ) ];
 	m_hk_write += item[ 1 ];
 	m_hk_image = nullptr;
+	if( m_hk_thread.joinable() )
+	{
+		// the rectangle it may write (its run's, when the last item's was the same)
+		const draw_state &d = *reinterpret_cast<const draw_state *>( &item[ 2 ] );
+		const PACKET &p = d.m_packet;
+		hk_area a;
+		switch( item[ 0 ] & 0xff )
+		{
+		case HK_FrameBufferRectangleDraw: // rows and columns wrap
+			a = { COORD_X( p.FlatRectangle.n_coord ) & 1023, std::min<int32_t>( SIZE_W( p.FlatRectangle.n_size ), 1024 ),
+				COORD_Y( p.FlatRectangle.n_coord ) & 1023, std::min<int32_t>( SIZE_H( p.FlatRectangle.n_size ), 1024 ) };
+			break;
+		case HK_MoveImage: // to vertex 1, wrapping; its sizes are int16_t there
+			a = { COORD_X( p.MoveImage.vertex[ 1 ].n_coord ) & 1023, std::min<int32_t>( (int16_t)SIZE_W( p.MoveImage.n_size ), 1024 ),
+				COORD_Y( p.MoveImage.vertex[ 1 ].n_coord ) & 1023, std::min<int32_t>( (int16_t)SIZE_H( p.MoveImage.n_size ), 1024 ) };
+			break;
+		case HK_IMAGE: // from n_vramx/y within the transfer's rectangle, wrapping; a size of 0 writes one pixel
+			a = { int32_t( p.n_entry[ 1 ] & 1023 ), std::clamp<int32_t>( p.n_entry[ 2 ] & 0xffff, 1, 1024 ),
+				int32_t( ( p.n_entry[ 1 ] >> 16 ) & 1023 ), std::clamp<int32_t>( p.n_entry[ 2 ] >> 16, 1, 1024 ) };
+			break;
+		case HK_FlatRectangle16x16: // MAME tests the row before the drawing offset: any row
+			a = { int32_t( d.n_drawarea_x1 ), int32_t( d.n_drawarea_x2 ) - int32_t( d.n_drawarea_x1 ) + 1, 0, 1024 };
+			break;
+		default: // the primitives clip to the drawing area
+			a = { int32_t( d.n_drawarea_x1 ), int32_t( d.n_drawarea_x2 ) - int32_t( d.n_drawarea_x1 ) + 1,
+				int32_t( d.n_drawarea_y1 ), int32_t( d.n_drawarea_y2 ) - int32_t( d.n_drawarea_y1 ) + 1 };
+			break;
+		}
+		if( a.w > 0 && a.h > 0 )
+		{
+			if( !m_hk_pending.empty() && m_hk_pending.back().second == a )
+				m_hk_pending.back().first = m_hk_write;
+			else
+				m_hk_pending.emplace_back( m_hk_write, a );
+		}
+	}
 	m_hk_head.store( m_hk_write, std::memory_order_seq_cst );
 	if( !m_hk_thread.joinable() )
 		hk_run();
@@ -3747,6 +3785,35 @@ void psxgpu_device::hk_sync()
 			m_hk_wait.store( 0 );
 		}
 	}
+	m_hk_pending.clear();
+}
+
+// VRAM's columns x to x + w (not wrapping: a row read past column 1023 runs into the next) and
+// rows y to y + h (wrapping), as they would be with the queue drawn: waits only if a queued item
+// may still write there
+void psxgpu_device::hk_sync_area( int32_t x, int32_t w, int32_t y, int32_t h )
+{
+	if( !m_hk_thread.joinable() || w <= 0 || h <= 0 )
+		return;
+	hk_close();
+	if( x < 0 || x + w > 1024 || m_hk_rows != 1024 )
+	{
+		hk_sync();
+		return;
+	}
+	const uint64_t tail = m_hk_tail.load( std::memory_order_acquire );
+	while( !m_hk_pending.empty() && m_hk_pending.front().first <= tail )
+		m_hk_pending.pop_front();
+	y &= 1023;
+	h = std::min( h, 1024 );
+	// two stretches of a circle of 1024 meet when either starts inside the other
+	auto meet = []( int32_t a, int32_t la, int32_t b, int32_t lb ) { return ( ( b - a ) & 1023 ) < la || ( ( a - b ) & 1023 ) < lb; };
+	for( const auto &[ end, a ] : m_hk_pending )
+		if( meet( a.x, a.w, x, w ) && meet( a.y, a.h, y, h ) )
+		{
+			hk_sync();
+			return;
+		}
 }
 
 // draw what is published

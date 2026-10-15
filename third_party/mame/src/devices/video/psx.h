@@ -15,6 +15,7 @@
 #include "machine/ram.h"
 
 #include <atomic>
+#include <deque>
 #include <memory>
 #include <thread>
 
@@ -213,8 +214,10 @@ private:
 	// HIRAKU: the drawing on a worker thread (PLAN.md section 19). The command parser, the status
 	// and every register stay here, on the emulation thread; what writes VRAM (the primitives,
 	// the CPU-to-VRAM image, MoveImage) goes into a queue with a copy of the state the drawing
-	// reads (draw_state), and raster draws it on the worker, in order. What reads VRAM (the
-	// screen update, VRAM-to-CPU) waits for the queue to empty, so it sees what MAME's would.
+	// reads (draw_state), and raster draws it on the worker, in order. What reads VRAM waits for
+	// the queued items that could change what it reads: VRAM-to-CPU for all of them; the screen
+	// update for those whose rectangle meets the rows and columns it shows (games draw the next
+	// picture into the other buffer). So every read sees what MAME's would.
 	// The textured polygons' texture page reaches the status here as in MAME (decode_tpage()
 	// beside the queueing), and again in raster's own copy of the state.
 	// HK_GPU_THREAD=0: no worker; each item is drawn on the emulation thread as it is queued.
@@ -276,6 +279,7 @@ private:
 	void hk_image( uint32_t data );
 	void hk_close() { if( m_hk_image != nullptr ) hk_publish(); }
 	void hk_sync();
+	void hk_sync_area( int32_t x, int32_t w, int32_t y, int32_t h );
 	void hk_run();
 	void hk_worker();
 
@@ -290,6 +294,11 @@ private:
 	uint32_t *m_hk_image = nullptr; // the open image item, words still being added
 	raster m_hk_raster;
 	std::thread m_hk_thread;
+	// what the queued items may still write: a rectangle of VRAM per run of items, with the queue
+	// position where the run ends. Columns and rows are taken modulo 1024 (x, y) with a length.
+	struct hk_area { int32_t x, w, y, h; bool operator==( const hk_area & ) const = default; };
+	std::deque<std::pair<uint64_t, hk_area>> m_hk_pending;
+	int32_t m_hk_rows = 0; // VRAM's height (rows beyond it alias)
 
 	void psx_gpu_init( int n_gputype );
 	void gpu_reset();
