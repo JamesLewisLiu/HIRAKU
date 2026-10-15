@@ -334,6 +334,20 @@ private:
 		void decode();
 		template<int D3, int D2> void step_decoded(s64 &p);
 		void run_decoded(int n);
+		// HIRAKU: programs compiled ahead of time from a recording (tools/meggen.py)
+		using prog_fn = void (meg_state::*)(s64 &p, int pc, int n);
+		template<int D3, int D2, int PC, u64 OP, u64 OP3, u64 OP2> void step_fixed(s64 &p);
+		template<u64 HASH, int K0> void run_prog(s64 &p, int pc, int n);
+		struct compiled_prog { u64 hash; int k0; prog_fn run; };
+		static const compiled_prog s_programs[];   // generated (hk_meg_programs.inc)
+		static const int s_program_count;
+		prog_fn m_compiled = nullptr;   // the current program's compiled code, if any
+		int m_compiled_k0 = 0;          // the pipeline phase at pc 0 it was compiled for
+		bool m_compiled_armed = false;  // false from a program change to the next sample's start
+		u64 m_prog_hash = 0;
+		int m_record_samples = 0;       // samples the program has run unchanged; -1: recorded
+		bool run_compiled(int n);
+		void record_program();
 		void reset();
 	};
 

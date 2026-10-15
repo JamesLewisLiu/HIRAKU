@@ -115,6 +115,15 @@ add_library(hiraku_xt446 STATIC
   ${HK_H8_GEN})
 target_include_directories(hiraku_xt446 PRIVATE ${HK_MAME}/shim ${HK_MAME}/src/devices ${HK_MAME_GEN})
 target_include_directories(hiraku_xt446 PUBLIC runtime)
+# The MEG's effect programs compiled to C++ from a recording (HK_MEG_RECORD=build/xt446/meg.txt,
+# never committed: it holds the firmware's programs). Every build: meggen.py does nothing unless
+# the output would change; with no recording the table is empty and the MEG is interpreted.
+set(HK_MEG_GEN ${CMAKE_BINARY_DIR}/genmeg)
+add_custom_target(hiraku_meggen
+  COMMAND python3 ${CMAKE_SOURCE_DIR}/tools/meggen.py ${CMAKE_SOURCE_DIR}/build/xt446/meg.txt ${HK_MEG_GEN}
+  BYPRODUCTS ${HK_MEG_GEN}/hk_meg_programs.inc)
+add_dependencies(hiraku_xt446 hiraku_meggen)
+target_include_directories(hiraku_xt446 PRIVATE ${HK_MEG_GEN})
 # MAME sources: their own warning set; optimised even in debug builds (the card is real-time)
 target_compile_options(hiraku_xt446 PRIVATE -w -O3)
 

@@ -3693,6 +3693,24 @@ void swp30_device::meg_state::decode()
 		d.absolute = BIT(opcode, 0x23);
 	}
 	m_dec_dirty = false;
+
+	// the compiled code for this program, if tools/meggen.py made some (FNV-1a over the words)
+	u64 h = 0xcbf29ce484222325ULL;
+	for(int pc = 0; pc != 0x180; pc++)
+		for(int b = 0; b != 8; b++) {
+			h ^= (m_program[pc] >> (8 * b)) & 0xff;
+			h *= 0x100000001b3ULL;
+		}
+	m_prog_hash = h;
+	m_compiled = nullptr;
+	for(int i = 0; i != s_program_count; i++)   // the table is at the end of the file
+		if(s_programs[i].hash == h) {
+			m_compiled = s_programs[i].run;
+			m_compiled_k0 = s_programs[i].k0;
+			break;
+		}
+	m_record_samples = 0;
+	m_compiled_armed = false;   // the delay slots still hold the old program's steps
 }
 
 template<int D3, int D2> inline __attribute__((always_inline)) void swp30_device::meg_state::step_decoded(s64 &p)
@@ -3871,6 +3889,204 @@ void swp30_device::meg_state::run_decoded(int n)
 	m_delay_2 = k % 2;
 }
 
+// HIRAKU: MEG programs compiled ahead of time. The firmware loads a handful of
+// effect programs; HK_MEG_RECORD=file appends each one that has run unchanged
+// for 256 samples, with its pipeline phase, and tools/meggen.py turns the
+// recording into hk_meg_programs.inc: per program, run_prog<hash, k0>() is the
+// 384 steps as step_fixed() calls, a step_decoded() whose fields, program
+// counter and delay slots are compile-time constants. decode() looks the
+// program up by its hash; a run uses the compiled code only when the pipeline
+// phase is the one it was compiled for, the interpreter otherwise.
+static constexpr u64 hk_f(u64 op, int start, int len) { return (op >> start) & ((u64(1) << len) - 1); }
+
+template<int D3, int D2, int PC, u64 OP, u64 OP3, u64 OP2> inline __attribute__((always_inline)) void swp30_device::meg_state::step_fixed(s64 &p)
+{
+	// what the steps 3 and 2 before this one (OP3, OP2: the same program's, from the previous
+	// sample for the first steps) left in the delay slots: known here, so not tested at run time
+	constexpr int dm3 = hk_f(OP3, 0x27, 6), dr3 = hk_f(OP3, 0x30, 7);
+	constexpr bool idx3 = hk_f(OP3, 0x3e, 1), memw2 = hk_f(OP2, 0x3d, 1), memr2 = hk_f(OP2, 0x24, 2) >= 2;
+	constexpr int sm = hk_f(OP, 0x04, 6), sr = hk_f(OP, 0x0b, 7), dm = hk_f(OP, 0x27, 6), dr = hk_f(OP, 0x30, 7), t = hk_f(OP, 0x38, 3);
+	constexpr int mmode = hk_f(OP, 0x16, 2);
+	constexpr bool alu = mmode != 0 || hk_f(OP, 0x1a, 6);
+	constexpr int m1t = hk_f(OP, 0x14, 2);
+	constexpr bool m1_from_t = m1t == 1 || m1t == 2, m1_exp = hk_f(OP, 0x13, 1), m2_from_m = hk_f(OP, 0x12, 1);
+	constexpr int amode = hk_f(OP, 0x18, 2), op = hk_f(OP, 0x1a, 2), shift = hk_f(OP, 0x1c, 2) == 3 ? 4 : hk_f(OP, 0x1c, 2);
+	constexpr int sat = hk_f(OP, 0x1e, 2), dsrc = hk_f(OP, 0x2d, 3), memop = hk_f(OP, 0x24, 2);
+	constexpr bool add_rand = !hk_f(OP, 0x0a, 1), r_from_r = hk_f(OP, 0x37, 1), memw = hk_f(OP, 0x3d, 1), idx = hk_f(OP, 0x3e, 1);
+	constexpr bool twr = hk_f(OP, 0x3b, 1), t_from_value = hk_f(OP, 0x3c, 1), use_index = hk_f(OP, 0x21, 1), absolute = hk_f(OP, 0x23, 1);
+
+	if constexpr(dm3 != 0)
+		m_m[dm3] = m_mw_value[D3];
+
+	if constexpr(dr3 != 0)
+		m_r[dr3] = m_rw_value[D3];
+
+	if constexpr(idx3)
+		m_ram_index = m_index_value[D3];
+
+	if constexpr(memw2) {
+		m_ram_write = m_memw_value[D2];
+		m_memw_active[D2] = false;
+	}
+	if constexpr(memr2) {   // set only if the address was valid (or the revram path): still tested
+		if(m_memr_active[D2]) {
+			m_ram_read = m_memr_value[D2];
+			m_memr_active[D2] = false;
+		}
+	}
+
+	if constexpr(alu) {
+		s64 m;
+		if constexpr(mmode == 0)
+			m = 0;
+		else if constexpr(mmode == 3)
+			m = s64(m2_from_m ? m_m[sm] : m_r[sr]) << 15;
+		else {
+			s64 m1 = m1_from_t ? m_t[t] : m_const[PC];
+			if constexpr(m1_exp)
+				m1 = m1_expand(m1);
+			if constexpr(mmode == 1)
+				m = m1 << (8+15);
+			else
+				m = m1 * s64(m2_from_m ? m_m[sm] : m_r[sr]);
+		}
+
+		s64 a;
+		if constexpr(amode == 0) a = p;
+		else if constexpr(amode == 1) a = sr ? (s64(m_r[sr]) << 15) : (p >> 15);
+		else if constexpr(amode == 2) a = sm ? (s64(m_m[sm]) << 15) : (p >> 15);
+		else a = 0;
+
+		s64 r;
+		if constexpr(op == 0) r = m + a;
+		else if constexpr(op == 1) r = m - a;
+		else if constexpr(op == 2) r = m + ((a < 0) ? -a : a);
+		else r = m & a;
+
+		r <<= shift;
+
+		if constexpr(sat == 0) r = util::sext(r, 42);
+		else if constexpr(sat == 1) r = std::clamp<s64>(r, -0x4000000000, 0x3fffffffff);
+		else if constexpr(sat == 2) r = std::clamp<s64>(r, 0, 0x3fffffffff);
+		else r = std::min<s64>((r < 0) ? -r : r, 0x3fffffffff);
+
+		p = r;
+	}
+
+	m_mw_reg[D3] = dm;
+	if constexpr(dm != 0) {
+		u32 v;
+		if constexpr(dsrc <= 3)
+			v = get_lfo(PC >> 4);
+		else if constexpr(dsrc == 4)
+			v = m_ram_read;
+		else if constexpr(dsrc == 5) {
+			v = m_swp->machine().rand() & 0xffffff;
+			if(v & 0x00800000)
+				v |= 0xff000000;
+		} else if constexpr(dsrc == 6) {
+			s64 pr = p;
+			if constexpr(add_rand)
+				pr += m_swp->machine().rand() & 0x07e0;
+			v = pack24(pr);
+		} else
+			v = m_m[sm];
+		m_mw_value[D3] = v;
+	}
+
+	m_rw_reg[D3] = dr;
+	if constexpr(dr != 0) {
+		u32 v;
+		if constexpr(r_from_r)
+			v = m_r[sr];
+		else {
+			s64 pr = p;
+			if constexpr(add_rand)
+				pr += m_swp->machine().rand() & 0x07e0;
+			v = pack24(pr);
+		}
+		m_rw_value[D3] = v;
+	}
+
+	if constexpr(memw) {
+		m_memw_active[D2] = true;
+		m_memw_value[D2] = p / 32768;
+	} else
+		m_memw_active[D2] = false;
+
+	if constexpr(idx) {
+		m_index_active[D3] = true;
+		m_index_value[D3] = p >> (15+8);
+	} else
+		m_index_active[D3] = false;
+
+	if constexpr(twr) {
+		if constexpr(t_from_value)
+			m_t[t] = m_t_value[D2];
+		else
+			m_t[t] = m_const[PC];
+	}
+	m_t_value[D2] = s16(idx ? (p >> 8) & 0x7fff : std::clamp<s64>(p >> (15+8), -0x8000, 0x7fff));
+
+	if constexpr(memop == 1) {
+		if(!BIT(m_swp->m_revram_enable, map_bank(PC))) {
+			u32 address = resolve_address(PC, m_offset[PC/3] + (use_index ? m_ram_index : 0) - m_sample_counter);
+			if(address != 0xffffffff)
+				m_swp->m_reverb_cache.write_word(address, revram_encode(m_ram_write));
+		}
+	} else if constexpr(memop >= 2) {
+		constexpr s32 plus = memop == 3 ? 1 : 0;
+		if(!absolute && BIT(m_swp->m_revram_enable, map_bank(PC))) {
+			m_memr_value[D2] = 0;
+			m_memr_active[D2] = true;
+		} else {
+			u32 address = absolute ?
+				(m_offset[PC/3] + (use_index ? m_ram_index : 0) + plus) & 0x3ffff :
+				resolve_address(PC, m_offset[PC/3] + (use_index ? m_ram_index : 0) - m_sample_counter + plus);
+			if(address != 0xffffffff) {
+				u16 val = m_swp->m_reverb_cache.read_word(address);
+				m_memr_value[D2] = revram_decode(val);
+				m_memr_active[D2] = true;
+			}
+		}
+	}
+}
+
+// n steps from m_pc with the compiled program, if it is there and the phase is right
+bool swp30_device::meg_state::run_compiled(int n)
+{
+	static constexpr int phase_of[3][2] = {{0, 3}, {4, 1}, {2, 5}};
+	int k = phase_of[m_delay_3][m_delay_2];
+	if(!m_compiled || !m_compiled_armed || k != (m_compiled_k0 + m_pc) % 6)
+		return false;
+	m_icount -= n;
+	s64 p = m_p;
+	(this->*m_compiled)(p, m_pc, n);
+	m_p = p;
+	m_pc += n;
+	k = (k + n) % 6;
+	m_delay_3 = k % 3;
+	m_delay_2 = k % 2;
+	return true;
+}
+
+// at pc 0: a program that has run unchanged for 256 samples goes to HK_MEG_RECORD; and its
+// compiled code may run from here (the delay slots now hold this program's last steps)
+void swp30_device::meg_state::record_program()
+{
+	m_compiled_armed = true;
+	static FILE *f = getenv("HK_MEG_RECORD") ? fopen(getenv("HK_MEG_RECORD"), "a") : nullptr;
+	if(!f || m_compiled || m_record_samples < 0 || ++m_record_samples < 256)
+		return;
+	static constexpr int phase_of[3][2] = {{0, 3}, {4, 1}, {2, 5}};
+	fprintf(f, "%016llx %d", (unsigned long long)m_prog_hash, phase_of[m_delay_3][m_delay_2]);
+	for(int pc = 0; pc != 0x180; pc++)
+		fprintf(f, " %llx", (unsigned long long)m_program[pc]);
+	fprintf(f, "\n");
+	fflush(f);
+	m_record_samples = -1;   // once per program
+}
+
 void swp30_device::execute_run()
 {
 	// HIRAKU: the interpreter path only, from the pre-decoded program
@@ -3880,12 +4096,16 @@ void swp30_device::execute_run()
 		m_meg->decode();
 
 	while(m_meg->m_icount > 0) {
-		if(m_meg->m_pc == 0)
+		if(m_meg->m_pc == 0) {
 			sample_step();
+			m_meg->record_program();
+		}
 		if(reference)
 			m_meg->step();
 		else {
-			m_meg->run_decoded(std::min<int>(m_meg->m_icount, 0x180 - m_meg->m_pc));
+			const int n = std::min<int>(m_meg->m_icount, 0x180 - m_meg->m_pc);
+			if(!m_meg->run_compiled(n))
+				m_meg->run_decoded(n);
 			if(m_meg->m_pc == 0x180)
 				m_meg->m_pc = 0;
 		}
@@ -3924,3 +4144,11 @@ void swp30_device::sound_stream_update(sound_stream &stream)
 
 DEFINE_DEVICE_TYPE(SWP30, swp30_device, "swp30", "Yamaha SWP30 sound chip")
 
+
+// HIRAKU: the compiled MEG programs, generated by tools/meggen.py from a recording
+#if __has_include("hk_meg_programs.inc")
+#include "hk_meg_programs.inc"
+#else
+const swp30_device::meg_state::compiled_prog swp30_device::meg_state::s_programs[1] = {};
+const int swp30_device::meg_state::s_program_count = 0;
+#endif
