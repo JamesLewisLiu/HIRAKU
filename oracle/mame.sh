@@ -37,8 +37,12 @@ script="$(realpath "${2:?usage: oracle/mame.sh <game> <script.his> [run name]}")
 name="${3:-$(basename "$script" .his)}"
 
 toml="$root/games/$game/game.toml"
-[[ -f "$toml" ]] || { echo "no $toml" >&2; exit 1; }
-set_name="$(python3 -c "import tomllib,sys; print(tomllib.load(open(sys.argv[1],'rb'))['mame'])" "$toml")"
+# a game HIRAKU has a manifest for, by its id; else a MAME set name (a first look at a new set)
+if [[ -f "$toml" ]]; then
+    set_name="$(python3 -c "import tomllib,sys; print(tomllib.load(open(sys.argv[1],'rb'))['mame'])" "$toml")"
+else
+    set_name="$game"
+fi
 
 roms="$(realpath "${HIRAKU_ROMS:-$HOME/bm3mame/roms}")"
 out="$root/out/oracle/$game/$name"
@@ -77,7 +81,8 @@ args=(-rompath "$roms" -homepath "$out"
     -autoboot_script "$here/lua/hiraku.lua"
     "$set_name")
 # Twinkle's layout draws the 16-segment display around the screen: snapshot the screen alone
-core="$(python3 -c "import tomllib,sys; print(tomllib.load(open(sys.argv[1],'rb')).get('core',''))" "$toml")"
+core=""
+[[ -f "$toml" ]] && core="$(python3 -c "import tomllib,sys; print(tomllib.load(open(sys.argv[1],'rb')).get('core',''))" "$toml")"
 [[ "$core" == twinkle ]] && args+=(-snapview native)
 # shellcheck disable=SC2206
 [[ -n "${MAME_ARGS:-}" ]] && args+=(${MAME_ARGS})

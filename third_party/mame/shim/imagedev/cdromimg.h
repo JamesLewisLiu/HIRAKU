@@ -3,7 +3,8 @@
 // (imagedev/cdromimg.h), reading a .cue/.bin or .iso instead of a CHD. The track
 // types, MSF helpers and read_data() conversions are MAME's; what a CHD's metadata
 // would hold (logical frame offsets, the lead-out) is built from the cue sheet.
-// Pregaps (INDEX 00, PREGAP) are not modelled: the 573 and Twinkle discs have none.
+// Pregaps as MAME lays them out: a PREGAP is not in the file (its frames read as zeros), an
+// INDEX 00 pregap is (the track starts logically at INDEX 01); POSTGAP counts against the next track.
 #pragma once
 
 #include "emu.h"

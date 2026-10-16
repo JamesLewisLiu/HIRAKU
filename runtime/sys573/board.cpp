@@ -363,6 +363,9 @@ void sys573_state::device_add_mconfig(machine_config &config) {
     if (c.pccard1 == "32mb") {   // pccard1_32mb() (MAME also offers id245p01 there)
         m_pccard1->option_add("32mb", FUJITSU_32MB_FLASH_CARD);
         m_pccard1->set_default_option("32mb");
+    } else if (c.pccard1 == "16mb") {   // pccard1_16mb(): DDR 2nd Mix Link, Best of Cool Dancers
+        m_pccard1->option_add("16mb", FUJITSU_16MB_FLASH_CARD);
+        m_pccard1->set_default_option("16mb");
     }
     if (c.pccard2 == "32mb") {   // pccard2_32mb()
         m_pccard2->option_add("32mb", FUJITSU_32MB_FLASH_CARD);
@@ -453,7 +456,8 @@ void sys573_state::device_start() {
     m_h8_length = (int)h8->bytes();
     m_h8_index = 0;
     m_stage_mask = 0xffffffff;   // ddr_state::machine_start
-    if (cfg.family == "gtrf") m_stage &= ~0x0303u;   // gtrfrks: the effect knobs (dials) at 0
+    // gtrfrks: the effect knobs (MAME's dials, PORT_REVERSE over 0..3) read 3 at rest: m_stage's
+    // reset value already has those bits set
     m_lamps.assign(cab::lamps(cfg.family).size(), 0);
 }
 
@@ -643,7 +647,11 @@ void sys573_state::gx700pwbf_output(int offset, u8 data) {
     for (int i = 0; i < 8; i++) {
         int oldbit = (m_gx700pwbf_output_data[offset] >> shift[i]) & 1;
         int newbit = (data >> shift[i]) & 1;
-        if (oldbit != newbit) ddr_output_callback((offs_t)(offset * 8 + i), (u8)newbit);
+        if (oldbit == newbit) continue;
+        // where MAME's init sends them (gx700pwfbf_init): init_ddr to DDR's lamps, init_drmn to
+        // DrumMania's; GuitarFreaks' empty_init to nothing (its lamps are the LAMPS port)
+        if (cfg.family == "ddr") ddr_output_callback((offs_t)(offset * 8 + i), (u8)newbit);
+        else if (cfg.family == "drmn") drmn_output_callback((offs_t)(offset * 8 + i), (u8)newbit);
     }
     m_gx700pwbf_output_data[offset] = data;
 }
@@ -694,8 +702,15 @@ void sys573_state::ddr_output_callback(offs_t offset, u8 data) {
 }
 
 // MAME's drmn_output_callback (ksys573.cpp), the digital board's numbering (DrumMania 2nd and
-// later): the drum lamps and the spots are lit at data 0, the neons, Start and Select at data 1
+// later): the drum lamps and the spots are lit at data 0, the neons, Start and Select at data 1.
+// DrumMania 1st's analog board numbers them otherwise; they map onto the same lamps.
 void sys573_state::drmn_output_callback(offs_t offset, u8 data) {
+    static const s8 analog[32] = {-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+                                  0, 1, 2, 3, 12, 13, 14, -1, -1, -1, -1, 11, -1, -1, 8, 9};   // 16-31
+    if (offset >= 16) {
+        if (offset >= 32 || analog[offset] < 0) return;
+        offset = (offs_t)analog[offset];
+    }
     switch (offset) {
     case 0: case 1: case 2: case 3: case 8: case 12: set_lamp(offset, !data); break;
     case 9: case 11: case 13: case 14: set_lamp(offset, data != 0); break;
@@ -792,7 +807,8 @@ bool init(const Config &cfg) {
     struct R { const char *tag; std::string file; } regions[] = {
         {":maincpu:rom", rom(cfg.bios)},
         {":h8_response", rom(cfg.h8)},
-        {":cassette:game:eeprom", rom(cfg.cassette_eeprom)},
+        // none: MAME has no dump of it (ddrja), and its region is zeros, as the chip's own default
+        {":cassette:game:eeprom", cfg.cassette_eeprom.empty() ? "" : rom(cfg.cassette_eeprom)},
         {":cassette:game:id", cfg.cassette_id.empty() ? "" : rom(cfg.cassette_id)},           // the "i" cassettes
         {":cassette:install:eeprom", cfg.install_eeprom.empty() ? "" : rom(cfg.install_eeprom)},
         {":cassette:install:id", cfg.install_id.empty() ? "" : rom(cfg.install_id)},
@@ -1112,7 +1128,7 @@ bool set_input(const std::string &name, int value) {
     // the effect knobs: MAME's dials, a 2-bit position (not active low) on the stage bits
     if (name == "P1 Effect Knob" || name == "P2 Effect Knob") {
         const int sh = name[1] == '1' ? 8 : 0;
-        st.m_stage = (st.m_stage & ~(3u << sh)) | ((u32)(-value & 3) << sh);   // PORT_REVERSE
+        st.m_stage = (st.m_stage & ~(3u << sh)) | ((u32)(3 - value) & 3) << sh;   // PORT_REVERSE: 3 - position
         return true;
     }
     // the shell's cabinet names for MAME's (runtime/shell/cabinet.cpp)

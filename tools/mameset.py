@@ -11,7 +11,9 @@ owner's archive is 0.243) can carry an older name, so a set is told by what it h
 only by its name: `identify()` takes a zip, 7z or folder and names the set whose own ROMs it
 has. A CHD is told by its header's SHA-1 (`disk_owner()`).
 
-  tools/mameset.py --refresh LISTXML     remake the data from `mame -listxml` output
+  tools/mameset.py --refresh LISTXML [KSYS573_CPP]
+                                         remake the data from `mame -listxml` output (and the
+                                         System 573 machine configs from MAME's ksys573.cpp)
   tools/mameset.py FILE...               which set each file is
 """
 from __future__ import annotations
@@ -48,8 +50,56 @@ BEMANI = re.compile(r"beatmania|pop'?n|dance dance|dancing stage|ddr|guitar ?fre
 
 # ---------------------------------------------------------------- the data
 
-def refresh(listxml: str, out: str = DATA) -> int:
-    """Remakes the data from MAME's -listxml output (a file)."""
+def ksys573_configs(path: str) -> dict[str, dict]:
+    """Each System 573 set's machine config as MAME's ksys573.cpp builds it, flattened: the I/O
+    board, the cassettes, the PC Cards, the memory card reader, the multi-session unit, the
+    output callback and the init. {set: {...}}"""
+    src = open(path).read()
+    funcs = {}
+    for m in re.finditer(r"^void \w+::(\w+)\(machine_config &config\)\s*\{(.*?)^\}", src, re.M | re.S):
+        funcs[m.group(1)] = m.group(2)
+    cass = {"cassx": ("x", None), "cassxi": ("xi", None), "cassy": ("y", None), "cassyi": ("yi", None),
+            "cassyyi": ("yi", "yi"), "cassxzi": ("zi", "xi"), "casszi": ("zi", None)}
+
+    def walk(name, c, seen):
+        if name in seen or name not in funcs:
+            return
+        seen.add(name)
+        body = funcs[name]
+        for m in re.finditer(r"(\w+)\(config\b|output_callback\(\)\.set\(FUNC\(\w+::(\w+)\)", body):
+            call, cb = m.group(1), m.group(2)
+            if cb:
+                c["output"] = cb
+            elif call in ("k573a", "k573d", "k573k"):
+                c["io_board"] = {"k573a": "analog", "k573d": "digital", "k573k": "karaoke"}[call]
+                walk(call, c, seen)
+            elif call in cass:
+                c["cassette"], c["install_cassette"] = cass[call]
+            elif call in ("pccard1_16mb", "pccard1_32mb"):
+                c["pccard1"] = call.split("_")[1]
+            elif call == "pccard2_32mb":
+                c["pccard2"] = "32mb"
+            elif call == "KONAMI_573_MEMORY_CARD_READER":
+                c["memory_card_reader"] = True
+            elif call == "KONAMI_573_MULTI_SESSION_UNIT":
+                c["msu"] = True
+            elif call in funcs:
+                walk(call, c, seen)
+
+    out = {}
+    for m in re.finditer(r"^GAME\(\s*\d+,\s*(\w+),\s*(\w+),\s*(\w+),\s*(\w+),\s*(\w+),\s*(\w+),", src, re.M):
+        name, config, inputs, init = m.group(1), m.group(3), m.group(4), m.group(6)
+        c = {"config": config, "inputs": inputs, "init": init, "cassette": "x"}   # konami573() adds cassx()
+        walk(config, c, set())
+        if c.get("install_cassette") is None:
+            c.pop("install_cassette", None)
+        out[name] = c
+    return out
+
+
+def refresh(listxml: str, out: str = DATA, ksys573: str | None = None) -> int:
+    """Remakes the data from MAME's -listxml output (a file), and System 573 configs from
+    MAME's ksys573.cpp when given."""
     import xml.etree.ElementTree as ET
     machines: dict[str, dict] = {}
     build = ""
@@ -81,6 +131,8 @@ def refresh(listxml: str, out: str = DATA) -> int:
                 continue
             roms.append((r.get("bios"), [r.get("name"), int(r.get("size", 0)), r.get("crc")] +
                          ([r.get("merge")] if r.get("merge") else [])))
+            if r.get("region"):
+                m.setdefault("regions", {})[r.get("name")] = r.get("region")
         m["_roms"] = roms
         disks = []
         for k in el.findall("disk"):
@@ -119,6 +171,7 @@ def refresh(listxml: str, out: str = DATA) -> int:
         for ref in machines[n].get("refs", []):
             if ref in machines and machines[ref].get("roms"):
                 devices.add(ref)
+    k573 = ksys573_configs(ksys573) if ksys573 else {}
     sets = {}
     for n in sorted(keep | devices):
         m = dict(machines[n])
@@ -126,6 +179,8 @@ def refresh(listxml: str, out: str = DATA) -> int:
         if not m["refs"]:
             del m["refs"]
         m["board"] = BOARDS.get(m["source"], "")
+        if n in k573:
+            m["k573"] = k573[n]
         sets[n] = m
     os.makedirs(os.path.dirname(out), exist_ok=True)
     with open(out, "w") as fh:
@@ -329,8 +384,8 @@ def disk_owner(sha1: str) -> list[tuple[str, str]]:
 
 def main() -> int:
     args = sys.argv[1:]
-    if args[:1] == ["--refresh"] and len(args) == 2:
-        return refresh(args[1])
+    if args[:1] == ["--refresh"] and len(args) in (2, 3):
+        return refresh(args[1], ksys573=args[2] if len(args) == 3 else None)
     if not args or args[0].startswith("-"):
         print(__doc__)
         return 2

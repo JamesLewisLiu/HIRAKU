@@ -268,11 +268,111 @@ The order is by what each step costs against what it opens. Every step keeps the
 
 ### Phase 2: System 573 analog catalogue (1–2 weeks; MAME is the oracle)
 
-- **DDR 1st (`dstage` family), DDR 2nd variants, `dsftkd`:** the `ddr2m` path, with the cassette variant and I/O per set.
-- **GuitarFreaks 1st and 2nd:** analog-board guitar input (the `gtrf` port map from `gtfrk11m`) and the X76F041 cassette.
-  - The Link Kits share a cabinet link: stub it as MAME does at first.
-- **DrumMania 1st (`pcnfrk`, `drmn`):** MAME doesn't run it, so documentation rules apply (§19 decision 2).
-- **Exit:** a lockstep run to attract and one scripted song per family; regress cases for `dstage` and `gtrfrks`.
+The analog I/O board (GX700-PWB(F)): music is CD audio, and MAME at the pin runs most of these sets. So everything here is checked in lockstep with MAME, as `ddr2m` was. Written 2026-10-16 from the catalogue and a MAME boot of each family with the archive's files.
+
+#### What the media allows
+
+| Family | Sets | Media | MAME | Status |
+|---|---|---|---|---|
+| DDR 1st | `dstage`, `dstagea`, `ddru`, `ddrj`, `ddra`, `ddrja` | complete; the rar's merged `dstage.zip` has master's cassette dumps | `ddrja` NOT_WORKING, the rest run | **ready** |
+| DDR 2nd versions | `ddr2mla` (Link, JAB), `ddrbocd` (Best of Cool Dancers) | complete | run | **ready** |
+| DDR 2nd club | `ddr2mc`, `ddr2mc2` | complete | run | ready to boot; the session with IIDX is Phase 6 |
+| Dancing Stage | `dsftkd` (TRUE KiSS DESTiNATiON) | older cassette dump (X76F100, as GF 2nd's) | runs | probably fine, like GF 2nd; check first |
+| GuitarFreaks 2nd | `gtrfrk2m`, 5 regional clones, Link Kits 1 and 2 | older cassette dumps (X76F100) | run | **ready**: MAME boots them to the first-boot flash install |
+| GuitarFreaks 1st | `gtrfrks` and 7 clones | older X76F041 dumps: the write password is zeros | runs with master's dumps | **blocked**: PASSWORD-CHIP ERROR (-2N) in MAME |
+| DrumMania 1st | `pcnfrk`, `pcnfrka`, `pcnfrkk`, `drmn`, `drmnu` | older X76F041 dumps | NOT_WORKING | **blocked**: SECURITY-PCB ERROR (-2N) in MAME |
+| missing pieces | `ddr2ml` (JAC: CD `885jac01`), `drmna` (`881jaa02`), `ddrjb` (its flash dumps), `ddr2mlb` and four GQ886 GuitarFreaks (not in the archive) | — | — | need media |
+| karaoke | `ddrkara` | the karaoke unit (`k573kara`) | NOT_WORKING | out of scope |
+
+**Media to ask the owner for:**
+- master-era cassette dumps for GuitarFreaks 1st (`gq886*.u1`) and DrumMania 1st (`gq881*.u1`): 548-byte X76F041 images, the CRCs MAME lists;
+- the four missing disks and sets above.
+
+Nothing about the cassettes can be made up: the passwords are the chips' own.
+
+#### What HIRAKU's 573 core lacks for these
+
+The core already has:
+- the analog board;
+- every cassette kind these sets use (`x`, `xi`, `yi`);
+- PC Card slot 1 at 32 MiB;
+- the JVS memory card reader;
+- the GuitarFreaks and DrumMania input maps (from 11th and 10th Mix).
+
+Three small gaps:
+1. **PC Card slot 1 at 16 MiB** (`pccard1_16mb()`: `ddr2mla`, `ddrbocd`). MAME's linear flash card device in that size, as the 32 MiB one.
+2. **The install CD.** MAME's CD drive holds three discs (`install`, `install2`, `runtime`; the menu swaps them). `ddr2mla`, `ddrbocd` and the club versions install from a separate CD first.
+   - `[cd] install_chd` in game.toml, `--cd install` to boot with it (the switch exists for DrumMania 10th's network installer).
+   - The launcher's first-boot step offers it, as the install cassette is offered now.
+3. **DrumMania 1st's lamps.** On the analog board `init_drmn` sends the outputs to `drmn_output_callback`; HIRAKU sends them all to DDR's.
+
+#### Tooling first: manifests from MAME's driver
+
+About 90 System 573 sets are ahead (Phases 2–5). Writing game.toml by hand doesn't scale, so `tools/gen573.py` will:
+- read `tools/data/mame-bemani.json` for the ROMs (the cassette's `cassette:game:eeprom`/`:id`, the install cassette's, the H8, the digital board's ID) and disks (`runtime`, `install`, `install2`, `multisession`);
+- read the machine config from MAME's `ksys573.cpp` (pinned copy): `k573a`/`k573d` gives the I/O board; `cassx`/`cassxi`/`cassyi`/`cassyyi`/`casszi`/`cassxzi` the cassette kinds; `pccard1_16mb`/`_32mb`, `pccard2_32mb`; the memory card reader; the multi-session unit;
+- take the family from the title (DDR / Dancing Stage → `ddr`, GuitarFreaks → `gtrf`, DrumMania / Percussion Freaks → `drmn`);
+- write the manifest with the comments the hand-written ones have.
+
+Regenerating `ddr2m`, `ddr3mj`, `drmn10m` and `gtfrk11m` must give manifests equivalent to the ones that run.
+
+#### Order of work
+
+1. **`gen573.py`**, checked against the four existing 573 manifests.
+2. **DDR 1st** (`dstage`, then its clones):
+   - ingest from the rar's merged set with `--game`, as the DDR 3rd clones;
+   - boot against MAME; then the install (DDR 1st installs to flash from the runtime CD, as 2nd does: Test twice);
+   - a scripted song, its script made from `ddr2m-play.his`.
+   - Regress cases `dstage-boot` and `dstage-play`.
+3. **The 16 MiB PC Card and the install CD**, then `ddr2mla`, `ddrbocd`, `ddr2mc`, `ddr2mc2`:
+   - first boot with the install CD, then the game CD;
+   - lockstep through install and attract;
+   - the club versions alone (their IIDX session waits for Phase 6).
+4. **GuitarFreaks 2nd** (`gtrfrk2m`):
+   - first boot: the flash and PC Card install MAME already reaches;
+   - then attract and a song played with the guitar map (`gtfrk11m`'s);
+   - then the regional clones and the Link Kits. The memory card reader is in; the link between cabinets is out of scope here, as in MAME.
+   - Regress `gtrfrk2m-boot` / `-play`.
+5. **Dancing Stage TKD**: boot first, as it has an older X76F100 dump. If it fails as GF 1st does, it joins the blocked list.
+6. **When the owner has master's dumps:**
+   - GuitarFreaks 1st, against MAME;
+   - DrumMania 1st: MAME doesn't run it (NOT_WORKING), so it's matched to MAME as far as MAME goes, then carried on from the documentation (§19 decision 2). Its lamps need gap 3.
+
+#### Checks, as in Phase 1
+
+- Every set: boot in lockstep with MAME (the same script, MAME's power-on clock, `out/oracle-roms`).
+- One per family: the install, and a song from what the install left. Regress cases for `dstage` and `gtrfrk2m`.
+- Mind the 573 MAME build's speed: about 1 h 25 min per install and song. Run them one at a time, and tell the other sessions before long runs.
+
+**Exit:** DDR 1st, DDR 2nd's versions and GuitarFreaks 2nd play a song in lockstep with MAME; GuitarFreaks 1st and DrumMania 1st wait for media.
+
+#### Phase 2 progress (2026-10-16)
+
+Split across three sessions on the owner's request: DDR 1st and Dancing Stage TKD here, GuitarFreaks 2nd in a second session, the install CD and DDR 2nd's versions in a third (d933420).
+
+**Tooling:**
+- `tools/gen573.py` writes a 573 manifest from MAME's driver. Its configs are parsed into `tools/data/mame-bemani.json` by `tools/mameset.py --refresh LISTXML KSYS573_CPP`, which also keeps each ROM's region. Regenerating the four existing 573 manifests gives the same machines.
+- `oracle/lockstep.sh` runs MAME and then HIRAKU on one script with MAME's clock and compares them; it can carry NVRAM from step to step.
+- `oracle/mame.sh` also runs a set that has no manifest yet, for a first look.
+
+**The 573 core:**
+- PC Card slot 1 at 16 MiB.
+- The analog board's outputs go where MAME's init sends them: DDR's lamps, DrumMania's (with the analog board's numbering), or none for GuitarFreaks.
+- GuitarFreaks' effect knobs read 3 at rest (MAME's dials are PORT_REVERSE), found by the GuitarFreaks session.
+- A cassette MAME has no dump of is left to the chip's zeros (`ddrja`) instead of a crash.
+- **The CD shim, two of MAME's layouts it lacked:**
+  - pregaps: PREGAP not in the file and read as zeros; an INDEX 00 gap in the file, with the track starting at INDEX 01; POSTGAP;
+  - track offsets in a .bin that mixes 2048-byte data and audio sectors.
+
+  DDR 1st's discs need both. No disc of an earlier game has either, and their regress cases are unchanged.
+
+**DDR 1st:** `dstage`, `dstagea`, `ddru`, `ddrj`, `ddra`, `ddrja` are ingested from the rar's merged set (current MAME's cassettes). All boot in lockstep with MAME to the flash-install prompt (6,000 frames, 100 snapshots each). `ddrja` has no cassette dump and stops where MAME does.
+
+**Dancing Stage TKD (`dsftkd`):** it boots in lockstep with its older cassette dump, to the flash-install prompt.
+
+**GuitarFreaks 2nd** (the other session): `gtrfrk2m` boots in lockstep; its clones and Link Kits reach their install prompts.
+
+**DDR 2nd's versions** (the other session): `ddr2mla` installs from its install CD and plays in lockstep.
 
 ### Phase 3: the DDR digital line (2–4 weeks; the fork is the oracle)
 

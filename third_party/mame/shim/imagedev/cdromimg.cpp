@@ -53,10 +53,11 @@ bool cdrom_file::open(const std::string &path) {
     char line[1024];
     FILE *cur = nullptr;
     bool cur_le = true;   // the FILE's byte order for audio: BINARY little-endian, MOTOROLA big-endian
-    u64 cur_size = 0;
     int ntr = -1;
-    std::vector<std::pair<FILE *, u32>> index01;   // per track: file, INDEX 01 frame within it
-    std::vector<bool> le;                          // per track: its file is little-endian
+    // per track: its file; INDEX 00 and 01 within it (frames; -1: none); PREGAP and POSTGAP
+    struct cue_track { FILE *f = nullptr; int index0 = -1, index1 = 0; u32 pregap_cmd = 0, postgap = 0; bool le = true; };
+    std::vector<cue_track> ct;
+    auto msf = [](const char *t) { int m = 0, s = 0, f = 0; sscanf(t, "%d:%d:%d", &m, &s, &f); return (m * 60 + s) * 75 + f; };
     while (fgets(line, sizeof line, cue)) {
         char *p = line;
         while (*p == ' ' || *p == '\t') p++;
@@ -66,13 +67,10 @@ bool cdrom_file::open(const std::string &path) {
             const char *rest = q;
             if (*q == '"') { char *e = strchr(q + 1, '"'); name.assign(q + 1, e ? e : q + 1); rest = e ? e + 1 : q + 1; }
             else { char *e = strpbrk(q, " \t\r\n"); name.assign(q, e ? e : q + strlen(q)); rest = e ? e : q + strlen(q); }
-            std::string up(rest);
-            for (char &ch : up) ch = (char)toupper((unsigned char)ch);
-            cur_le = up.find("MOTOROLA") == std::string::npos;
+            cur_le = strcasestr(rest, "MOTOROLA") == nullptr;
             cur = hk::image::fopen_image(name.size() && name[0] == '/' ? name : dir + name);
             if (!cur) { fclose(cue); return false; }
             m_files.push_back(cur);
-            cur_size = (u64)hk::image::size(cur);
         } else if (!strncasecmp(p, "TRACK ", 6)) {
             char type[32] = {};
             int n = 0;
@@ -84,33 +82,56 @@ bool cdrom_file::open(const std::string &path) {
             t.trktype = tt;
             t.datasize = size;
             t.control_flags = tt == CD_TRACK_AUDIO ? 0 : CD_FLAG_CONTROL_DATA_TRACK;
-            index01.emplace_back(cur, 0);
-            le.push_back(cur_le);
+            ct.push_back({cur, -1, 0, 0, 0, cur_le});
+        } else if (!strncasecmp(p, "INDEX 00 ", 9) && ntr >= 0) {
+            ct[ntr].index0 = msf(p + 9);
         } else if (!strncasecmp(p, "INDEX 01 ", 9) && ntr >= 0) {
-            int m = 0, s = 0, f = 0;
-            sscanf(p + 9, "%d:%d:%d", &m, &s, &f);
-            index01[ntr].second = (u32)((m * 60 + s) * 75 + f);
+            ct[ntr].index1 = msf(p + 9);
+        } else if (!strncasecmp(p, "PREGAP ", 7) && ntr >= 0) {
+            ct[ntr].pregap_cmd = msf(p + 7);
+        } else if (!strncasecmp(p, "POSTGAP ", 8) && ntr >= 0) {
+            ct[ntr].postgap = msf(p + 8);
         }
     }
     fclose(cue);
     if (ntr < 0) return false;
     cdtoc.numtrks = ntr + 1;
-    // frames per track: up to the next track in the same file, or the file's end
-    u32 logofs = 0;
+    // MAME's cue reading and TOC (util/cdrom.cpp): a track's data in the file starts at INDEX 00
+    // when there is one (its pregap is in the file: pgdatasize), else at INDEX 01; a PREGAP isn't
+    // in the file. Logical frames (what the drive reports and reads by) as MAME lays them out.
+    u32 logofs = 0, physofs = 0;
+    u64 byte = 0;   // where the track's data starts in its file: the tracks before it at their own sizes
+    auto file_start = [&](u32 k) { return ct[k].index0 >= 0 ? (u32)ct[k].index0 : (u32)ct[k].index1; };
     for (u32 k = 0; k < cdtoc.numtrks; k++) {
         track_info &t = cdtoc.tracks[k];
-        FILE *f = index01[k].first;
-        u64 start = (u64)index01[k].second * t.datasize;
-        u64 end = 0;
-        if (k + 1 < cdtoc.numtrks && index01[k + 1].first == f) end = (u64)index01[k + 1].second * t.datasize;
-        else end = (u64)hk::image::size(f);
-        t.frames = t.logframes = (u32)((end - start) / t.datasize);
-        t.logframeofs = logofs;
-        m_part[k] = {f, start, t.trktype == CD_TRACK_AUDIO && le[k]};
+        cue_track &c = ct[k];
+        if (c.index0 >= 0 && !c.pregap_cmd) { t.pregap = c.index1 - c.index0; t.pgdatasize = t.datasize; }
+        else { t.pregap = c.pregap_cmd; t.pgdatasize = 0; }
+        t.postgap = c.postgap;
+        if (k == 0 || ct[k - 1].f != c.f) byte = (u64)file_start(k) * t.datasize;   // a file's first track
+        // frames in the file: up to the next track's start in the same file (cue positions count
+        // frames whatever their size), or the file's end
+        const u64 start = byte;
+        if (k + 1 < cdtoc.numtrks && ct[k + 1].f == c.f) {
+            t.frames = file_start(k + 1) - file_start(k);
+        } else {
+            fseeko(c.f, 0, SEEK_END);
+            t.frames = (u32)(((u64)ftello(c.f) - start) / t.datasize);
+        }
+        byte += (u64)t.frames * t.datasize;
+        t.logframeofs = 0;
+        if (t.pgdatasize == 0) logofs += t.pregap;
+        else t.logframeofs = t.pregap;
+        t.physframeofs = physofs;
+        t.logframeofs += logofs;
+        t.logframes = t.frames - t.pregap;
+        logofs += t.postgap;
+        physofs += t.frames;
         logofs += t.frames;
+        m_part[k] = {c.f, start, t.trktype == CD_TRACK_AUDIO && c.le};
     }
     cdtoc.tracks[cdtoc.numtrks].logframeofs = logofs;   // the lead-out
-    (void)cur_size;
+    cdtoc.tracks[cdtoc.numtrks].physframeofs = physofs;
     return true;
 }
 
@@ -124,7 +145,14 @@ u32 cdrom_file::get_track(u32 frame) const {
 bool cdrom_file::read_partial(void *dst, u32 lba, u32 track, u32 offset, u32 len) {
     const track_info &t = cdtoc.tracks[track];
     const file_part &fp = m_part[track];
-    u64 pos = fp.offset + (u64)(lba - t.logframeofs) * t.datasize + offset;
+    // MAME read_partial_sector(): a pregap that isn't in the file reads as zeros; one that is
+    // comes before the track's logical start (INDEX 01)
+    if (t.pgdatasize == 0 && lba < t.logframeofs) {
+        memset(dst, 0, len);
+        return true;
+    }
+    const u32 frame = lba - t.logframeofs + (t.pgdatasize ? t.pregap : 0);
+    u64 pos = fp.offset + (u64)frame * t.datasize + offset;
     return hk::image::pread(fp.f, dst, len, pos) == (ssize_t)len;
 }
 

@@ -1,0 +1,8 @@
+# Dancing Stage (GN845 VER. EAA), Konami 1999: first power-on from blank NVRAM, no inputs. Hashes the main RAM every frame and
+# snapshots every 60 frames, to compare with MAME.
+game dstagea
+
+hash ram  0x80000000 0x80400000   # 4 MiB main RAM (KSEG0)
+
+from 0 every 60 snap
+at 6000 quit
