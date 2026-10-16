@@ -1,0 +1,23 @@
+# GuitarFreaks Ver 1.01 (GQ886 VER. JAD): a game, from the NVRAM gtrfrksj-install.his leaves (the
+# flash installed). Power-on: FLASH-ROM CHECK (to frame ~2600), then attract; two coins, Start through the screens to
+# the music select's default; the stage played with the guitar map: a neck button held and picked
+# every 12 frames (R, G, B in turn), a wail every 240. Hashes the main RAM every frame, snapshots
+# every 60 frames, to compare with MAME.
+game gtrfrksj
+
+hash ram  0x80000000 0x80400000   # 4 MiB main RAM (KSEG0)
+
+at 3400 press "Coin 1" 8
+at 3450 press "Coin 1" 8
+at 3700 press "1 Player Start" 8
+at 4000 press "1 Player Start" 8
+at 4300 press "1 Player Start" 8
+at 4600 press "1 Player Start" 8
+at 4900 press "1 Player Start" 8
+from 5200 every 36 press "P1 Button R" 8
+from 5212 every 36 press "P1 Button G" 8
+from 5224 every 36 press "P1 Button B" 8
+from 5202 every 12 press "P1 Pick" 3
+from 5206 every 240 press "P1 Wailing" 4
+from 0 every 60 snap
+at 12000 quit

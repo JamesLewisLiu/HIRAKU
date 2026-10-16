@@ -122,6 +122,11 @@ CASES = {
     "ddr2m-boot": ("ddr2m", 24000, ["--rtc", "1791828936", "--script", "oracle/scripts/ddr2m-boot.his"]),
     # ... and a game: coins, mode and song select, a song stepped through to CLEARED, stage 2
     "ddr2m-play": ("ddr2m", 21000, ["--rtc", "1791837575", "--script", "oracle/scripts/ddr2m-play.his"]),
+    # DDR 1st (Dancing Stage, analog board): the first boot's flash install (the disc's pregaps, as
+    # MAME lays them out), then a song from what it left, in lockstep with MAME
+    "dstage-install": ("dstage", 12000, ["--rtc", "1792180437", "--script", "oracle/scripts/dstage-install.his"]),
+    "dstage-play": ("dstage", 16000, ["--rtc", "1792182015", "--script", "oracle/scripts/dstage-play.his"],
+                    "dstage-install"),
     # GuitarFreaks 2nd Mix (analog board, X76F100 cassette, 32 MiB PC Card): the first boot's install,
     # Test at the flash prompt, the CD to the flash and the PC Card (out/oracle/gtrfrk2m/gtrfrk2m-install)
     "gtrfrk2m-install": ("gtrfrk2m", 21000, ["--rtc", "1792179133", "--script", "oracle/scripts/gtrfrk2m-install.his"]),

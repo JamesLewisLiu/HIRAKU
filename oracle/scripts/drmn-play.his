@@ -1,0 +1,24 @@
+# DrumMania (GQ881 VER. JAD): a game, from the NVRAM drmn-install.his leaves (the flash written).
+# Power-on: the flash check, then attract with the title (frame ~1200); two coins, Start through
+# the screens to the music select's default; the stage played on the pads: the snare every 8
+# frames, the hi-hat every 16, the bass drum every 12, a tom or the cymbal now and then. Hashes the
+# main RAM every frame, snapshots every 60 frames, to compare with MAME.
+game drmn
+
+hash ram  0x80000000 0x80400000   # 4 MiB main RAM (KSEG0)
+
+at 1400 press "Coin 1" 8
+at 1440 press "Coin 1" 8
+at 1600 press "1 Player Start" 8
+at 1900 press "1 Player Start" 8
+at 2200 press "1 Player Start" 8
+at 2500 press "1 Player Start" 8
+at 2800 press "1 Player Start" 8
+from 3100 every 8 press "Snare" 4
+from 3104 every 16 press "Hi-Hat" 4
+from 3102 every 12 press "Bass Drum" 4
+from 3110 every 48 press "High Tom" 4
+from 3134 every 48 press "Low Tom" 4
+from 3150 every 96 press "Cymbal" 4
+from 0 every 60 snap
+at 11000 quit

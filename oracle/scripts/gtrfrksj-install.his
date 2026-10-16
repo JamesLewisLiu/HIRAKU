@@ -1,0 +1,11 @@
+# GuitarFreaks Ver 1.01 (GQ886 VER. JAD): the first power-on. The game asks "DO YOU WANT TO
+# INITIALIZE FLASH-ROM?" (by frame ~300); Test answers yes, the CD is copied to the onboard flash,
+# and "FLASH-ROM INITIALIZE COMPLETE, please press test button" shows by frame ~10200. Hashes the
+# main RAM every frame and snapshots every 60 frames, to compare with MAME.
+game gtrfrksj
+
+hash ram  0x80000000 0x80400000   # 4 MiB main RAM (KSEG0)
+
+at 600 press "Service Mode" 8
+from 0 every 60 snap
+at 11000 quit

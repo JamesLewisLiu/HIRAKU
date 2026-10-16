@@ -1,0 +1,11 @@
+# Dancing Stage featuring TRUE KiSS DESTiNATiON (G*884 VER. JAA): the first power-on. The RTC data
+# is initialised, then "FLASH ROM PROTECT CODE UNMATCHED / DO YOU WANT TO INITIALIZE FLASH-ROM?" (by
+# frame ~1100): Test answers yes, and the game copies itself to the onboard flash ("FLASH-ROM
+# INITIALIZE COMPLETE", by ~23000). Hashes the main RAM every frame and snapshots every 60 frames.
+game dsftkd
+
+hash ram  0x80000000 0x80400000   # 4 MiB main RAM (KSEG0)
+
+at 1500 press "Service Mode" 8
+from 0 every 60 snap
+at 24000 quit

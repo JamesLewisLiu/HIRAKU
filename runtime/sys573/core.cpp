@@ -81,6 +81,11 @@ public:
         get("bios", cfg.bios);
         get("h8", cfg.h8);
         get("cassette_eeprom", cfg.cassette_eeprom);
+        for (size_t a = 0, b; a < machine["preload"].size(); a = b + 1) {   // "device:file,device:file"
+            b = machine["preload"].find(',', a);
+            if (b == std::string::npos) b = machine["preload"].size();
+            if (b > a) cfg.preload.push_back(machine["preload"].substr(a, b - a));
+        }
         get("cassette_id", cfg.cassette_id);
         get("install_eeprom", cfg.install_eeprom);
         get("install_id", cfg.install_id);

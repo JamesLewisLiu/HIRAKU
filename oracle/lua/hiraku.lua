@@ -363,13 +363,34 @@ frames:write("\n")
 local held = {}        -- field -> release frame
 
 local function fnv(lo, hi)
-    -- FNV-1a over 32-bit words of a RAM range (inclusive lo, exclusive hi)
+    -- FNV-1a over 32-bit words of a RAM range (inclusive lo, exclusive hi), 16 words an unpack:
+    -- the per-word unpack made a 4 MiB hash every frame ~96 % of a System 573 run
     local s = space:read_range(lo & 0x1fffffff, (hi - 1) & 0x1fffffff, 8)
     local h = 0x811c9dc5
-    for i = 1, #s - 3, 4 do
-        h = ((h ~ string.unpack(">I4", s, i)) * 0x01000193) & 0xffffffff
+    local n, i = #s, 1
+    local P = 0x01000193
+    while i + 63 <= n do
+        local a, b, c, d, e, f, g, k, l, m, o, p, q, r, t, u = string.unpack(">I4I4I4I4I4I4I4I4I4I4I4I4I4I4I4I4", s, i)
+        h = ((h ~ a) * P) & 0xffffffff; h = ((h ~ b) * P) & 0xffffffff; h = ((h ~ c) * P) & 0xffffffff
+        h = ((h ~ d) * P) & 0xffffffff; h = ((h ~ e) * P) & 0xffffffff; h = ((h ~ f) * P) & 0xffffffff
+        h = ((h ~ g) * P) & 0xffffffff; h = ((h ~ k) * P) & 0xffffffff; h = ((h ~ l) * P) & 0xffffffff
+        h = ((h ~ m) * P) & 0xffffffff; h = ((h ~ o) * P) & 0xffffffff; h = ((h ~ p) * P) & 0xffffffff
+        h = ((h ~ q) * P) & 0xffffffff; h = ((h ~ r) * P) & 0xffffffff; h = ((h ~ t) * P) & 0xffffffff
+        h = ((h ~ u) * P) & 0xffffffff
+        i = i + 64
+    end
+    for j = i, n - 3, 4 do
+        h = ((h ~ string.unpack(">I4", s, j)) * P) & 0xffffffff
     end
     return h
+end
+
+-- HIRAKU_HASH_EVERY=N: hash on every Nth frame only ("-" on the others; snapcmp.py skips them),
+-- and on every frame from HIRAKU_HASH_FROM to HIRAKU_HASH_TO (a window to pin a difference down)
+local HASH_EVERY = tonumber(os.getenv("HIRAKU_HASH_EVERY") or "1")
+local HASH_FROM, HASH_TO = tonumber(os.getenv("HIRAKU_HASH_FROM") or "-1"), tonumber(os.getenv("HIRAKU_HASH_TO") or "-1")
+local function hash_now(f)
+    return f % HASH_EVERY == 0 or (f >= HASH_FROM and f < HASH_TO)
 end
 
 local function run(a)
@@ -431,7 +452,7 @@ local function on_frame()
         local v = (w[2] == 1 and space:read_u8(w[3])) or (w[2] == 2 and space:read_u16(w[3])) or space:read_u32(w[3])
         line[#line + 1] = string.format("%x", v)
     end
-    for _, h in ipairs(hashes) do line[#line + 1] = string.format("%08x", fnv(h[2], h[3])) end
+    for _, h in ipairs(hashes) do line[#line + 1] = hash_now(frame) and string.format("%08x", fnv(h[2], h[3])) or "-" end
     frames:write(table.concat(line, " "), "\n")
     for _, r in ipairs(repeats) do
         if frame >= r[2] and (frame - r[2]) % r[1] == 0 then run(r[3]) end

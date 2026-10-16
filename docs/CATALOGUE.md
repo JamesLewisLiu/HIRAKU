@@ -346,33 +346,49 @@ Regenerating `ddr2m`, `ddr3mj`, `drmn10m` and `gtfrk11m` must give manifests equ
 
 **Exit:** DDR 1st, DDR 2nd's versions and GuitarFreaks 2nd play a song in lockstep with MAME; GuitarFreaks 1st and DrumMania 1st wait for media.
 
-#### Phase 2 progress (2026-10-16)
+#### Phase 2 progress (2026-10-16): done, where the media allows
 
-Split across three sessions on the owner's request: DDR 1st and Dancing Stage TKD here, GuitarFreaks 2nd in a second session, the install CD and DDR 2nd's versions in a third (d933420).
+Split across three sessions on the owner's request:
+- DDR 1st, Dancing Stage TKD, GuitarFreaks 1st and DrumMania 1st here;
+- GuitarFreaks 2nd in a second session (3e46e7e);
+- the install CD and DDR 2nd's versions in a third (d933420).
+
+**Every game below runs in lockstep with MAME at the pin: main RAM and every snapshot, through boot, the first-boot install and a song.**
+
+| Family | Sets | Notes |
+|---|---|---|
+| DDR 1st | `dstage` (install and song); `dstagea`, `ddru`, `ddrj`, `ddra`, `ddrja` (boot) | Three coins a credit on `dstage`. `ddrja` has no cassette dump and stops where MAME does. Regress `dstage-install`, `dstage-play`. |
+| DDR 2nd versions | `ddr2mla`, `ddrbocd`, `ddr2mc`, `ddr2mc2` | Installed from their install CD (`--cd install`; the launcher's first boot). The club versions alone; their IIDX session is Phase 6. |
+| Dancing Stage TKD | `dsftkd` | With the archive's older X76F100 dump. Two coins a credit. |
+| GuitarFreaks 2nd | `gtrfrk2m` and its five clones (boot); `gtrfrk2m`, `gtrfrk2mja` and both Link Kits (install and song) | Regress `gtrfrk2m-install`, `gtrfrk2m-play`. |
+| GuitarFreaks 1st | `gtrfrksj` | With master's cassette dump from the owner. |
+| DrumMania 1st | `drmn` | With master's cassette dump and the set's pre-installed flash and timekeeper. MAME flags it NOT_WORKING, yet with that dump MAME plays it too, and HIRAKU matches it. |
+
+**GuitarFreaks 2nd's install paths:**
+- `gtrfrk2m` and Link Kit 2 (929jbb02) end at INSTALLATION NOW COMPLETE and need a power cycle.
+- The regional CD (883__a01) and Link Kit 1 (929jaa02) end at FLASH-ROM INITIALIZE COMPLETE; a second Test starts the game.
+- The Link Kits check the whole PC Card at power-on (to frame ~6800) and add an EDIT DATA screen.
 
 **Tooling:**
-- `tools/gen573.py` writes a 573 manifest from MAME's driver. Its configs are parsed into `tools/data/mame-bemani.json` by `tools/mameset.py --refresh LISTXML KSYS573_CPP`, which also keeps each ROM's region. Regenerating the four existing 573 manifests gives the same machines.
-- `oracle/lockstep.sh` runs MAME and then HIRAKU on one script with MAME's clock and compares them; it can carry NVRAM from step to step.
-- `oracle/mame.sh` also runs a set that has no manifest yet, for a first look.
+- `tools/gen573.py` writes a 573 manifest from MAME's driver. Its configs are parsed into `tools/data/mame-bemani.json` by `tools/mameset.py --refresh LISTXML KSYS573_CPP`, which also keeps each ROM's region.
+- Manifests can list chips the set has filled: `preload = ["29f016a.27h:file", "m48t58:file"]`. MAME's devices start from such regions; DrumMania 1st has them, and so do later DrumMania and GuitarFreaks sets.
+- **`oracle/lockstep.sh`** runs MAME and then HIRAKU on one script with MAME's clock and compares them; NVRAM is carried from step to step.
+  - MAME hashes RAM on every 10th frame (`HIRAKU_HASH_EVERY`). Hashing 4 MiB in Lua every frame had been ~96 % of a 573 run.
+  - A difference is pinned to its frame by a second pass hashing every frame around it.
+  - MAME's result is reused when the script, start NVRAM, build, options and the rompath's files for the set are unchanged.
 
 **The 573 core:**
 - PC Card slot 1 at 16 MiB.
-- The analog board's outputs go where MAME's init sends them: DDR's lamps, DrumMania's (with the analog board's numbering), or none for GuitarFreaks.
-- GuitarFreaks' effect knobs read 3 at rest (MAME's dials are PORT_REVERSE), found by the GuitarFreaks session.
-- A cassette MAME has no dump of is left to the chip's zeros (`ddrja`) instead of a crash.
-- **The CD shim, two of MAME's layouts it lacked:**
-  - pregaps: PREGAP not in the file and read as zeros; an INDEX 00 gap in the file, with the track starting at INDEX 01; POSTGAP;
-  - track offsets in a .bin that mixes 2048-byte data and audio sectors.
+- The analog board's outputs go where MAME's init sends them; DrumMania's analog lamp numbering is mapped.
+- GuitarFreaks' effect knobs read 3 at rest (MAME's PORT_REVERSE dials).
+- A missing cassette dump is the chip's zeros rather than a crash.
+- **The CD shim lays discs out as MAME does:** pregaps (PREGAP, INDEX 00, POSTGAP), and track offsets in a .bin that mixes 2048-byte and audio sectors.
 
-  DDR 1st's discs need both. No disc of an earlier game has either, and their regress cases are unchanged.
-
-**DDR 1st:** `dstage`, `dstagea`, `ddru`, `ddrj`, `ddra`, `ddrja` are ingested from the rar's merged set (current MAME's cassettes). All boot in lockstep with MAME to the flash-install prompt (6,000 frames, 100 snapshots each). `ddrja` has no cassette dump and stops where MAME does.
-
-**Dancing Stage TKD (`dsftkd`):** it boots in lockstep with its older cassette dump, to the flash-install prompt.
-
-**GuitarFreaks 2nd** (the other session): `gtrfrk2m` boots in lockstep; its clones and Link Kits reach their install prompts.
-
-**DDR 2nd's versions** (the other session): `ddr2mla` installs from its install CD and plays in lockstep.
+**Left in Phase 2, all for media:**
+- GuitarFreaks 1st's and DrumMania 1st's other regions: their master-era cassette dumps (`gq886eac/uac/aac.u1`; `gq881ua/ea/aa/ka.u1`).
+- `ddrjb`'s flash dumps, `ddr2ml`'s CD `885jac01`, `drmna`'s `881jaa02`.
+- `ddr2mlb` and the four GQ886 EAA/UAA/JAA/AAA GuitarFreaks, which aren't in the archive.
+- `ddrkara` (the karaoke unit) stays out of scope.
 
 ### Phase 3: the DDR digital line (2–4 weeks; the fork is the oracle)
 

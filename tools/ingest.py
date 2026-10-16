@@ -250,6 +250,12 @@ def ingest_sys573(args) -> int:
     for k in keys:
         if roms.get(k):
             machine[k] = roms[k]
+    if roms.get("preload"):   # chips the set has filled (an installed flash, a set timekeeper)
+        machine["preload"] = ",".join(roms["preload"])
+        missing = [p.split(":", 1)[1] for p in roms["preload"] if p.split(":", 1)[1] not in names]
+        if missing:
+            print(f"ERROR    the set lacks {', '.join(missing)}")
+            return 1
     board = game.get("board", {})
     for k in ("io_board", "cassette", "pccard1", "pccard2"):
         if board.get(k):
@@ -272,7 +278,7 @@ def ingest_sys573(args) -> int:
     if not machine.get("cd"):
         print(f"ERROR    no CD: add {game['cd']['chd']}.chd (or its .cue/.bin)")
         return 1
-    order = ["core", "family", *keys, "io_board", "cassette", "pccard1", "pccard2", "memory_card_reader", "cd", "msu", "msu_cd",
+    order = ["core", "family", *keys, "preload", "io_board", "cassette", "pccard1", "pccard2", "memory_card_reader", "cd", "msu", "msu_cd",
              "npu", "hdd_cd", "install_cd", "install2_cd"]
     if machine.get("msu") and not machine.get("msu_cd"):
         print(f"ERROR    no multi-session unit CD: add {game['cd'].get('msu_chd')}.chd")

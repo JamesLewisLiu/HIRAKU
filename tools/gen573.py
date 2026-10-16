@@ -100,6 +100,11 @@ def generate(name: str, gid: str | None = None, title: str | None = None, family
         out.append(line("install_id", q(iid), "... and its DS2401"))
     if c["io_board"] == "digital":
         out.append(line("digital_id", q("digital-id.bin"), "the digital I/O board's DS2401"))
+    # chips the set has filled: an installed flash (MAME region 29f016a.*), a set timekeeper (m48t58)
+    pre = [f"{rg}:{f}" for f, rg in sorted(regions.items(), key=lambda t: t[1])
+           if f in roms and (rg.startswith("29f016a.") or rg == "m48t58")]
+    if pre:
+        out.append(f"preload = [{', '.join(q(p) for p in pre)}]   # chips the set has filled: device:file (MAME's regions)")
     if c.get("msu"):
         out.append(line("msu_flash", q("flash.20t"), "the multi-session unit's TX3927 firmware (29F400)"))
         out.append(line("msu_rtc", q("m48t58y.6t"), "... and its M48T58Y"))

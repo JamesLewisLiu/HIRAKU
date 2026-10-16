@@ -820,6 +820,14 @@ bool init(const Config &cfg) {
         if (d.empty()) { fprintf(stderr, "cannot read %s\n", r.file.c_str()); return false; }
         m.add_region(r.tag, std::move(d));
     }
+    // chips the set has filled (an installed flash, a set timekeeper): the device's own region
+    for (const std::string &p : cfg.preload) {
+        const size_t c = p.find(':');
+        if (c == std::string::npos) continue;
+        std::vector<u8> d = load_file(rom(p.substr(c + 1)));
+        if (d.empty()) { fprintf(stderr, "cannot read %s\n", rom(p.substr(c + 1)).c_str()); return false; }
+        m.add_region(":" + p.substr(0, c), std::move(d));
+    }
     cdrom_image_device::hk_set_path(":ata:0:cr589:image", cfg.cd);
     if (cfg.msu) {
         cdrom_image_device::hk_set_path(":k573msu:ata_cdrom:0:cdrom:image", cfg.msu_cd);

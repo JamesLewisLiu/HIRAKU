@@ -14,6 +14,11 @@
 #   LOCKSTEP_NVRAM_OUT=DIR  keep HIRAKU's NVRAM at the end in DIR (for the next step's start)
 #   HIRAKU_ROMS          MAME's rompath (default out/oracle-roms: the owner's sets, current names)
 #   MAME_ARGS            more MAME options (e.g. "-cassette install"); pass HIRAKU's own after --
+#   HIRAKU_HASH_EVERY    MAME hashes RAM on every Nth frame only (default 10: hashing 4 MiB in Lua
+#                        every frame was ~96 % of a 573 run). A difference is then pinned to its
+#                        frame by a second MAME run hashing every frame around it.
+#   LOCKSTEP_RERUN=1     run MAME again even when this script, start NVRAM, MAME build and options
+#                        match a run already made (out/oracle/GAME/RUN/lockstep.key)
 #
 # Twinkle games get --mame-cd (MAME's CD drive timing) and --video off, as regress runs them.
 set -euo pipefail
@@ -49,11 +54,48 @@ if [[ -n "${LOCKSTEP_NVRAM:-}" ]]; then
     cp -r "$LOCKSTEP_NVRAM"/. "$nv"/
 fi
 
-HIRAKU_NVRAM="${mame_nv:+$root/$mame_nv}" MAME_BIN="$bin" HIRAKU_TAPS="${HIRAKU_TAPS:-none}" nice oracle/mame.sh "$game" "$script" "$run" > "$h.mame.txt" 2>&1 || true
+export HIRAKU_HASH_EVERY="${HIRAKU_HASH_EVERY:-10}"
+# MAME's run is deterministic: the same script, start NVRAM, build and options give the same result
+key="$( { cat "$script"; [[ -n "${LOCKSTEP_NVRAM:-}" ]] && find "$LOCKSTEP_NVRAM" -type f -print0 | sort -z | xargs -0 cat;
+          echo "$bin $(stat -c %Y "$bin" 2>/dev/null) ${MAME_ARGS:-} $HIRAKU_ROMS every=$HIRAKU_HASH_EVERY";
+          # the files the rompath holds for the set, its parents and its BIOS (a relinked zip is a new run)
+          python3 - "$toml" "$HIRAKU_ROMS" <<'PY' || true
+import os, sys, tomllib
+sys.path.insert(0, "tools")
+import mameset
+name = tomllib.load(open(sys.argv[1], "rb")).get("mame", "")
+for n in (mameset.chain(name) if name in mameset.load() else [name]):
+    for e in (n + ".zip", n + ".7z", n):
+        p = os.path.join(sys.argv[2], e)
+        if os.path.exists(p):
+            st = os.stat(p)
+            print(os.path.realpath(p), st.st_size, int(st.st_mtime))
+PY
+        } | sha1sum | cut -c1-40)"
+if [[ -z "${LOCKSTEP_RERUN:-}" && -f "$m/lockstep.key" && "$(cat "$m/lockstep.key")" == "$key" && -f "$m/frames.txt" ]]; then
+    echo "(MAME's $run run is reused: same script, NVRAM, build and options)"
+else
+    HIRAKU_NVRAM="${mame_nv:+$root/$mame_nv}" MAME_BIN="$bin" HIRAKU_TAPS="${HIRAKU_TAPS:-none}" nice oracle/mame.sh "$game" "$script" "$run" > "$h.mame.txt" 2>&1 || true
+    echo "$key" > "$m/lockstep.key"
+fi
 rtc="$(grep -o 'power-on time [0-9]*' "$m/log.txt" 2>/dev/null | head -1 | awk '{print $NF}' || true)"
 args=(--frames $((quit + 1)) --out "$h" --script "$script" --nvram "$nv" "${extra[@]}")
 [[ -n "$rtc" ]] && args+=(--rtc "$rtc")
 systemd-run --user --scope -q -p MemoryMax=3G nice "build/cmake/hiraku-$game" "${args[@]}" "$@" > "$h.log" 2>&1 || true
 echo "=== $game $run ($(grep -h '^frames' "$h.log" | cut -c1-80))"
-python3 oracle/snapcmp.py "$h" "$m" 2>&1 | grep -E "^hash|^snapshots|Error|error" || true
+verdict="$(python3 oracle/snapcmp.py "$h" "$m" 2>&1 | grep -E "^hash|^snapshots|Error|error" || true)"
+echo "$verdict"
+# a hash difference seen on a hashed frame: pin it down, hashing every frame up to it
+first="$(echo "$verdict" | grep -o 'first difference at MAME frame [0-9]*' | awk '{print $NF}' | sort -n | head -1 || true)"
+if [[ -n "$first" && "$HIRAKU_HASH_EVERY" -gt 1 ]]; then
+    lo=$(( first - HIRAKU_HASH_EVERY )); (( lo < 0 )) && lo=0
+    pin="$(mktemp -d)"
+    { grep -v -E '^at [0-9]+ quit' "$script"; echo "at $((first + 1)) quit"; } > "$pin/pin.his"
+    HIRAKU_HASH_EVERY=1000000000 HIRAKU_HASH_FROM=$lo HIRAKU_HASH_TO=$((first + 1)) \
+        HIRAKU_NVRAM="${mame_nv:+$root/$mame_nv}" MAME_BIN="$bin" HIRAKU_TAPS="${HIRAKU_TAPS:-none}" \
+        nice oracle/mame.sh "$game" "$pin/pin.his" "$run-pin" > "$h.pin.txt" 2>&1 || true
+    exact="$(python3 oracle/snapcmp.py "$h" "out/oracle/$game/$run-pin" 2>&1 | grep -o 'first difference at MAME frame [0-9]*' | awk '{print $NF}' | sort -n | head -1 || true)"
+    echo "first difference pinned to MAME frame ${exact:-?} (every frame hashed from $lo)"
+    rm -rf "$pin"
+fi
 if [[ -n "${LOCKSTEP_NVRAM_OUT:-}" ]]; then rm -rf "$LOCKSTEP_NVRAM_OUT"; cp -r "$nv" "$LOCKSTEP_NVRAM_OUT"; fi

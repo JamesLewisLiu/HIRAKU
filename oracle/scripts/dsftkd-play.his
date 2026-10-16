@@ -1,0 +1,20 @@
+# Dancing Stage featuring TRUE KiSS DESTiNATiON (G*884 VER. JAA): a game, from the NVRAM
+# dsftkd-install.his leaves. The flash check, the warning and the title (frame ~4200); two coins
+# (one credit), Start through the title, mode and song select, then the song played by stepping on
+# all four panels every 8 frames. Hashes the main RAM every frame, snapshots every 60 frames.
+game dsftkd
+
+hash ram  0x80000000 0x80400000   # 4 MiB main RAM (KSEG0)
+
+at 4300 press "Coin 1" 8
+at 4340 press "Coin 1" 8
+at 4500 press "1 Player Start" 8
+at 5100 press "1 Player Start" 8
+at 5700 press "1 Player Start" 8
+at 6300 press "1 Player Start" 8
+from 6600 every 8 press "P1 Left" 4
+from 6600 every 8 press "P1 Down" 4
+from 6600 every 8 press "P1 Up" 4
+from 6600 every 8 press "P1 Right" 4
+from 0 every 60 snap
+at 11000 quit

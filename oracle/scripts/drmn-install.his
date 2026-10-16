@@ -1,0 +1,11 @@
+# DrumMania (GQ881 VER. JAD): the first power-on, from the set's own flash and timekeeper (MAME's
+# set has them filled). "DRUM MANIA INSTALLER, PLEASE PRESS THE TEST BUTTON" (by frame ~180); Test
+# writes the flash ("WRITING COMPLETED, PLEASE PRESS THE TEST BUTTON" by frame ~10200). Hashes the
+# main RAM every frame and snapshots every 60 frames, to compare with MAME.
+game drmn
+
+hash ram  0x80000000 0x80400000   # 4 MiB main RAM (KSEG0)
+
+at 600 press "Service Mode" 8
+from 0 every 60 snap
+at 11000 quit

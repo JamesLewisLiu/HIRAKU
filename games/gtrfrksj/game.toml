@@ -1,0 +1,18 @@
+# Guitar Freaks Ver 1.01 (GQ886 VER. JAD), Konami 1999: generated from MAME's ksys573.cpp (tools/gen573.py)
+id = "gtrfrksj"
+title = "GuitarFreaks (Ver 1.01, JAD)"
+family = "gtrf"         # GuitarFreaks cabinet: two guitars (neck R/G/B, pick, wailing, effect knob)
+mame = "gtrfrksj"       # MAME set name, used by the oracle
+core = "sys573"         # System 573 (runtime/sys573/, PLAN.md section 19); analog I/O board
+
+[roms]
+bios = "700a01.22g"             # 573 BIOS
+h8 = "h8a01.bin"                # the H8's start-up response (JVS check)
+cassette_eeprom = "gq886jac.u1" # the game cassette's X76F041
+
+[board]
+io_board = "analog"             # GX700-PWB(F): lamp and stage outputs; the music is CD audio
+cassette = "x"                  # MAME's cassette variant: X76F041, no DS2401 (cassx)
+
+[cd]
+chd = "886__d02"        # the runtime CD

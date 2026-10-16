@@ -1,0 +1,22 @@
+# Dancing Stage - Internet Ranking Ver (GC845 VER. EBA): a game, from the NVRAM dstage-install.his
+# leaves (the flash installed). The flash check, the logos and the title (frame ~6600); three coins (one credit on this version),
+# Start through the title, mode and song select, then the song played by stepping on all four
+# panels every 8 frames: some arrows are hit, some missed. Hashes the main RAM every frame,
+# snapshots every 60 frames, to compare with MAME.
+game dstage
+
+hash ram  0x80000000 0x80400000   # 4 MiB main RAM (KSEG0)
+
+at 6700 press "Coin 1" 8
+at 6740 press "Coin 1" 8
+at 6780 press "Coin 1" 8
+at 6900 press "1 Player Start" 8
+at 7500 press "1 Player Start" 8
+at 8100 press "1 Player Start" 8
+at 8700 press "1 Player Start" 8
+from 9000 every 8 press "P1 Left" 4
+from 9000 every 8 press "P1 Down" 4
+from 9000 every 8 press "P1 Up" 4
+from 9000 every 8 press "P1 Right" 4
+from 0 every 60 snap
+at 16000 quit

@@ -46,9 +46,11 @@ def main():
     _, m = frames(os.path.join(a.mame, "frames.txt"))
     common = [f for f in sorted(m) if f + a.offset in h]
     for k, name in enumerate(cols):
-        same = [f for f in common if h[f + a.offset][k] == m[f][k]]
-        first = next((f for f in common if h[f + a.offset][k] != m[f][k]), None)
-        print(f"hash {name:8} identical on {len(same)} of {len(common)} frames"
+        hashed = [f for f in common if m[f][k] != "-"]   # MAME hashes every Nth frame (HIRAKU_HASH_EVERY)
+        same = [f for f in hashed if h[f + a.offset][k] == m[f][k]]
+        first = next((f for f in hashed if h[f + a.offset][k] != m[f][k]), None)
+        common_k = hashed
+        print(f"hash {name:8} identical on {len(same)} of {len(common_k)} frames"
               + (f", first difference at MAME frame {first}" if first is not None else ""))
 
     # snapshots by frame: MAME's log.txt says at which frame it took each ("f60 snap")
