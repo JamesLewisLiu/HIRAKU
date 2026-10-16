@@ -84,6 +84,7 @@
 #include "python/icca.h"
 #include "python/eanet.h"
 #include "python/ethnet.h"
+#include "python/gfdmcard.h"
 #include "python/eaclient.h"
 #include "python/easerver.h"
 #include "python/lancable.h"
@@ -190,6 +191,16 @@ const std::map<std::string, std::string> PY2_INPUTS = {
     {"Cymbal", "DMCymbal"},       {"Bass Drum", "DMBassDrum"}, {"Select L", "DMSelectLeft"},
     {"Select R", "DMSelectRight"}, {"1 Player Start", "DMStart"}, {"Coin 1", "Coin1"},
     {"Coin 2", "Coin2"},          {"Test", "Test"},           {"Service", "Service"},
+};
+
+// ... and the lamps, on the P2IO's four output banks (LAMP_OUT; DrumMania V's LAMP CHECK, item by
+// item): the pads and the spot lit by a 0, the rest by a 1. The cabinet's SPEAKER neons are the
+// drm family's Neon Top.
+struct Py2Lamp { const char *name; int bank, bit; bool active_low; };
+const Py2Lamp PY2_DRMN_LAMPS[] = {
+    {"Hi-Hat", 3, 0, true},     {"Snare", 3, 1, true},          {"High Tom", 3, 2, true}, {"Low Tom", 3, 3, true},
+    {"Cymbal", 3, 4, true},     {"Start Lamp", 3, 6, false},    {"Select Lamp", 3, 7, false},
+    {"Spot Left/Right", 2, 0, true}, {"Neon Woofer", 2, 1, false}, {"Neon Top", 2, 2, false},
 };
 
 // The e-AMUSEMENT 10-key (cardunit.h): its keys' PS/2 set 2 scan codes, as the game maps them
@@ -571,6 +582,15 @@ public:
         }
         py1_path_ = run_dir_ + "/" + o.game + ".py2";
         eth_ = std::make_unique<hk::py::EtherNet>();
+        // e-AMUSEMENT (on in the game's NETWORK OPTIONS): the server inside HIRAKU, its files beside
+        // the run's NVRAM
+        server_ = std::make_unique<hk::py::EamuseServer>(run_dir_ + "/eamuse");
+        server_->now = [this] { return (int64_t)1054468800 + (int64_t)seconds(); };
+        eth_->http = [this](const std::string &req) { return server_->handle(req); };
+        // the card unit (gfdmcard.h: the 573 GuitarFreaks and DrumMania's magnetic card reader and
+        // 10-key) on the P2IO's serial port 0; its card, the run folder's card1.bin
+        card_ = std::make_unique<hk::py::GfdmCardUnit>(run_dir_ + "/card1.bin");
+        eth_->now = [this] { return server_->now(); };
         if (!FileSystem::WriteStringToFile(py1_path_.c_str(), py2)) { fprintf(stderr, "python: cannot write %s\n", py1_path_.c_str()); return false; }
         return true;
     }
@@ -601,7 +621,7 @@ public:
             Hiraku::net_command = [](u32 ch, const u32 *p, u32 q) { return self_->net_->command(ch, p, q); };
         }
         if (eth_) {   // Python 2: the PS2's own network adapter, answered here (ethnet.h)
-            if (net_log_) eth_->log = [this](const std::string &s) {
+            if (net_log_) eth_->log = server_->log = [this](const std::string &s) {
                 std::lock_guard<std::mutex> l(net_log_mutex_);
                 fprintf(net_log_, "%llu %s\n", (unsigned long long)frame_, s.c_str());
                 fflush(net_log_);
@@ -609,6 +629,39 @@ public:
             Hiraku::eth_send = [](const u8 *f, u32 n) { self_->eth_->send(f, n); };
             Hiraku::eth_poll = [](u8 *f, u32 capacity) { return self_->eth_->take(f, capacity); };
             Hiraku::sync_disk = true;   // the hard disk's writes at once, not at the I/O thread's pace
+            Hiraku::p2io_lamp = [](u8 bank, u8 value) { self_->on_p2io_lamp(bank, value); };
+            // the card reader on serial port 0 (write_py2); HK_PY_P2IO_LOG: both ways
+            Hiraku::p2io_sci_ports = 1;
+            Hiraku::p2io_sci_write = [](u8 port, const u8 *d, u32 n) {
+                std::vector<uint8_t> reply;
+                if (port == 0 && self_->card_) {
+                    self_->card_->write(d, n, reply);
+                    self_->sci_in_.insert(self_->sci_in_.end(), reply.begin(), reply.end());
+                    self_->card_changed();
+                }
+                if (FILE *f = self_->p1io_log_) {
+                    fprintf(f, "%llu sci%u >", (unsigned long long)self_->frame_, port);
+                    for (u32 i = 0; i < n; i++) fprintf(f, " %02x", d[i]);
+                    if (!reply.empty()) {
+                        fprintf(f, "\n%llu sci%u <", (unsigned long long)self_->frame_, port);
+                        for (uint8_t b : reply) fprintf(f, " %02x", b);
+                    }
+                    fputc('\n', f);
+                }
+            };
+            Hiraku::p2io_sci_read = [](u8 port, u8 *d, u32 capacity) -> u32 {
+                auto &q = self_->sci_in_;
+                const u32 n = (u32)std::min<size_t>(capacity, q.size());
+                std::copy(q.begin(), q.begin() + n, d);
+                q.erase(q.begin(), q.begin() + n);
+                if (FILE *f = self_->p1io_log_) {
+                    fprintf(f, "%llu sci%u read %u:", (unsigned long long)self_->frame_, port, capacity);
+                    for (u32 i = 0; i < n; i++) fprintf(f, " %02x", d[i]);
+                    fputc('\n', f);
+                }
+                return n;
+            };
+            if (const char *f = getenv("HK_PY_P2IO_LOG")) p1io_log_ = fopen(f, "w");
         }
         if (card_) Hiraku::uart_write = [](const u8 *data, u32 size) {
             std::vector<uint8_t> reply;
@@ -879,6 +932,26 @@ private:
             fprintf(p1io_log_, "%llu out", (unsigned long long)frame_);
             for (u32 w : words) fprintf(p1io_log_, " %08x", w);
             fputc('\n', p1io_log_);
+        }
+    }
+
+    // CPU thread: a Python 2 lamp output (P2IO, a bank of 8). HK_PY_P2IO_LOG=<file>: each change.
+    void on_p2io_lamp(u8 bank, u8 value) {
+        if (bank >= 4 || p2io_lamps_[bank] == value) return;
+        p2io_lamps_[bank] = value;
+        if (family_ == "drmn") {
+            const auto &defs = hk::cab::lamps(family_);
+            for (size_t k = 0; k < defs.size() && k < lamps_.size(); k++)
+                for (const Py2Lamp &l : PY2_DRMN_LAMPS)
+                    if (defs[k].name == l.name) {
+                        const uint8_t lit = (uint8_t)(((p2io_lamps_[l.bank] >> l.bit) & 1) ^ (l.active_low ? 1 : 0));
+                        if (lit != lamps_[k]) lamps_[k] = lit, lamp_changes_++;
+                    }
+        }
+        if (p1io_log_) {
+            fprintf(p1io_log_, "%llu lamps %02x %02x %02x %02x\n", (unsigned long long)frame_, p2io_lamps_[0], p2io_lamps_[1],
+                    p2io_lamps_[2], p2io_lamps_[3]);
+            fflush(p1io_log_);
         }
     }
 
@@ -1157,6 +1230,8 @@ private:
     bool full_frames_ = true, fill_screen_ = false;
     double cover_w_ = 1.0, cover_h_ = 1.0;   // display_cover() of pic_
     bool python2_ = false;   // a Konami Python 2 (write_py2)
+    std::deque<uint8_t> sci_in_;   // the card reader's bytes for the game (P2IO serial port 0)
+    uint8_t p2io_lamps_[4] = {0, 0, 0x01, 0x1f};   // the P2IO's lamp banks: all lamps off till the game writes them
     std::unique_ptr<hk::py::EtherNet> eth_;
     bool bare_board_ = false;   // --bare-board: no card unit or e-AMUSEMENT network, as plain Reliquary
     std::span<const u8> font_data_;   // mapped for the process's life

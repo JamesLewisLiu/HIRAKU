@@ -202,9 +202,15 @@ CASES = {
                                              "--lan-host", "out/regress/work/popn14-lan.sock"], "popn14-eamuse-on", "popn14-nettaisen-b"),
     "popn14-nettaisen-b": ("popn14", 29300, ["--script", "oracle/scripts/popn14-nettaisen-b.his", "-card0", "E004010000001402",
                                              "--lan-join", "out/regress/work/popn14-lan.sock"], "popn14-eamuse-on", "popn14-nettaisen-a"),
-    # Konami Python 2 (PY-6): the boot program, the core's network and the attract
-    "drmnvj-attract": ("drmnvj", 13200, ["--script", "oracle/scripts/drmnvj-attract.his"]),
-    "drmnv2j-attract": ("drmnv2j", 14400, ["--script", "oracle/scripts/drmnv2j-attract.his"]),
+    # Konami Python 2 (PY-6): the boot program, the core's network and the attract. One software
+    # rasterizer thread: with PCSX2's extra threads, a few anti-aliased text pixels (attract's COIN(S)
+    # 0/2) come out a little different run to run (the sound and the machine identical)
+    "drmnvj-attract": ("drmnvj", 13200, ["--script", "oracle/scripts/drmnvj-attract.his", "--pcsx2-set", "EmuCore/GS/extrathreads=0"]),
+    "drmnv2j-attract": ("drmnv2j", 14400, ["--script", "oracle/scripts/drmnv2j-attract.his", "--pcsx2-set", "EmuCore/GS/extrathreads=0"]),
+    # e-AMUSEMENT on (test mode, saved on the disk), then a boot with it: the core's server, its
+    # network's keepalive and AVS services, the card unit on the P2IO
+    "drmnvj-eamuse-on": ("drmnvj", 12870, ["--script", "oracle/scripts/drmnvj-eamuse-on.his", "--pcsx2-set", "EmuCore/GS/extrathreads=0"]),
+    "drmnvj-eamuse": ("drmnvj", 13200, ["--script", "oracle/scripts/drmnvj-eamuse.his", "--pcsx2-set", "EmuCore/GS/extrathreads=0"], "drmnvj-eamuse-on"),
 }
 
 # Twinkle: the cases above run MAME's program CD drive (--mame-cd), so they stay in lockstep

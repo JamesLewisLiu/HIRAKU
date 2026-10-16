@@ -409,9 +409,77 @@
  	currentWrite = nullptr;
  	currentWriteLength = 0;
  	currentWriteSectors = 0;
+--- a/pcsx2/USB/usb-python2/usb-python2.cpp
++++ b/pcsx2/USB/usb-python2/usb-python2.cpp
+@@ -1,6 +1,7 @@
+ ﻿#include "usb-python2.h"
+ 
+ #include "Host.h"
++#include "HirakuHooks.h"
+ #include "IconsPromptFont.h"
+ #include "StateWrapper.h"
+ #include "common/Console.h"
+@@ -21,6 +22,11 @@
+ #include <algorithm>
+ #include <bitset>
+ 
++
++void (*Hiraku::p2io_lamp)(u8 bank, u8 value) = nullptr;
++void (*Hiraku::p2io_sci_write)(u8 port, const u8* data, u32 size) = nullptr;
++u32 (*Hiraku::p2io_sci_read)(u8 port, u8* data, u32 capacity) = nullptr;
++u8 Hiraku::p2io_sci_ports = 0;
+ namespace usb_python2
+ {
+ 	static const char* APINAME = "python2";
+@@ -767,6 +773,9 @@
+ 			else if (header->cmd == P2IO_CMD_LAMP_OUT && totalPacketLen >= 9 && s->buf[4] == 0xff)
+ 			{
+ 				DevCon.WriteLn("p2io: P2IO_CMD_LAMP_OUT_ALL %02x %02x %02x %02x", s->buf[5], s->buf[6], s->buf[7], s->buf[8]);
++				if (Hiraku::p2io_lamp)
++					for (u8 bank = 0; bank < 4; bank++)
++						Hiraku::p2io_lamp(bank, s->buf[5 + bank]);
+ 				if (s->f.gameType == GAMETYPE_DDR)
+ 					s->ddrHardware.SetCabinetLights(s->buf[5]);
+ 
+@@ -775,6 +784,8 @@
+ 			else if (header->cmd == P2IO_CMD_LAMP_OUT && totalPacketLen >= 6 && s->buf[4] != 0xff)
+ 			{
+ 				// printf("LAMP_OUT: %02x %02x [%d %d] [%d %d] %08x %d\n", s->buf[4], s->buf[5], s->buf[5] & 8, s->buf[5] & 4, s->buf[5] & 2, s->buf[5] & 1, s->f.jammaIoStatus, s->f.gameType == GAMETYPE_DANCE864);
++				if (Hiraku::p2io_lamp)
++					Hiraku::p2io_lamp(s->buf[4], s->buf[5]);
+ 
+ 				if (s->f.gameType == GAMETYPE_DANCE864 && s->buf[4] == 1)
+ 				{
+@@ -865,7 +876,10 @@
+ 				dump_packet_to_devcon("p2io: P2IO_CMD_SCI_WRITE: ", s->buf);
+ #endif
+ 
+-				const auto device = s->devices[port].get();
++				if (Hiraku::p2io_sci_write)
++					Hiraku::p2io_sci_write(port, s->buf.data() + 6, packetLen);
++				const bool host = port < 8 && (Hiraku::p2io_sci_ports >> port & 1);
++				const auto device = host ? nullptr : s->devices[port].get();
+ 				if (device != nullptr)
+ 				{
+ 					const auto startIdx = s->buf.begin() + 6;
+@@ -887,7 +901,13 @@
+ 
+ 				const auto device = s->devices[port].get();
+ 				auto readLen = 0;
+-				if (device != nullptr && requestedLen > 0)
++				if (Hiraku::p2io_sci_read && port < 8 && (Hiraku::p2io_sci_ports >> port & 1) && requestedLen > 0)
++				{
++					u8 bytes[256];
++					readLen = static_cast<int>(Hiraku::p2io_sci_read(port, bytes, requestedLen));
++					data.insert(data.end(), bytes, bytes + readLen);
++				}
++				else if (device != nullptr && requestedLen > 0)
+ 				{
+ 					readLen = device->read(data, requestedLen);
+ 				}
 --- a/pcsx2/HirakuHooks.h
 +++ b/pcsx2/HirakuHooks.h
-@@ -0,0 +1,55 @@
+@@ -0,0 +1,65 @@
 +// SPDX-License-Identifier: GPL-3.0+
 +// HIRAKU (local patch, not upstream): taps for running this emulator as a HIRAKU
 +// machine core (runtime/python/ in HIRAKU). All are null unless a host sets them.
@@ -466,4 +534,14 @@
 +	// CPU thread, instead of queuing it for the I/O thread, whose pace (host time) would decide
 +	// when a flush or a waiting command completes.
 +	extern bool sync_disk;
++	// CPU thread (IOP time), each lamp output the game sends Python 2's P2IO board: a bank (0-3)
++	// and its 8 outputs. LAMP_OUT_ALL writes the four banks in turn.
++	extern void (*p2io_lamp)(u8 bank, u8 value);
++	// The P2IO's two serial ports (SCI 0-1: the e-amusement card readers on an ACIO bus, an EXTIO
++	// board). CPU thread (IOP time): each packet the game writes to one, as sent (escaped). The
++	// ports in p2io_sci_ports (bit n: port n) are the host's: the emulator's own device there gets
++	// nothing, and p2io_sci_read gives the bytes the game reads (up to capacity; how many).
++	extern void (*p2io_sci_write)(u8 port, const u8* data, u32 size);
++	extern u32 (*p2io_sci_read)(u8 port, u8* data, u32 capacity);
++	extern u8 p2io_sci_ports;
 +} // namespace Hiraku

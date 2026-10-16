@@ -1,0 +1,10 @@
+# DrumMania V (drmnvj) with e-AMUSEMENT on (after drmnvj-eamuse-on, its NVRAM folder): the boot
+# program (AVS services from the core's network, runtime/python/ethnet.h), then the game's
+# e-AMUSEMENT start-up: services, pcbtracker, message, posevent from HIRAKU's server; the keepalive's
+# pings; "センターサーバーに接続しています"; the session check; the card unit on the P2IO's serial port
+# (runtime/python/gfdmcard.h: the syncs, the node, its version, init, the 10-key); shopinfo regist and
+# demodata get; then attract with the e-AMUSEMENT logo.
+game drmnvj
+
+from 0 every 600 snap
+at 13200 quit

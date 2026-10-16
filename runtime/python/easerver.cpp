@@ -765,6 +765,13 @@ std::string EamuseServer::answer_later(const std::string &game, const Request &r
         if (game == "E12" || game == "E13" || game == "F14")
             items += "<item name=\"portfw\" url=\"http://" + esc(host) + "/\"/>" +
                      "<item name=\"globby\" url=\"globby://" + esc(host.substr(0, host.find(':'))) + ":" + std::to_string(Lobby::PORT) + "/\"/>";
+        // GuitarFreaks and DrumMania V (Python 2: E02 DrumMania V, F02 V2, E03/F03 GuitarFreaks): the
+        // library's keepalive (ea3-keepalive.c) pings the router, center and server whose addresses
+        // this item gives (ga/ma, pa/ia, the host), and ntp sets its clock; HIRAKU's network for
+        // Python 2 (ethnet.h) answers both at 10.50.0.1
+        if (game == "E02" || game == "F02" || game == "E03" || game == "F03")
+            items += "<item name=\"ntp\" url=\"ntp://10.50.0.1/\"/><item name=\"keepalive\" url=\"http://10.50.0.1/keepalive?pa=10.50.0.1&amp;ia=10.50.0.1&amp;"
+                     "ga=10.50.0.1&amp;ma=10.50.0.1&amp;t1=2&amp;t2=10\"/>";
         return "<services expire=\"600\" status=\"0\">" + items + "</services>";
     }
     if (m == "facility" && f == "get") {   // pop'n 14 (0x17d6860): the shop, as text elements in three groups

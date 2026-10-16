@@ -1,0 +1,26 @@
+# DrumMania V (drmnvj, Konami Python 2): e-AMUSEMENT switched on in test mode. Test, then MAIN MENU's
+# NETWORK OPTIONS (Select R ten times, Start); on e-AMUSEMENT, Start held with Select R changes it
+# to ON (ee'MALL appears); SAVE AND EXIT; the game asks for a reboot ("PLEASE TURN OFF THE SWITCH AND
+# REBOOT"). The setting is on the disk: drmnvj-eamuse boots from this case's NVRAM folder.
+game drmnvj
+at 11000 press "Test" 8
+at 11500 press "Select R" 8
+at 11540 press "Select R" 8
+at 11580 press "Select R" 8
+at 11620 press "Select R" 8
+at 11660 press "Select R" 8
+at 11700 press "Select R" 8
+at 11740 press "Select R" 8
+at 11780 press "Select R" 8
+at 11820 press "Select R" 8
+at 11860 press "Select R" 8
+at 11940 press "1 Player Start" 8
+at 12090 press "Select R" 8
+at 12150 press "1 Player Start" 50
+at 12165 press "Select R" 8
+at 12250 press "Select L" 8
+at 12310 press "Select L" 8
+at 12370 press "1 Player Start" 8
+at 12870 quit
+at 12570 snap
+at 12870 quit
