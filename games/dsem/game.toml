@@ -1,0 +1,20 @@
+# Dancing Stage Euro Mix (G*936 VER. EAA), Konami 2000: generated from MAME's ksys573.cpp (tools/gen573.py)
+id = "dsem"
+title = "Dancing Stage Euro Mix"
+family = "ddr"          # DDR cabinet: 4 panels per player, menu buttons
+mame = "dsem"           # MAME set name, used by the oracle
+core = "sys573"         # System 573 (runtime/sys573/, PLAN.md section 19); digital I/O board
+
+[roms]
+bios = "700a01.22g"             # 573 BIOS
+h8 = "h8a01.bin"                # the H8's start-up response (JVS check)
+cassette_eeprom = "ge936ea.u1"  # the game cassette's X76F041
+cassette_id = "ge936ea.u6"      # ... and its DS2401 serial number
+digital_id = "digital-id.bin"   # the digital I/O board's DS2401
+
+[board]
+io_board = "digital"            # GX894-PWB(B): FPGA + MAS3507D MP3
+cassette = "xi"                 # MAME's cassette variant: X76F041 + DS2401 (cassxi)
+
+[cd]
+chd = "936eaa"          # the runtime CD

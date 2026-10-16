@@ -1,0 +1,11 @@
+# Dance Dance Revolution USA (System 573, digital I/O board): the first power-on, from blank NVRAM.
+# The CD asks to update the CD-ROM drive's firmware (NOTE 604, "Press test switch"); Test starts
+# the update and the install to flash, and by frame ~7500 it says the installation is complete:
+# turn off and reboot. Hashes the main RAM every frame and snapshots every 60 frames.
+game ddrusa
+
+hash ram  0x80000000 0x80400000   # 4 MiB main RAM (KSEG0)
+
+at 600 press "Service Mode" 8
+from 0 every 60 snap
+at 9000 quit

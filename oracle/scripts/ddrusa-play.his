@@ -1,0 +1,23 @@
+# Dance Dance Revolution USA (System 573, digital I/O board): from what ddrusa-install.his left:
+# the boot check, the warning and attract, then four coins (two coins a credit), Start through the
+# title, song select and Beginner's How To Play, the first song stepped on all four panels every 8
+# frames, its stage result. Hashes the main RAM every frame, snapshots every 60 frames.
+game ddrusa
+
+hash ram  0x80000000 0x80400000   # 4 MiB main RAM (KSEG0)
+
+at 8000 press "Coin 1" 8
+at 8100 press "Coin 1" 8
+at 8200 press "Coin 1" 8
+at 8300 press "Coin 1" 8
+at 8500 press "1 Player Start" 8
+at 8800 press "1 Player Start" 8
+at 9400 press "1 Player Start" 8
+at 10000 press "1 Player Start" 8
+at 10600 press "1 Player Start" 8
+from 11000 every 8 press "P1 Left" 4
+from 11000 every 8 press "P1 Down" 4
+from 11000 every 8 press "P1 Up" 4
+from 11000 every 8 press "P1 Right" 4
+from 0 every 60 snap
+at 17000 quit
