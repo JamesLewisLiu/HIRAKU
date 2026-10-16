@@ -12,6 +12,7 @@
 #include <cstdlib>
 #include <string>
 
+#include "config.h"
 #include "mainwindow.h"
 
 // A package with its own Qt (tools/package.sh) starts the launcher through bin/hiraku, a script
@@ -38,6 +39,7 @@ int main(int argc, char **argv) {
     QApplication::setApplicationDisplayName("HIRAKU");
     QApplication::setDesktopFileName("hiraku");
     QApplication::setWindowIcon(QIcon(":/icon.png"));
+    cfg::mergeControls();
     MainWindow w;
     w.show();
     QStringList args = app.arguments().mid(1);

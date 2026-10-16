@@ -555,7 +555,7 @@ void MainWindow::contextMenu(const QPoint &pos) {
     QMenu menu;
     menu.addAction(m_play);
     menu.addSeparator();
-    menu.addAction(QIcon::fromTheme("input-gaming"), "Controls for " + cfg::familyName(family) + "…", this, [this, family] {
+    menu.addAction(QIcon::fromTheme("input-gaming"), "Controls for " + cfg::controlsSetName(cfg::controlsSet(family)) + "…", this, [this, family] {
         ControlsDialog d(family, this);
         d.exec();
     });

@@ -23,6 +23,7 @@
 #include <QVBoxLayout>
 
 #include "config.h"
+#include "controlsdialog.h"
 
 using hk::hidout::Device;
 
@@ -108,7 +109,7 @@ LightsDialog::LightsDialog(const QString &family, QWidget *parent) : QDialog(par
     auto *top = new QHBoxLayout;
     top->addWidget(new QLabel("Cabinet:"));
     m_familyBox = new QComboBox;
-    for (const QString &f : cfg::families()) m_familyBox->addItem(cfg::familyName(f), f);
+    fillCabinetBox(m_familyBox, false);
     top->addWidget(m_familyBox, 1);
     v->addLayout(top);
 
@@ -198,7 +199,7 @@ LightsDialog::LightsDialog(const QString &family, QWidget *parent) : QDialog(par
     refreshDevices();
     connect(m_familyBox, &QComboBox::currentIndexChanged, this, [this] { showFamily(m_familyBox->currentData().toString()); });
     int idx = m_familyBox->findData(family);
-    m_familyBox->setCurrentIndex(idx < 0 ? 0 : idx);
+    m_familyBox->setCurrentIndex(idx < 0 ? m_familyBox->findData("popn") : idx);
     showFamily(m_familyBox->currentData().toString());
 
     // live lamps from a running game
@@ -297,21 +298,21 @@ void LightsDialog::showFamily(const QString &family) {
         note->setWordWrap(true);
         v->addWidget(note);
     }
-    QString group;
-    QGridLayout *grid = nullptr;
-    int r = 0, labelWidth = 0;   // one width for every group, so the outputs line up
+    QHash<QString, QGridLayout *> grids;   // one box per group, where the group first comes (IIDX's are interleaved)
+    QHash<QString, int> used;              // rows in each
+    int labelWidth = 0;   // one width for every group, so the outputs line up
     for (auto &l : hk::cab::lamps(family.toStdString()))
         labelWidth = std::max(labelWidth, fontMetrics().horizontalAdvance(qs(l.name)) + 8);
     for (auto &l : hk::cab::lamps(family.toStdString())) {
         QString g = qs(l.group);
-        if (g != group) {
-            group = g;
+        QGridLayout *&grid = grids[g];
+        if (!grid) {
             auto *box = new QGroupBox(g);
             grid = new QGridLayout(box);
             grid->setColumnStretch(2, 1);
             v->addWidget(box);
-            r = 0;
         }
+        int r = used[g]++;
         Row row;
         row.lamp = l;
         row.dot = new QLabel;
@@ -347,7 +348,6 @@ void LightsDialog::showFamily(const QString &family) {
         grid->addWidget(row.button, r, 2);
         grid->addWidget(test, r, 3);
         grid->addWidget(clr, r, 4);
-        r++;
         m_rows.push_back(row);
         refreshRow(index);
         if (m_liveFamily == family) setDot(index, m_liveState.value(qs(l.name)));

@@ -3,7 +3,11 @@
 
 #include <QCoreApplication>
 #include <QDir>
+#include <QFileInfo>
+#include <QSaveFile>
 #include <QStandardPaths>
+
+#include <algorithm>
 
 #include <unistd.h>
 
@@ -78,7 +82,33 @@ QString nvramDir(const QString &game) {
     return base + "/" + game;
 }
 
-QString controlsFile(const QString &family) { return configDir() + "/controls/" + family + ".txt"; }
+QString controlsFile(const QString &family) { return configDir() + "/controls/" + controlsSet(family) + ".txt"; }
+
+// The members of a set (beatmania, pop'n music) had a bindings file each before they shared the set's:
+// the files there are joined into it, oldest first (a later line for an input replaces an earlier
+// one), and the others kept as <family>.txt.old
+void mergeControls() {
+    for (auto &series : controlsSeries())
+        for (const QString &set : series.second) {
+            QFileInfoList old;
+            for (const QString &m : controlsSetMembers(set))
+                if (QFileInfo f(configDir() + "/controls/" + m + ".txt"); f.exists()) old << f;
+            if (old.isEmpty() || (old.size() == 1 && old[0].baseName() == set)) continue;
+            std::sort(old.begin(), old.end(), [](auto &a, auto &b) { return a.lastModified() < b.lastModified(); });
+            QByteArray text = "# HIRAKU controls for " + controlsSetName(set).toUtf8() + ", joined from ";
+            for (int k = 0; k < old.size(); k++) text += (k ? ", " : "") + old[k].fileName().toUtf8();
+            text += " (a later line replaces an earlier one).\n";
+            for (auto &f : old) {
+                QFile in(f.filePath());
+                if (!in.open(QIODevice::ReadOnly)) return;
+                text += "\n# from " + f.fileName().toUtf8() + "\n" + in.readAll() + "\n";
+            }
+            QSaveFile out(controlsFile(set));
+            if (!out.open(QIODevice::WriteOnly) || out.write(text) != text.size() || !out.commit()) return;
+            for (auto &f : old)
+                if (f.baseName() != set) QFile::rename(f.filePath(), f.filePath() + ".old");
+        }
+}
 QString lightsFile(const QString &family) { return configDir() + "/lights/" + family + ".txt"; }
 
 QString lightsSocket() {
@@ -89,7 +119,7 @@ QString lightsSocket() {
 
 QString familyName(const QString &family) {
     if (family == "bm3") return "beatmania III";
-    if (family == "popn") return "pop'n music";
+    if (family == "popn") return "pop'n music (Firebeat)";
     if (family == "ppp") return "ParaParaParadise";
     if (family == "kbm") return "Keyboardmania";
     if (family == "djbm") return "beatmania (DJ Main)";
@@ -99,9 +129,52 @@ QString familyName(const QString &family) {
     if (family == "drmn") return "DrumMania (System 573)";
     if (family == "gtrf") return "GuitarFreaks (System 573)";
     if (family == "pypopn") return "pop'n music (Konami Python)";
+    if (family == "iidx") return "beatmania IIDX";
     return family;
 }
 
-QStringList families() { return {"bm3", "popn", "ppp", "kbm", "djbm", "djpopn", "djpstage", "ddr", "drmn", "gtrf", "pypopn"}; }
+QList<QPair<QString, QStringList>> familySeries() {
+    return {{"beatmania", {"djbm", "iidx", "bm3"}},
+            {"pop'n music", {"djpopn", "popn", "pypopn", "djpstage"}},
+            {"Other games", {"ddr", "drmn", "gtrf", "kbm", "ppp"}}};
+}
+
+QString controlsSet(const QString &family) {
+    if (family == "djbm" || family == "iidx" || family == "bm3") return "beatmania";
+    if (family == "djpopn" || family == "pypopn") return "popn";
+    return family;
+}
+
+// The first member's table gives the order (IIDX: the seven keys together)
+QStringList controlsSetMembers(const QString &set) {
+    if (set == "beatmania") return {"iidx", "djbm", "bm3"};
+    if (set == "popn") return {"djpopn", "popn", "pypopn"};
+    return {set};
+}
+
+QString controlsSetName(const QString &set) {
+    if (set == "beatmania") return "beatmania";
+    if (set == "popn") return "pop'n music";
+    return familyName(set);
+}
+
+QString controlsMemberName(const QString &family) {
+    if (family == "djbm" || family == "djpopn") return "DJ Main";
+    if (family == "iidx") return "IIDX";
+    if (family == "bm3") return "beatmania III";
+    if (family == "popn") return "Firebeat";
+    if (family == "pypopn") return "Konami Python";
+    return familyName(family);
+}
+
+QList<QPair<QString, QStringList>> controlsSeries() {
+    return {{"", {"beatmania", "popn", "djpstage", "ddr", "drmn", "gtrf", "kbm", "ppp"}}};
+}
+
+QStringList families() {
+    QStringList l;
+    for (auto &s : familySeries()) l += s.second;
+    return l;
+}
 
 }  // namespace cfg

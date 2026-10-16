@@ -870,7 +870,13 @@ bool set_input(const std::string &name, int value) {
         {"P2-1 (SW8)", {6, 0x0080}}, {"P2-2 (SW9)", {6, 0x0100}}, {"P2-3 (SW10)", {6, 0x0200}}, {"P2-4 (SW11)", {6, 0x0400}},
         {"P2-5 (SW12)", {6, 0x0800}}, {"P2-6 (SW13)", {6, 0x1000}}, {"P2-7 (SW14)", {6, 0x2000}}, {"Coin 1", {6, 0x4000}},
     };
-    const std::string n = name == "Service Mode" ? "Test" : name == "Service" ? "Service 1" : name;
+    std::string n = name == "Service Mode" ? "Test" : name == "Service" ? "Service 1" : name;
+    // the keys as the other beatmania cabinets name them (one bindings file for all): "P2 Button 3" -> "P2-3 (SW10)"
+    if (n.size() == 11 && n[0] == 'P' && (n[1] == '1' || n[1] == '2') && n.compare(2, 8, " Button ") == 0 && n[10] >= '1' &&
+        n[10] <= '7') {
+        int p = n[1] - '1', k = n[10] - '0';
+        n = "P" + std::to_string(p + 1) + "-" + std::to_string(k) + " (SW" + std::to_string(p * 7 + k) + ")";
+    }
     if (auto it = bits.find(n); it != bits.end()) {
         if (it->second.first == 0) {
             if (value) st.m_in0 &= (u8)~it->second.second; else st.m_in0 |= (u8)it->second.second;

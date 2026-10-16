@@ -6,8 +6,8 @@
 #include <QDialogButtonBox>
 #include <QDir>
 #include <QFile>
+#include <QFrame>
 #include <QGridLayout>
-#include <QGroupBox>
 #include <QHBoxLayout>
 #include <QKeyEvent>
 #include <QLabel>
@@ -15,7 +15,11 @@
 #include <QMessageBox>
 #include <QPushButton>
 #include <QSaveFile>
+#include <QScreen>
 #include <QScrollArea>
+#include <QScrollBar>
+#include <QStyle>
+#include <QStandardItemModel>
 #include <QToolButton>
 #include <QVBoxLayout>
 
@@ -117,7 +121,57 @@ private:
     QString m_result;
 };
 
+// The controls of a set: each member family's, once, in the order they first come. One that only
+// some members have says which, in its label, or for a whole group of them (Python's 10-key) in
+// the group's title.
+const std::vector<hk::cab::Control> &setControls(const QString &set) {
+    static QHash<QString, std::vector<hk::cab::Control>> cache;
+    if (auto it = cache.constFind(set); it != cache.constEnd()) return *it;
+    QStringList members = cfg::controlsSetMembers(set);
+    std::vector<hk::cab::Control> out;
+    QHash<QString, QStringList> has;   // control -> the members that have it
+    for (const QString &m : members)
+        for (auto &c : hk::cab::controls(m.toStdString())) {
+            QString n = QString::fromStdString(c.name);
+            if (!has.contains(n)) out.push_back(c);
+            has[n] << m;
+        }
+    QHash<QString, QSet<QString>> groupHas;   // group -> its controls' member lists
+    for (auto &c : out) groupHas[QString::fromStdString(c.group)] << has[QString::fromStdString(c.name)].join(",");
+    for (auto &c : out) {
+        const QStringList &h = has[QString::fromStdString(c.name)];
+        if (h.size() == members.size()) continue;
+        QStringList boards;
+        for (const QString &m : h) boards << cfg::controlsMemberName(m);
+        std::string only = " (" + boards.join(", ").toStdString() + " only)";
+        if (groupHas[QString::fromStdString(c.group)].size() == 1) c.group += only;
+        else c.label += only;
+    }
+    return cache[set] = out;
+}
+
 }  // namespace
+
+void fillCabinetBox(QComboBox *box, bool controlSets) {
+    auto *model = new QStandardItemModel(box);
+    QFont bold = box->font();
+    bold.setBold(true);
+    for (auto &[series, fams] : controlSets ? cfg::controlsSeries() : cfg::familySeries()) {
+        if (!series.isEmpty()) {
+            auto *header = new QStandardItem(series);
+            header->setFlags(Qt::NoItemFlags);   // not a choice
+            header->setFont(bold);
+            model->appendRow(header);
+        }
+        for (const QString &f : fams) {
+            auto *it = new QStandardItem(controlSets ? cfg::controlsSetName(f) : cfg::familyName(f));
+            it->setData(f, Qt::UserRole);
+            model->appendRow(it);
+        }
+    }
+    box->setModel(model);
+    box->setMaxVisibleItems(model->rowCount());
+}
 
 ControlsDialog::ControlsDialog(const QString &family, QWidget *parent) : QDialog(parent) {
     setWindowTitle("Controls");
@@ -127,16 +181,20 @@ ControlsDialog::ControlsDialog(const QString &family, QWidget *parent) : QDialog
     auto *top = new QHBoxLayout;
     top->addWidget(new QLabel("Cabinet:"));
     m_familyBox = new QComboBox;
-    for (const QString &f : cfg::families()) m_familyBox->addItem(cfg::familyName(f), f);
+    fillCabinetBox(m_familyBox, true);
     top->addWidget(m_familyBox, 1);
     v->addLayout(top);
+    m_setLabel = new QLabel;
+    m_setLabel->setWordWrap(true);
+    v->addWidget(m_setLabel);
 
     m_joyLabel = new QLabel;
     m_joyLabel->setWordWrap(true);
     m_joyLabel->setTextInteractionFlags(Qt::TextSelectableByMouse);
     v->addWidget(m_joyLabel);
-    auto *hint = new QLabel("Click a binding, then press a key or a controller button. <b>+</b> adds another "
-                            "binding, <b>×</b> clears. Press anything bound and its row lights up.");
+    auto *hint = new QLabel("Click a binding, then press a key or a controller button. Its <b>▾</b> menu (or a "
+                            "right-click) adds a second binding or removes one. A warning sign marks an input that "
+                            "presses two controls in one game. Press anything bound and its name lights up.");
     hint->setWordWrap(true);
     v->addWidget(hint);
 
@@ -158,7 +216,7 @@ ControlsDialog::ControlsDialog(const QString &family, QWidget *parent) : QDialog
     connect(box, &QDialogButtonBox::rejected, this, &ControlsDialog::reject);
     connect(box->button(QDialogButtonBox::RestoreDefaults), &QPushButton::clicked, this, [this] {
         Bindings d;
-        for (auto &c : hk::cab::controls(m_family.toStdString())) {
+        for (auto &c : setControls(m_family)) {
             QStringList l;
             auto entries = hk::cab::parse_list_file(c.name + " = " + c.defaults);
             for (auto &it : entries[0].items) l << normalizeBinding(QString::fromStdString(it));
@@ -166,12 +224,12 @@ ControlsDialog::ControlsDialog(const QString &family, QWidget *parent) : QDialog
         }
         m_edits[m_family] = d;
         m_dirty.insert(m_family);
-        for (int k = 0; k < m_rows.size(); k++) refreshRow(k);
+        refreshRows();
     });
 
     connect(m_familyBox, &QComboBox::currentIndexChanged, this, [this] { showFamily(m_familyBox->currentData().toString()); });
-    int idx = m_familyBox->findData(family);
-    m_familyBox->setCurrentIndex(idx < 0 ? 0 : idx);
+    int idx = m_familyBox->findData(cfg::controlsSet(family));
+    m_familyBox->setCurrentIndex(idx < 0 ? m_familyBox->findData(cfg::controlsSet("bm3")) : idx);
     showFamily(m_familyBox->currentData().toString());
 
     // live feedback
@@ -207,11 +265,13 @@ ControlsDialog::ControlsDialog(const QString &family, QWidget *parent) : QDialog
 }
 
 ControlsDialog::Bindings ControlsDialog::load(const QString &family) const {
-    std::string text = hk::cab::default_bindings(family.toStdString());
+    std::string text;
+    for (auto &c : setControls(family))
+        if (!c.defaults.empty()) text += c.name + " = " + c.defaults + "\n";
     QFile f(cfg::controlsFile(family));
     if (f.open(QIODevice::ReadOnly)) text += f.readAll().toStdString();   // the file's lines replace the defaults
     Bindings b;
-    for (auto &c : hk::cab::controls(family.toStdString())) b[QString::fromStdString(c.name)] = {};
+    for (auto &c : setControls(family)) b[QString::fromStdString(c.name)] = {};
     for (auto &en : hk::cab::parse_list_file(text)) {
         QStringList l;
         for (auto &it : en.items) l << normalizeBinding(QString::fromStdString(it));
@@ -228,10 +288,10 @@ bool ControlsDialog::save() {
             QMessageBox::warning(this, "Controls", "Cannot write " + f.fileName() + ": " + f.errorString());
             return false;
         }
-        QString text = "# HIRAKU controls for " + cfg::familyName(fam) + ", written by the launcher.\n"
+        QString text = "# HIRAKU controls for " + cfg::controlsSetName(fam) + ", written by the launcher.\n"
                        "# Format: runtime/host/input.h. An input with nothing after '=' is unbound.\n";
         const Bindings &b = m_edits[fam];
-        for (auto &c : hk::cab::controls(fam.toStdString())) {
+        for (auto &c : setControls(fam)) {
             std::vector<std::string> items;
             for (const QString &s : b.value(QString::fromStdString(c.name))) items.push_back(s.toStdString());
             text += QString::fromStdString(hk::cab::format_entry(c.name, items)) + "\n";
@@ -260,93 +320,194 @@ void ControlsDialog::showFamily(const QString &family) {
     m_family = family;
     if (!m_edits.contains(family)) m_edits[family] = load(family);
     m_rows.clear();
-    auto *page = new QWidget;
-    auto *v = new QVBoxLayout(page);
-    QString group;
-    QGridLayout *grid = nullptr;
-    QVector<int> groupRows;
-    auto &defs = hk::cab::controls(family.toStdString());
-    // groups in table order; a long group (Keyboardmania's 24 keys) gets two columns
-    QMap<QString, int> groupSize;
-    int labelWidth = 0;   // one width for every group, so the bindings line up
-    for (auto &c : defs) {
-        groupSize[QString::fromStdString(c.group)]++;
-        labelWidth = std::max(labelWidth, fontMetrics().horizontalAdvance(QString::fromStdString(c.label)) + 16);
+    m_sections.clear();
+    auto &defs = setControls(family);
+    QStringList sharing = cfg::controlsSetMembers(family);
+    m_setLabel->setVisible(sharing.size() > 1);
+    if (sharing.size() > 1) {
+        QStringList names;
+        for (const QString &m : sharing) names << cfg::familyName(m);
+        QString last = names.takeLast();
+        m_setLabel->setText("Shared by " + names.join(", ") + " and " + last +
+                            ": each game uses the controls its cabinet has and ignores the rest.");
     }
-    for (int n : groupSize)
-        if (n > 12 && width() < 900) resize(900, height());   // two columns of keys
-    int inGroup = 0;
-    for (auto &c : defs) {
-        QString g = QString::fromStdString(c.group);
-        if (g != group) {
-            group = g;
-            auto *box = new QGroupBox(g);
-            grid = new QGridLayout(box);
-            grid->setColumnStretch(1, 1);
-            grid->setColumnStretch(5, 1);
-            v->addWidget(box);
-            inGroup = 0;
-        }
-        int n = groupSize[g], cols = n > 12 ? 2 : 1, perCol = (n + cols - 1) / cols;
-        int r = inGroup % perCol, c0 = (inGroup / perCol) * 4;
-        inGroup++;
+    // one section per group, in the order the groups first come (IIDX lists "Cabinet" twice)
+    QStringList groups;
+    QHash<QString, QVector<int>> members;
+    for (int k = 0; k < (int)defs.size(); k++) {
+        QString g = QString::fromStdString(defs[k].group);
+        if (!members.contains(g)) groups << g;
+        members[g] << k;
+    }
+    // Two columns, each section to the shorter one: Player 1 beside Player 2
+    QHash<QString, bool> folded;
+    QHash<QString, int> column;
+    int rows[2] = {0, 0}, labelWidth[2] = {0, 0};   // one width per column, so its bindings line up
+    for (const QString &g : groups) {
+        folded[g] = cfg::settings().value("controls/folded/" + g, g.startsWith("e-AMUSEMENT")).toBool();
+        int c = column[g] = rows[1] < rows[0] ? 1 : 0;
+        rows[c] += 2 + (folded[g] ? 0 : members[g].size());
+        for (int k : members[g])
+            labelWidth[c] = std::max(labelWidth[c], fontMetrics().horizontalAdvance(QString::fromStdString(defs[k].label)) + 16);
+    }
 
-        Row row;
-        row.control = c;
-        row.label = new QLabel(QString::fromStdString(c.label));
-        row.label->setToolTip(QString::fromStdString(c.name));
-        row.label->setMinimumWidth(labelWidth);
-        row.button = new QPushButton;
-        row.button->setFocusPolicy(Qt::NoFocus);
-        row.button->setMinimumWidth(cols > 1 ? 120 : 220);
-        row.button->setContextMenuPolicy(Qt::CustomContextMenu);
-        auto *add = new QToolButton;
-        add->setText("+");
-        add->setToolTip("Add another binding");
-        add->setFocusPolicy(Qt::NoFocus);
-        auto *clr = new QToolButton;
-        clr->setText("×");
-        clr->setToolTip("Clear");
-        clr->setFocusPolicy(Qt::NoFocus);
-        int index = m_rows.size();
-        connect(row.button, &QPushButton::clicked, this, [this, index] { capture(index, false); });
-        connect(add, &QToolButton::clicked, this, [this, index] { capture(index, true); });
-        connect(clr, &QToolButton::clicked, this, [this, index] {
-            m_edits[m_family][QString::fromStdString(m_rows[index].control.name)].clear();
-            m_dirty.insert(m_family);
-            refreshRow(index);
-        });
-        connect(row.button, &QPushButton::customContextMenuRequested, this, [this, index](const QPoint &) {
-            // remove a single binding
-            QMenu menu;
-            QStringList &l = m_edits[m_family][QString::fromStdString(m_rows[index].control.name)];
-            for (const QString &b : l) menu.addAction("Remove " + describeBinding(b))->setData(b);
-            if (l.isEmpty()) menu.addAction("(nothing bound)")->setEnabled(false);
-            if (QAction *a = menu.exec(QCursor::pos()); a && a->data().isValid()) {
-                l.removeAll(a->data().toString());
-                m_dirty.insert(m_family);
-                refreshRow(index);
-            }
-        });
-        grid->addWidget(row.label, r, c0);
-        grid->addWidget(row.button, r, c0 + 1);
-        grid->addWidget(add, r, c0 + 2);
-        grid->addWidget(clr, r, c0 + 3);
-        m_rows.push_back(row);
-        refreshRow(index);
+    auto *page = new QWidget;
+    auto *cols = new QHBoxLayout(page);
+    cols->setSpacing(24);
+    QVBoxLayout *col[2];
+    for (auto *&c : col) {
+        c = new QVBoxLayout;
+        c->setSpacing(4);
+        cols->addLayout(c, 1);
     }
-    v->addStretch(1);
+    QFont bold = font();
+    bold.setBold(true);
+    for (const QString &g : groups) {
+        int si = m_sections.size();
+        Section sec;
+        sec.group = g;
+        sec.header = new QToolButton;
+        sec.header->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+        sec.header->setAutoRaise(true);
+        sec.header->setFont(bold);
+        sec.header->setFocusPolicy(Qt::NoFocus);
+        connect(sec.header, &QToolButton::clicked, this, [this, si] {
+            bool fold = !m_sections[si].body->isHidden();
+            setFolded(si, fold);
+            cfg::settings().setValue("controls/folded/" + m_sections[si].group, fold);
+        });
+        auto *line = new QFrame;
+        line->setFrameShape(QFrame::HLine);
+        line->setFrameShadow(QFrame::Sunken);
+        auto *head = new QHBoxLayout;
+        head->addWidget(sec.header);
+        head->addWidget(line, 1);
+        sec.body = new QWidget;
+        auto *grid = new QGridLayout(sec.body);
+        grid->setContentsMargins(8, 0, 0, 8);
+        grid->setVerticalSpacing(3);
+        grid->setColumnStretch(1, 1);
+
+        for (int k : members[g]) {
+            const auto &c = defs[k];
+            int index = m_rows.size();
+            Row row;
+            row.control = c;
+            row.section = si;
+            row.label = new QLabel(QString::fromStdString(c.label));
+            row.label->setToolTip(QString::fromStdString(c.name));
+            row.label->setMinimumWidth(labelWidth[column[g]]);
+            row.button = new QToolButton;
+            row.button->setFocusPolicy(Qt::NoFocus);
+            row.button->setPopupMode(QToolButton::MenuButtonPopup);
+            row.button->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+            row.button->setMinimumWidth(180);
+            row.button->setContextMenuPolicy(Qt::CustomContextMenu);
+            auto *menu = new QMenu(row.button);
+            connect(menu, &QMenu::aboutToShow, this, [this, index, menu] {
+                menu->clear();
+                bindingMenu(index, menu);
+            });
+            row.button->setMenu(menu);
+            connect(row.button, &QToolButton::clicked, this, [this, index] { capture(index, false); });
+            connect(row.button, &QToolButton::customContextMenuRequested, this, [this, index](const QPoint &) {
+                QMenu m;
+                bindingMenu(index, &m);
+                m.exec(QCursor::pos());
+            });
+            int r = grid->count() / 2;
+            grid->addWidget(row.label, r, 0);
+            grid->addWidget(row.button, r, 1);
+            m_rows.push_back(row);
+        }
+
+        auto *box = new QVBoxLayout;
+        box->setSpacing(2);
+        box->addLayout(head);
+        box->addWidget(sec.body);
+        m_sections.push_back(sec);
+        setFolded(si, folded[g]);
+        col[column[g]]->addLayout(box);
+    }
+    for (auto *c : col) c->addStretch(1);
     m_scroll->setWidget(page);
+    refreshRows();
     refreshHighlights();
+
+    // wide enough for both columns, as far as the screen allows (measured with the labels' style applied)
+    page->ensurePolished();
+    for (auto &row : m_rows) row.label->ensurePolished();
+    page->layout()->activate();
+    int want = page->sizeHint().width() + m_scroll->verticalScrollBar()->sizeHint().width() + 2 * m_scroll->frameWidth() +
+               layout()->contentsMargins().left() + layout()->contentsMargins().right();
+    if (screen()) want = std::min(want, screen()->availableGeometry().width());
+    if (width() < want) resize(want, height());
 }
 
-void ControlsDialog::refreshRow(int k) {
-    Row &row = m_rows[k];
-    const QStringList &l = m_edits[m_family].value(QString::fromStdString(row.control.name));
-    QStringList shown;
-    for (const QString &b : l) shown << describeBinding(b);
-    row.button->setText(shown.isEmpty() ? "—" : shown.join(", "));
-    row.button->setToolTip(l.isEmpty() ? "Not bound" : l.join(", ") + "\n\nRight-click to remove one binding.");
+void ControlsDialog::setFolded(int si, bool folded) {
+    Section &sec = m_sections[si];
+    sec.body->setVisible(!folded);
+    sec.header->setArrowType(folded ? Qt::RightArrow : Qt::DownArrow);
+    int n = 0;
+    for (auto &row : m_rows) n += row.section == si;
+    sec.header->setText(folded ? QString("%1  (%2)").arg(sec.group).arg(n) : sec.group);
+    sec.header->setToolTip(folded ? "Show these controls" : "Fold these controls away");
+}
+
+void ControlsDialog::bindingMenu(int k, QMenu *menu) {
+    QString name = QString::fromStdString(m_rows[k].control.name);
+    // queued: the binding dialog opens once the menu has closed
+    menu->addAction("Add another binding…", this, [this, k] {
+        QMetaObject::invokeMethod(this, [this, k] { capture(k, true); }, Qt::QueuedConnection);
+    });
+    const QStringList l = m_edits[m_family].value(name);
+    if (!l.isEmpty()) menu->addSeparator();
+    for (const QString &b : l)
+        menu->addAction("Remove " + describeBinding(b), this, [this, name, b] {
+            m_edits[m_family][name].removeAll(b);
+            m_dirty.insert(m_family);
+            refreshRows();
+            refreshHighlights();
+        });
+    if (l.size() > 1)
+        menu->addAction("Remove all", this, [this, name] {
+            m_edits[m_family][name].clear();
+            m_dirty.insert(m_family);
+            refreshRows();
+            refreshHighlights();
+        });
+}
+
+void ControlsDialog::refreshRows() {
+    // An input bound to two controls of one game presses both there: each says which, per game
+    QHash<int, QStringList> clashes;
+    for (const QString &m : cfg::controlsSetMembers(m_family)) {
+        QSet<std::string> has;
+        for (auto &c : hk::cab::controls(m.toStdString())) has.insert(c.name);
+        QMap<QString, QVector<int>> users;   // binding -> its rows
+        for (int k = 0; k < m_rows.size(); k++)
+            if (has.contains(m_rows[k].control.name))
+                for (const QString &b : m_edits[m_family].value(QString::fromStdString(m_rows[k].control.name))) users[b] << k;
+        for (auto it = users.cbegin(); it != users.cend(); ++it)
+            for (int k : *it)
+                for (int j : *it)
+                    if (j != k) {
+                        QString where = cfg::controlsSetMembers(m_family).size() > 1 ? " in " + cfg::familyName(m) : QString();
+                        clashes[k] << describeBinding(it.key()) + " also presses " + m_rows[j].label->text() + where;
+                    }
+    }
+    for (int k = 0; k < m_rows.size(); k++) {
+        Row &row = m_rows[k];
+        const QStringList &l = m_edits[m_family].value(QString::fromStdString(row.control.name));
+        QStringList shown;
+        for (const QString &b : l) shown << describeBinding(b);
+        row.button->setText(shown.isEmpty() ? "—" : shown.join(", "));
+        QString tip = l.isEmpty() ? QString("Not bound") : l.join(", ");
+        if (clashes.contains(k)) tip += "\n\n" + clashes[k].join("\n");
+        row.button->setToolTip(tip + "\n\nClick to bind; the arrow (or a right-click) adds or removes one binding.");
+        row.button->setToolButtonStyle(clashes.contains(k) ? Qt::ToolButtonTextBesideIcon : Qt::ToolButtonTextOnly);
+        row.button->setIcon(clashes.contains(k) ? style()->standardIcon(QStyle::SP_MessageBoxWarning) : QIcon());
+    }
 }
 
 void ControlsDialog::capture(int k, bool append) {
@@ -364,7 +525,7 @@ void ControlsDialog::capture(int k, bool append) {
     if (!append) l.clear();
     if (!l.contains(d.result())) l << d.result();
     m_dirty.insert(m_family);
-    refreshRow(k);
+    refreshRows();
     refreshHighlights();
 }
 
@@ -378,19 +539,28 @@ void ControlsDialog::source(const QString &binding, bool on) {
 }
 
 void ControlsDialog::refreshHighlights() {
+    QVector<bool> sectionLit(m_sections.size(), false);
     for (auto &row : m_rows) {
         bool lit = false;
         for (const QString &b : m_edits[m_family].value(QString::fromStdString(row.control.name)))
             if (m_active.contains(b)) lit = true;
+        if (lit) sectionLit[row.section] = true;
         row.label->setStyleSheet(lit ? "QLabel { background: palette(highlight); color: palette(highlighted-text); "
                                        "border-radius: 3px; padding: 2px 6px; }"
                                      : "QLabel { padding: 2px 6px; }");
     }
+    // a folded section lights its header
+    for (int s = 0; s < m_sections.size(); s++)
+        m_sections[s].header->setStyleSheet(sectionLit[s] && m_sections[s].body->isHidden()
+                                                ? "QToolButton { background: palette(highlight); color: palette(highlighted-text); "
+                                                  "border-radius: 3px; }"
+                                                : QString());
 }
 
 bool ControlsDialog::eventFilter(QObject *o, QEvent *e) {
     // Keys pressed while this dialog is in front test the bindings (and do nothing else)
-    if ((e->type() == QEvent::KeyPress || e->type() == QEvent::KeyRelease) && !m_capturing && isActiveWindow()) {
+    if ((e->type() == QEvent::KeyPress || e->type() == QEvent::KeyRelease) && !m_capturing && isActiveWindow() &&
+        !QApplication::activePopupWidget()) {   // an open menu keeps its keys
         auto *k = static_cast<QKeyEvent *>(e);
         if (k->key() == Qt::Key_Escape) return QDialog::eventFilter(o, e);
         if (!k->isAutoRepeat()) {

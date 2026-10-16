@@ -145,9 +145,9 @@ royale's **Interlacing - Toggle**.
 
 Joysticks are opened at start and when plugged in. The console lists them as `joy0`, `joy1` and so on.
 
-The defaults map `joy0` buttons 0–4 to the keys, axis 0 to the turntable, button 7 to the pedal, 8 to start and 9 to coin.
+The defaults map `joy0` buttons 0–4 to the keys (0–6 on IIDX), axis 0 to the turntable, button 7 to beatmania III's pedal, 8 to start and 9 to Effect (DJ Main, IIDX); coin is the 5 key.
 
-IIDX-style controllers differ in which button and axis numbers they use. The easiest way to map one is the launcher's **Controls** dialog: click a binding, then press the button or spin the turntable. Pressing anything already bound lights up its row. The dialog saves `~/.config/hiraku/controls/<cabinet>.txt`, which the launcher passes as `--bindings`.
+IIDX-style controllers differ in which button and axis numbers they use. The easiest way to map one is the launcher's **Controls** dialog: click a binding, then press the button or spin the turntable. Pressing anything already bound lights up its name, and a warning sign marks an input bound to two controls of one game. The dialog saves `~/.config/hiraku/controls/<cabinet>.txt`, which the launcher passes as `--bindings`. The beatmania cabinets (DJ Main, IIDX, III) share one file, `beatmania.txt`, and the pop'n music ones (DJ Main, Firebeat, Python) share `popn.txt`: each game uses the controls it has and ignores the rest.
 
 By hand: write a bindings file and pass `--bindings FILE`. See `docs/bindings-bm3.example`; the format is in `runtime/host/input.h`.
 

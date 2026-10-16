@@ -23,7 +23,7 @@ std::vector<Control> make_bm3() {
         c.push_back({P + " Foot", "Foot pedal", g, false, p == 1 ? "key:Space, joy0:button7" : ""});
         c.push_back({p == 1 ? "1 Player Start" : "2 Players Start", "Start", g, false, p == 1 ? "key:1, joy0:button8" : "key:2"});
     }
-    c.push_back({"Coin 1", "Coin", "Cabinet", false, "key:5, joy0:button9"});
+    c.push_back({"Coin 1", "Coin", "Cabinet", false, "key:5"});   // as DJ Main's and IIDX's (their Effect is on button 9)
     c.push_back({"Test", "Test", "Cabinet", false, "key:F2"});
     c.push_back({"Service", "Service", "Cabinet", false, "key:9"});
     return c;
@@ -202,8 +202,8 @@ std::vector<Control> make_djbm() {
         c.push_back({P + " Turntable +", "Turntable + (as a button)", g, false, p == 1 ? "key:Right, key:A" : "key:Up"});
         c.push_back({p == 1 ? "1 Player Start" : "2 Players Start", "Start", g, false, p == 1 ? "key:1, joy0:button8" : "key:2"});
     }
-    c.push_back({"Effect", "Effect", "Cabinet", false, "key:E, joy0:button7"});
-    c.push_back({"Coin 1", "Coin", "Cabinet", false, "key:5, joy0:button9"});
+    c.push_back({"Effect", "Effect", "Cabinet", false, "key:E, joy0:button9"});   // as IIDX's (E2 on its controllers)
+    c.push_back({"Coin 1", "Coin", "Cabinet", false, "key:5"});
     c.push_back({"Test", "Test", "Cabinet", false, "key:F2"});
     c.push_back({"Service", "Service", "Cabinet", false, "key:9"});
     c.push_back({"Reset", "Reset switch", "Cabinet", false, ""});
@@ -237,7 +237,9 @@ std::vector<Control> make_djpstage() {
 // beatmania IIDX on Twinkle (MAME twinkle.cpp INPUT_PORTS twinkle): seven keys and a turntable per
 // player (the turntable is an 8-bit position, "1P Table"/"2P Table" in MAME), Start, VEFX, Effect,
 // and the effector's five sliders (4 bits each). Keys as in the usual keyboard layout: Z S X D C F V
-// and M K , L . ; / ; a USB IIDX controller's keys on buttons 0-6.
+// and M K , L . ; / ; a USB IIDX controller's keys on buttons 0-6. The keys go by the other beatmania
+// cabinets' names ("P1 Button 1", which the Twinkle core takes as MAME's "P1-1 (SW1)"), and the
+// inputs they share have the same defaults: the launcher gives all three one bindings file.
 std::vector<Control> make_iidx() {
     std::vector<Control> c;
     const char *p1keys[7] = {"key:Z, joy0:button0", "key:S, joy0:button1", "key:X, joy0:button2", "key:D, joy0:button3",
@@ -246,8 +248,7 @@ std::vector<Control> make_iidx() {
     for (int p = 1; p <= 2; p++) {
         std::string P = "P" + std::to_string(p), g = "Player " + std::to_string(p);
         for (int k = 1; k <= 7; k++)
-            c.push_back({P + "-" + std::to_string(k) + " (SW" + std::to_string((p - 1) * 7 + k) + ")", "Key " + std::to_string(k), g,
-                         false, p == 1 ? p1keys[k - 1] : p2keys[k - 1]});
+            c.push_back({P + " Button " + std::to_string(k), "Key " + std::to_string(k), g, false, p == 1 ? p1keys[k - 1] : p2keys[k - 1]});
         c.push_back({P + " Turntable", "Turntable (analog axis)", g, true, p == 1 ? "joy0:axis0" : ""});
         c.push_back({P + " Turntable -", "Turntable − (as a button)", g, false, p == 1 ? "key:Left, key:Left Shift" : "key:Down"});
         c.push_back({P + " Turntable +", "Turntable + (as a button)", g, false, p == 1 ? "key:Right, key:A" : "key:Up"});

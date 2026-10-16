@@ -1462,7 +1462,7 @@ The game already tells the player what to play. HIRAKU adds the picture. The mac
 
 ### Progress (2026-10-13): TW-2, playable
 
-- **Controls** (`cabinet.cpp`, family `iidx`), by MAME's names: the 14 keys (`P1-1 (SW1)` …), the turntables (an analog axis, or two buttons each, through the host's turntable path: 1024 counts a turn become MAME's 8-bit "1P Table"/"2P Table" position, as DJ Main's dials), Start ×2, Effect, VEFX, the five effector sliders, Coin, Test, Service. Keyboard defaults Z S X D C F V and M K , L . ; /; a USB IIDX controller's keys on buttons 0–6.
+- **Controls** (`cabinet.cpp`, family `iidx`), by MAME's names: the 14 keys (`P1-1 (SW1)` …; bindings files name them as the other beatmania cabinets do, `P1 Button 1` …, since the launcher gives the three one file), the turntables (an analog axis, or two buttons each, through the host's turntable path: 1024 counts a turn become MAME's 8-bit "1P Table"/"2P Table" position, as DJ Main's dials), Start ×2, Effect, VEFX, the five effector sliders, Coin, Test, Service. Keyboard defaults Z S X D C F V and M K , L . ; /; a USB IIDX controller's keys on buttons 0–6.
 - **Lamps:** the key lamps (`key_led_w`), Start, VEFX, Effect and credit (I/O 0x37), the eight spotlights (0x87, in MAME's order), the neon (0x8f), the board's LEDs, by name for HID LEDs and the lights socket.
 - **The 16-segment display** as text (`Core::display_text()`, new and optional), shown in the window title: it scrolls "BEATMANIA 2DX 3RD STYLE", then the mode prompt. `HK_TW_DISPLAY=1` prints its changes.
 - **The launcher** lists Twinkle games (an IIDX icon, the ingest instructions); docs/PLAY.md has a Twinkle section.
