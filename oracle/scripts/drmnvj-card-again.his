@@ -1,0 +1,2681 @@
+# DrumMania V (drmnvj), after drmnvj-card-new: the registered card again. cardutil check (registered:
+# the password, the gdid), the name from the card, the password 1234, information and gametop get,
+# two songs, gameend regist (the server's records add up), the card given back.
+game drmnvj
+at 11000 press "Coin 1" 8
+at 11040 press "Coin 1" 8
+at 11200 press "Card" 8
+at 11400 press "1 Player Start" 8
+at 11900 press "Keypad 1" 8
+at 11930 press "Keypad 2" 8
+at 11960 press "Keypad 3" 8
+at 11990 press "Keypad 4" 8
+at 14000 press "Hi-Hat" 3
+at 14006 press "Snare" 3
+at 14012 press "High Tom" 3
+at 14018 press "Low Tom" 3
+at 14024 press "Cymbal" 3
+at 14030 press "Bass Drum" 3
+at 14036 press "Hi-Hat" 3
+at 14042 press "Snare" 3
+at 14048 press "High Tom" 3
+at 14054 press "Low Tom" 3
+at 14060 press "Cymbal" 3
+at 14066 press "Bass Drum" 3
+at 14072 press "Hi-Hat" 3
+at 14078 press "Snare" 3
+at 14084 press "High Tom" 3
+at 14090 press "Low Tom" 3
+at 14096 press "Cymbal" 3
+at 14102 press "Bass Drum" 3
+at 14108 press "Hi-Hat" 3
+at 14114 press "Snare" 3
+at 14120 press "High Tom" 3
+at 14126 press "Low Tom" 3
+at 14132 press "Cymbal" 3
+at 14138 press "Bass Drum" 3
+at 14144 press "Hi-Hat" 3
+at 14150 press "Snare" 3
+at 14156 press "High Tom" 3
+at 14162 press "Low Tom" 3
+at 14168 press "Cymbal" 3
+at 14174 press "Bass Drum" 3
+at 14180 press "Hi-Hat" 3
+at 14186 press "Snare" 3
+at 14192 press "High Tom" 3
+at 14198 press "Low Tom" 3
+at 14204 press "Cymbal" 3
+at 14210 press "Bass Drum" 3
+at 14216 press "Hi-Hat" 3
+at 14222 press "Snare" 3
+at 14228 press "High Tom" 3
+at 14234 press "Low Tom" 3
+at 14240 press "Cymbal" 3
+at 14246 press "Bass Drum" 3
+at 14252 press "Hi-Hat" 3
+at 14258 press "Snare" 3
+at 14264 press "High Tom" 3
+at 14270 press "Low Tom" 3
+at 14276 press "Cymbal" 3
+at 14282 press "Bass Drum" 3
+at 14288 press "Hi-Hat" 3
+at 14294 press "Snare" 3
+at 14300 press "High Tom" 3
+at 14306 press "Low Tom" 3
+at 14312 press "Cymbal" 3
+at 14318 press "Bass Drum" 3
+at 14324 press "Hi-Hat" 3
+at 14330 press "Snare" 3
+at 14336 press "High Tom" 3
+at 14342 press "Low Tom" 3
+at 14348 press "Cymbal" 3
+at 14354 press "Bass Drum" 3
+at 14360 press "Hi-Hat" 3
+at 14366 press "Snare" 3
+at 14372 press "High Tom" 3
+at 14378 press "Low Tom" 3
+at 14384 press "Cymbal" 3
+at 14390 press "Bass Drum" 3
+at 14396 press "Hi-Hat" 3
+at 14402 press "Snare" 3
+at 14408 press "High Tom" 3
+at 14414 press "Low Tom" 3
+at 14420 press "Cymbal" 3
+at 14426 press "Bass Drum" 3
+at 14432 press "Hi-Hat" 3
+at 14438 press "Snare" 3
+at 14444 press "High Tom" 3
+at 14450 press "Low Tom" 3
+at 14456 press "Cymbal" 3
+at 14462 press "Bass Drum" 3
+at 14468 press "Hi-Hat" 3
+at 14474 press "Snare" 3
+at 14480 press "High Tom" 3
+at 14486 press "Low Tom" 3
+at 14492 press "Cymbal" 3
+at 14498 press "Bass Drum" 3
+at 14504 press "Hi-Hat" 3
+at 14510 press "Snare" 3
+at 14516 press "High Tom" 3
+at 14522 press "Low Tom" 3
+at 14528 press "Cymbal" 3
+at 14534 press "Bass Drum" 3
+at 14540 press "Hi-Hat" 3
+at 14546 press "Snare" 3
+at 14552 press "High Tom" 3
+at 14558 press "Low Tom" 3
+at 14564 press "Cymbal" 3
+at 14570 press "Bass Drum" 3
+at 14576 press "Hi-Hat" 3
+at 14582 press "Snare" 3
+at 14588 press "High Tom" 3
+at 14594 press "Low Tom" 3
+at 14600 press "Cymbal" 3
+at 14606 press "Bass Drum" 3
+at 14612 press "Hi-Hat" 3
+at 14618 press "Snare" 3
+at 14624 press "High Tom" 3
+at 14630 press "Low Tom" 3
+at 14636 press "Cymbal" 3
+at 14642 press "Bass Drum" 3
+at 14648 press "Hi-Hat" 3
+at 14654 press "Snare" 3
+at 14660 press "High Tom" 3
+at 14666 press "Low Tom" 3
+at 14672 press "Cymbal" 3
+at 14678 press "Bass Drum" 3
+at 14684 press "Hi-Hat" 3
+at 14690 press "Snare" 3
+at 14696 press "High Tom" 3
+at 14702 press "Low Tom" 3
+at 14708 press "Cymbal" 3
+at 14714 press "Bass Drum" 3
+at 14720 press "Hi-Hat" 3
+at 14726 press "Snare" 3
+at 14732 press "High Tom" 3
+at 14738 press "Low Tom" 3
+at 14744 press "Cymbal" 3
+at 14750 press "Bass Drum" 3
+at 14756 press "Hi-Hat" 3
+at 14762 press "Snare" 3
+at 14768 press "High Tom" 3
+at 14774 press "Low Tom" 3
+at 14780 press "Cymbal" 3
+at 14786 press "Bass Drum" 3
+at 14792 press "Hi-Hat" 3
+at 14798 press "Snare" 3
+at 14804 press "High Tom" 3
+at 14810 press "Low Tom" 3
+at 14816 press "Cymbal" 3
+at 14822 press "Bass Drum" 3
+at 14828 press "Hi-Hat" 3
+at 14834 press "Snare" 3
+at 14840 press "High Tom" 3
+at 14846 press "Low Tom" 3
+at 14852 press "Cymbal" 3
+at 14858 press "Bass Drum" 3
+at 14864 press "Hi-Hat" 3
+at 14870 press "Snare" 3
+at 14876 press "High Tom" 3
+at 14882 press "Low Tom" 3
+at 14888 press "Cymbal" 3
+at 14894 press "Bass Drum" 3
+at 14900 press "Hi-Hat" 3
+at 14906 press "Snare" 3
+at 14912 press "High Tom" 3
+at 14918 press "Low Tom" 3
+at 14924 press "Cymbal" 3
+at 14930 press "Bass Drum" 3
+at 14936 press "Hi-Hat" 3
+at 14942 press "Snare" 3
+at 14948 press "High Tom" 3
+at 14954 press "Low Tom" 3
+at 14960 press "Cymbal" 3
+at 14966 press "Bass Drum" 3
+at 14972 press "Hi-Hat" 3
+at 14978 press "Snare" 3
+at 14984 press "High Tom" 3
+at 14990 press "Low Tom" 3
+at 14996 press "Cymbal" 3
+at 15002 press "Bass Drum" 3
+at 15008 press "Hi-Hat" 3
+at 15014 press "Snare" 3
+at 15020 press "High Tom" 3
+at 15026 press "Low Tom" 3
+at 15032 press "Cymbal" 3
+at 15038 press "Bass Drum" 3
+at 15044 press "Hi-Hat" 3
+at 15050 press "Snare" 3
+at 15056 press "High Tom" 3
+at 15062 press "Low Tom" 3
+at 15068 press "Cymbal" 3
+at 15074 press "Bass Drum" 3
+at 15080 press "Hi-Hat" 3
+at 15086 press "Snare" 3
+at 15092 press "High Tom" 3
+at 15098 press "Low Tom" 3
+at 15104 press "Cymbal" 3
+at 15110 press "Bass Drum" 3
+at 15116 press "Hi-Hat" 3
+at 15122 press "Snare" 3
+at 15128 press "High Tom" 3
+at 15134 press "Low Tom" 3
+at 15140 press "Cymbal" 3
+at 15146 press "Bass Drum" 3
+at 15152 press "Hi-Hat" 3
+at 15158 press "Snare" 3
+at 15164 press "High Tom" 3
+at 15170 press "Low Tom" 3
+at 15176 press "Cymbal" 3
+at 15182 press "Bass Drum" 3
+at 15188 press "Hi-Hat" 3
+at 15194 press "Snare" 3
+at 15200 press "High Tom" 3
+at 15206 press "Low Tom" 3
+at 15212 press "Cymbal" 3
+at 15218 press "Bass Drum" 3
+at 15224 press "Hi-Hat" 3
+at 15230 press "Snare" 3
+at 15236 press "High Tom" 3
+at 15242 press "Low Tom" 3
+at 15248 press "Cymbal" 3
+at 15254 press "Bass Drum" 3
+at 15260 press "Hi-Hat" 3
+at 15266 press "Snare" 3
+at 15272 press "High Tom" 3
+at 15278 press "Low Tom" 3
+at 15284 press "Cymbal" 3
+at 15290 press "Bass Drum" 3
+at 15296 press "Hi-Hat" 3
+at 15302 press "Snare" 3
+at 15308 press "High Tom" 3
+at 15314 press "Low Tom" 3
+at 15320 press "Cymbal" 3
+at 15326 press "Bass Drum" 3
+at 15332 press "Hi-Hat" 3
+at 15338 press "Snare" 3
+at 15344 press "High Tom" 3
+at 15350 press "Low Tom" 3
+at 15356 press "Cymbal" 3
+at 15362 press "Bass Drum" 3
+at 15368 press "Hi-Hat" 3
+at 15374 press "Snare" 3
+at 15380 press "High Tom" 3
+at 15386 press "Low Tom" 3
+at 15392 press "Cymbal" 3
+at 15398 press "Bass Drum" 3
+at 15404 press "Hi-Hat" 3
+at 15410 press "Snare" 3
+at 15416 press "High Tom" 3
+at 15422 press "Low Tom" 3
+at 15428 press "Cymbal" 3
+at 15434 press "Bass Drum" 3
+at 15440 press "Hi-Hat" 3
+at 15446 press "Snare" 3
+at 15452 press "High Tom" 3
+at 15458 press "Low Tom" 3
+at 15464 press "Cymbal" 3
+at 15470 press "Bass Drum" 3
+at 15476 press "Hi-Hat" 3
+at 15482 press "Snare" 3
+at 15488 press "High Tom" 3
+at 15494 press "Low Tom" 3
+at 15500 press "Cymbal" 3
+at 15506 press "Bass Drum" 3
+at 15512 press "Hi-Hat" 3
+at 15518 press "Snare" 3
+at 15524 press "High Tom" 3
+at 15530 press "Low Tom" 3
+at 15536 press "Cymbal" 3
+at 15542 press "Bass Drum" 3
+at 15548 press "Hi-Hat" 3
+at 15554 press "Snare" 3
+at 15560 press "High Tom" 3
+at 15566 press "Low Tom" 3
+at 15572 press "Cymbal" 3
+at 15578 press "Bass Drum" 3
+at 15584 press "Hi-Hat" 3
+at 15590 press "Snare" 3
+at 15596 press "High Tom" 3
+at 15602 press "Low Tom" 3
+at 15608 press "Cymbal" 3
+at 15614 press "Bass Drum" 3
+at 15620 press "Hi-Hat" 3
+at 15626 press "Snare" 3
+at 15632 press "High Tom" 3
+at 15638 press "Low Tom" 3
+at 15644 press "Cymbal" 3
+at 15650 press "Bass Drum" 3
+at 15656 press "Hi-Hat" 3
+at 15662 press "Snare" 3
+at 15668 press "High Tom" 3
+at 15674 press "Low Tom" 3
+at 15680 press "Cymbal" 3
+at 15686 press "Bass Drum" 3
+at 15692 press "Hi-Hat" 3
+at 15698 press "Snare" 3
+at 15704 press "High Tom" 3
+at 15710 press "Low Tom" 3
+at 15716 press "Cymbal" 3
+at 15722 press "Bass Drum" 3
+at 15728 press "Hi-Hat" 3
+at 15734 press "Snare" 3
+at 15740 press "High Tom" 3
+at 15746 press "Low Tom" 3
+at 15752 press "Cymbal" 3
+at 15758 press "Bass Drum" 3
+at 15764 press "Hi-Hat" 3
+at 15770 press "Snare" 3
+at 15776 press "High Tom" 3
+at 15782 press "Low Tom" 3
+at 15788 press "Cymbal" 3
+at 15794 press "Bass Drum" 3
+at 15800 press "Hi-Hat" 3
+at 15806 press "Snare" 3
+at 15812 press "High Tom" 3
+at 15818 press "Low Tom" 3
+at 15824 press "Cymbal" 3
+at 15830 press "Bass Drum" 3
+at 15836 press "Hi-Hat" 3
+at 15842 press "Snare" 3
+at 15848 press "High Tom" 3
+at 15854 press "Low Tom" 3
+at 15860 press "Cymbal" 3
+at 15866 press "Bass Drum" 3
+at 15872 press "Hi-Hat" 3
+at 15878 press "Snare" 3
+at 15884 press "High Tom" 3
+at 15890 press "Low Tom" 3
+at 15896 press "Cymbal" 3
+at 15902 press "Bass Drum" 3
+at 15908 press "Hi-Hat" 3
+at 15914 press "Snare" 3
+at 15920 press "High Tom" 3
+at 15926 press "Low Tom" 3
+at 15932 press "Cymbal" 3
+at 15938 press "Bass Drum" 3
+at 15944 press "Hi-Hat" 3
+at 15950 press "Snare" 3
+at 15956 press "High Tom" 3
+at 15962 press "Low Tom" 3
+at 15968 press "Cymbal" 3
+at 15974 press "Bass Drum" 3
+at 15980 press "Hi-Hat" 3
+at 15986 press "Snare" 3
+at 15992 press "High Tom" 3
+at 15998 press "Low Tom" 3
+at 16004 press "Cymbal" 3
+at 16010 press "Bass Drum" 3
+at 16016 press "Hi-Hat" 3
+at 16022 press "Snare" 3
+at 16028 press "High Tom" 3
+at 16034 press "Low Tom" 3
+at 16040 press "Cymbal" 3
+at 16046 press "Bass Drum" 3
+at 16052 press "Hi-Hat" 3
+at 16058 press "Snare" 3
+at 16064 press "High Tom" 3
+at 16070 press "Low Tom" 3
+at 16076 press "Cymbal" 3
+at 16082 press "Bass Drum" 3
+at 16088 press "Hi-Hat" 3
+at 16094 press "Snare" 3
+at 16100 press "High Tom" 3
+at 16106 press "Low Tom" 3
+at 16112 press "Cymbal" 3
+at 16118 press "Bass Drum" 3
+at 16124 press "Hi-Hat" 3
+at 16130 press "Snare" 3
+at 16136 press "High Tom" 3
+at 16142 press "Low Tom" 3
+at 16148 press "Cymbal" 3
+at 16154 press "Bass Drum" 3
+at 16160 press "Hi-Hat" 3
+at 16166 press "Snare" 3
+at 16172 press "High Tom" 3
+at 16178 press "Low Tom" 3
+at 16184 press "Cymbal" 3
+at 16190 press "Bass Drum" 3
+at 16196 press "Hi-Hat" 3
+at 16202 press "Snare" 3
+at 16208 press "High Tom" 3
+at 16214 press "Low Tom" 3
+at 16220 press "Cymbal" 3
+at 16226 press "Bass Drum" 3
+at 16232 press "Hi-Hat" 3
+at 16238 press "Snare" 3
+at 16244 press "High Tom" 3
+at 16250 press "Low Tom" 3
+at 16256 press "Cymbal" 3
+at 16262 press "Bass Drum" 3
+at 16268 press "Hi-Hat" 3
+at 16274 press "Snare" 3
+at 16280 press "High Tom" 3
+at 16286 press "Low Tom" 3
+at 16292 press "Cymbal" 3
+at 16298 press "Bass Drum" 3
+at 16304 press "Hi-Hat" 3
+at 16310 press "Snare" 3
+at 16316 press "High Tom" 3
+at 16322 press "Low Tom" 3
+at 16328 press "Cymbal" 3
+at 16334 press "Bass Drum" 3
+at 16340 press "Hi-Hat" 3
+at 16346 press "Snare" 3
+at 16352 press "High Tom" 3
+at 16358 press "Low Tom" 3
+at 16364 press "Cymbal" 3
+at 16370 press "Bass Drum" 3
+at 16376 press "Hi-Hat" 3
+at 16382 press "Snare" 3
+at 16388 press "High Tom" 3
+at 16394 press "Low Tom" 3
+at 16400 press "Cymbal" 3
+at 16406 press "Bass Drum" 3
+at 16412 press "Hi-Hat" 3
+at 16418 press "Snare" 3
+at 16424 press "High Tom" 3
+at 16430 press "Low Tom" 3
+at 16436 press "Cymbal" 3
+at 16442 press "Bass Drum" 3
+at 16448 press "Hi-Hat" 3
+at 16454 press "Snare" 3
+at 16460 press "High Tom" 3
+at 16466 press "Low Tom" 3
+at 16472 press "Cymbal" 3
+at 16478 press "Bass Drum" 3
+at 16484 press "Hi-Hat" 3
+at 16490 press "Snare" 3
+at 16496 press "High Tom" 3
+at 16502 press "Low Tom" 3
+at 16508 press "Cymbal" 3
+at 16514 press "Bass Drum" 3
+at 16520 press "Hi-Hat" 3
+at 16526 press "Snare" 3
+at 16532 press "High Tom" 3
+at 16538 press "Low Tom" 3
+at 16544 press "Cymbal" 3
+at 16550 press "Bass Drum" 3
+at 16556 press "Hi-Hat" 3
+at 16562 press "Snare" 3
+at 16568 press "High Tom" 3
+at 16574 press "Low Tom" 3
+at 16580 press "Cymbal" 3
+at 16586 press "Bass Drum" 3
+at 16592 press "Hi-Hat" 3
+at 16598 press "Snare" 3
+at 16604 press "High Tom" 3
+at 16610 press "Low Tom" 3
+at 16616 press "Cymbal" 3
+at 16622 press "Bass Drum" 3
+at 16628 press "Hi-Hat" 3
+at 16634 press "Snare" 3
+at 16640 press "High Tom" 3
+at 16646 press "Low Tom" 3
+at 16652 press "Cymbal" 3
+at 16658 press "Bass Drum" 3
+at 16664 press "Hi-Hat" 3
+at 16670 press "Snare" 3
+at 16676 press "High Tom" 3
+at 16682 press "Low Tom" 3
+at 16688 press "Cymbal" 3
+at 16694 press "Bass Drum" 3
+at 16700 press "Hi-Hat" 3
+at 16706 press "Snare" 3
+at 16712 press "High Tom" 3
+at 16718 press "Low Tom" 3
+at 16724 press "Cymbal" 3
+at 16730 press "Bass Drum" 3
+at 16736 press "Hi-Hat" 3
+at 16742 press "Snare" 3
+at 16748 press "High Tom" 3
+at 16754 press "Low Tom" 3
+at 16760 press "Cymbal" 3
+at 16766 press "Bass Drum" 3
+at 16772 press "Hi-Hat" 3
+at 16778 press "Snare" 3
+at 16784 press "High Tom" 3
+at 16790 press "Low Tom" 3
+at 16796 press "Cymbal" 3
+at 16802 press "Bass Drum" 3
+at 16808 press "Hi-Hat" 3
+at 16814 press "Snare" 3
+at 16820 press "High Tom" 3
+at 16826 press "Low Tom" 3
+at 16832 press "Cymbal" 3
+at 16838 press "Bass Drum" 3
+at 16844 press "Hi-Hat" 3
+at 16850 press "Snare" 3
+at 16856 press "High Tom" 3
+at 16862 press "Low Tom" 3
+at 16868 press "Cymbal" 3
+at 16874 press "Bass Drum" 3
+at 16880 press "Hi-Hat" 3
+at 16886 press "Snare" 3
+at 16892 press "High Tom" 3
+at 16898 press "Low Tom" 3
+at 16904 press "Cymbal" 3
+at 16910 press "Bass Drum" 3
+at 16916 press "Hi-Hat" 3
+at 16922 press "Snare" 3
+at 16928 press "High Tom" 3
+at 16934 press "Low Tom" 3
+at 16940 press "Cymbal" 3
+at 16946 press "Bass Drum" 3
+at 16952 press "Hi-Hat" 3
+at 16958 press "Snare" 3
+at 16964 press "High Tom" 3
+at 16970 press "Low Tom" 3
+at 16976 press "Cymbal" 3
+at 16982 press "Bass Drum" 3
+at 16988 press "Hi-Hat" 3
+at 16994 press "Snare" 3
+at 17000 press "High Tom" 3
+at 17006 press "Low Tom" 3
+at 17012 press "Cymbal" 3
+at 17018 press "Bass Drum" 3
+at 17024 press "Hi-Hat" 3
+at 17030 press "Snare" 3
+at 17036 press "High Tom" 3
+at 17042 press "Low Tom" 3
+at 17048 press "Cymbal" 3
+at 17054 press "Bass Drum" 3
+at 17060 press "Hi-Hat" 3
+at 17066 press "Snare" 3
+at 17072 press "High Tom" 3
+at 17078 press "Low Tom" 3
+at 17084 press "Cymbal" 3
+at 17090 press "Bass Drum" 3
+at 17096 press "Hi-Hat" 3
+at 17102 press "Snare" 3
+at 17108 press "High Tom" 3
+at 17114 press "Low Tom" 3
+at 17120 press "Cymbal" 3
+at 17126 press "Bass Drum" 3
+at 17132 press "Hi-Hat" 3
+at 17138 press "Snare" 3
+at 17144 press "High Tom" 3
+at 17150 press "Low Tom" 3
+at 17156 press "Cymbal" 3
+at 17162 press "Bass Drum" 3
+at 17168 press "Hi-Hat" 3
+at 17174 press "Snare" 3
+at 17180 press "High Tom" 3
+at 17186 press "Low Tom" 3
+at 17192 press "Cymbal" 3
+at 17198 press "Bass Drum" 3
+at 17204 press "Hi-Hat" 3
+at 17210 press "Snare" 3
+at 17216 press "High Tom" 3
+at 17222 press "Low Tom" 3
+at 17228 press "Cymbal" 3
+at 17234 press "Bass Drum" 3
+at 17240 press "Hi-Hat" 3
+at 17246 press "Snare" 3
+at 17252 press "High Tom" 3
+at 17258 press "Low Tom" 3
+at 17264 press "Cymbal" 3
+at 17270 press "Bass Drum" 3
+at 17276 press "Hi-Hat" 3
+at 17282 press "Snare" 3
+at 17288 press "High Tom" 3
+at 17294 press "Low Tom" 3
+at 17300 press "Cymbal" 3
+at 17306 press "Bass Drum" 3
+at 17312 press "Hi-Hat" 3
+at 17318 press "Snare" 3
+at 17324 press "High Tom" 3
+at 17330 press "Low Tom" 3
+at 17336 press "Cymbal" 3
+at 17342 press "Bass Drum" 3
+at 17348 press "Hi-Hat" 3
+at 17354 press "Snare" 3
+at 17360 press "High Tom" 3
+at 17366 press "Low Tom" 3
+at 17372 press "Cymbal" 3
+at 17378 press "Bass Drum" 3
+at 17384 press "Hi-Hat" 3
+at 17390 press "Snare" 3
+at 17396 press "High Tom" 3
+at 17402 press "Low Tom" 3
+at 17408 press "Cymbal" 3
+at 17414 press "Bass Drum" 3
+at 17420 press "Hi-Hat" 3
+at 17426 press "Snare" 3
+at 17432 press "High Tom" 3
+at 17438 press "Low Tom" 3
+at 17444 press "Cymbal" 3
+at 17450 press "Bass Drum" 3
+at 17456 press "Hi-Hat" 3
+at 17462 press "Snare" 3
+at 17468 press "High Tom" 3
+at 17474 press "Low Tom" 3
+at 17480 press "Cymbal" 3
+at 17486 press "Bass Drum" 3
+at 17492 press "Hi-Hat" 3
+at 17498 press "Snare" 3
+at 17504 press "High Tom" 3
+at 17510 press "Low Tom" 3
+at 17516 press "Cymbal" 3
+at 17522 press "Bass Drum" 3
+at 17528 press "Hi-Hat" 3
+at 17534 press "Snare" 3
+at 17540 press "High Tom" 3
+at 17546 press "Low Tom" 3
+at 17552 press "Cymbal" 3
+at 17558 press "Bass Drum" 3
+at 17564 press "Hi-Hat" 3
+at 17570 press "Snare" 3
+at 17576 press "High Tom" 3
+at 17582 press "Low Tom" 3
+at 17588 press "Cymbal" 3
+at 17594 press "Bass Drum" 3
+at 17600 press "Hi-Hat" 3
+at 17606 press "Snare" 3
+at 17612 press "High Tom" 3
+at 17618 press "Low Tom" 3
+at 17624 press "Cymbal" 3
+at 17630 press "Bass Drum" 3
+at 17636 press "Hi-Hat" 3
+at 17642 press "Snare" 3
+at 17648 press "High Tom" 3
+at 17654 press "Low Tom" 3
+at 17660 press "Cymbal" 3
+at 17666 press "Bass Drum" 3
+at 17672 press "Hi-Hat" 3
+at 17678 press "Snare" 3
+at 17684 press "High Tom" 3
+at 17690 press "Low Tom" 3
+at 17696 press "Cymbal" 3
+at 17702 press "Bass Drum" 3
+at 17708 press "Hi-Hat" 3
+at 17714 press "Snare" 3
+at 17720 press "High Tom" 3
+at 17726 press "Low Tom" 3
+at 17732 press "Cymbal" 3
+at 17738 press "Bass Drum" 3
+at 17744 press "Hi-Hat" 3
+at 17750 press "Snare" 3
+at 17756 press "High Tom" 3
+at 17762 press "Low Tom" 3
+at 17768 press "Cymbal" 3
+at 17774 press "Bass Drum" 3
+at 17780 press "Hi-Hat" 3
+at 17786 press "Snare" 3
+at 17792 press "High Tom" 3
+at 17798 press "Low Tom" 3
+at 17804 press "Cymbal" 3
+at 17810 press "Bass Drum" 3
+at 17816 press "Hi-Hat" 3
+at 17822 press "Snare" 3
+at 17828 press "High Tom" 3
+at 17834 press "Low Tom" 3
+at 17840 press "Cymbal" 3
+at 17846 press "Bass Drum" 3
+at 17852 press "Hi-Hat" 3
+at 17858 press "Snare" 3
+at 17864 press "High Tom" 3
+at 17870 press "Low Tom" 3
+at 17876 press "Cymbal" 3
+at 17882 press "Bass Drum" 3
+at 17888 press "Hi-Hat" 3
+at 17894 press "Snare" 3
+at 17900 press "High Tom" 3
+at 17906 press "Low Tom" 3
+at 17912 press "Cymbal" 3
+at 17918 press "Bass Drum" 3
+at 17924 press "Hi-Hat" 3
+at 17930 press "Snare" 3
+at 17936 press "High Tom" 3
+at 17942 press "Low Tom" 3
+at 17948 press "Cymbal" 3
+at 17954 press "Bass Drum" 3
+at 17960 press "Hi-Hat" 3
+at 17966 press "Snare" 3
+at 17972 press "High Tom" 3
+at 17978 press "Low Tom" 3
+at 17984 press "Cymbal" 3
+at 17990 press "Bass Drum" 3
+at 17996 press "Hi-Hat" 3
+at 18002 press "Snare" 3
+at 18008 press "High Tom" 3
+at 18014 press "Low Tom" 3
+at 18020 press "Cymbal" 3
+at 18026 press "Bass Drum" 3
+at 18032 press "Hi-Hat" 3
+at 18038 press "Snare" 3
+at 18044 press "High Tom" 3
+at 18050 press "Low Tom" 3
+at 18056 press "Cymbal" 3
+at 18062 press "Bass Drum" 3
+at 18068 press "Hi-Hat" 3
+at 18074 press "Snare" 3
+at 18080 press "High Tom" 3
+at 18086 press "Low Tom" 3
+at 18092 press "Cymbal" 3
+at 18098 press "Bass Drum" 3
+at 18104 press "Hi-Hat" 3
+at 18110 press "Snare" 3
+at 18116 press "High Tom" 3
+at 18122 press "Low Tom" 3
+at 18128 press "Cymbal" 3
+at 18134 press "Bass Drum" 3
+at 18140 press "Hi-Hat" 3
+at 18146 press "Snare" 3
+at 18152 press "High Tom" 3
+at 18158 press "Low Tom" 3
+at 18164 press "Cymbal" 3
+at 18170 press "Bass Drum" 3
+at 18176 press "Hi-Hat" 3
+at 18182 press "Snare" 3
+at 18188 press "High Tom" 3
+at 18194 press "Low Tom" 3
+at 18200 press "Cymbal" 3
+at 18206 press "Bass Drum" 3
+at 18212 press "Hi-Hat" 3
+at 18218 press "Snare" 3
+at 18224 press "High Tom" 3
+at 18230 press "Low Tom" 3
+at 18236 press "Cymbal" 3
+at 18242 press "Bass Drum" 3
+at 18248 press "Hi-Hat" 3
+at 18254 press "Snare" 3
+at 18260 press "High Tom" 3
+at 18266 press "Low Tom" 3
+at 18272 press "Cymbal" 3
+at 18278 press "Bass Drum" 3
+at 18284 press "Hi-Hat" 3
+at 18290 press "Snare" 3
+at 18296 press "High Tom" 3
+at 18302 press "Low Tom" 3
+at 18308 press "Cymbal" 3
+at 18314 press "Bass Drum" 3
+at 18320 press "Hi-Hat" 3
+at 18326 press "Snare" 3
+at 18332 press "High Tom" 3
+at 18338 press "Low Tom" 3
+at 18344 press "Cymbal" 3
+at 18350 press "Bass Drum" 3
+at 18356 press "Hi-Hat" 3
+at 18362 press "Snare" 3
+at 18368 press "High Tom" 3
+at 18374 press "Low Tom" 3
+at 18380 press "Cymbal" 3
+at 18386 press "Bass Drum" 3
+at 18392 press "Hi-Hat" 3
+at 18398 press "Snare" 3
+at 18404 press "High Tom" 3
+at 18410 press "Low Tom" 3
+at 18416 press "Cymbal" 3
+at 18422 press "Bass Drum" 3
+at 18428 press "Hi-Hat" 3
+at 18434 press "Snare" 3
+at 18440 press "High Tom" 3
+at 18446 press "Low Tom" 3
+at 18452 press "Cymbal" 3
+at 18458 press "Bass Drum" 3
+at 18464 press "Hi-Hat" 3
+at 18470 press "Snare" 3
+at 18476 press "High Tom" 3
+at 18482 press "Low Tom" 3
+at 18488 press "Cymbal" 3
+at 18494 press "Bass Drum" 3
+at 18500 press "Hi-Hat" 3
+at 18506 press "Snare" 3
+at 18512 press "High Tom" 3
+at 18518 press "Low Tom" 3
+at 18524 press "Cymbal" 3
+at 18530 press "Bass Drum" 3
+at 18536 press "Hi-Hat" 3
+at 18542 press "Snare" 3
+at 18548 press "High Tom" 3
+at 18554 press "Low Tom" 3
+at 18560 press "Cymbal" 3
+at 18566 press "Bass Drum" 3
+at 18572 press "Hi-Hat" 3
+at 18578 press "Snare" 3
+at 18584 press "High Tom" 3
+at 18590 press "Low Tom" 3
+at 18596 press "Cymbal" 3
+at 18602 press "Bass Drum" 3
+at 18608 press "Hi-Hat" 3
+at 18614 press "Snare" 3
+at 18620 press "High Tom" 3
+at 18626 press "Low Tom" 3
+at 18632 press "Cymbal" 3
+at 18638 press "Bass Drum" 3
+at 18644 press "Hi-Hat" 3
+at 18650 press "Snare" 3
+at 18656 press "High Tom" 3
+at 18662 press "Low Tom" 3
+at 18668 press "Cymbal" 3
+at 18674 press "Bass Drum" 3
+at 18680 press "Hi-Hat" 3
+at 18686 press "Snare" 3
+at 18692 press "High Tom" 3
+at 18698 press "Low Tom" 3
+at 18704 press "Cymbal" 3
+at 18710 press "Bass Drum" 3
+at 18716 press "Hi-Hat" 3
+at 18722 press "Snare" 3
+at 18728 press "High Tom" 3
+at 18734 press "Low Tom" 3
+at 18740 press "Cymbal" 3
+at 18746 press "Bass Drum" 3
+at 18752 press "Hi-Hat" 3
+at 18758 press "Snare" 3
+at 18764 press "High Tom" 3
+at 18770 press "Low Tom" 3
+at 18776 press "Cymbal" 3
+at 18782 press "Bass Drum" 3
+at 18788 press "Hi-Hat" 3
+at 18794 press "Snare" 3
+at 18800 press "High Tom" 3
+at 18806 press "Low Tom" 3
+at 18812 press "Cymbal" 3
+at 18818 press "Bass Drum" 3
+at 18824 press "Hi-Hat" 3
+at 18830 press "Snare" 3
+at 18836 press "High Tom" 3
+at 18842 press "Low Tom" 3
+at 18848 press "Cymbal" 3
+at 18854 press "Bass Drum" 3
+at 18860 press "Hi-Hat" 3
+at 18866 press "Snare" 3
+at 18872 press "High Tom" 3
+at 18878 press "Low Tom" 3
+at 18884 press "Cymbal" 3
+at 18890 press "Bass Drum" 3
+at 18896 press "Hi-Hat" 3
+at 18902 press "Snare" 3
+at 18908 press "High Tom" 3
+at 18914 press "Low Tom" 3
+at 18920 press "Cymbal" 3
+at 18926 press "Bass Drum" 3
+at 18932 press "Hi-Hat" 3
+at 18938 press "Snare" 3
+at 18944 press "High Tom" 3
+at 18950 press "Low Tom" 3
+at 18956 press "Cymbal" 3
+at 18962 press "Bass Drum" 3
+at 18968 press "Hi-Hat" 3
+at 18974 press "Snare" 3
+at 18980 press "High Tom" 3
+at 18986 press "Low Tom" 3
+at 18992 press "Cymbal" 3
+at 18998 press "Bass Drum" 3
+at 19004 press "Hi-Hat" 3
+at 19010 press "Snare" 3
+at 19016 press "High Tom" 3
+at 19022 press "Low Tom" 3
+at 19028 press "Cymbal" 3
+at 19034 press "Bass Drum" 3
+at 19040 press "Hi-Hat" 3
+at 19046 press "Snare" 3
+at 19052 press "High Tom" 3
+at 19058 press "Low Tom" 3
+at 19064 press "Cymbal" 3
+at 19070 press "Bass Drum" 3
+at 19076 press "Hi-Hat" 3
+at 19082 press "Snare" 3
+at 19088 press "High Tom" 3
+at 19094 press "Low Tom" 3
+at 19100 press "Cymbal" 3
+at 19106 press "Bass Drum" 3
+at 19112 press "Hi-Hat" 3
+at 19118 press "Snare" 3
+at 19124 press "High Tom" 3
+at 19130 press "Low Tom" 3
+at 19136 press "Cymbal" 3
+at 19142 press "Bass Drum" 3
+at 19148 press "Hi-Hat" 3
+at 19154 press "Snare" 3
+at 19160 press "High Tom" 3
+at 19166 press "Low Tom" 3
+at 19172 press "Cymbal" 3
+at 19178 press "Bass Drum" 3
+at 19184 press "Hi-Hat" 3
+at 19190 press "Snare" 3
+at 19196 press "High Tom" 3
+at 19202 press "Low Tom" 3
+at 19208 press "Cymbal" 3
+at 19214 press "Bass Drum" 3
+at 19220 press "Hi-Hat" 3
+at 19226 press "Snare" 3
+at 19232 press "High Tom" 3
+at 19238 press "Low Tom" 3
+at 19244 press "Cymbal" 3
+at 19250 press "Bass Drum" 3
+at 19256 press "Hi-Hat" 3
+at 19262 press "Snare" 3
+at 19268 press "High Tom" 3
+at 19274 press "Low Tom" 3
+at 19280 press "Cymbal" 3
+at 19286 press "Bass Drum" 3
+at 19292 press "Hi-Hat" 3
+at 19298 press "Snare" 3
+at 19304 press "High Tom" 3
+at 19310 press "Low Tom" 3
+at 19316 press "Cymbal" 3
+at 19322 press "Bass Drum" 3
+at 19328 press "Hi-Hat" 3
+at 19334 press "Snare" 3
+at 19340 press "High Tom" 3
+at 19346 press "Low Tom" 3
+at 19352 press "Cymbal" 3
+at 19358 press "Bass Drum" 3
+at 19364 press "Hi-Hat" 3
+at 19370 press "Snare" 3
+at 19376 press "High Tom" 3
+at 19382 press "Low Tom" 3
+at 19388 press "Cymbal" 3
+at 19394 press "Bass Drum" 3
+at 19400 press "Hi-Hat" 3
+at 19406 press "Snare" 3
+at 19412 press "High Tom" 3
+at 19418 press "Low Tom" 3
+at 19424 press "Cymbal" 3
+at 19430 press "Bass Drum" 3
+at 19436 press "Hi-Hat" 3
+at 19442 press "Snare" 3
+at 19448 press "High Tom" 3
+at 19454 press "Low Tom" 3
+at 19460 press "Cymbal" 3
+at 19466 press "Bass Drum" 3
+at 19472 press "Hi-Hat" 3
+at 19478 press "Snare" 3
+at 19484 press "High Tom" 3
+at 19490 press "Low Tom" 3
+at 19496 press "Cymbal" 3
+at 19502 press "Bass Drum" 3
+at 19508 press "Hi-Hat" 3
+at 19514 press "Snare" 3
+at 19520 press "High Tom" 3
+at 19526 press "Low Tom" 3
+at 19532 press "Cymbal" 3
+at 19538 press "Bass Drum" 3
+at 19544 press "Hi-Hat" 3
+at 19550 press "Snare" 3
+at 19556 press "High Tom" 3
+at 19562 press "Low Tom" 3
+at 19568 press "Cymbal" 3
+at 19574 press "Bass Drum" 3
+at 19580 press "Hi-Hat" 3
+at 19586 press "Snare" 3
+at 19592 press "High Tom" 3
+at 19598 press "Low Tom" 3
+at 19604 press "Cymbal" 3
+at 19610 press "Bass Drum" 3
+at 19616 press "Hi-Hat" 3
+at 19622 press "Snare" 3
+at 19628 press "High Tom" 3
+at 19634 press "Low Tom" 3
+at 19640 press "Cymbal" 3
+at 19646 press "Bass Drum" 3
+at 19652 press "Hi-Hat" 3
+at 19658 press "Snare" 3
+at 19664 press "High Tom" 3
+at 19670 press "Low Tom" 3
+at 19676 press "Cymbal" 3
+at 19682 press "Bass Drum" 3
+at 19688 press "Hi-Hat" 3
+at 19694 press "Snare" 3
+at 19700 press "High Tom" 3
+at 19706 press "Low Tom" 3
+at 19712 press "Cymbal" 3
+at 19718 press "Bass Drum" 3
+at 19724 press "Hi-Hat" 3
+at 19730 press "Snare" 3
+at 19736 press "High Tom" 3
+at 19742 press "Low Tom" 3
+at 19748 press "Cymbal" 3
+at 19754 press "Bass Drum" 3
+at 19760 press "Hi-Hat" 3
+at 19766 press "Snare" 3
+at 19772 press "High Tom" 3
+at 19778 press "Low Tom" 3
+at 19784 press "Cymbal" 3
+at 19790 press "Bass Drum" 3
+at 19796 press "Hi-Hat" 3
+at 19802 press "Snare" 3
+at 19808 press "High Tom" 3
+at 19814 press "Low Tom" 3
+at 19820 press "Cymbal" 3
+at 19826 press "Bass Drum" 3
+at 19832 press "Hi-Hat" 3
+at 19838 press "Snare" 3
+at 19844 press "High Tom" 3
+at 19850 press "Low Tom" 3
+at 19856 press "Cymbal" 3
+at 19862 press "Bass Drum" 3
+at 19868 press "Hi-Hat" 3
+at 19874 press "Snare" 3
+at 19880 press "High Tom" 3
+at 19886 press "Low Tom" 3
+at 19892 press "Cymbal" 3
+at 19898 press "Bass Drum" 3
+at 19904 press "Hi-Hat" 3
+at 19910 press "Snare" 3
+at 19916 press "High Tom" 3
+at 19922 press "Low Tom" 3
+at 19928 press "Cymbal" 3
+at 19934 press "Bass Drum" 3
+at 19940 press "Hi-Hat" 3
+at 19946 press "Snare" 3
+at 19952 press "High Tom" 3
+at 19958 press "Low Tom" 3
+at 19964 press "Cymbal" 3
+at 19970 press "Bass Drum" 3
+at 19976 press "Hi-Hat" 3
+at 19982 press "Snare" 3
+at 19988 press "High Tom" 3
+at 19994 press "Low Tom" 3
+at 20000 press "Cymbal" 3
+at 20006 press "Bass Drum" 3
+at 20012 press "Hi-Hat" 3
+at 20018 press "Snare" 3
+at 20024 press "High Tom" 3
+at 20030 press "Low Tom" 3
+at 20036 press "Cymbal" 3
+at 20042 press "Bass Drum" 3
+at 20048 press "Hi-Hat" 3
+at 20054 press "Snare" 3
+at 20060 press "High Tom" 3
+at 20066 press "Low Tom" 3
+at 20072 press "Cymbal" 3
+at 20078 press "Bass Drum" 3
+at 20084 press "Hi-Hat" 3
+at 20090 press "Snare" 3
+at 20096 press "High Tom" 3
+at 20102 press "Low Tom" 3
+at 20108 press "Cymbal" 3
+at 20114 press "Bass Drum" 3
+at 20120 press "Hi-Hat" 3
+at 20126 press "Snare" 3
+at 20132 press "High Tom" 3
+at 20138 press "Low Tom" 3
+at 20144 press "Cymbal" 3
+at 20150 press "Bass Drum" 3
+at 20156 press "Hi-Hat" 3
+at 20162 press "Snare" 3
+at 20168 press "High Tom" 3
+at 20174 press "Low Tom" 3
+at 20180 press "Cymbal" 3
+at 20186 press "Bass Drum" 3
+at 20192 press "Hi-Hat" 3
+at 20198 press "Snare" 3
+at 20204 press "High Tom" 3
+at 20210 press "Low Tom" 3
+at 20216 press "Cymbal" 3
+at 20222 press "Bass Drum" 3
+at 20228 press "Hi-Hat" 3
+at 20234 press "Snare" 3
+at 20240 press "High Tom" 3
+at 20246 press "Low Tom" 3
+at 20252 press "Cymbal" 3
+at 20258 press "Bass Drum" 3
+at 20264 press "Hi-Hat" 3
+at 20270 press "Snare" 3
+at 20276 press "High Tom" 3
+at 20282 press "Low Tom" 3
+at 20288 press "Cymbal" 3
+at 20294 press "Bass Drum" 3
+at 20300 press "Hi-Hat" 3
+at 20306 press "Snare" 3
+at 20312 press "High Tom" 3
+at 20318 press "Low Tom" 3
+at 20324 press "Cymbal" 3
+at 20330 press "Bass Drum" 3
+at 20336 press "Hi-Hat" 3
+at 20342 press "Snare" 3
+at 20348 press "High Tom" 3
+at 20354 press "Low Tom" 3
+at 20360 press "Cymbal" 3
+at 20366 press "Bass Drum" 3
+at 20372 press "Hi-Hat" 3
+at 20378 press "Snare" 3
+at 20384 press "High Tom" 3
+at 20390 press "Low Tom" 3
+at 20396 press "Cymbal" 3
+at 20402 press "Bass Drum" 3
+at 20408 press "Hi-Hat" 3
+at 20414 press "Snare" 3
+at 20420 press "High Tom" 3
+at 20426 press "Low Tom" 3
+at 20432 press "Cymbal" 3
+at 20438 press "Bass Drum" 3
+at 20444 press "Hi-Hat" 3
+at 20450 press "Snare" 3
+at 20456 press "High Tom" 3
+at 20462 press "Low Tom" 3
+at 20468 press "Cymbal" 3
+at 20474 press "Bass Drum" 3
+at 20480 press "Hi-Hat" 3
+at 20486 press "Snare" 3
+at 20492 press "High Tom" 3
+at 20498 press "Low Tom" 3
+at 20504 press "Cymbal" 3
+at 20510 press "Bass Drum" 3
+at 20516 press "Hi-Hat" 3
+at 20522 press "Snare" 3
+at 20528 press "High Tom" 3
+at 20534 press "Low Tom" 3
+at 20540 press "Cymbal" 3
+at 20546 press "Bass Drum" 3
+at 20552 press "Hi-Hat" 3
+at 20558 press "Snare" 3
+at 20564 press "High Tom" 3
+at 20570 press "Low Tom" 3
+at 20576 press "Cymbal" 3
+at 20582 press "Bass Drum" 3
+at 20588 press "Hi-Hat" 3
+at 20594 press "Snare" 3
+at 20600 press "High Tom" 3
+at 20606 press "Low Tom" 3
+at 20612 press "Cymbal" 3
+at 20618 press "Bass Drum" 3
+at 20624 press "Hi-Hat" 3
+at 20630 press "Snare" 3
+at 20636 press "High Tom" 3
+at 20642 press "Low Tom" 3
+at 20648 press "Cymbal" 3
+at 20654 press "Bass Drum" 3
+at 20660 press "Hi-Hat" 3
+at 20666 press "Snare" 3
+at 20672 press "High Tom" 3
+at 20678 press "Low Tom" 3
+at 20684 press "Cymbal" 3
+at 20690 press "Bass Drum" 3
+at 20696 press "Hi-Hat" 3
+at 20702 press "Snare" 3
+at 20708 press "High Tom" 3
+at 20714 press "Low Tom" 3
+at 20720 press "Cymbal" 3
+at 20726 press "Bass Drum" 3
+at 20732 press "Hi-Hat" 3
+at 20738 press "Snare" 3
+at 20744 press "High Tom" 3
+at 20750 press "Low Tom" 3
+at 20756 press "Cymbal" 3
+at 20762 press "Bass Drum" 3
+at 20768 press "Hi-Hat" 3
+at 20774 press "Snare" 3
+at 20780 press "High Tom" 3
+at 20786 press "Low Tom" 3
+at 20792 press "Cymbal" 3
+at 20798 press "Bass Drum" 3
+at 20804 press "Hi-Hat" 3
+at 20810 press "Snare" 3
+at 20816 press "High Tom" 3
+at 20822 press "Low Tom" 3
+at 20828 press "Cymbal" 3
+at 20834 press "Bass Drum" 3
+at 20840 press "Hi-Hat" 3
+at 20846 press "Snare" 3
+at 20852 press "High Tom" 3
+at 20858 press "Low Tom" 3
+at 20864 press "Cymbal" 3
+at 20870 press "Bass Drum" 3
+at 20876 press "Hi-Hat" 3
+at 20882 press "Snare" 3
+at 20888 press "High Tom" 3
+at 20894 press "Low Tom" 3
+at 20900 press "Cymbal" 3
+at 20906 press "Bass Drum" 3
+at 20912 press "Hi-Hat" 3
+at 20918 press "Snare" 3
+at 20924 press "High Tom" 3
+at 20930 press "Low Tom" 3
+at 20936 press "Cymbal" 3
+at 20942 press "Bass Drum" 3
+at 20948 press "Hi-Hat" 3
+at 20954 press "Snare" 3
+at 20960 press "High Tom" 3
+at 20966 press "Low Tom" 3
+at 20972 press "Cymbal" 3
+at 20978 press "Bass Drum" 3
+at 20984 press "Hi-Hat" 3
+at 20990 press "Snare" 3
+at 20996 press "High Tom" 3
+at 21002 press "Low Tom" 3
+at 21008 press "Cymbal" 3
+at 21014 press "Bass Drum" 3
+at 21020 press "Hi-Hat" 3
+at 21026 press "Snare" 3
+at 21032 press "High Tom" 3
+at 21038 press "Low Tom" 3
+at 21044 press "Cymbal" 3
+at 21050 press "Bass Drum" 3
+at 21056 press "Hi-Hat" 3
+at 21062 press "Snare" 3
+at 21068 press "High Tom" 3
+at 21074 press "Low Tom" 3
+at 21080 press "Cymbal" 3
+at 21086 press "Bass Drum" 3
+at 21092 press "Hi-Hat" 3
+at 21098 press "Snare" 3
+at 21104 press "High Tom" 3
+at 21110 press "Low Tom" 3
+at 21116 press "Cymbal" 3
+at 21122 press "Bass Drum" 3
+at 21128 press "Hi-Hat" 3
+at 21134 press "Snare" 3
+at 21140 press "High Tom" 3
+at 21146 press "Low Tom" 3
+at 21152 press "Cymbal" 3
+at 21158 press "Bass Drum" 3
+at 21164 press "Hi-Hat" 3
+at 21170 press "Snare" 3
+at 21176 press "High Tom" 3
+at 21182 press "Low Tom" 3
+at 21188 press "Cymbal" 3
+at 21194 press "Bass Drum" 3
+at 21200 press "Hi-Hat" 3
+at 21206 press "Snare" 3
+at 21212 press "High Tom" 3
+at 21218 press "Low Tom" 3
+at 21224 press "Cymbal" 3
+at 21230 press "Bass Drum" 3
+at 21236 press "Hi-Hat" 3
+at 21242 press "Snare" 3
+at 21248 press "High Tom" 3
+at 21254 press "Low Tom" 3
+at 21260 press "Cymbal" 3
+at 21266 press "Bass Drum" 3
+at 21272 press "Hi-Hat" 3
+at 21278 press "Snare" 3
+at 21284 press "High Tom" 3
+at 21290 press "Low Tom" 3
+at 21296 press "Cymbal" 3
+at 21302 press "Bass Drum" 3
+at 21308 press "Hi-Hat" 3
+at 21314 press "Snare" 3
+at 21320 press "High Tom" 3
+at 21326 press "Low Tom" 3
+at 21332 press "Cymbal" 3
+at 21338 press "Bass Drum" 3
+at 21344 press "Hi-Hat" 3
+at 21350 press "Snare" 3
+at 21356 press "High Tom" 3
+at 21362 press "Low Tom" 3
+at 21368 press "Cymbal" 3
+at 21374 press "Bass Drum" 3
+at 21380 press "Hi-Hat" 3
+at 21386 press "Snare" 3
+at 21392 press "High Tom" 3
+at 21398 press "Low Tom" 3
+at 21404 press "Cymbal" 3
+at 21410 press "Bass Drum" 3
+at 21416 press "Hi-Hat" 3
+at 21422 press "Snare" 3
+at 21428 press "High Tom" 3
+at 21434 press "Low Tom" 3
+at 21440 press "Cymbal" 3
+at 21446 press "Bass Drum" 3
+at 21452 press "Hi-Hat" 3
+at 21458 press "Snare" 3
+at 21464 press "High Tom" 3
+at 21470 press "Low Tom" 3
+at 21476 press "Cymbal" 3
+at 21482 press "Bass Drum" 3
+at 21488 press "Hi-Hat" 3
+at 21494 press "Snare" 3
+at 21500 press "High Tom" 3
+at 21506 press "Low Tom" 3
+at 21512 press "Cymbal" 3
+at 21518 press "Bass Drum" 3
+at 21524 press "Hi-Hat" 3
+at 21530 press "Snare" 3
+at 21536 press "High Tom" 3
+at 21542 press "Low Tom" 3
+at 21548 press "Cymbal" 3
+at 21554 press "Bass Drum" 3
+at 21560 press "Hi-Hat" 3
+at 21566 press "Snare" 3
+at 21572 press "High Tom" 3
+at 21578 press "Low Tom" 3
+at 21584 press "Cymbal" 3
+at 21590 press "Bass Drum" 3
+at 21596 press "Hi-Hat" 3
+at 21602 press "Snare" 3
+at 21608 press "High Tom" 3
+at 21614 press "Low Tom" 3
+at 21620 press "Cymbal" 3
+at 21626 press "Bass Drum" 3
+at 21632 press "Hi-Hat" 3
+at 21638 press "Snare" 3
+at 21644 press "High Tom" 3
+at 21650 press "Low Tom" 3
+at 21656 press "Cymbal" 3
+at 21662 press "Bass Drum" 3
+at 21668 press "Hi-Hat" 3
+at 21674 press "Snare" 3
+at 21680 press "High Tom" 3
+at 21686 press "Low Tom" 3
+at 21692 press "Cymbal" 3
+at 21698 press "Bass Drum" 3
+at 21704 press "Hi-Hat" 3
+at 21710 press "Snare" 3
+at 21716 press "High Tom" 3
+at 21722 press "Low Tom" 3
+at 21728 press "Cymbal" 3
+at 21734 press "Bass Drum" 3
+at 21740 press "Hi-Hat" 3
+at 21746 press "Snare" 3
+at 21752 press "High Tom" 3
+at 21758 press "Low Tom" 3
+at 21764 press "Cymbal" 3
+at 21770 press "Bass Drum" 3
+at 21776 press "Hi-Hat" 3
+at 21782 press "Snare" 3
+at 21788 press "High Tom" 3
+at 21794 press "Low Tom" 3
+at 21800 press "Cymbal" 3
+at 21806 press "Bass Drum" 3
+at 21812 press "Hi-Hat" 3
+at 21818 press "Snare" 3
+at 21824 press "High Tom" 3
+at 21830 press "Low Tom" 3
+at 21836 press "Cymbal" 3
+at 21842 press "Bass Drum" 3
+at 21848 press "Hi-Hat" 3
+at 21854 press "Snare" 3
+at 21860 press "High Tom" 3
+at 21866 press "Low Tom" 3
+at 21872 press "Cymbal" 3
+at 21878 press "Bass Drum" 3
+at 21884 press "Hi-Hat" 3
+at 21890 press "Snare" 3
+at 21896 press "High Tom" 3
+at 21902 press "Low Tom" 3
+at 21908 press "Cymbal" 3
+at 21914 press "Bass Drum" 3
+at 21920 press "Hi-Hat" 3
+at 21926 press "Snare" 3
+at 21932 press "High Tom" 3
+at 21938 press "Low Tom" 3
+at 21944 press "Cymbal" 3
+at 21950 press "Bass Drum" 3
+at 21956 press "Hi-Hat" 3
+at 21962 press "Snare" 3
+at 21968 press "High Tom" 3
+at 21974 press "Low Tom" 3
+at 21980 press "Cymbal" 3
+at 21986 press "Bass Drum" 3
+at 21992 press "Hi-Hat" 3
+at 21998 press "Snare" 3
+at 22004 press "High Tom" 3
+at 22010 press "Low Tom" 3
+at 22016 press "Cymbal" 3
+at 22022 press "Bass Drum" 3
+at 22028 press "Hi-Hat" 3
+at 22034 press "Snare" 3
+at 22040 press "High Tom" 3
+at 22046 press "Low Tom" 3
+at 22052 press "Cymbal" 3
+at 22058 press "Bass Drum" 3
+at 22064 press "Hi-Hat" 3
+at 22070 press "Snare" 3
+at 22076 press "High Tom" 3
+at 22082 press "Low Tom" 3
+at 22088 press "Cymbal" 3
+at 22094 press "Bass Drum" 3
+at 22100 press "Hi-Hat" 3
+at 22106 press "Snare" 3
+at 22112 press "High Tom" 3
+at 22118 press "Low Tom" 3
+at 22124 press "Cymbal" 3
+at 22130 press "Bass Drum" 3
+at 22136 press "Hi-Hat" 3
+at 22142 press "Snare" 3
+at 22148 press "High Tom" 3
+at 22154 press "Low Tom" 3
+at 22160 press "Cymbal" 3
+at 22166 press "Bass Drum" 3
+at 22172 press "Hi-Hat" 3
+at 22178 press "Snare" 3
+at 22184 press "High Tom" 3
+at 22190 press "Low Tom" 3
+at 22196 press "Cymbal" 3
+at 22202 press "Bass Drum" 3
+at 22208 press "Hi-Hat" 3
+at 22214 press "Snare" 3
+at 22220 press "High Tom" 3
+at 22226 press "Low Tom" 3
+at 22232 press "Cymbal" 3
+at 22238 press "Bass Drum" 3
+at 22244 press "Hi-Hat" 3
+at 22250 press "Snare" 3
+at 22256 press "High Tom" 3
+at 22262 press "Low Tom" 3
+at 22268 press "Cymbal" 3
+at 22274 press "Bass Drum" 3
+at 22280 press "Hi-Hat" 3
+at 22286 press "Snare" 3
+at 22292 press "High Tom" 3
+at 22298 press "Low Tom" 3
+at 22304 press "Cymbal" 3
+at 22310 press "Bass Drum" 3
+at 22316 press "Hi-Hat" 3
+at 22322 press "Snare" 3
+at 22328 press "High Tom" 3
+at 22334 press "Low Tom" 3
+at 22340 press "Cymbal" 3
+at 22346 press "Bass Drum" 3
+at 22352 press "Hi-Hat" 3
+at 22358 press "Snare" 3
+at 22364 press "High Tom" 3
+at 22370 press "Low Tom" 3
+at 22376 press "Cymbal" 3
+at 22382 press "Bass Drum" 3
+at 22388 press "Hi-Hat" 3
+at 22394 press "Snare" 3
+at 22400 press "High Tom" 3
+at 22406 press "Low Tom" 3
+at 22412 press "Cymbal" 3
+at 22418 press "Bass Drum" 3
+at 22424 press "Hi-Hat" 3
+at 22430 press "Snare" 3
+at 22436 press "High Tom" 3
+at 22442 press "Low Tom" 3
+at 22448 press "Cymbal" 3
+at 22454 press "Bass Drum" 3
+at 22460 press "Hi-Hat" 3
+at 22466 press "Snare" 3
+at 22472 press "High Tom" 3
+at 22478 press "Low Tom" 3
+at 22484 press "Cymbal" 3
+at 22490 press "Bass Drum" 3
+at 22496 press "Hi-Hat" 3
+at 22502 press "Snare" 3
+at 22508 press "High Tom" 3
+at 22514 press "Low Tom" 3
+at 22520 press "Cymbal" 3
+at 22526 press "Bass Drum" 3
+at 22532 press "Hi-Hat" 3
+at 22538 press "Snare" 3
+at 22544 press "High Tom" 3
+at 22550 press "Low Tom" 3
+at 22556 press "Cymbal" 3
+at 22562 press "Bass Drum" 3
+at 22568 press "Hi-Hat" 3
+at 22574 press "Snare" 3
+at 22580 press "High Tom" 3
+at 22586 press "Low Tom" 3
+at 22592 press "Cymbal" 3
+at 22598 press "Bass Drum" 3
+at 22604 press "Hi-Hat" 3
+at 22610 press "Snare" 3
+at 22616 press "High Tom" 3
+at 22622 press "Low Tom" 3
+at 22628 press "Cymbal" 3
+at 22634 press "Bass Drum" 3
+at 22640 press "Hi-Hat" 3
+at 22646 press "Snare" 3
+at 22652 press "High Tom" 3
+at 22658 press "Low Tom" 3
+at 22664 press "Cymbal" 3
+at 22670 press "Bass Drum" 3
+at 22676 press "Hi-Hat" 3
+at 22682 press "Snare" 3
+at 22688 press "High Tom" 3
+at 22694 press "Low Tom" 3
+at 22700 press "Cymbal" 3
+at 22706 press "Bass Drum" 3
+at 22712 press "Hi-Hat" 3
+at 22718 press "Snare" 3
+at 22724 press "High Tom" 3
+at 22730 press "Low Tom" 3
+at 22736 press "Cymbal" 3
+at 22742 press "Bass Drum" 3
+at 22748 press "Hi-Hat" 3
+at 22754 press "Snare" 3
+at 22760 press "High Tom" 3
+at 22766 press "Low Tom" 3
+at 22772 press "Cymbal" 3
+at 22778 press "Bass Drum" 3
+at 22784 press "Hi-Hat" 3
+at 22790 press "Snare" 3
+at 22796 press "High Tom" 3
+at 22802 press "Low Tom" 3
+at 22808 press "Cymbal" 3
+at 22814 press "Bass Drum" 3
+at 22820 press "Hi-Hat" 3
+at 22826 press "Snare" 3
+at 22832 press "High Tom" 3
+at 22838 press "Low Tom" 3
+at 22844 press "Cymbal" 3
+at 22850 press "Bass Drum" 3
+at 22856 press "Hi-Hat" 3
+at 22862 press "Snare" 3
+at 22868 press "High Tom" 3
+at 22874 press "Low Tom" 3
+at 22880 press "Cymbal" 3
+at 22886 press "Bass Drum" 3
+at 22892 press "Hi-Hat" 3
+at 22898 press "Snare" 3
+at 22904 press "High Tom" 3
+at 22910 press "Low Tom" 3
+at 22916 press "Cymbal" 3
+at 22922 press "Bass Drum" 3
+at 22928 press "Hi-Hat" 3
+at 22934 press "Snare" 3
+at 22940 press "High Tom" 3
+at 22946 press "Low Tom" 3
+at 22952 press "Cymbal" 3
+at 22958 press "Bass Drum" 3
+at 22964 press "Hi-Hat" 3
+at 22970 press "Snare" 3
+at 22976 press "High Tom" 3
+at 22982 press "Low Tom" 3
+at 22988 press "Cymbal" 3
+at 22994 press "Bass Drum" 3
+at 23000 press "Hi-Hat" 3
+at 23006 press "Snare" 3
+at 23012 press "High Tom" 3
+at 23018 press "Low Tom" 3
+at 23024 press "Cymbal" 3
+at 23030 press "Bass Drum" 3
+at 23036 press "Hi-Hat" 3
+at 23042 press "Snare" 3
+at 23048 press "High Tom" 3
+at 23054 press "Low Tom" 3
+at 23060 press "Cymbal" 3
+at 23066 press "Bass Drum" 3
+at 23072 press "Hi-Hat" 3
+at 23078 press "Snare" 3
+at 23084 press "High Tom" 3
+at 23090 press "Low Tom" 3
+at 23096 press "Cymbal" 3
+at 23102 press "Bass Drum" 3
+at 23108 press "Hi-Hat" 3
+at 23114 press "Snare" 3
+at 23120 press "High Tom" 3
+at 23126 press "Low Tom" 3
+at 23132 press "Cymbal" 3
+at 23138 press "Bass Drum" 3
+at 23144 press "Hi-Hat" 3
+at 23150 press "Snare" 3
+at 23156 press "High Tom" 3
+at 23162 press "Low Tom" 3
+at 23168 press "Cymbal" 3
+at 23174 press "Bass Drum" 3
+at 23180 press "Hi-Hat" 3
+at 23186 press "Snare" 3
+at 23192 press "High Tom" 3
+at 23198 press "Low Tom" 3
+at 23204 press "Cymbal" 3
+at 23210 press "Bass Drum" 3
+at 23216 press "Hi-Hat" 3
+at 23222 press "Snare" 3
+at 23228 press "High Tom" 3
+at 23234 press "Low Tom" 3
+at 23240 press "Cymbal" 3
+at 23246 press "Bass Drum" 3
+at 23252 press "Hi-Hat" 3
+at 23258 press "Snare" 3
+at 23264 press "High Tom" 3
+at 23270 press "Low Tom" 3
+at 23276 press "Cymbal" 3
+at 23282 press "Bass Drum" 3
+at 23288 press "Hi-Hat" 3
+at 23294 press "Snare" 3
+at 23300 press "High Tom" 3
+at 23306 press "Low Tom" 3
+at 23312 press "Cymbal" 3
+at 23318 press "Bass Drum" 3
+at 23324 press "Hi-Hat" 3
+at 23330 press "Snare" 3
+at 23336 press "High Tom" 3
+at 23342 press "Low Tom" 3
+at 23348 press "Cymbal" 3
+at 23354 press "Bass Drum" 3
+at 23360 press "Hi-Hat" 3
+at 23366 press "Snare" 3
+at 23372 press "High Tom" 3
+at 23378 press "Low Tom" 3
+at 23384 press "Cymbal" 3
+at 23390 press "Bass Drum" 3
+at 23396 press "Hi-Hat" 3
+at 23402 press "Snare" 3
+at 23408 press "High Tom" 3
+at 23414 press "Low Tom" 3
+at 23420 press "Cymbal" 3
+at 23426 press "Bass Drum" 3
+at 23432 press "Hi-Hat" 3
+at 23438 press "Snare" 3
+at 23444 press "High Tom" 3
+at 23450 press "Low Tom" 3
+at 23456 press "Cymbal" 3
+at 23462 press "Bass Drum" 3
+at 23468 press "Hi-Hat" 3
+at 23474 press "Snare" 3
+at 23480 press "High Tom" 3
+at 23486 press "Low Tom" 3
+at 23492 press "Cymbal" 3
+at 23498 press "Bass Drum" 3
+at 23504 press "Hi-Hat" 3
+at 23510 press "Snare" 3
+at 23516 press "High Tom" 3
+at 23522 press "Low Tom" 3
+at 23528 press "Cymbal" 3
+at 23534 press "Bass Drum" 3
+at 23540 press "Hi-Hat" 3
+at 23546 press "Snare" 3
+at 23552 press "High Tom" 3
+at 23558 press "Low Tom" 3
+at 23564 press "Cymbal" 3
+at 23570 press "Bass Drum" 3
+at 23576 press "Hi-Hat" 3
+at 23582 press "Snare" 3
+at 23588 press "High Tom" 3
+at 23594 press "Low Tom" 3
+at 23600 press "Cymbal" 3
+at 23606 press "Bass Drum" 3
+at 23612 press "Hi-Hat" 3
+at 23618 press "Snare" 3
+at 23624 press "High Tom" 3
+at 23630 press "Low Tom" 3
+at 23636 press "Cymbal" 3
+at 23642 press "Bass Drum" 3
+at 23648 press "Hi-Hat" 3
+at 23654 press "Snare" 3
+at 23660 press "High Tom" 3
+at 23666 press "Low Tom" 3
+at 23672 press "Cymbal" 3
+at 23678 press "Bass Drum" 3
+at 23684 press "Hi-Hat" 3
+at 23690 press "Snare" 3
+at 23696 press "High Tom" 3
+at 23702 press "Low Tom" 3
+at 23708 press "Cymbal" 3
+at 23714 press "Bass Drum" 3
+at 23720 press "Hi-Hat" 3
+at 23726 press "Snare" 3
+at 23732 press "High Tom" 3
+at 23738 press "Low Tom" 3
+at 23744 press "Cymbal" 3
+at 23750 press "Bass Drum" 3
+at 23756 press "Hi-Hat" 3
+at 23762 press "Snare" 3
+at 23768 press "High Tom" 3
+at 23774 press "Low Tom" 3
+at 23780 press "Cymbal" 3
+at 23786 press "Bass Drum" 3
+at 23792 press "Hi-Hat" 3
+at 23798 press "Snare" 3
+at 23804 press "High Tom" 3
+at 23810 press "Low Tom" 3
+at 23816 press "Cymbal" 3
+at 23822 press "Bass Drum" 3
+at 23828 press "Hi-Hat" 3
+at 23834 press "Snare" 3
+at 23840 press "High Tom" 3
+at 23846 press "Low Tom" 3
+at 23852 press "Cymbal" 3
+at 23858 press "Bass Drum" 3
+at 23864 press "Hi-Hat" 3
+at 23870 press "Snare" 3
+at 23876 press "High Tom" 3
+at 23882 press "Low Tom" 3
+at 23888 press "Cymbal" 3
+at 23894 press "Bass Drum" 3
+at 23900 press "Hi-Hat" 3
+at 23906 press "Snare" 3
+at 23912 press "High Tom" 3
+at 23918 press "Low Tom" 3
+at 23924 press "Cymbal" 3
+at 23930 press "Bass Drum" 3
+at 23936 press "Hi-Hat" 3
+at 23942 press "Snare" 3
+at 23948 press "High Tom" 3
+at 23954 press "Low Tom" 3
+at 23960 press "Cymbal" 3
+at 23966 press "Bass Drum" 3
+at 23972 press "Hi-Hat" 3
+at 23978 press "Snare" 3
+at 23984 press "High Tom" 3
+at 23990 press "Low Tom" 3
+at 23996 press "Cymbal" 3
+at 24002 press "Bass Drum" 3
+at 24008 press "Hi-Hat" 3
+at 24014 press "Snare" 3
+at 24020 press "High Tom" 3
+at 24026 press "Low Tom" 3
+at 24032 press "Cymbal" 3
+at 24038 press "Bass Drum" 3
+at 24044 press "Hi-Hat" 3
+at 24050 press "Snare" 3
+at 24056 press "High Tom" 3
+at 24062 press "Low Tom" 3
+at 24068 press "Cymbal" 3
+at 24074 press "Bass Drum" 3
+at 24080 press "Hi-Hat" 3
+at 24086 press "Snare" 3
+at 24092 press "High Tom" 3
+at 24098 press "Low Tom" 3
+at 24104 press "Cymbal" 3
+at 24110 press "Bass Drum" 3
+at 24116 press "Hi-Hat" 3
+at 24122 press "Snare" 3
+at 24128 press "High Tom" 3
+at 24134 press "Low Tom" 3
+at 24140 press "Cymbal" 3
+at 24146 press "Bass Drum" 3
+at 24152 press "Hi-Hat" 3
+at 24158 press "Snare" 3
+at 24164 press "High Tom" 3
+at 24170 press "Low Tom" 3
+at 24176 press "Cymbal" 3
+at 24182 press "Bass Drum" 3
+at 24188 press "Hi-Hat" 3
+at 24194 press "Snare" 3
+at 24200 press "High Tom" 3
+at 24206 press "Low Tom" 3
+at 24212 press "Cymbal" 3
+at 24218 press "Bass Drum" 3
+at 24224 press "Hi-Hat" 3
+at 24230 press "Snare" 3
+at 24236 press "High Tom" 3
+at 24242 press "Low Tom" 3
+at 24248 press "Cymbal" 3
+at 24254 press "Bass Drum" 3
+at 24260 press "Hi-Hat" 3
+at 24266 press "Snare" 3
+at 24272 press "High Tom" 3
+at 24278 press "Low Tom" 3
+at 24284 press "Cymbal" 3
+at 24290 press "Bass Drum" 3
+at 24296 press "Hi-Hat" 3
+at 24302 press "Snare" 3
+at 24308 press "High Tom" 3
+at 24314 press "Low Tom" 3
+at 24320 press "Cymbal" 3
+at 24326 press "Bass Drum" 3
+at 24332 press "Hi-Hat" 3
+at 24338 press "Snare" 3
+at 24344 press "High Tom" 3
+at 24350 press "Low Tom" 3
+at 24356 press "Cymbal" 3
+at 24362 press "Bass Drum" 3
+at 24368 press "Hi-Hat" 3
+at 24374 press "Snare" 3
+at 24380 press "High Tom" 3
+at 24386 press "Low Tom" 3
+at 24392 press "Cymbal" 3
+at 24398 press "Bass Drum" 3
+at 24404 press "Hi-Hat" 3
+at 24410 press "Snare" 3
+at 24416 press "High Tom" 3
+at 24422 press "Low Tom" 3
+at 24428 press "Cymbal" 3
+at 24434 press "Bass Drum" 3
+at 24440 press "Hi-Hat" 3
+at 24446 press "Snare" 3
+at 24452 press "High Tom" 3
+at 24458 press "Low Tom" 3
+at 24464 press "Cymbal" 3
+at 24470 press "Bass Drum" 3
+at 24476 press "Hi-Hat" 3
+at 24482 press "Snare" 3
+at 24488 press "High Tom" 3
+at 24494 press "Low Tom" 3
+at 24500 press "Cymbal" 3
+at 24506 press "Bass Drum" 3
+at 24512 press "Hi-Hat" 3
+at 24518 press "Snare" 3
+at 24524 press "High Tom" 3
+at 24530 press "Low Tom" 3
+at 24536 press "Cymbal" 3
+at 24542 press "Bass Drum" 3
+at 24548 press "Hi-Hat" 3
+at 24554 press "Snare" 3
+at 24560 press "High Tom" 3
+at 24566 press "Low Tom" 3
+at 24572 press "Cymbal" 3
+at 24578 press "Bass Drum" 3
+at 24584 press "Hi-Hat" 3
+at 24590 press "Snare" 3
+at 24596 press "High Tom" 3
+at 24602 press "Low Tom" 3
+at 24608 press "Cymbal" 3
+at 24614 press "Bass Drum" 3
+at 24620 press "Hi-Hat" 3
+at 24626 press "Snare" 3
+at 24632 press "High Tom" 3
+at 24638 press "Low Tom" 3
+at 24644 press "Cymbal" 3
+at 24650 press "Bass Drum" 3
+at 24656 press "Hi-Hat" 3
+at 24662 press "Snare" 3
+at 24668 press "High Tom" 3
+at 24674 press "Low Tom" 3
+at 24680 press "Cymbal" 3
+at 24686 press "Bass Drum" 3
+at 24692 press "Hi-Hat" 3
+at 24698 press "Snare" 3
+at 24704 press "High Tom" 3
+at 24710 press "Low Tom" 3
+at 24716 press "Cymbal" 3
+at 24722 press "Bass Drum" 3
+at 24728 press "Hi-Hat" 3
+at 24734 press "Snare" 3
+at 24740 press "High Tom" 3
+at 24746 press "Low Tom" 3
+at 24752 press "Cymbal" 3
+at 24758 press "Bass Drum" 3
+at 24764 press "Hi-Hat" 3
+at 24770 press "Snare" 3
+at 24776 press "High Tom" 3
+at 24782 press "Low Tom" 3
+at 24788 press "Cymbal" 3
+at 24794 press "Bass Drum" 3
+at 24800 press "Hi-Hat" 3
+at 24806 press "Snare" 3
+at 24812 press "High Tom" 3
+at 24818 press "Low Tom" 3
+at 24824 press "Cymbal" 3
+at 24830 press "Bass Drum" 3
+at 24836 press "Hi-Hat" 3
+at 24842 press "Snare" 3
+at 24848 press "High Tom" 3
+at 24854 press "Low Tom" 3
+at 24860 press "Cymbal" 3
+at 24866 press "Bass Drum" 3
+at 24872 press "Hi-Hat" 3
+at 24878 press "Snare" 3
+at 24884 press "High Tom" 3
+at 24890 press "Low Tom" 3
+at 24896 press "Cymbal" 3
+at 24902 press "Bass Drum" 3
+at 24908 press "Hi-Hat" 3
+at 24914 press "Snare" 3
+at 24920 press "High Tom" 3
+at 24926 press "Low Tom" 3
+at 24932 press "Cymbal" 3
+at 24938 press "Bass Drum" 3
+at 24944 press "Hi-Hat" 3
+at 24950 press "Snare" 3
+at 24956 press "High Tom" 3
+at 24962 press "Low Tom" 3
+at 24968 press "Cymbal" 3
+at 24974 press "Bass Drum" 3
+at 24980 press "Hi-Hat" 3
+at 24986 press "Snare" 3
+at 24992 press "High Tom" 3
+at 24998 press "Low Tom" 3
+at 25004 press "Cymbal" 3
+at 25010 press "Bass Drum" 3
+at 25016 press "Hi-Hat" 3
+at 25022 press "Snare" 3
+at 25028 press "High Tom" 3
+at 25034 press "Low Tom" 3
+at 25040 press "Cymbal" 3
+at 25046 press "Bass Drum" 3
+at 25052 press "Hi-Hat" 3
+at 25058 press "Snare" 3
+at 25064 press "High Tom" 3
+at 25070 press "Low Tom" 3
+at 25076 press "Cymbal" 3
+at 25082 press "Bass Drum" 3
+at 25088 press "Hi-Hat" 3
+at 25094 press "Snare" 3
+at 25100 press "High Tom" 3
+at 25106 press "Low Tom" 3
+at 25112 press "Cymbal" 3
+at 25118 press "Bass Drum" 3
+at 25124 press "Hi-Hat" 3
+at 25130 press "Snare" 3
+at 25136 press "High Tom" 3
+at 25142 press "Low Tom" 3
+at 25148 press "Cymbal" 3
+at 25154 press "Bass Drum" 3
+at 25160 press "Hi-Hat" 3
+at 25166 press "Snare" 3
+at 25172 press "High Tom" 3
+at 25178 press "Low Tom" 3
+at 25184 press "Cymbal" 3
+at 25190 press "Bass Drum" 3
+at 25196 press "Hi-Hat" 3
+at 25202 press "Snare" 3
+at 25208 press "High Tom" 3
+at 25214 press "Low Tom" 3
+at 25220 press "Cymbal" 3
+at 25226 press "Bass Drum" 3
+at 25232 press "Hi-Hat" 3
+at 25238 press "Snare" 3
+at 25244 press "High Tom" 3
+at 25250 press "Low Tom" 3
+at 25256 press "Cymbal" 3
+at 25262 press "Bass Drum" 3
+at 25268 press "Hi-Hat" 3
+at 25274 press "Snare" 3
+at 25280 press "High Tom" 3
+at 25286 press "Low Tom" 3
+at 25292 press "Cymbal" 3
+at 25298 press "Bass Drum" 3
+at 25304 press "Hi-Hat" 3
+at 25310 press "Snare" 3
+at 25316 press "High Tom" 3
+at 25322 press "Low Tom" 3
+at 25328 press "Cymbal" 3
+at 25334 press "Bass Drum" 3
+at 25340 press "Hi-Hat" 3
+at 25346 press "Snare" 3
+at 25352 press "High Tom" 3
+at 25358 press "Low Tom" 3
+at 25364 press "Cymbal" 3
+at 25370 press "Bass Drum" 3
+at 25376 press "Hi-Hat" 3
+at 25382 press "Snare" 3
+at 25388 press "High Tom" 3
+at 25394 press "Low Tom" 3
+at 25400 press "Cymbal" 3
+at 25406 press "Bass Drum" 3
+at 25412 press "Hi-Hat" 3
+at 25418 press "Snare" 3
+at 25424 press "High Tom" 3
+at 25430 press "Low Tom" 3
+at 25436 press "Cymbal" 3
+at 25442 press "Bass Drum" 3
+at 25448 press "Hi-Hat" 3
+at 25454 press "Snare" 3
+at 25460 press "High Tom" 3
+at 25466 press "Low Tom" 3
+at 25472 press "Cymbal" 3
+at 25478 press "Bass Drum" 3
+at 25484 press "Hi-Hat" 3
+at 25490 press "Snare" 3
+at 25496 press "High Tom" 3
+at 25502 press "Low Tom" 3
+at 25508 press "Cymbal" 3
+at 25514 press "Bass Drum" 3
+at 25520 press "Hi-Hat" 3
+at 25526 press "Snare" 3
+at 25532 press "High Tom" 3
+at 25538 press "Low Tom" 3
+at 25544 press "Cymbal" 3
+at 25550 press "Bass Drum" 3
+at 25556 press "Hi-Hat" 3
+at 25562 press "Snare" 3
+at 25568 press "High Tom" 3
+at 25574 press "Low Tom" 3
+at 25580 press "Cymbal" 3
+at 25586 press "Bass Drum" 3
+at 25592 press "Hi-Hat" 3
+at 25598 press "Snare" 3
+at 25604 press "High Tom" 3
+at 25610 press "Low Tom" 3
+at 25616 press "Cymbal" 3
+at 25622 press "Bass Drum" 3
+at 25628 press "Hi-Hat" 3
+at 25634 press "Snare" 3
+at 25640 press "High Tom" 3
+at 25646 press "Low Tom" 3
+at 25652 press "Cymbal" 3
+at 25658 press "Bass Drum" 3
+at 25664 press "Hi-Hat" 3
+at 25670 press "Snare" 3
+at 25676 press "High Tom" 3
+at 25682 press "Low Tom" 3
+at 25688 press "Cymbal" 3
+at 25694 press "Bass Drum" 3
+at 25700 press "Hi-Hat" 3
+at 25706 press "Snare" 3
+at 25712 press "High Tom" 3
+at 25718 press "Low Tom" 3
+at 25724 press "Cymbal" 3
+at 25730 press "Bass Drum" 3
+at 25736 press "Hi-Hat" 3
+at 25742 press "Snare" 3
+at 25748 press "High Tom" 3
+at 25754 press "Low Tom" 3
+at 25760 press "Cymbal" 3
+at 25766 press "Bass Drum" 3
+at 25772 press "Hi-Hat" 3
+at 25778 press "Snare" 3
+at 25784 press "High Tom" 3
+at 25790 press "Low Tom" 3
+at 25796 press "Cymbal" 3
+at 25802 press "Bass Drum" 3
+at 25808 press "Hi-Hat" 3
+at 25814 press "Snare" 3
+at 25820 press "High Tom" 3
+at 25826 press "Low Tom" 3
+at 25832 press "Cymbal" 3
+at 25838 press "Bass Drum" 3
+at 25844 press "Hi-Hat" 3
+at 25850 press "Snare" 3
+at 25856 press "High Tom" 3
+at 25862 press "Low Tom" 3
+at 25868 press "Cymbal" 3
+at 25874 press "Bass Drum" 3
+at 25880 press "Hi-Hat" 3
+at 25886 press "Snare" 3
+at 25892 press "High Tom" 3
+at 25898 press "Low Tom" 3
+at 25904 press "Cymbal" 3
+at 25910 press "Bass Drum" 3
+at 25916 press "Hi-Hat" 3
+at 25922 press "Snare" 3
+at 25928 press "High Tom" 3
+at 25934 press "Low Tom" 3
+at 25940 press "Cymbal" 3
+at 25946 press "Bass Drum" 3
+at 25952 press "Hi-Hat" 3
+at 25958 press "Snare" 3
+at 25964 press "High Tom" 3
+at 25970 press "Low Tom" 3
+at 25976 press "Cymbal" 3
+at 25982 press "Bass Drum" 3
+at 25988 press "Hi-Hat" 3
+at 25994 press "Snare" 3
+at 26000 press "High Tom" 3
+at 26006 press "Low Tom" 3
+at 26012 press "Cymbal" 3
+at 26018 press "Bass Drum" 3
+at 26024 press "Hi-Hat" 3
+at 26030 press "Snare" 3
+at 26036 press "High Tom" 3
+at 26042 press "Low Tom" 3
+at 26048 press "Cymbal" 3
+at 26054 press "Bass Drum" 3
+at 26060 press "Hi-Hat" 3
+at 26066 press "Snare" 3
+at 26072 press "High Tom" 3
+at 26078 press "Low Tom" 3
+at 26084 press "Cymbal" 3
+at 26090 press "Bass Drum" 3
+at 26096 press "Hi-Hat" 3
+at 26102 press "Snare" 3
+at 26108 press "High Tom" 3
+at 26114 press "Low Tom" 3
+at 26120 press "Cymbal" 3
+at 26126 press "Bass Drum" 3
+at 26132 press "Hi-Hat" 3
+at 26138 press "Snare" 3
+at 26144 press "High Tom" 3
+at 26150 press "Low Tom" 3
+at 26156 press "Cymbal" 3
+at 26162 press "Bass Drum" 3
+at 26168 press "Hi-Hat" 3
+at 26174 press "Snare" 3
+at 26180 press "High Tom" 3
+at 26186 press "Low Tom" 3
+at 26192 press "Cymbal" 3
+at 26198 press "Bass Drum" 3
+at 26204 press "Hi-Hat" 3
+at 26210 press "Snare" 3
+at 26216 press "High Tom" 3
+at 26222 press "Low Tom" 3
+at 26228 press "Cymbal" 3
+at 26234 press "Bass Drum" 3
+at 26240 press "Hi-Hat" 3
+at 26246 press "Snare" 3
+at 26252 press "High Tom" 3
+at 26258 press "Low Tom" 3
+at 26264 press "Cymbal" 3
+at 26270 press "Bass Drum" 3
+at 26276 press "Hi-Hat" 3
+at 26282 press "Snare" 3
+at 26288 press "High Tom" 3
+at 26294 press "Low Tom" 3
+at 26300 press "Cymbal" 3
+at 26306 press "Bass Drum" 3
+at 26312 press "Hi-Hat" 3
+at 26318 press "Snare" 3
+at 26324 press "High Tom" 3
+at 26330 press "Low Tom" 3
+at 26336 press "Cymbal" 3
+at 26342 press "Bass Drum" 3
+at 26348 press "Hi-Hat" 3
+at 26354 press "Snare" 3
+at 26360 press "High Tom" 3
+at 26366 press "Low Tom" 3
+at 26372 press "Cymbal" 3
+at 26378 press "Bass Drum" 3
+at 26384 press "Hi-Hat" 3
+at 26390 press "Snare" 3
+at 26396 press "High Tom" 3
+at 26402 press "Low Tom" 3
+at 26408 press "Cymbal" 3
+at 26414 press "Bass Drum" 3
+at 26420 press "Hi-Hat" 3
+at 26426 press "Snare" 3
+at 26432 press "High Tom" 3
+at 26438 press "Low Tom" 3
+at 26444 press "Cymbal" 3
+at 26450 press "Bass Drum" 3
+at 26456 press "Hi-Hat" 3
+at 26462 press "Snare" 3
+at 26468 press "High Tom" 3
+at 26474 press "Low Tom" 3
+at 26480 press "Cymbal" 3
+at 26486 press "Bass Drum" 3
+at 26492 press "Hi-Hat" 3
+at 26498 press "Snare" 3
+at 26504 press "High Tom" 3
+at 26510 press "Low Tom" 3
+at 26516 press "Cymbal" 3
+at 26522 press "Bass Drum" 3
+at 26528 press "Hi-Hat" 3
+at 26534 press "Snare" 3
+at 26540 press "High Tom" 3
+at 26546 press "Low Tom" 3
+at 26552 press "Cymbal" 3
+at 26558 press "Bass Drum" 3
+at 26564 press "Hi-Hat" 3
+at 26570 press "Snare" 3
+at 26576 press "High Tom" 3
+at 26582 press "Low Tom" 3
+at 26588 press "Cymbal" 3
+at 26594 press "Bass Drum" 3
+at 26600 press "Hi-Hat" 3
+at 26606 press "Snare" 3
+at 26612 press "High Tom" 3
+at 26618 press "Low Tom" 3
+at 26624 press "Cymbal" 3
+at 26630 press "Bass Drum" 3
+at 26636 press "Hi-Hat" 3
+at 26642 press "Snare" 3
+at 26648 press "High Tom" 3
+at 26654 press "Low Tom" 3
+at 26660 press "Cymbal" 3
+at 26666 press "Bass Drum" 3
+at 26672 press "Hi-Hat" 3
+at 26678 press "Snare" 3
+at 26684 press "High Tom" 3
+at 26690 press "Low Tom" 3
+at 26696 press "Cymbal" 3
+at 26702 press "Bass Drum" 3
+at 26708 press "Hi-Hat" 3
+at 26714 press "Snare" 3
+at 26720 press "High Tom" 3
+at 26726 press "Low Tom" 3
+at 26732 press "Cymbal" 3
+at 26738 press "Bass Drum" 3
+at 26744 press "Hi-Hat" 3
+at 26750 press "Snare" 3
+at 26756 press "High Tom" 3
+at 26762 press "Low Tom" 3
+at 26768 press "Cymbal" 3
+at 26774 press "Bass Drum" 3
+at 26780 press "Hi-Hat" 3
+at 26786 press "Snare" 3
+at 26792 press "High Tom" 3
+at 26798 press "Low Tom" 3
+at 26804 press "Cymbal" 3
+at 26810 press "Bass Drum" 3
+at 26816 press "Hi-Hat" 3
+at 26822 press "Snare" 3
+at 26828 press "High Tom" 3
+at 26834 press "Low Tom" 3
+at 26840 press "Cymbal" 3
+at 26846 press "Bass Drum" 3
+at 26852 press "Hi-Hat" 3
+at 26858 press "Snare" 3
+at 26864 press "High Tom" 3
+at 26870 press "Low Tom" 3
+at 26876 press "Cymbal" 3
+at 26882 press "Bass Drum" 3
+at 26888 press "Hi-Hat" 3
+at 26894 press "Snare" 3
+at 26900 press "High Tom" 3
+at 26906 press "Low Tom" 3
+at 26912 press "Cymbal" 3
+at 26918 press "Bass Drum" 3
+at 26924 press "Hi-Hat" 3
+at 26930 press "Snare" 3
+at 26936 press "High Tom" 3
+at 26942 press "Low Tom" 3
+at 26948 press "Cymbal" 3
+at 26954 press "Bass Drum" 3
+at 26960 press "Hi-Hat" 3
+at 26966 press "Snare" 3
+at 26972 press "High Tom" 3
+at 26978 press "Low Tom" 3
+at 26984 press "Cymbal" 3
+at 26990 press "Bass Drum" 3
+at 26996 press "Hi-Hat" 3
+at 27002 press "Snare" 3
+at 27008 press "High Tom" 3
+at 27014 press "Low Tom" 3
+at 27020 press "Cymbal" 3
+at 27026 press "Bass Drum" 3
+at 27032 press "Hi-Hat" 3
+at 27038 press "Snare" 3
+at 27044 press "High Tom" 3
+at 27050 press "Low Tom" 3
+at 27056 press "Cymbal" 3
+at 27062 press "Bass Drum" 3
+at 27068 press "Hi-Hat" 3
+at 27074 press "Snare" 3
+at 27080 press "High Tom" 3
+at 27086 press "Low Tom" 3
+at 27092 press "Cymbal" 3
+at 27098 press "Bass Drum" 3
+at 27104 press "Hi-Hat" 3
+at 27110 press "Snare" 3
+at 27116 press "High Tom" 3
+at 27122 press "Low Tom" 3
+at 27128 press "Cymbal" 3
+at 27134 press "Bass Drum" 3
+at 27140 press "Hi-Hat" 3
+at 27146 press "Snare" 3
+at 27152 press "High Tom" 3
+at 27158 press "Low Tom" 3
+at 27164 press "Cymbal" 3
+at 27170 press "Bass Drum" 3
+at 27176 press "Hi-Hat" 3
+at 27182 press "Snare" 3
+at 27188 press "High Tom" 3
+at 27194 press "Low Tom" 3
+at 27200 press "Cymbal" 3
+at 27206 press "Bass Drum" 3
+at 27212 press "Hi-Hat" 3
+at 27218 press "Snare" 3
+at 27224 press "High Tom" 3
+at 27230 press "Low Tom" 3
+at 27236 press "Cymbal" 3
+at 27242 press "Bass Drum" 3
+at 27248 press "Hi-Hat" 3
+at 27254 press "Snare" 3
+at 27260 press "High Tom" 3
+at 27266 press "Low Tom" 3
+at 27272 press "Cymbal" 3
+at 27278 press "Bass Drum" 3
+at 27284 press "Hi-Hat" 3
+at 27290 press "Snare" 3
+at 27296 press "High Tom" 3
+at 27302 press "Low Tom" 3
+at 27308 press "Cymbal" 3
+at 27314 press "Bass Drum" 3
+at 27320 press "Hi-Hat" 3
+at 27326 press "Snare" 3
+at 27332 press "High Tom" 3
+at 27338 press "Low Tom" 3
+at 27344 press "Cymbal" 3
+at 27350 press "Bass Drum" 3
+at 27356 press "Hi-Hat" 3
+at 27362 press "Snare" 3
+at 27368 press "High Tom" 3
+at 27374 press "Low Tom" 3
+at 27380 press "Cymbal" 3
+at 27386 press "Bass Drum" 3
+at 27392 press "Hi-Hat" 3
+at 27398 press "Snare" 3
+at 27404 press "High Tom" 3
+at 27410 press "Low Tom" 3
+at 27416 press "Cymbal" 3
+at 27422 press "Bass Drum" 3
+at 27428 press "Hi-Hat" 3
+at 27434 press "Snare" 3
+at 27440 press "High Tom" 3
+at 27446 press "Low Tom" 3
+at 27452 press "Cymbal" 3
+at 27458 press "Bass Drum" 3
+at 27464 press "Hi-Hat" 3
+at 27470 press "Snare" 3
+at 27476 press "High Tom" 3
+at 27482 press "Low Tom" 3
+at 27488 press "Cymbal" 3
+at 27494 press "Bass Drum" 3
+at 27500 press "Hi-Hat" 3
+at 27506 press "Snare" 3
+at 27512 press "High Tom" 3
+at 27518 press "Low Tom" 3
+at 27524 press "Cymbal" 3
+at 27530 press "Bass Drum" 3
+at 27536 press "Hi-Hat" 3
+at 27542 press "Snare" 3
+at 27548 press "High Tom" 3
+at 27554 press "Low Tom" 3
+at 27560 press "Cymbal" 3
+at 27566 press "Bass Drum" 3
+at 27572 press "Hi-Hat" 3
+at 27578 press "Snare" 3
+at 27584 press "High Tom" 3
+at 27590 press "Low Tom" 3
+at 27596 press "Cymbal" 3
+at 27602 press "Bass Drum" 3
+at 27608 press "Hi-Hat" 3
+at 27614 press "Snare" 3
+at 27620 press "High Tom" 3
+at 27626 press "Low Tom" 3
+at 27632 press "Cymbal" 3
+at 27638 press "Bass Drum" 3
+at 27644 press "Hi-Hat" 3
+at 27650 press "Snare" 3
+at 27656 press "High Tom" 3
+at 27662 press "Low Tom" 3
+at 27668 press "Cymbal" 3
+at 27674 press "Bass Drum" 3
+at 27680 press "Hi-Hat" 3
+at 27686 press "Snare" 3
+at 27692 press "High Tom" 3
+at 27698 press "Low Tom" 3
+at 27704 press "Cymbal" 3
+at 27710 press "Bass Drum" 3
+at 27716 press "Hi-Hat" 3
+at 27722 press "Snare" 3
+at 27728 press "High Tom" 3
+at 27734 press "Low Tom" 3
+at 27740 press "Cymbal" 3
+at 27746 press "Bass Drum" 3
+at 27752 press "Hi-Hat" 3
+at 27758 press "Snare" 3
+at 27764 press "High Tom" 3
+at 27770 press "Low Tom" 3
+at 27776 press "Cymbal" 3
+at 27782 press "Bass Drum" 3
+at 27788 press "Hi-Hat" 3
+at 27794 press "Snare" 3
+at 27800 press "High Tom" 3
+at 27806 press "Low Tom" 3
+at 27812 press "Cymbal" 3
+at 27818 press "Bass Drum" 3
+at 27824 press "Hi-Hat" 3
+at 27830 press "Snare" 3
+at 27836 press "High Tom" 3
+at 27842 press "Low Tom" 3
+at 27848 press "Cymbal" 3
+at 27854 press "Bass Drum" 3
+at 27860 press "Hi-Hat" 3
+at 27866 press "Snare" 3
+at 27872 press "High Tom" 3
+at 27878 press "Low Tom" 3
+at 27884 press "Cymbal" 3
+at 27890 press "Bass Drum" 3
+at 27896 press "Hi-Hat" 3
+at 27902 press "Snare" 3
+at 27908 press "High Tom" 3
+at 27914 press "Low Tom" 3
+at 27920 press "Cymbal" 3
+at 27926 press "Bass Drum" 3
+at 27932 press "Hi-Hat" 3
+at 27938 press "Snare" 3
+at 27944 press "High Tom" 3
+at 27950 press "Low Tom" 3
+at 27956 press "Cymbal" 3
+at 27962 press "Bass Drum" 3
+at 27968 press "Hi-Hat" 3
+at 27974 press "Snare" 3
+at 27980 press "High Tom" 3
+at 27986 press "Low Tom" 3
+at 27992 press "Cymbal" 3
+at 27998 press "Bass Drum" 3
+at 28004 press "Hi-Hat" 3
+at 28010 press "Snare" 3
+at 28016 press "High Tom" 3
+at 28022 press "Low Tom" 3
+at 28028 press "Cymbal" 3
+at 28034 press "Bass Drum" 3
+at 28040 press "Hi-Hat" 3
+at 28046 press "Snare" 3
+at 28052 press "High Tom" 3
+at 28058 press "Low Tom" 3
+at 28064 press "Cymbal" 3
+at 28070 press "Bass Drum" 3
+at 28076 press "Hi-Hat" 3
+at 28082 press "Snare" 3
+at 28088 press "High Tom" 3
+at 28094 press "Low Tom" 3
+at 28100 press "Cymbal" 3
+at 28106 press "Bass Drum" 3
+at 28112 press "Hi-Hat" 3
+at 28118 press "Snare" 3
+at 28124 press "High Tom" 3
+at 28130 press "Low Tom" 3
+at 28136 press "Cymbal" 3
+at 28142 press "Bass Drum" 3
+at 28148 press "Hi-Hat" 3
+at 28154 press "Snare" 3
+at 28160 press "High Tom" 3
+at 28166 press "Low Tom" 3
+at 28172 press "Cymbal" 3
+at 28178 press "Bass Drum" 3
+at 28184 press "Hi-Hat" 3
+at 28190 press "Snare" 3
+at 28196 press "High Tom" 3
+at 28202 press "Low Tom" 3
+at 28208 press "Cymbal" 3
+at 28214 press "Bass Drum" 3
+at 28220 press "Hi-Hat" 3
+at 28226 press "Snare" 3
+at 28232 press "High Tom" 3
+at 28238 press "Low Tom" 3
+at 28244 press "Cymbal" 3
+at 28250 press "Bass Drum" 3
+at 28256 press "Hi-Hat" 3
+at 28262 press "Snare" 3
+at 28268 press "High Tom" 3
+at 28274 press "Low Tom" 3
+at 28280 press "Cymbal" 3
+at 28286 press "Bass Drum" 3
+at 28292 press "Hi-Hat" 3
+at 28298 press "Snare" 3
+at 28304 press "High Tom" 3
+at 28310 press "Low Tom" 3
+at 28316 press "Cymbal" 3
+at 28322 press "Bass Drum" 3
+at 28328 press "Hi-Hat" 3
+at 28334 press "Snare" 3
+at 28340 press "High Tom" 3
+at 28346 press "Low Tom" 3
+at 28352 press "Cymbal" 3
+at 28358 press "Bass Drum" 3
+at 28364 press "Hi-Hat" 3
+at 28370 press "Snare" 3
+at 28376 press "High Tom" 3
+at 28382 press "Low Tom" 3
+at 28388 press "Cymbal" 3
+at 28394 press "Bass Drum" 3
+at 28400 press "Hi-Hat" 3
+at 28406 press "Snare" 3
+at 28412 press "High Tom" 3
+at 28418 press "Low Tom" 3
+at 28424 press "Cymbal" 3
+at 28430 press "Bass Drum" 3
+at 28436 press "Hi-Hat" 3
+at 28442 press "Snare" 3
+at 28448 press "High Tom" 3
+at 28454 press "Low Tom" 3
+at 28460 press "Cymbal" 3
+at 28466 press "Bass Drum" 3
+at 28472 press "Hi-Hat" 3
+at 28478 press "Snare" 3
+at 28484 press "High Tom" 3
+at 28490 press "Low Tom" 3
+at 28496 press "Cymbal" 3
+at 28502 press "Bass Drum" 3
+at 28508 press "Hi-Hat" 3
+at 28514 press "Snare" 3
+at 28520 press "High Tom" 3
+at 28526 press "Low Tom" 3
+at 28532 press "Cymbal" 3
+at 28538 press "Bass Drum" 3
+at 28544 press "Hi-Hat" 3
+at 28550 press "Snare" 3
+at 28556 press "High Tom" 3
+at 28562 press "Low Tom" 3
+at 28568 press "Cymbal" 3
+at 28574 press "Bass Drum" 3
+at 28580 press "Hi-Hat" 3
+at 28586 press "Snare" 3
+at 28592 press "High Tom" 3
+at 28598 press "Low Tom" 3
+at 28604 press "Cymbal" 3
+at 28610 press "Bass Drum" 3
+at 28616 press "Hi-Hat" 3
+at 28622 press "Snare" 3
+at 28628 press "High Tom" 3
+at 28634 press "Low Tom" 3
+at 28640 press "Cymbal" 3
+at 28646 press "Bass Drum" 3
+at 28652 press "Hi-Hat" 3
+at 28658 press "Snare" 3
+at 28664 press "High Tom" 3
+at 28670 press "Low Tom" 3
+at 28676 press "Cymbal" 3
+at 28682 press "Bass Drum" 3
+at 28688 press "Hi-Hat" 3
+at 28694 press "Snare" 3
+at 28700 press "High Tom" 3
+at 28706 press "Low Tom" 3
+at 28712 press "Cymbal" 3
+at 28718 press "Bass Drum" 3
+at 28724 press "Hi-Hat" 3
+at 28730 press "Snare" 3
+at 28736 press "High Tom" 3
+at 28742 press "Low Tom" 3
+at 28748 press "Cymbal" 3
+at 28754 press "Bass Drum" 3
+at 28760 press "Hi-Hat" 3
+at 28766 press "Snare" 3
+at 28772 press "High Tom" 3
+at 28778 press "Low Tom" 3
+at 28784 press "Cymbal" 3
+at 28790 press "Bass Drum" 3
+at 28796 press "Hi-Hat" 3
+at 28802 press "Snare" 3
+at 28808 press "High Tom" 3
+at 28814 press "Low Tom" 3
+at 28820 press "Cymbal" 3
+at 28826 press "Bass Drum" 3
+at 28832 press "Hi-Hat" 3
+at 28838 press "Snare" 3
+at 28844 press "High Tom" 3
+at 28850 press "Low Tom" 3
+at 28856 press "Cymbal" 3
+at 28862 press "Bass Drum" 3
+at 28868 press "Hi-Hat" 3
+at 28874 press "Snare" 3
+at 28880 press "High Tom" 3
+at 28886 press "Low Tom" 3
+at 28892 press "Cymbal" 3
+at 28898 press "Bass Drum" 3
+at 28904 press "Hi-Hat" 3
+at 28910 press "Snare" 3
+at 28916 press "High Tom" 3
+at 28922 press "Low Tom" 3
+at 28928 press "Cymbal" 3
+at 28934 press "Bass Drum" 3
+at 28940 press "Hi-Hat" 3
+at 28946 press "Snare" 3
+at 28952 press "High Tom" 3
+at 28958 press "Low Tom" 3
+at 28964 press "Cymbal" 3
+at 28970 press "Bass Drum" 3
+at 28976 press "Hi-Hat" 3
+at 28982 press "Snare" 3
+at 28988 press "High Tom" 3
+at 28994 press "Low Tom" 3
+at 29000 press "Cymbal" 3
+at 29006 press "Bass Drum" 3
+at 29012 press "Hi-Hat" 3
+at 29018 press "Snare" 3
+at 29024 press "High Tom" 3
+at 29030 press "Low Tom" 3
+at 29036 press "Cymbal" 3
+at 29042 press "Bass Drum" 3
+at 29048 press "Hi-Hat" 3
+at 29054 press "Snare" 3
+at 29060 press "High Tom" 3
+at 29066 press "Low Tom" 3
+at 29072 press "Cymbal" 3
+at 29078 press "Bass Drum" 3
+at 29084 press "Hi-Hat" 3
+at 29090 press "Snare" 3
+at 29096 press "High Tom" 3
+at 29102 press "Low Tom" 3
+at 29108 press "Cymbal" 3
+at 29114 press "Bass Drum" 3
+at 29120 press "Hi-Hat" 3
+at 29126 press "Snare" 3
+at 29132 press "High Tom" 3
+at 29138 press "Low Tom" 3
+at 29144 press "Cymbal" 3
+at 29150 press "Bass Drum" 3
+at 29156 press "Hi-Hat" 3
+at 29162 press "Snare" 3
+at 29168 press "High Tom" 3
+at 29174 press "Low Tom" 3
+at 29180 press "Cymbal" 3
+at 29186 press "Bass Drum" 3
+at 29192 press "Hi-Hat" 3
+at 29198 press "Snare" 3
+at 29204 press "High Tom" 3
+at 29210 press "Low Tom" 3
+at 29216 press "Cymbal" 3
+at 29222 press "Bass Drum" 3
+at 29228 press "Hi-Hat" 3
+at 29234 press "Snare" 3
+at 29240 press "High Tom" 3
+at 29246 press "Low Tom" 3
+at 29252 press "Cymbal" 3
+at 29258 press "Bass Drum" 3
+at 29264 press "Hi-Hat" 3
+at 29270 press "Snare" 3
+at 29276 press "High Tom" 3
+at 29282 press "Low Tom" 3
+at 29288 press "Cymbal" 3
+at 29294 press "Bass Drum" 3
+at 29300 press "Hi-Hat" 3
+at 29306 press "Snare" 3
+at 29312 press "High Tom" 3
+at 29318 press "Low Tom" 3
+at 29324 press "Cymbal" 3
+at 29330 press "Bass Drum" 3
+at 29336 press "Hi-Hat" 3
+at 29342 press "Snare" 3
+at 29348 press "High Tom" 3
+at 29354 press "Low Tom" 3
+at 29360 press "Cymbal" 3
+at 29366 press "Bass Drum" 3
+at 29372 press "Hi-Hat" 3
+at 29378 press "Snare" 3
+at 29384 press "High Tom" 3
+at 29390 press "Low Tom" 3
+at 29396 press "Cymbal" 3
+at 29402 press "Bass Drum" 3
+at 29408 press "Hi-Hat" 3
+at 29414 press "Snare" 3
+at 29420 press "High Tom" 3
+at 29426 press "Low Tom" 3
+at 29432 press "Cymbal" 3
+at 29438 press "Bass Drum" 3
+at 29444 press "Hi-Hat" 3
+at 29450 press "Snare" 3
+at 29456 press "High Tom" 3
+at 29462 press "Low Tom" 3
+at 29468 press "Cymbal" 3
+at 29474 press "Bass Drum" 3
+at 29480 press "Hi-Hat" 3
+at 29486 press "Snare" 3
+at 29492 press "High Tom" 3
+at 29498 press "Low Tom" 3
+at 29504 press "Cymbal" 3
+at 29510 press "Bass Drum" 3
+at 29516 press "Hi-Hat" 3
+at 29522 press "Snare" 3
+at 29528 press "High Tom" 3
+at 29534 press "Low Tom" 3
+at 29540 press "Cymbal" 3
+at 29546 press "Bass Drum" 3
+at 29552 press "Hi-Hat" 3
+at 29558 press "Snare" 3
+at 29564 press "High Tom" 3
+at 29570 press "Low Tom" 3
+at 29576 press "Cymbal" 3
+at 29582 press "Bass Drum" 3
+at 29588 press "Hi-Hat" 3
+at 29594 press "Snare" 3
+at 29600 press "High Tom" 3
+at 29606 press "Low Tom" 3
+at 29612 press "Cymbal" 3
+at 29618 press "Bass Drum" 3
+at 29624 press "Hi-Hat" 3
+at 29630 press "Snare" 3
+at 29636 press "High Tom" 3
+at 29642 press "Low Tom" 3
+at 29648 press "Cymbal" 3
+at 29654 press "Bass Drum" 3
+at 29660 press "Hi-Hat" 3
+at 29666 press "Snare" 3
+at 29672 press "High Tom" 3
+at 29678 press "Low Tom" 3
+at 29684 press "Cymbal" 3
+at 29690 press "Bass Drum" 3
+at 29696 press "Hi-Hat" 3
+at 29702 press "Snare" 3
+at 29708 press "High Tom" 3
+at 29714 press "Low Tom" 3
+at 29720 press "Cymbal" 3
+at 29726 press "Bass Drum" 3
+at 29732 press "Hi-Hat" 3
+at 29738 press "Snare" 3
+at 29744 press "High Tom" 3
+at 29750 press "Low Tom" 3
+at 29756 press "Cymbal" 3
+at 29762 press "Bass Drum" 3
+at 29768 press "Hi-Hat" 3
+at 29774 press "Snare" 3
+at 29780 press "High Tom" 3
+at 29786 press "Low Tom" 3
+at 29792 press "Cymbal" 3
+at 29798 press "Bass Drum" 3
+at 29804 press "Hi-Hat" 3
+at 29810 press "Snare" 3
+at 29816 press "High Tom" 3
+at 29822 press "Low Tom" 3
+at 29828 press "Cymbal" 3
+at 29834 press "Bass Drum" 3
+at 29840 press "Hi-Hat" 3
+at 29846 press "Snare" 3
+at 29852 press "High Tom" 3
+at 29858 press "Low Tom" 3
+at 29864 press "Cymbal" 3
+at 29870 press "Bass Drum" 3
+at 29876 press "Hi-Hat" 3
+at 29882 press "Snare" 3
+at 29888 press "High Tom" 3
+at 29894 press "Low Tom" 3
+at 29900 press "Cymbal" 3
+at 29906 press "Bass Drum" 3
+at 29912 press "Hi-Hat" 3
+at 29918 press "Snare" 3
+at 29924 press "High Tom" 3
+at 29930 press "Low Tom" 3
+at 29936 press "Cymbal" 3
+at 29942 press "Bass Drum" 3
+at 29948 press "Hi-Hat" 3
+at 29954 press "Snare" 3
+at 29960 press "High Tom" 3
+at 29966 press "Low Tom" 3
+at 29972 press "Cymbal" 3
+at 29978 press "Bass Drum" 3
+at 29984 press "Hi-Hat" 3
+at 29990 press "Snare" 3
+at 29996 press "High Tom" 3
+from 11000 every 600 snap
+at 25600 quit

@@ -211,6 +211,9 @@ CASES = {
     # network's keepalive and AVS services, the card unit on the P2IO
     "drmnvj-eamuse-on": ("drmnvj", 12870, ["--script", "oracle/scripts/drmnvj-eamuse-on.his", "--pcsx2-set", "EmuCore/GS/extrathreads=0"]),
     "drmnvj-eamuse": ("drmnvj", 13200, ["--script", "oracle/scripts/drmnvj-eamuse.his", "--pcsx2-set", "EmuCore/GS/extrathreads=0"], "drmnvj-eamuse-on"),
+    # a card's life: registered and played, then again with its password (GF/DM V's cardutil, gameend)
+    "drmnvj-card-new": ("drmnvj", 27100, ["--script", "oracle/scripts/drmnvj-card-new.his", "--pcsx2-set", "EmuCore/GS/extrathreads=0"], "drmnvj-eamuse-on"),
+    "drmnvj-card-again": ("drmnvj", 25600, ["--script", "oracle/scripts/drmnvj-card-again.his", "--pcsx2-set", "EmuCore/GS/extrathreads=0"], "drmnvj-card-new"),
 }
 
 # Twinkle: the cases above run MAME's program CD drive (--mame-cd), so they stay in lockstep

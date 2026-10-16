@@ -81,6 +81,8 @@ private:
     void rank_shop(const std::string &game, const Request &r, const char *mask, const char *mask_hi);
     // pop'n 10 on: their own calls and answers ("" leaves the call to pop'n 9's)
     std::string answer_later(const std::string &game, const Request &r, const std::string &host);
+    // GuitarFreaks and DrumMania V (Konami Python 2: E02, F02, E03, F03), "" for the rest
+    std::string answer_gfdmv(const std::string &game, const Request &r);
     std::string answer_game(const std::string &game, const Request &r);
     std::string answer_playerdata(const std::string &game, const Request &r);
     // One card for all (docs/EAMUSE3.md): every chart's best clear mark over all the pop'n games

@@ -906,6 +906,51 @@ different PCs meet online through `hiraku-eamuse`'s relay (below, "Online").
   class_skill badge get_ojama set_ojama rank stage_record member_name member_pref map_hi map_lo/>`
   (pop'n 13 and 14: their own fields).
 
+## GuitarFreaks and DrumMania V (Konami Python 2)
+
+DrumMania V (`E02:J:A:A:2005050201`) seen in HIRAKU's core (PLAN.md §23, PY-6), the same protocol
+(the envelope, RC4, the plain calls) over the cabinet's own network adapter. The game's network
+library, from the RAM of a running game (no symbols; the addresses are where it loads):
+
+- **Before anything:** e-AMUSEMENT ON in test mode's NETWORK OPTIONS (hold Start and press Left or
+  Right to change a value; saved on the hard disk; the game asks for a reboot). The cabinet's own
+  address must not be 192.168.x.x: the library takes that as no router ("ルーターと通信できません",
+  5-2000-0000; eamusement, `0x947a64`).
+- **The library's start-up:** AVS services (`avs-services.c`): `download.eamuse...:42197` by name,
+  else a UDP broadcast to port 42197, `SgetRQ` + the MAC + the two XORed, answered with 12 bytes
+  (6 skipped, the server's IPv4 address, its port, big-endian); then `GET <MAC>\r\n` over TCP there,
+  answered with a line, the length of what follows, and lines `name://a.b.c.d:port` (HIRAKU: none).
+- **services get** must list `keepalive` and `ntp` besides the modules: `keepalive`'s URL gives the
+  router, center and server the library pings (`?pa=&ia=&ga=&ma=&t1=&t2=`: ga/ma the router, pa/ia
+  the center, the URL's host the server, t1/t2 the short and long intervals in seconds; the host an
+  IPv4 address); `ntp://host/` its clock (SNTP).
+- **Start-up calls:** pcbtracker alive, message get, posevent (income, sales, sale), shopinfo regist
+  (`<shop name pref/>`), demodata get (`<favorite nr/><shoprank nr pref pnr/>`). `status="0"`
+  answers do.
+- **A card:** the cabinet's card unit (the 573 GuitarFreaks/DrumMania magnetic one) reads the card;
+  a blank one gets a number (numbering assign, label `cardv1`, format `card16m10`, as pop'n 9's).
+  - **cardutil check** `<card no= id=/>` per player: `<cardutil status="0"><card no state pass gdid
+    skill/></cardutil>`; `no` must be there. `state` 0 unknown (the card can't be used), 1 not
+    registered (the game registers it, keeping the `gdid` given), 2 registered (`pass` its 4 digits,
+    `gdid` the player's 10 characters, `skill`), 3 expired (`0x1c483e4`).
+  - **Registration:** the name (up to 8 of `A-Z 0-9 . - _ ^ [`; Left/Right and Start, END) and a
+    4-digit password twice on the 10-key; **cardutil regist** `<card cardid gdid kingid name pass type
+    update/>`, answered with `<cardutil status="0"/>` and nothing in it (a child element fails it:
+    "登録に失敗しました", `0x94adbc`). The card is written (the name in it).
+  - **The card again:** cardutil check, registered: the name from the card, the password on the
+    10-key (checked by the game against `pass`).
+  - **information get** and **gametop get** `<player gdid/>`. gametop's answer: `<player gdid styles
+    pticket ticket>` (`0x94c990`), in it `musicdata` (base64: the game's own record of the player's
+    songs, decoded into the player's 0xc30 bytes, `0x94c890`), `towerdata`, `kingdata`. HIRAKU
+    answers the player without them so far.
+- **After a credit:** **gameend regist** `<stage mode nr><stagedata no netid newmusic extra king
+  clear/>..</stage><shoprank point/><player session king tower><playerdata card gdid styles perfect
+  great good poor miss time point><stage seqmode flags score spoint skill combo perc bscore/>..
+  </playerdata></player>`, the stages in the order of stagedata; posevent sale; userid ctou;
+  **roulette regist** `<player gdid cmplst no exflg tiflg pticket ticket/>`. HIRAKU keeps each
+  player's totals and each song and seqmode's best score, combo and percentage, and its plays
+  (`gfdmv-GDID`); the players in `gfdmv-cards`.
+
 ## Not known yet
 
 - What `alter` and `aflag` are for; what the pop'n friends statuses 600 and 601
