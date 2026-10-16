@@ -100,18 +100,18 @@ def copy_romset(romset: str, romdir: str) -> list[str]:
                 names.append(n)
     elif romset.lower().endswith(".7z"):
         # 7-Zip sets (e.g. standalone/non-merged): the 7z tool, or bsdtar (libarchive) when 7z is missing
-        if shutil.which("7z"):
-            listing = subprocess.run(["7z", "l", "-slt", romset], check=True, capture_output=True, text=True).stdout
+        if sz := mameset.seven_zip():
+            listing = subprocess.run([sz, "l", "-slt", romset], check=True, capture_output=True, text=True).stdout
             names = [os.path.basename(l[7:]) for l in listing.splitlines()[1:]
                      if l.startswith("Path = ") and l[7:] != romset and not l[7:].endswith(".7z")]
-            subprocess.run(["7z", "e", "-y", f"-o{romdir}", romset], check=True, capture_output=True)
+            subprocess.run([sz, "e", "-y", f"-o{romdir}", romset], check=True, capture_output=True)
         elif shutil.which("bsdtar"):
             listing = subprocess.run(["bsdtar", "-tf", romset], check=True, capture_output=True, text=True).stdout
             names = [os.path.basename(l) for l in listing.splitlines() if l and not l.endswith("/")]
             # flat, as 7z e: every file straight into romdir
             subprocess.run(["bsdtar", "-xf", romset, "-C", romdir, "-s", ",.*/,,"], check=True, capture_output=True)
         else:
-            sys.exit(f"{romset}: a .7z set needs 7z (package 7zip or p7zip) or bsdtar (libarchive)")
+            sys.exit(f"{romset}: a .7z set needs 7-Zip (7-zip.org; on Linux the 7zip or p7zip package) or bsdtar (libarchive)")
     else:
         with zipfile.ZipFile(romset) as z:
             for name in z.namelist():
@@ -169,7 +169,7 @@ def copy_set_with_parents(romset: str, romdir: str, set_name: str) -> list[str]:
     for f, size, crc in mameset.needed_roms(set_name):
         if f not in have and (size, crc) in by_crc:
             shutil.copyfile(os.path.join(romdir, by_crc[(size, crc)]), os.path.join(romdir, f))
-            print(f"rom      {f} (from {by_crc[(size, crc)]}: an older MAME's name)")
+            print(f"rom      {f} (the same dump as {by_crc[(size, crc)]}, by size and CRC)")
             names.append(f)
     return names
 
@@ -211,7 +211,7 @@ def ingest_djmain(args) -> int:
     if not machine.get("hdd"):
         print(f"ERROR    no hard disk: add {game['hdd']['chd']}.chd (or its raw image)")
         return 1
-    with open(machine_path, "w") as fh:
+    with open(machine_path, "w", newline="\n") as fh:   # \n on Windows too: dumps move between PCs
         for k in ["core", "family", "map", "program", "sprites", "tiles", "hdd", "hdd_chs", "ata_master_password", "ata_user_password"]:
             if k in machine:
                 fh.write(f"{k}={machine[k]}\n")
@@ -229,6 +229,9 @@ def ingest_sys573(args) -> int:
     gid = game["id"]
     print(f"game     {gid}: {game['title']} (System 573)")
     outdir = os.path.join(args.out, gid)
+    # a clone from its parent's merged set (--game): the clone's own ROM list, so that what it needs
+    # is found by size and CRC (a merged set keeps a dump once, under one clone's name)
+    set_name = game.get("mame") or set_name
     names = set(copy_set_with_parents(args.romset, os.path.join(outdir, "rom"), set_name))
     check_dumps(set_name, os.path.join(outdir, "rom"))
     roms = game["roms"]
@@ -263,15 +266,18 @@ def ingest_sys573(args) -> int:
         machine["npu"] = "1"
     if getattr(args, "hdd_cd", None):
         machine["hdd_cd"] = media_path(args.hdd_cd, outdir)
+    for k in ("install_cd", "install2_cd"):   # MAME's install discs (--cd install, install2)
+        if getattr(args, k, None):
+            machine[k] = media_path(getattr(args, k), outdir)
     if not machine.get("cd"):
         print(f"ERROR    no CD: add {game['cd']['chd']}.chd (or its .cue/.bin)")
         return 1
     order = ["core", "family", *keys, "io_board", "cassette", "pccard1", "pccard2", "memory_card_reader", "cd", "msu", "msu_cd",
-             "npu", "hdd_cd"]
+             "npu", "hdd_cd", "install_cd", "install2_cd"]
     if machine.get("msu") and not machine.get("msu_cd"):
         print(f"ERROR    no multi-session unit CD: add {game['cd'].get('msu_chd')}.chd")
         return 1
-    with open(machine_path, "w") as fh:
+    with open(machine_path, "w", newline="\n") as fh:   # \n on Windows too: dumps move between PCs
         for k in order:
             if k in machine:
                 fh.write(f"{k}={machine[k]}\n")
@@ -335,13 +341,13 @@ def ingest_twinkle(args) -> int:
     # a DVD (an image of 2048-byte sectors, not a .cue or a CD's CHD) is the player's disc from 6th style on
     v = machine.get("video_cd", "")
     if v and not v.lower().endswith(".cue") and not (v.lower().endswith(".chd") and
-                                                      chd.info(v if v.startswith("/") else os.path.join(outdir, v)).kind == "cd"):
+                                                      chd.info(v if os.path.isabs(v) else os.path.join(outdir, v)).kind == "cd"):
         machine["video_dvd"] = machine.pop("video_cd")
     # the disk's geometry (MAME's IDE disk reports it): the CHD's, else 16 heads and 63 sectors
     if getattr(args, "hdd_chs", None):
         machine["hdd_chs"] = ",".join(map(str, args.hdd_chs))
     elif machine.get("hdd") and not machine.get("hdd_chs"):
-        img = os.path.join(outdir, machine["hdd"]) if not machine["hdd"].startswith("/") else machine["hdd"]
+        img = os.path.join(outdir, machine["hdd"]) if not os.path.isabs(machine["hdd"]) else machine["hdd"]
         machine["hdd_chs"] = f"{os.path.getsize(img) // (16 * 63 * 512)},16,63"
     for key, what in (("cd", f"the program CD: add {game['cd']['chd']}.chd"),
                       ("video_cd" if "video_dvd" not in machine else "video_dvd",
@@ -351,7 +357,7 @@ def ingest_twinkle(args) -> int:
             print(f"ERROR    no {what}")
             return 1
     order = ["core", "family", *keys, "dongle_type", "dvd_port", "cd", "video_cd", "video_dvd", "hdd", "hdd_chs"]
-    with open(machine_path, "w") as fh:
+    with open(machine_path, "w", newline="\n") as fh:   # \n on Windows too: dumps move between PCs
         for k in order:
             if k in machine:
                 fh.write(f"{k}={machine[k]}\n")
@@ -439,7 +445,7 @@ def ingest_firebeat(args) -> int:
     if args.dvd:
         machine["spu_dvd"] = media_path(args.dvd, outdir)
     order = ["family", "dongle", "cabinet", "cd_master", "cd_slave", "spu_rom", "spu_hdd", "spu_dvd"]
-    with open(machine_path, "w") as fh:
+    with open(machine_path, "w", newline="\n") as fh:   # \n on Windows too: dumps move between PCs
         for k in order + sorted(set(machine) - set(order)):
             if k in machine:
                 fh.write(f"{k}={machine[k]}\n")
@@ -585,7 +591,7 @@ def ingest_python2(args, py2: str) -> int:
     machine_path = os.path.join(outdir, "machine.txt")
     order = ["core", "board", "family", "name", "game_id", "input_type", "hdd", "hdd_id", "ilink_id", "nvram",
              "dongle_black", "dongle_white", "bios", "keys"]
-    with open(machine_path, "w") as fh:
+    with open(machine_path, "w", newline="\n") as fh:   # \n on Windows too: dumps move between PCs
         for k in order:
             if machine.get(k):
                 fh.write(f"{k}={machine[k]}\n")
@@ -667,7 +673,7 @@ def ingest_python(args, py1: str) -> int:
     machine_path = os.path.join(outdir, "machine.txt")
     order = ["core", "family", "name", "io_mode", "game_id", "hdd", "cf", "bbsram", "io_bootrom", "io_config_rom",
              "internal_dongle", "external_dongle", "memcard", "memcard_id", "bios", "keys"]
-    with open(machine_path, "w") as fh:
+    with open(machine_path, "w", newline="\n") as fh:   # \n on Windows too: dumps move between PCs
         for k in order:
             if machine.get(k):
                 fh.write(f"{k}={machine[k]}\n")
@@ -806,7 +812,8 @@ def ingest_auto(args, inputs: list[str]) -> int:
             stem = disk_name(c)
             for g in games:
                 if stem in (g.get("hdd", {}).get("chd"), g.get("cd", {}).get("chd"), g.get("cd", {}).get("msu_chd"),
-                            g.get("cd", {}).get("hdd_chd"), g.get("cd", {}).get("video_chd")):
+                            g.get("cd", {}).get("hdd_chd"), g.get("cd", {}).get("video_chd"),
+                            g.get("cd", {}).get("install_chd"), g.get("cd", {}).get("install2_chd")):
                     hint = g
     if hint:
         print(f"game     {hint['id']}: {hint['title']} (from {'the set' if romsets else 'the CHD name'})")
@@ -816,13 +823,33 @@ def ingest_auto(args, inputs: list[str]) -> int:
     media = []   # (path, kind)
     disk_of = {}  # extracted image -> MAME's disk name (a renamed CHD's too)
     # --keep-chd: DJ Main, System 573 and Twinkle read their CHDs in place (runtime/dev/image.h),
-    # so nothing is extracted; Firebeat's program CD still is (its program is unpacked from it)
-    keep = args.keep_chd and hint is not None and hint.get("core") in ("djmain", "sys573", "twinkle")
+    # so nothing is extracted; Firebeat's program CD still is (its program is unpacked from it).
+    # --copy-chd (the launcher's): the same, from the CHD's copy in dumps/<game>/ (a hard link
+    # where it can be: no copying on the same disk), so the files given can go afterwards
+    keep = (args.keep_chd or args.copy_chd) and hint is not None and hint.get("core") in ("djmain", "sys573", "twinkle")
     for c in chds:
         if keep:
             p, kind = os.path.abspath(c), chd.info(c).kind
+            if args.copy_chd:
+                os.makedirs(dest, exist_ok=True)
+                to = os.path.join(dest, os.path.basename(c))
+                if not (os.path.exists(to) and os.path.getsize(to) == os.path.getsize(p)):
+                    if os.path.lexists(to):
+                        os.remove(to)
+                    try:
+                        os.link(os.path.realpath(p), to)
+                        how = "linked"
+                    except OSError:
+                        shutil.copyfile(p, to + ".part")
+                        os.replace(to + ".part", to)
+                        how = "copied"
+                    print(f"image    {os.path.basename(to)} ({kind}, {how} into {os.path.basename(dest)}/, read in place)")
+                else:
+                    print(f"have     {os.path.basename(to)} ({kind}, read in place)")
+                p = to
+            else:
+                print(f"image    {p} ({kind}, read in place)")
             disk_of[p] = disk_name(c)
-            print(f"image    {p} ({kind}, read in place)")
             media.append((p, kind))
             continue
         try:
@@ -871,8 +898,10 @@ def ingest_auto(args, inputs: list[str]) -> int:
         stem = lambda p: disk_of.get(p) or os.path.splitext(os.path.basename(p))[0]
         args.msu_cd = next((p for p in cds if stem(p) == want.get("msu_chd")), None) if want.get("msu_chd") else None
         args.hdd_cd = next((p for p in cds if stem(p) == want.get("hdd_chd")), None) if want.get("hdd_chd") else None
+        args.install_cd = next((p for p in cds if stem(p) == want.get("install_chd")), None) if want.get("install_chd") else None
+        args.install2_cd = next((p for p in cds if stem(p) == want.get("install2_chd")), None) if want.get("install2_chd") else None
         args.cd = next((p for p in cds if stem(p) == want.get("chd")), None) or \
-            next((p for p in cds if p not in (args.msu_cd, args.hdd_cd)), None)
+            next((p for p in cds if p not in (args.msu_cd, args.hdd_cd, args.install_cd, args.install2_cd)), None)
         return ingest_sys573(args)
     if core == "twinkle":
         want = hint.get("cd", {})
@@ -908,6 +937,8 @@ def main() -> int:
                     "whose name is the parent's")
     ap.add_argument("--keep-chd", action="store_true", help="DJ Main, System 573, Twinkle: read the CHDs where they are "
                     "instead of extracting them (the game then needs them there)")
+    ap.add_argument("--copy-chd", action="store_true", help="DJ Main, System 573, Twinkle: link or copy the CHDs into "
+                    "dumps/<game>/ and read them there, instead of extracting them (what the launcher does)")
     ap.add_argument("--nvram-seed", metavar="DIR", help="System 573: a MAME NVRAM folder (nvram/<set>/) with the game "
                     "installed; kept as the game's starting saves (a folder named nvram/<set> is told by itself)")
     args = ap.parse_args()

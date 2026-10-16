@@ -32,6 +32,7 @@ std::map<std::string, std::string> read_kv(const std::string &path) {
     std::map<std::string, std::string> kv;
     std::ifstream in(path);
     for (std::string line; std::getline(in, line);) {
+        if (!line.empty() && line.back() == '\r') line.pop_back();   // written on Windows
         auto eq = line.find('=');
         if (eq != std::string::npos) kv[line.substr(0, eq)] = line.substr(eq + 1);
     }

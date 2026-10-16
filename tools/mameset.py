@@ -221,12 +221,26 @@ def archive_crcs(path: str) -> dict[str, tuple[int, str]]:
                 if not i.is_dir():
                     out[os.path.basename(i.filename)] = (i.file_size, f"{i.CRC:08x}")
     elif path.lower().endswith(".7z"):
-        text = subprocess.run(["7z", "l", "-slt", path], capture_output=True, text=True).stdout
+        sz = seven_zip()
+        text = subprocess.run([sz, "l", "-slt", path], capture_output=True, text=True).stdout if sz else ""
         for block in text.split("\n\n"):
             f = dict(re.findall(r"^(\w[\w ]*?) = (.*)$", block, re.M))
             if f.get("Path") and f.get("CRC") and f.get("Folder") != "+":
                 out[os.path.basename(f["Path"])] = (int(f.get("Size", 0)), f["CRC"].lower())
     return out
+
+
+def seven_zip() -> str | None:
+    """The 7z program: on the PATH, else where 7-Zip installs itself on Windows."""
+    import shutil
+    for name in ("7z", "7za", "7zz"):
+        if p := shutil.which(name):
+            return p
+    for base in (os.environ.get("ProgramFiles", ""), os.environ.get("ProgramFiles(x86)", "")):
+        p = os.path.join(base, "7-Zip", "7z.exe")
+        if base and os.path.isfile(p):
+            return p
+    return None
 
 
 def chd_sha1(path: str) -> str | None:

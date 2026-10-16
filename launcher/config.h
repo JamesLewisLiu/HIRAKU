@@ -26,7 +26,8 @@ QString lightsFile(const QString &family);
 QString lightsSocket();                    // $XDG_RUNTIME_DIR/hiraku-lights.sock; on Windows 127.0.0.1:PORT
 QString exeName(const QString &base);      // a program's file name: base, or base.exe on Windows
 // Python 3 for tools/*.py: the program and the arguments before the script's ("python3"; on
-// Windows the "py -3" launcher, else "python"). Empty if there's none.
+// Windows the package's own python\python.exe, else the "py -3" launcher, else "python"). Empty
+// if there's none.
 QStringList python();
 
 QString familyName(const QString &family); // "pop'n music"

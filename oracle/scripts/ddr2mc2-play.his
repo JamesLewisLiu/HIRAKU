@@ -1,0 +1,20 @@
+# DDR 2ndMIX with beatmania IIDX substream CLUB VERSiON 2 (System 573, analog I/O board): from what ddr2mc2-install.his
+# left, with the game CD: the flash check, the title, then two coins (one credit), Start through the
+# title, mode select and How To Play, song select (BOYS), the song stepped on all four panels every 8 frames until it fails. Hashes the main RAM every frame, snapshots every
+# 60 frames.
+game ddr2mc2
+
+hash ram  0x80000000 0x80400000   # 4 MiB main RAM (KSEG0)
+
+at 7800 press "Coin 1" 8
+at 7840 press "Coin 1" 8
+at 8000 press "1 Player Start" 8
+at 8600 press "1 Player Start" 8
+at 9200 press "1 Player Start" 8
+at 9800 press "1 Player Start" 8
+from 10100 every 8 press "P1 Left" 4
+from 10100 every 8 press "P1 Down" 4
+from 10100 every 8 press "P1 Up" 4
+from 10100 every 8 press "P1 Right" 4
+from 0 every 60 snap
+at 15000 quit

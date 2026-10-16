@@ -401,6 +401,8 @@ void MainWindow::updateActions() {
 }
 
 static bool installCassette(const Game &g);
+static bool hasInstallCd(const Game &g);
+static bool installCd(const Game &g);
 static QString nvramSeed(const Game &g);
 
 void MainWindow::showDetails() {
@@ -430,6 +432,9 @@ void MainWindow::showDetails() {
             h += "<p><b>The install cassette is in the slot</b> for the next start: the game installs itself from "
                  "CD to flash. When it says the install is done (INFO 506), stop it and play again: it then boots "
                  "with the game's cassette.</p>";
+        if (installCd(*g))
+            h += "<p><b>The install CD is in the drive</b> for the next start: the game installs itself from it. "
+                 "When it says the install is done, stop it and play again: it then boots from the game's CD.</p>";
         h += "<p>Saves: <tt>" + cfg::nvramDir(g->id).toHtmlEscaped() + "</tt>" + (fresh ? " (none yet)" : "") + "</p>";
         QString m = picture::mode(g->id);
         bool own = cfg::settings().contains("picture/" + g->id) || QFileInfo::exists(picture::configDir(g->id));
@@ -455,6 +460,24 @@ static QString nvramSeed(const Game &g) {
 static bool installCassette(const Game &g) {
     if (!g.installCassette) return false;
     if (cfg::settings().value("cassette/" + g.id).toString() == "install") return true;
+    return !QFileInfo::exists(cfg::nvramDir(g.id)) && nvramSeed(g).isEmpty();
+}
+
+// A System 573 game with an install CD (MAME's "install" disc: ddr2mla, ddrbocd, the club versions):
+// its machine.txt names it (tools/ingest.py, install_cd)
+static bool hasInstallCd(const Game &g) {
+    QFile f(cfg::rootDir() + "/dumps/" + g.id + "/machine.txt");
+    if (g.core != "sys573" || !f.open(QIODevice::ReadOnly)) return false;
+    for (const QByteArray &line : f.readAll().split('\n'))
+        if (line.startsWith("install_cd=") && line.trimmed().size() > 11) return true;
+    return false;
+}
+
+// ... and booted from it on its first start (no saves, none to start from), or the next start after
+// "Boot once with the install CD" (an install stopped halfway), as installCassette() does
+static bool installCd(const Game &g) {
+    if (!hasInstallCd(g)) return false;
+    if (cfg::settings().value("cd/" + g.id).toString() == "install") return true;
     return !QFileInfo::exists(cfg::nvramDir(g.id)) && nvramSeed(g).isEmpty();
 }
 
@@ -497,6 +520,7 @@ QStringList MainWindow::arguments(const Game &g) const {
         a << "--bio2" << b;   // the IIDX cabinet's controls and lamps (runtime/host/bio2.h)
     if (!cfg::nvramBase().isEmpty()) a << "--nvram" << cfg::nvramDir(g.id);
     if (installCassette(g)) a << "--cassette" << "install";
+    if (installCd(g)) a << "--cd" << "install";
     a << UnlocksDialog::macroArguments(g.id);   // codes typed at every start
     a << QProcess::splitCommand(s.value("game/extraArgs").toString());
     return a;
@@ -546,6 +570,7 @@ void MainWindow::play(const QString &id) {
     }
     m_proc.start(g->exe, args);
     cfg::settings().remove("cassette/" + g->id);   // "Boot once with the install cassette" is used up
+    cfg::settings().remove("cd/" + g->id);         // ... and "Boot once with the install CD"
     statusBar()->showMessage("Running " + g->title);
     cfg::settings().setValue("ui/lastGame", g->id);
     updateActions();
@@ -596,6 +621,16 @@ void MainWindow::contextMenu(const QPoint &pos) {
         inst->setCheckable(true);
         inst->setChecked(cfg::settings().value("cassette/" + id).toString() == "install");
         inst->setToolTip("For an install that stopped before it was done (the game then shows ERROR 147)");
+    }
+    if (hasInstallCd(*g)) {
+        auto *cd = menu.addAction("Boot once with the install CD", this, [this, id](bool on) {
+            if (on) cfg::settings().setValue("cd/" + id, "install");
+            else cfg::settings().remove("cd/" + id);
+            showDetails();
+        });
+        cd->setCheckable(true);
+        cd->setChecked(cfg::settings().value("cd/" + id).toString() == "install");
+        cd->setToolTip("To install again, or finish an install that stopped before it was done");
     }
     menu.addSeparator();
     QString nv = cfg::nvramDir(id);
@@ -662,7 +697,9 @@ void MainWindow::startIngest() {
         QMessageBox::warning(this, "HIRAKU", "Adding games runs tools/ingest.py, which needs Python 3 (python.org).");
         return;
     }
-    m_ingest.start(py[0], py.mid(1) + QStringList{script} + paths);
+    // --copy-chd: the CHDs of the games that read them in place go into dumps/<game>/ as they are
+    // (a hard link where it can be), not extracted: no chdman needed, nothing doubled in size
+    m_ingest.start(py[0], py.mid(1) + QStringList{script, "--copy-chd"} + paths);
 }
 
 void MainWindow::log(const QString &text) {

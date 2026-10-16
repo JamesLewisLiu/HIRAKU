@@ -133,6 +133,9 @@ QString exeName(const QString &base) {
 
 QStringList python() {
 #ifdef Q_OS_WIN
+    // a package's own (tools/package-win.sh: python.org's embeddable Python in hiraku\python)
+    for (const QString &d : {QCoreApplication::applicationDirPath() + "/../python", QCoreApplication::applicationDirPath() + "/python"})
+        if (QFileInfo::exists(d + "/python.exe")) return {QDir::cleanPath(d + "/python.exe")};
     if (QString py = QStandardPaths::findExecutable("py"); !py.isEmpty()) return {py, "-3"};
     if (QString p = QStandardPaths::findExecutable("python"); !p.isEmpty()) return {p};
     return {};

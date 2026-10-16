@@ -20,6 +20,7 @@ std::map<std::string, std::string> read_kv(const std::string &path) {
     std::map<std::string, std::string> kv;
     std::ifstream f(path);
     for (std::string line; std::getline(f, line);) {
+        if (!line.empty() && line.back() == '\r') line.pop_back();   // written on Windows
         auto eq = line.find('=');
         if (eq != std::string::npos) kv[line.substr(0, eq)] = line.substr(eq + 1);
     }
@@ -56,6 +57,9 @@ public:
                "                    http://host[:port][/path] (online)\n"
                "  --cd hdd          boot the unit's data installer CD (implies --npu): it installs the\n"
                "                    e-AMUSEMENT data on the unit's disk; power off when it says it is done\n"
+               "  --cd install      boot the game's install CD (MAME's \"install\" disc: the first boot of\n"
+               "                    ddr2mla, ddrbocd, the club versions): when it says the install is done,\n"
+               "                    power off and boot again without (install2: MAME's second install disc)\n"
                "  --session-host SOCKET  session play: this cabinet (the one with the multi-session unit,\n"
                "                    DrumMania) waits at SOCKET (a path, or host:port) for the other\n"
                "  --session-join SOCKET  session play: this cabinet (GuitarFreaks) joins the host's unit\n"
@@ -91,9 +95,17 @@ public:
         get("msu_flash", cfg.msu_flash);
         get("msu_rtc", cfg.msu_rtc);
         cfg.cd = o.data_path(machine["cd"]);
-        if (!cd_.empty()) {
+        if (cd_ == "install" || cd_ == "install2") {
+            // the disc MAME's CD drive offers as "install" (or "install2"), in place of the runtime CD
+            const std::string key = cd_ + "_cd";
+            if (machine[key].empty()) {
+                fprintf(stderr, "%s has no %s CD (run tools/ingest.py with its CHD)\n", o.game.c_str(), cd_.c_str());
+                return false;
+            }
+            cfg.cd = o.data_path(machine[key]);
+        } else if (!cd_.empty()) {
             if (cd_ != "hdd") {
-                fprintf(stderr, "--cd: hdd (the network unit's data installer)\n");
+                fprintf(stderr, "--cd: install, install2 or hdd (the network unit's data installer)\n");
                 return false;
             }
             if (machine["hdd_cd"].empty()) {

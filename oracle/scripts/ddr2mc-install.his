@@ -1,0 +1,12 @@
+# DDR 2ndMIX with beatmania IIDX CLUB VERSiON (System 573, analog I/O board): the first boot, from the install CD
+# (MAME's "install" disc, 896jaa01; HIRAKU: --cd install). It asks for the Test button, then
+# erases and fills the onboard flash, and says the install is complete: change the CD (by frame
+# ~10800). MAME has no option to pick the disc: the oracle's rompath names the install disc as the
+# runtime one for this step. Hashes the main RAM every frame and snapshots every 60 frames.
+game ddr2mc
+
+hash ram  0x80000000 0x80400000   # 4 MiB main RAM (KSEG0)
+
+at 600 press "Service Mode" 8
+from 0 every 60 snap
+at 13200 quit

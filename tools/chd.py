@@ -1,9 +1,12 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """MAME CHD images: what one holds, and extracting it with MAME's chdman.
 
-chdman is the one on the PATH, else MAME's flatpak (org.mamedev.MAME). Runs are
-memory-capped with systemd-run when it is available: chdman's memory use is
-not bounded (a DVD creation once reached 9 GB).
+chdman is the one on the PATH, else MAME's flatpak (org.mamedev.MAME), else HIRAKU's own
+hiraku-chdcat (runtime/dev/chdcat.cpp: the same bytes, through the CHD reader the games use),
+which a release has beside its games, so that ingesting needs no MAME tools.
+HK_CHD_TOOL=chdcat uses hiraku-chdcat even where chdman is. Runs are memory-capped with
+systemd-run when it is available: chdman's memory use is not bounded (a DVD creation once
+reached 9 GB).
 """
 from __future__ import annotations
 
@@ -26,6 +29,30 @@ def _flatpak_mame() -> bool:
         ["flatpak", "info", "org.mamedev.MAME"], capture_output=True).returncode == 0
 
 
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+def chdcat() -> str | None:
+    """hiraku-chdcat: $HK_CHDCAT, else beside the games (a release's bin/, a build's folder)."""
+    exe = "hiraku-chdcat.exe" if os.name == "nt" else "hiraku-chdcat"
+    for p in (os.environ.get("HK_CHDCAT", ""), os.path.join(ROOT, "bin", exe), os.path.join(ROOT, "build", "cmake", exe)):
+        if p and os.path.isfile(p):
+            return p
+    return shutil.which(exe)
+
+
+_use_chdcat: bool | None = None
+
+
+def use_chdcat() -> bool:
+    """Whether CHDs go through hiraku-chdcat: asked for, or no chdman to be had."""
+    global _use_chdcat
+    if _use_chdcat is None:
+        forced = os.environ.get("HK_CHD_TOOL", "") == "chdcat"
+        _use_chdcat = bool(chdcat()) and (forced or not (shutil.which("chdman") or _flatpak_mame()))
+    return _use_chdcat
+
+
 def chdman_command(dirs: list[str]) -> list[str]:
     """The command that runs chdman, able to read and write `dirs`."""
     if shutil.which("chdman"):
@@ -35,7 +62,7 @@ def chdman_command(dirs: list[str]) -> list[str]:
         for d in sorted({os.path.abspath(d) for d in dirs}):
             fs.append(f"--filesystem={d}")
         return ["flatpak", "run", "--command=chdman", *fs, "org.mamedev.MAME"]
-    raise ChdError("chdman not found: install MAME's tools (package mame-tools or mame), "
+    raise ChdError("neither hiraku-chdcat nor chdman found: install MAME's tools (package mame-tools or mame), "
                    "or MAME's flatpak (flatpak install flathub org.mamedev.MAME)")
 
 
@@ -61,7 +88,25 @@ class ChdInfo:
         self.sha1 = sha1
 
 
+def _chdcat_info(chd: str) -> dict:
+    out = subprocess.run([chdcat(), "--info", chd], capture_output=True, text=True)
+    if out.returncode != 0:
+        raise ChdError(f"{chd}: hiraku-chdcat --info failed:\n{(out.stdout + out.stderr).strip()}")
+    facts = {"track": []}
+    for line in out.stdout.splitlines():
+        k, _, v = line.strip().partition(" ")
+        if k == "track":
+            t, f = v.split()
+            facts["track"].append({"type": t, "frames": int(f)})
+        elif k:
+            facts[k] = v
+    return facts
+
+
 def info(chd: str) -> ChdInfo:
+    if use_chdcat():
+        f = _chdcat_info(chd)
+        return ChdInfo(f.get("kind", "raw"), int(f.get("logical", 0)), f["track"], f.get("sha1", ""))
     out = subprocess.run(chdman_command([os.path.dirname(chd)]) + ["info", "-i", chd],
                          capture_output=True, text=True)
     text = out.stdout + out.stderr
@@ -86,6 +131,9 @@ def info(chd: str) -> ChdInfo:
 
 def geometry(chd: str) -> tuple[int, int, int] | None:
     """A hard disk CHD's geometry from its GDDD metadata: (cylinders, heads, sectors), or None."""
+    if use_chdcat():
+        g = _chdcat_info(chd).get("geometry")
+        return tuple(int(x) for x in g.split()) if g else None
     out = subprocess.run(chdman_command([os.path.dirname(chd)]) + ["info", "-v", "-i", chd],
                          capture_output=True, text=True)
     m = re.search(r"CYLS:(\d+),HEADS:(\d+),SECS:(\d+)", out.stdout + out.stderr)
@@ -93,7 +141,7 @@ def geometry(chd: str) -> tuple[int, int, int] | None:
 
 
 def _run_with_progress(cmd: list[str], label: str) -> str:
-    """Run chdman, printing its progress every 10 %; return what it printed."""
+    """Run chdman (or hiraku-chdcat), printing its progress every 10 %; return what it printed."""
     p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     seen, last = [], -10
     buf = b""
@@ -106,12 +154,12 @@ def _run_with_progress(cmd: list[str], label: str) -> str:
             pct = float(m.group(1))
             if pct >= last + 10:
                 last = pct - pct % 10
-                print(f"chdman   {label}: {int(last)}%", flush=True)
+                print(f"{'extract' if use_chdcat() else 'chdman':<8} {label}: {int(last)}%", flush=True)
         seen.append(chunk)
     p.wait()
     text = b"".join(seen).decode(errors="replace")
     if p.returncode != 0 or "complete" not in text.lower():
-        raise ChdError(f"chdman failed on {label} (exit {p.returncode}):\n{text[-600:].strip()}")
+        raise ChdError(f"{'hiraku-chdcat' if use_chdcat() else 'chdman'} failed on {label} (exit {p.returncode}):\n{text[-600:].strip()}")
     return text
 
 
@@ -160,7 +208,7 @@ def extract(chd: str, outdir: str) -> tuple[str, str]:
     os.makedirs(outdir, exist_ok=True)
     name = os.path.splitext(os.path.basename(chd))[0]
     base = os.path.join(outdir, name)
-    cmd0 = capped(chdman_command([os.path.dirname(os.path.abspath(chd)), outdir]))
+    cmd0 = None if use_chdcat() else capped(chdman_command([os.path.dirname(os.path.abspath(chd)), outdir]))
     if ci.kind == "cd":
         cue, binf = base + ".cue", base + ".bin"
         if os.path.exists(cue) and os.path.exists(binf) and os.path.getsize(binf) > 0:
@@ -177,8 +225,18 @@ def extract(chd: str, outdir: str) -> tuple[str, str]:
                 return cue, "cd"
         tmp = base + ".part"
         os.makedirs(tmp, exist_ok=True)
-        _run_with_progress(cmd0 + ["extractcd", "-f", "-i", chd, "-o", os.path.join(tmp, name + ".cue"),
-                                   "-ob", os.path.join(tmp, name + ".bin")], os.path.basename(chd))
+        if cmd0 is None:
+            # hiraku-chdcat: the .bin, and the cue sheet (which names the CHD) beside it as .bin.cue
+            _run_with_progress([chdcat(), chd, os.path.join(tmp, name + ".bin")], os.path.basename(chd))
+            with open(os.path.join(tmp, name + ".bin.cue")) as fh:
+                lines = fh.read().splitlines()
+            lines[0] = f'FILE "{name}.bin" BINARY'
+            with open(os.path.join(tmp, name + ".cue"), "w", newline="\n") as fh:
+                fh.write("\n".join(lines) + "\n")
+            os.remove(os.path.join(tmp, name + ".bin.cue"))
+        else:
+            _run_with_progress(cmd0 + ["extractcd", "-f", "-i", chd, "-o", os.path.join(tmp, name + ".cue"),
+                                       "-ob", os.path.join(tmp, name + ".bin")], os.path.basename(chd))
         for f in (name + ".cue", name + ".bin"):
             os.replace(os.path.join(tmp, f), os.path.join(outdir, f))
         shutil.rmtree(tmp, ignore_errors=True)
@@ -198,12 +256,16 @@ def extract(chd: str, outdir: str) -> tuple[str, str]:
     if ci.logical > free:
         raise ChdError(f"{chd}: needs {ci.logical / 1e9:.1f} GB, {free / 1e9:.1f} GB free in {outdir}")
     tmp = out + ".part"
-    _run_with_progress(cmd0 + [verb, "-f", "-i", chd, "-o", tmp], os.path.basename(chd))
+    if cmd0 is None:
+        _run_with_progress([chdcat(), chd, tmp], os.path.basename(chd))
+    else:
+        _run_with_progress(cmd0 + [verb, "-f", "-i", chd, "-o", tmp], os.path.basename(chd))
     if os.path.getsize(tmp) != ci.logical:
         raise ChdError(f"{chd}: extracted {os.path.getsize(tmp)} bytes, expected {ci.logical}")
     if ci.kind == "hd":
         # Hard disks are mostly zeros (DJ Main ~80 %, beatmania III ~40 %): store those as holes.
-        subprocess.run(["fallocate", "--dig-holes", tmp], check=False)
+        if shutil.which("fallocate"):
+            subprocess.run(["fallocate", "--dig-holes", tmp], check=False)
     os.replace(tmp, out)
     return out, ci.kind
 

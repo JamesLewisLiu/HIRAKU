@@ -31,6 +31,10 @@ for f in "$build"/hiraku*.exe; do
   "$strip" -o "$d/bin/$(basename "$f")" "$f"
 done
 cp "$build"/SDL3.dll "$d/bin/"
+# Python for tools/ingest.py and unlock.py: python.org's embeddable one (tools/win-deps.sh), so
+# adding a game needs nothing installed (the launcher looks for hiraku\python\python.exe first)
+py=$root/out/win-deps/python
+if [ -f "$py/python.exe" ]; then cp -r "$py" "$d/python"; else echo "no $py: the package will need Python installed" >&2; fi
 cp -r "$root/games" "$root/docs" "$root/shaders" "$d/"
 cp -r "$root/oracle/scripts" "$d/scripts"
 mkdir -p "$d/tools"
@@ -49,8 +53,9 @@ games (pop'n music 9-14, GuitarFreaks and DrumMania V), cardio card readers, and
 background video.
 
 Game data, either way:
-- ingest it here: tools\ingest.py needs Python 3.11 or later (python.org), 7-Zip, and MAME's
-  chdman for CHDs;
+- drop the MAME ROM set (.zip, or .7z with 7-Zip installed) and its CHDs on the launcher's
+  window, or use File > Add game files. Everything needed comes in this package (its own
+  Python in python\, bin\hiraku-chdcat.exe for the CHDs);
 - or copy it from a PC that has it ingested: tools/pack-data.py there.
 
 Saves and settings go in %LOCALAPPDATA%\hiraku. A portable install: with a folder named user in
