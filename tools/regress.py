@@ -122,6 +122,13 @@ CASES = {
     "ddr2m-boot": ("ddr2m", 24000, ["--rtc", "1791828936", "--script", "oracle/scripts/ddr2m-boot.his"]),
     # ... and a game: coins, mode and song select, a song stepped through to CLEARED, stage 2
     "ddr2m-play": ("ddr2m", 21000, ["--rtc", "1791837575", "--script", "oracle/scripts/ddr2m-play.his"]),
+    # GuitarFreaks 2nd Mix (analog board, X76F100 cassette, 32 MiB PC Card): the first boot's install,
+    # Test at the flash prompt, the CD to the flash and the PC Card (out/oracle/gtrfrk2m/gtrfrk2m-install)
+    "gtrfrk2m-install": ("gtrfrk2m", 21000, ["--rtc", "1792179133", "--script", "oracle/scripts/gtrfrk2m-install.his"]),
+    # ... then a game from what it left: coins, Start, mode and music select, the first stage played with
+    # the guitar map (neck chords, picks, wails) to GAME OVER, attract (out/oracle/gtrfrk2m/gtrfrk2m-play)
+    "gtrfrk2m-play": ("gtrfrk2m", 11400, ["--rtc", "1792181584", "--script", "oracle/scripts/gtrfrk2m-play.his"],
+                      "gtrfrk2m-install"),
     # Twinkle (PLAN.md section 21): beatmania IIDX 3rd style's first power-on, E150, 1P Start,
     # attract; in lockstep with MAME at the pin (out/oracle/bmiidx3/boot)
     "bmiidx3-boot": ("bmiidx3", 9000, ["--rtc", "1791906310", "--video", "off", "--script", "oracle/scripts/bmiidx3-boot.his"]),

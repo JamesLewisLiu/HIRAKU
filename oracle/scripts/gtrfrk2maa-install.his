@@ -1,0 +1,14 @@
+# Guitar Freaks 2nd Mix (GQ883 VER. AAA), Konami 1999: the first boot's install, from blank NVRAM. The CD asks "DO YOU WANT TO INITIALIZE
+# FLASH-ROM?" (by frame ~1200): Test answers yes. It erases and writes the onboard flash and the
+# 32 MiB PC Card in slot 1 from the CD; by frame ~20200 it shows FLASH-ROM INITIALIZE COMPLETE, and a
+# second Test starts the game from flash: the warning, the logo, attract. (gtrfrk2m's CD instead
+# asks for a power-cycle: gtrfrk2m-install.his.) Hashes the main RAM every frame and snapshots every
+# 60 frames, to compare HIRAKU's 573 core with MAME through the install.
+game gtrfrk2maa
+
+hash ram  0x80000000 0x80400000   # 4 MiB main RAM (KSEG0)
+
+at 1500 press "Service Mode" 8
+at 20700 press "Service Mode" 8
+from 0 every 60 snap
+at 24000 quit

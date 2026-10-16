@@ -1,0 +1,21 @@
+# Guitar Freaks 2nd Mix (GQ883 VER. UAA), Konami 1999: generated from MAME's ksys573.cpp (tools/gen573.py)
+id = "gtrfrk2mua"
+title = "GuitarFreaks 2nd Mix (USA, UAA)"
+family = "gtrf"         # GuitarFreaks cabinet: two guitars (neck R/G/B, pick, wailing, effect knob)
+mame = "gtrfrk2mua"     # MAME set name, used by the oracle
+core = "sys573"         # System 573 (runtime/sys573/, PLAN.md section 19); analog I/O board
+first_boot = "the game asks to initialize the flash: press F2 (Test). It copies its CD to flash and the PC Card, about 5.5 minutes of game time (hold Tab to fast-forward); at FLASH-ROM INITIALIZE COMPLETE, press F2 again to start the game."   # shown by the launcher
+
+[roms]
+bios = "700a01.22g"             # 573 BIOS
+h8 = "h8a01.bin"                # the H8's start-up response (JVS check)
+cassette_eeprom = "gq883uaa.u1" # the game cassette's X76F100
+cassette_id = "gq883jad.u6"     # ... and its DS2401 serial number
+
+[board]
+io_board = "analog"             # GX700-PWB(F): lamp and stage outputs; the music is CD audio
+cassette = "yi"                 # MAME's cassette variant: X76F100 + DS2401 (cassyi)
+pccard1 = "32mb"                # MAME's pccard1_32mb(): a Fujitsu 32 MiB flash card in slot 1
+
+[cd]
+chd = "883__a01"        # the runtime CD

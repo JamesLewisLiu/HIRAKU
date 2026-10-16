@@ -1,0 +1,9 @@
+# Guitar Freaks 2nd Mix (GQ883 VER. EAA), Konami 1999: as gtrfrk2m-boot.his. First power-on from blank NVRAM, no inputs: the 573 BIOS boots the
+# CD (the flash is blank), which asks "DO YOU WANT TO INITIALIZE FLASH-ROM?" by frame ~1200. Hashes
+# the main RAM every frame and snapshots every 60 frames, to compare with MAME.
+game gtrfrk2ma
+
+hash ram  0x80000000 0x80400000   # 4 MiB main RAM (KSEG0)
+
+from 0 every 60 snap
+at 3000 quit

@@ -1,0 +1,13 @@
+# Guitar Freaks 2nd Mix Ver 1.01 (GQ883 VER. JAD), Konami 1999: the first boot's install, from blank
+# NVRAM. The CD asks "DO YOU WANT TO INITIALIZE FLASH-ROM?" (by frame ~1200): Test answers yes. It
+# erases the onboard flash and the 32 MiB PC Card in slot 1, then copies the CD to both. By frame
+# ~20400 it shows INSTALLATION NOW COMPLETE: set DIP switch 4 on (boot from flash; HIRAKU's and
+# MAME's default) and power-cycle. Hashes the main RAM every frame and snapshots every 60 frames, to
+# compare HIRAKU's 573 core with MAME through the install.
+game gtrfrk2m
+
+hash ram  0x80000000 0x80400000   # 4 MiB main RAM (KSEG0)
+
+at 1500 press "Service Mode" 8
+from 0 every 60 snap
+at 21000 quit

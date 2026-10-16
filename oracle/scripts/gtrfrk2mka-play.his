@@ -1,0 +1,257 @@
+# Guitar Freaks 2nd Mix (GQ883 VER. KAA), Konami 1999: as gtrfrk2m-play.his (another CD: the game
+# starts from flash at once after its install, no power-cycle), from what gtrfrk2mka-install left. Power-on
+# boots from flash: FLASH-ROM CHECK, then attract. Two coins (one credit), then Start through the
+# caution screen, How To Play, the mode select (NORMAL) and the music select (its default, GO GO
+# AGAIN). The first stage is played with the guitar map: every 12 frames a neck chord (R, G, B, R+G,
+# G+B, R+B, open) is held and picked, a wail every 240 frames. Some versions end the stage when the
+# excite gauge runs out, others play the song to its result (STAGE FAILED, ~frame 13800); then GAME
+# OVER. Hashes the main RAM every frame and snapshots every 60 frames, to compare with MAME.
+game gtrfrk2mka
+
+hash ram  0x80000000 0x80400000   # 4 MiB main RAM (KSEG0)
+
+at 6600 press "Coin 1" 8
+at 6650 press "Coin 1" 8
+at 7000 press "1 Player Start" 8   # title: start
+at 7300 press "1 Player Start" 8   # caution screen
+at 7600 press "1 Player Start" 8   # How To Play
+at 7900 press "1 Player Start" 8   # mode select: NORMAL
+at 8200 press "1 Player Start" 8   # music select: GO GO AGAIN
+
+# the first stage
+at 8400 press "P1 Button R" 8
+at 8402 press "P1 Pick" 3
+at 8412 press "P1 Button G" 8
+at 8414 press "P1 Pick" 3
+at 8424 press "P1 Button B" 8
+at 8426 press "P1 Pick" 3
+at 8436 press "P1 Button R" 8
+at 8436 press "P1 Button G" 8
+at 8438 press "P1 Pick" 3
+at 8448 press "P1 Button G" 8
+at 8448 press "P1 Button B" 8
+at 8450 press "P1 Pick" 3
+at 8460 press "P1 Button R" 8
+at 8460 press "P1 Button B" 8
+at 8462 press "P1 Pick" 3
+at 8474 press "P1 Pick" 3
+at 8484 press "P1 Button R" 8
+at 8486 press "P1 Pick" 3
+at 8496 press "P1 Button G" 8
+at 8498 press "P1 Pick" 3
+at 8508 press "P1 Button B" 8
+at 8510 press "P1 Pick" 3
+at 8520 press "P1 Button R" 8
+at 8520 press "P1 Button G" 8
+at 8522 press "P1 Pick" 3
+at 8526 press "P1 Wailing" 4
+at 8532 press "P1 Button G" 8
+at 8532 press "P1 Button B" 8
+at 8534 press "P1 Pick" 3
+at 8544 press "P1 Button R" 8
+at 8544 press "P1 Button B" 8
+at 8546 press "P1 Pick" 3
+at 8558 press "P1 Pick" 3
+at 8568 press "P1 Button R" 8
+at 8570 press "P1 Pick" 3
+at 8580 press "P1 Button G" 8
+at 8582 press "P1 Pick" 3
+at 8592 press "P1 Button B" 8
+at 8594 press "P1 Pick" 3
+at 8604 press "P1 Button R" 8
+at 8604 press "P1 Button G" 8
+at 8606 press "P1 Pick" 3
+at 8616 press "P1 Button G" 8
+at 8616 press "P1 Button B" 8
+at 8618 press "P1 Pick" 3
+at 8628 press "P1 Button R" 8
+at 8628 press "P1 Button B" 8
+at 8630 press "P1 Pick" 3
+at 8642 press "P1 Pick" 3
+at 8652 press "P1 Button R" 8
+at 8654 press "P1 Pick" 3
+at 8664 press "P1 Button G" 8
+at 8666 press "P1 Pick" 3
+at 8676 press "P1 Button B" 8
+at 8678 press "P1 Pick" 3
+at 8688 press "P1 Button R" 8
+at 8688 press "P1 Button G" 8
+at 8690 press "P1 Pick" 3
+at 8700 press "P1 Button G" 8
+at 8700 press "P1 Button B" 8
+at 8702 press "P1 Pick" 3
+at 8712 press "P1 Button R" 8
+at 8712 press "P1 Button B" 8
+at 8714 press "P1 Pick" 3
+at 8726 press "P1 Pick" 3
+at 8736 press "P1 Button R" 8
+at 8738 press "P1 Pick" 3
+at 8748 press "P1 Button G" 8
+at 8750 press "P1 Pick" 3
+at 8760 press "P1 Button B" 8
+at 8762 press "P1 Pick" 3
+at 8766 press "P1 Wailing" 4
+at 8772 press "P1 Button R" 8
+at 8772 press "P1 Button G" 8
+at 8774 press "P1 Pick" 3
+at 8784 press "P1 Button G" 8
+at 8784 press "P1 Button B" 8
+at 8786 press "P1 Pick" 3
+at 8796 press "P1 Button R" 8
+at 8796 press "P1 Button B" 8
+at 8798 press "P1 Pick" 3
+at 8810 press "P1 Pick" 3
+at 8820 press "P1 Button R" 8
+at 8822 press "P1 Pick" 3
+at 8832 press "P1 Button G" 8
+at 8834 press "P1 Pick" 3
+at 8844 press "P1 Button B" 8
+at 8846 press "P1 Pick" 3
+at 8856 press "P1 Button R" 8
+at 8856 press "P1 Button G" 8
+at 8858 press "P1 Pick" 3
+at 8868 press "P1 Button G" 8
+at 8868 press "P1 Button B" 8
+at 8870 press "P1 Pick" 3
+at 8880 press "P1 Button R" 8
+at 8880 press "P1 Button B" 8
+at 8882 press "P1 Pick" 3
+at 8894 press "P1 Pick" 3
+at 8904 press "P1 Button R" 8
+at 8906 press "P1 Pick" 3
+at 8916 press "P1 Button G" 8
+at 8918 press "P1 Pick" 3
+at 8928 press "P1 Button B" 8
+at 8930 press "P1 Pick" 3
+at 8940 press "P1 Button R" 8
+at 8940 press "P1 Button G" 8
+at 8942 press "P1 Pick" 3
+at 8952 press "P1 Button G" 8
+at 8952 press "P1 Button B" 8
+at 8954 press "P1 Pick" 3
+at 8964 press "P1 Button R" 8
+at 8964 press "P1 Button B" 8
+at 8966 press "P1 Pick" 3
+at 8978 press "P1 Pick" 3
+at 8988 press "P1 Button R" 8
+at 8990 press "P1 Pick" 3
+at 9000 press "P1 Button G" 8
+at 9002 press "P1 Pick" 3
+at 9006 press "P1 Wailing" 4
+at 9012 press "P1 Button B" 8
+at 9014 press "P1 Pick" 3
+at 9024 press "P1 Button R" 8
+at 9024 press "P1 Button G" 8
+at 9026 press "P1 Pick" 3
+at 9036 press "P1 Button G" 8
+at 9036 press "P1 Button B" 8
+at 9038 press "P1 Pick" 3
+at 9048 press "P1 Button R" 8
+at 9048 press "P1 Button B" 8
+at 9050 press "P1 Pick" 3
+at 9062 press "P1 Pick" 3
+at 9072 press "P1 Button R" 8
+at 9074 press "P1 Pick" 3
+at 9084 press "P1 Button G" 8
+at 9086 press "P1 Pick" 3
+at 9096 press "P1 Button B" 8
+at 9098 press "P1 Pick" 3
+at 9108 press "P1 Button R" 8
+at 9108 press "P1 Button G" 8
+at 9110 press "P1 Pick" 3
+at 9120 press "P1 Button G" 8
+at 9120 press "P1 Button B" 8
+at 9122 press "P1 Pick" 3
+at 9132 press "P1 Button R" 8
+at 9132 press "P1 Button B" 8
+at 9134 press "P1 Pick" 3
+at 9146 press "P1 Pick" 3
+at 9156 press "P1 Button R" 8
+at 9158 press "P1 Pick" 3
+at 9168 press "P1 Button G" 8
+at 9170 press "P1 Pick" 3
+at 9180 press "P1 Button B" 8
+at 9182 press "P1 Pick" 3
+at 9192 press "P1 Button R" 8
+at 9192 press "P1 Button G" 8
+at 9194 press "P1 Pick" 3
+at 9204 press "P1 Button G" 8
+at 9204 press "P1 Button B" 8
+at 9206 press "P1 Pick" 3
+at 9216 press "P1 Button R" 8
+at 9216 press "P1 Button B" 8
+at 9218 press "P1 Pick" 3
+at 9230 press "P1 Pick" 3
+at 9240 press "P1 Button R" 8
+at 9242 press "P1 Pick" 3
+at 9246 press "P1 Wailing" 4
+at 9252 press "P1 Button G" 8
+at 9254 press "P1 Pick" 3
+at 9264 press "P1 Button B" 8
+at 9266 press "P1 Pick" 3
+at 9276 press "P1 Button R" 8
+at 9276 press "P1 Button G" 8
+at 9278 press "P1 Pick" 3
+at 9288 press "P1 Button G" 8
+at 9288 press "P1 Button B" 8
+at 9290 press "P1 Pick" 3
+at 9300 press "P1 Button R" 8
+at 9300 press "P1 Button B" 8
+at 9302 press "P1 Pick" 3
+at 9314 press "P1 Pick" 3
+at 9324 press "P1 Button R" 8
+at 9326 press "P1 Pick" 3
+at 9336 press "P1 Button G" 8
+at 9338 press "P1 Pick" 3
+at 9348 press "P1 Button B" 8
+at 9350 press "P1 Pick" 3
+at 9360 press "P1 Button R" 8
+at 9360 press "P1 Button G" 8
+at 9362 press "P1 Pick" 3
+at 9372 press "P1 Button G" 8
+at 9372 press "P1 Button B" 8
+at 9374 press "P1 Pick" 3
+at 9384 press "P1 Button R" 8
+at 9384 press "P1 Button B" 8
+at 9386 press "P1 Pick" 3
+at 9398 press "P1 Pick" 3
+at 9408 press "P1 Button R" 8
+at 9410 press "P1 Pick" 3
+at 9420 press "P1 Button G" 8
+at 9422 press "P1 Pick" 3
+at 9432 press "P1 Button B" 8
+at 9434 press "P1 Pick" 3
+at 9444 press "P1 Button R" 8
+at 9444 press "P1 Button G" 8
+at 9446 press "P1 Pick" 3
+at 9456 press "P1 Button G" 8
+at 9456 press "P1 Button B" 8
+at 9458 press "P1 Pick" 3
+at 9468 press "P1 Button R" 8
+at 9468 press "P1 Button B" 8
+at 9470 press "P1 Pick" 3
+at 9482 press "P1 Pick" 3
+at 9486 press "P1 Wailing" 4
+at 9492 press "P1 Button R" 8
+at 9494 press "P1 Pick" 3
+at 9504 press "P1 Button G" 8
+at 9506 press "P1 Pick" 3
+at 9516 press "P1 Button B" 8
+at 9518 press "P1 Pick" 3
+at 9528 press "P1 Button R" 8
+at 9528 press "P1 Button G" 8
+at 9530 press "P1 Pick" 3
+at 9540 press "P1 Button G" 8
+at 9540 press "P1 Button B" 8
+at 9542 press "P1 Pick" 3
+at 9552 press "P1 Button R" 8
+at 9552 press "P1 Button B" 8
+at 9554 press "P1 Pick" 3
+at 9566 press "P1 Pick" 3
+at 9576 press "P1 Button R" 8
+at 9578 press "P1 Pick" 3
+at 9588 press "P1 Button G" 8
+at 9590 press "P1 Pick" 3
+
+from 6000 every 60 snap
+at 15000 quit
