@@ -22,7 +22,8 @@ RAM (from the state zip) are kept in DIR/snap-<t>.{png,ee.bin}.
 import argparse, os, shutil, socket, struct, subprocess, sys, time, zipfile, glob, hashlib
 
 COLL = os.environ.get("HK_PYTHON_SETS", os.path.expanduser("~/Downloads/konami-python-1-collection"))
-WORK = os.environ.get("HK_PYTHON_WORK", "/run/media/roganis/DATA/Python-work")
+# default: Python-work beside the HIRAKU checkout
+WORK = os.environ.get("HK_PYTHON_WORK", os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))), "Python-work"))
 BIN = os.environ.get("HK_RELIQUARY", f"{WORK}/pcsx2-reliquary/build/bin/pcsx2-qt")
 COLL2 = os.environ.get("HK_PYTHON2_SETS", os.path.expanduser("~/Downloads/konami-python-2"))
 TEMPLATE = f"{COLL}/PCSX2/inis/PCSX2.ini"

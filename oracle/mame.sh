@@ -21,7 +21,7 @@
 #   EXACT_PC=1    run under -debug -debugger none: the PPC recompiler then
 #                 updates PC per instruction, so trace PCs are exact (slower)
 #   MAME_BIN      a MAME binary to run instead of the flatpak (System 573: the
-#                 build at HIRAKU's MAME pin, /run/media/roganis/DATA/mame-pin/k573;
+#                 build at HIRAKU's MAME pin, <MAME checkout>/k573;
 #                 Twinkle: .../mame-pin/twinkle, from buildtw.sh)
 #   MAME_MEM      memory cap for the run (default 4G): MAME runs in a systemd scope
 #   MAME_ARGS     more MAME options, e.g. a slot option: MAME_ARGS="-cassette install" (ddr3mj's

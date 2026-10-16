@@ -808,7 +808,7 @@ ninja -C build/cmake hiraku-bmiidx6
 ## Konami Python 1: pop'n music 9–14 (in progress, M16)
 
 pop'n music 9 (`popn9`) runs on HIRAKU's Python core, and so do 10 (`popn10`), 11 (`popn11`), 12 Iroha (`popn12`), 13 Carnival (`popn13`) and 14 FEVER! (`popn14`): PCSX2 Reliquary's emulator hosted by HIRAKU's shell (PLAN.md §23, docs/PYTHON.md). It is built inside Reliquary's own build. You need:
-- Reliquary's source, `pcsx2-reliquary-1.9.4-reliquary.zip`, unpacked to `$HK_PYTHON_WORK/pcsx2-reliquary` (default `/run/media/roganis/DATA/Python-work`);
+- Reliquary's source, `pcsx2-reliquary-1.9.4-reliquary.zip`, unpacked to `$HK_PYTHON_WORK/pcsx2-reliquary` (default `Python-work` beside the HIRAKU checkout);
 - the set as Reliquary takes it: `popn9.py1` (or `popn10.py1` …) and its folder (the disk CHD, the interface board's ROMs, BBSRAM, dongles, the KN00002 memory card), plus the arcade BIOS (`COH-H31000.BIN`, `.NVM`, `.MEC`) and the MagicGate key files. The ingester finds `bios/` and `keys/` next to the sets' folder, or takes `--bios DIR --keys DIR`.
 
 ```bash

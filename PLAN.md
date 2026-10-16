@@ -622,7 +622,7 @@ Firebeat runs recompiled code, so it can't be in lockstep with MAME. What can be
 - **Between pieces, start times differ by 8–14 ms** (Animelo 2: 8–12 ms; pop'n 5 and 7: 14 ms; pop'n 6: 10.6 ms), earlier or later than MAME, about half a frame. The next likely cause is HIRAKU's DVD drive answering READs at once, where MAME models read times, as DJ Main needed for its disk.
 - **pop'n 4 after 82 s and Animelo 1 at 88–100 s play different content** from MAME: the attract sequence goes a different way. Not looked into.
 - The SPU's DVD drive gets ATA command E2 (STANDBY) and aborts it, as MAME's ATAPI device does.
-- MAME sets: `/run/media/roganis/DATA/mame-roms/<set>/`. The CHDs were converted from the Firebeat-dumps images (`mame-roms/convert.sh`), so MAME warns about their checksums.
+- MAME sets: `mame-roms/<set>/` beside the checkout. The CHDs were converted from the Firebeat-dumps images (`mame-roms/convert.sh`), so MAME warns about their checksums.
   - DVDs need `chdman createdvd -hs 2048`: MAME 0.289's DVD drive throws "unhandled exception" on chdman's default 4 KiB hunks.
 
 **Not checked:** ppp's sensors, and gameplay rather than attract.
@@ -1024,7 +1024,7 @@ Each phase has an exit test. Sizes are assisted-effort guesses; DJ Main went fas
 ### Progress (2026-10-12): 573-0 and the start of 573-1
 
 **The oracle:**
-- MAME built at HIRAKU's pin, the 573 driver only: `/run/media/roganis/DATA/mame-pin/k573`, from `build573.sh` (memory-capped, `OSD=sdl3`).
+- MAME built at HIRAKU's pin, the 573 driver only: `mame-pin/k573` (beside the checkout), from `build573.sh` (memory-capped, `OSD=sdl3`).
 - `oracle/mame.sh` takes `MAME_BIN=...` and caps every MAME run's memory (`MAME_MEM`, default 4G).
 - `oracle/lua/hiraku.lua` knows the 573:
   - tap groups for its I/O, in all three PS1 address mirrors;
@@ -1416,7 +1416,7 @@ The game already tells the player what to play. HIRAKU adds the picture. The mac
 ### Progress (2026-10-13): TW-0
 
 **The oracle:**
-- MAME built at HIRAKU's pin, the Twinkle driver only: `/run/media/roganis/DATA/mame-pin/twinkle`, from `buildtw.sh` (memory-capped, `-j3`). Both sets pass `-verifyroms` (`bmiidx` is "best available": MAME marks its dongle as a bad dump).
+- MAME built at HIRAKU's pin, the Twinkle driver only: `mame-pin/twinkle` (beside the checkout), from `buildtw.sh` (memory-capped, `-j3`). Both sets pass `-verifyroms` (`bmiidx` is "best available": MAME marks its dongle as a bad dump).
 - `oracle/mame.sh` takes snapshots at the screen's own size for Twinkle (`-snapview native`): the set's layout draws the 16-segment display around the screen. Twinkle's screen is 640×240.
 - `oracle/lua/hiraku.lua` knows Twinkle (it tells it from the 573 by its SCSI controller):
   - tap groups for the main board (mailbox, SCSI, super I/O, I/O, RTC, mixer, and the PS1's own) in all three address mirrors;
@@ -1606,7 +1606,7 @@ launcher, packaging of the per-dump game code) is still to decide.
 
 ## 23. Konami Python 1/2 (M16, started 2026-10-13)
 
-The owner asked for the groundwork for a Python core. The facts behind this section are in docs/PYTHON.md. The work files (sources, the Reliquary build, oracle outputs, survey notes, decoded boot records) live in `/run/media/roganis/DATA/Python-work/`, outside the repo; the oracle build and runner are in `oracle/pcsx2/`.
+The owner asked for the groundwork for a Python core. The facts behind this section are in docs/PYTHON.md. The work files (sources, the Reliquary build, oracle outputs, survey notes, decoded boot records) live in `Python-work/` beside the checkout, outside the repo; the oracle build and runner are in `oracle/pcsx2/`.
 
 ### What is different from every core so far
 
@@ -2039,7 +2039,8 @@ Keep the regression suite and the MAME comparisons on Linux. To check: no file n
 - Qt for Windows: qtbase 6.12.0 (the host's version, whose moc/rcc/uic build the launcher) cross-built static with the same clang (`tools/win-deps.sh`, 4th argument): the launcher is one `.exe`, no Qt DLLs. Qt 6.12's Windows plugin doesn't build with OpenGL off: left on (dynamic OpenGL, nothing extra needed).
 - `tools/package-win.sh BUILD OUT.zip [portable]`: the games and launcher stripped, SDL3.dll, games/, docs/, tools' Python scripts, a README. Checked: popn7 run from the unpacked zip gives its baseline digest.
 - **Checked under Wine** (in a nested `kwin_wayland --virtual --xwayland`, so nothing on the owner's screen): the launcher lists the 80 games with the built `.exe`s ready; started from it, popn7 runs windowed to its attract; the launcher's settings and the game's saves land in `%LOCALAPPDATA%\hiraku`. Linux unchanged: popn7-attract, ddr3mj-boot and the 573 session pair give their baselines.
-- Not yet: every game built for Windows and the full zip (16 `.exe`s so far), `tools/ingest.py` on Windows (7-Zip, chdman, paths), HID lights on Windows (`hidout` reads Linux's hidraw), real Windows at all (phase 3).
+- Full build (2026-10-16): every game, the launcher, the server and the tools build for Windows (1093 steps, 25 min at -j4); 7 more cases under Wine give their baselines (bm3-play, popnmt2-attract, ppp-attract, popn1j-play, bmclubmx-boot, bmcompm2-boot, popnstex-boot). `out/hiraku-win64.zip`: 213 MB (zip packs each file alone; the Linux package's xz shares one dictionary across the binaries).
+- Not yet: `tools/ingest.py` on Windows (7-Zip, chdman, paths), HID lights on Windows (`hidout` reads Linux's hidraw), real Windows at all (phase 3).
 
 ## M0 steps (all done)
 

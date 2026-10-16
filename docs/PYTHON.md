@@ -6,7 +6,7 @@ Groundwork for a future HIRAKU core (PLAN.md §23). Written 2026-10-13 from:
 - PS2Recomp (ran-j/PS2Recomp, GPLv3);
 - MAME master's `kpython.cpp` and `kpython2.cpp`, fetched 2026-10-13.
 
-Working files live outside the repo, in `/run/media/roganis/DATA/Python-work/`: the sources, the Reliquary build, the survey notes (`notes/`), oracle outputs (`oracle/`) and the decoded boot records (`scratch/`). In the repo: `oracle/pcsx2/` (build and run the oracle), `tools/pythonfs.py` (boot records, from a CHD, raw image or CF card) and `tools/chdread.py` (CHD byte ranges; `tools/build-libchdr.sh` builds its library). How sure each fact is: **[V]** checked against the files or by a run; **[S]** taken from a cited source; **[R]** recalled or inferred.
+Working files live outside the repo, in `Python-work/` beside the HIRAKU checkout (`$HK_PYTHON_WORK`): the sources, the Reliquary build, the survey notes (`notes/`), oracle outputs (`oracle/`) and the decoded boot records (`scratch/`). In the repo: `oracle/pcsx2/` (build and run the oracle), `tools/pythonfs.py` (boot records, from a CHD, raw image or CF card) and `tools/chdread.py` (CHD byte ranges; `tools/build-libchdr.sh` builds its library). How sure each fact is: **[V]** checked against the files or by a run; **[S]** taken from a cited source; **[R]** recalled or inferred.
 
 ## 1. The boards
 

@@ -18,7 +18,7 @@
 #        ~5 min, about 3 % less CPU for pop'n 9, results bit-identical)
 set -euo pipefail
 
-ROOT=${HK_PYTHON_WORK:-/run/media/roganis/DATA/Python-work}
+ROOT=${HK_PYTHON_WORK:-$(cd "$(dirname "$0")/../../.." && pwd)/Python-work}   # default: beside the HIRAKU checkout
 SRC=$ROOT/pcsx2-reliquary
 BUILD=$SRC/build
 DEPS=$ROOT/deps

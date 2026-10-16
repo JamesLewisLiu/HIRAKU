@@ -12,7 +12,7 @@ oracle/pcsx2/run.py popn9 --frames 3000 --snap-every 0 --interp          # the s
 ```
 
 **Files:**
-- `build-reliquary.sh`: builds `pcsx2-qt` from the release zip unpacked to `$HK_PYTHON_WORK/pcsx2-reliquary` (default `/run/media/roganis/DATA/Python-work`).
+- `build-reliquary.sh`: builds `pcsx2-qt` from the release zip unpacked to `$HK_PYTHON_WORK/pcsx2-reliquary` (default `Python-work` beside the HIRAKU checkout).
   - Six dependencies (KDDockWidgets, plutovg, plutosvg, rapidyaml, libbacktrace, ECM) are built into `$HK_PYTHON_WORK/deps` at the versions and SHA-256s of Reliquary's CI. The rest are Arch packages.
   - Each heavy step runs under `systemd-run` with 10 GB and -j8. The main build peaks at 1.3 GB and takes ~1.5 min.
   - The zip lacks the paraLLEl-GS submodule, so that renderer and Wayland pointer locking are left out.
