@@ -1,10 +1,8 @@
 # The rest of the catalogue (written 2026-10-15)
 
-This compares the owner's archive with what HIRAKU runs today. The archive is `ROGABACKUP/BIG MAME BEMANI FOLDER`. It ends in a plan.
+This compares the owner's own collection of MAME 0.243 BEMANI sets with what HIRAKU runs today. It ends in a plan.
 
 ## What the archive is
-
-It comes as three qBittorrent torrents. The roster below is from the torrents' file lists, so it is final even while the download runs (83 of 119 GB on 2026-10-15 at 23:30).
 
 - **`roms/`** (398 files, 119 GB): 187 MAME 0.243 entries, as zips plus CHD folders. Clones mostly come as a zip that uses its parent's CHD folder.
   - The BEMANI sets of DJ Main, Firebeat, Twinkle and System 573, and `ddrkids` (Konami GS).
@@ -157,7 +155,6 @@ The order is by what each step costs against what it opens. Every step keeps the
    - For every set it finds, it prints the board, MAME's status, and HIRAKU's status (runs / manifest only / clone of a running game / known board / new board / out of scope).
    - It checks files against MAME master's hashes, parsed from the driver sources.
    - It runs `chdman verify` one CHD at a time, read-only.
-   - Rerun it when the download finishes; that turns this list into the final one.
 2. **Old names in `ingest.py`:** a 0.243 → master alias table (`bm2ndmxa` → `bm2ndmixa`, and whatever the full archive shows). Where 0.243 and master CHDs differ by hash, say so instead of ingesting the wrong one.
 3. **CDs read straight from CHD**, so that 80+ 573 CDs don't need ~50 GB of extracted images on DATA:
    - `third_party` libchdr, already built for `tools/chdread.py`, behind the shell's CD image class;
@@ -264,7 +261,10 @@ The order is by what each step costs against what it opens. Every step keeps the
 - Found by cycle-stamped instruction traces of both CPUs (`HK_DJ_ITRACE`, `HIRAKU_ITRACE_CYCLES=1`).
 - **Now all 25 DJ Main sets on hand run cycle-exact through boot and attract.** `bscompmx` and `popn1` have no media here.
 - Regress cases `bmclubmx-boot`, `bmcompm2-boot` and `popnstex-boot` are added, with baselines recorded.
-- Still to do: a scripted game on each IIDX revision against MAME (running), the DDR 3rd regional install and a stage, and the launcher check.
+- **A scripted game on each IIDX revision**, from the NVRAM its first boot leaves (coins, mode and sound select, a stage played to its result), is in lockstep with MAME: main RAM on every frame and every snapshot. That's 10,000–14,000 frames each; `bmiidxa` is checked against the patched MAME after its backup clear.
+- **DDR 3rd regional:** `ddr3mk`, `ddr3mka` and `ddr3ma` install from CD with the install cassette, in lockstep with MAME (16,200 frames, 270 snapshots). Then, from what the install left, they play XANADU stepped through to its result, again in lockstep (16,000 frames, 266 snapshots).
+- The launcher shows all 19 ready: installed in `dumps/`, binary built. `ddr3mk` starts from the rar's installed saves; the Korea and Asia versions install on their first start.
+- **Phase 1 is done.** Left: hands-on play.
 
 ### Phase 2: System 573 analog catalogue (1–2 weeks; MAME is the oracle)
 
