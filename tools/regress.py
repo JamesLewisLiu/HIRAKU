@@ -75,6 +75,15 @@ CASES = {
     # ... and a game from there: XANADU stepped through to its result, then stage 2 (with its MP3)
     "ddr3mj-play": ("ddr3mj", 16000, ["--rtc", "1791880871", "--script", "oracle/scripts/ddr3mj-play.his"],
                     "ddr3mj-install"),
+    # DDRMAX2 and DDR EXTREME (digital board, ZS01 cassette, 32 MiB PC Card in slot 2): the first boot
+    # installs the CD to flash and the PC Card by itself (INFO 508); then from what it left, NOTE 605
+    # (Test), attract, coins, the selects' defaults, the first stage stepped through to its result
+    "ddrmax2-install": ("ddrmax2", 22800, ["--rtc", "1792188271", "--script", "oracle/scripts/ddrmax2-install.his"]),
+    "ddrmax2-play": ("ddrmax2", 18000, ["--rtc", "1792188682", "--script", "oracle/scripts/ddrmax2-play.his"],
+                     "ddrmax2-install"),
+    "ddrextrm-install": ("ddrextrm", 22800, ["--rtc", "1792187739", "--script", "oracle/scripts/ddrextrm-install.his"]),
+    "ddrextrm-play": ("ddrextrm", 18000, ["--rtc", "1792188053", "--script", "oracle/scripts/ddrextrm-play.his"],
+                      "ddrextrm-install"),
     # DrumMania 10th Mix (digital board): the first boot installs the CD to flash (INFO 508); then from
     # what it left, NOTE 605 (Test), the boot checks, and "Please call attendant": the multi-session
     # unit, a stub in MAME, is as far as MAME goes

@@ -1,0 +1,13 @@
+# DDRMAX - Dance Dance Revolution 6th Mix (G*B19 VER. JAA), Konami 2001: the first boot's install, from blank NVRAM (no install cassette:
+# the game cassette is in). NOTE 604 asks for Test to update the CD-ROM drive's firmware (by frame 300): Test at 600, and
+# the version-up passes at once. Then it installs itself: the CD to the onboard flash, then to the
+# 32 MiB PC Card in slot 2 (edit data). By frame ~22500 it shows INFO 508: install done, note the
+# certificate number and power-cycle. Hashes the main RAM every frame and snapshots every 60
+# frames, to compare HIRAKU's 573 core with MAME through the install.
+game ddrmax
+
+hash ram  0x80000000 0x80400000   # 4 MiB main RAM (KSEG0)
+
+at 600 press "Service Mode" 8   # NOTE 604: start the CD-ROM drive's version-up
+from 0 every 60 snap
+at 23400 quit

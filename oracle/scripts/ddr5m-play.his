@@ -1,0 +1,26 @@
+# Dance Dance Revolution 5th Mix (G*A27 VER. JAA), Konami 2001: a game, from what ddr5m-install left (its NVRAM). Power-on: the
+# flash and PC Card checksums, then NOTE 605 (RTC-RAM cleared): Test at 1500. Boot checks, loading,
+# attract. Two coins at frame 9000, then Start every 300 frames through the style, character or
+# difficulty, and music selects (their defaults); the first stage, with its MP3 music, played by
+# stepping on all four panels every 8 frames from frame 11000: some arrows are hit, some missed.
+# Its result by frame ~15300, then the second stage's music select. Hashes the main RAM every
+# frame and snapshots every 60 frames, to compare HIRAKU's 573 core with MAME through a song.
+game ddr5m
+
+hash ram  0x80000000 0x80400000   # 4 MiB main RAM (KSEG0)
+
+at 1500 press "Service Mode" 8   # NOTE 605
+at 9000 press "Coin 1" 8
+at 9040 press "Coin 1" 8
+at 9300 press "1 Player Start" 8
+at 9600 press "1 Player Start" 8
+at 9900 press "1 Player Start" 8
+at 10200 press "1 Player Start" 8
+at 10500 press "1 Player Start" 8
+at 10800 press "1 Player Start" 8
+from 11000 every 8 press "P1 Left" 4
+from 11000 every 8 press "P1 Down" 4
+from 11000 every 8 press "P1 Up" 4
+from 11000 every 8 press "P1 Right" 4
+from 0 every 60 snap
+at 18000 quit

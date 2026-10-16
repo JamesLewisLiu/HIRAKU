@@ -1,0 +1,9 @@
+# Dance Dance Revolution Extreme (G*C36 VER. JAA), Konami 2002: first power-on from blank NVRAM, no inputs. The 573 BIOS boots the
+# CD (the flash is blank): the CD starts installing itself at once (INSTALL: the CD to the onboard flash). Hashes the main RAM every frame and
+# snapshots every 60 frames, to compare with MAME.
+game ddrextrm
+
+hash ram  0x80000000 0x80400000   # 4 MiB main RAM (KSEG0)
+
+from 0 every 60 snap
+at 3000 quit
