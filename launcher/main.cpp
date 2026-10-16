@@ -21,7 +21,9 @@
 // started, and Qt its plugin path when the application was made, so both can now go back as they
 // were: the games, the tools and whatever opens a folder start with the user's own environment,
 // not the bundled Qt.
+// (Linux only: Windows finds a program's DLLs beside it.)
 static void restore_environment() {
+#ifndef Q_OS_WIN
     if (!getenv("HK_SAVED_ENV")) return;
     for (const char *name : {"LD_LIBRARY_PATH", "QT_PLUGIN_PATH"}) {
         const std::string saved = std::string("HK_SAVED_") + name;
@@ -30,6 +32,7 @@ static void restore_environment() {
         unsetenv(saved.c_str());
     }
     unsetenv("HK_SAVED_ENV");
+#endif
 }
 
 int main(int argc, char **argv) {

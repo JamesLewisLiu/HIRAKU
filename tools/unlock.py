@@ -43,6 +43,8 @@ def default_nvram(game: str) -> str:
     # as runtime/shell/userdir.h: a portable install (a HIRAKU folder holding user/) keeps its saves in there
     if os.path.isdir(os.path.join(ROOT, "user")):
         return os.path.join(ROOT, "user", "data", game)
+    if os.name == "nt" and os.environ.get("LOCALAPPDATA"):
+        return os.path.join(os.environ["LOCALAPPDATA"], "hiraku", game)
     base = os.environ.get("XDG_DATA_HOME") or os.path.expanduser("~/.local/share")
     return os.path.join(base, "hiraku", game)
 

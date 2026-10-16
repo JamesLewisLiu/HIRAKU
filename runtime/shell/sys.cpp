@@ -141,6 +141,11 @@ std::tm local(std::time_t t) {
     return r;
 }
 
+std::time_t from_utc(const std::tm &t) {
+    std::tm c = t;
+    return _mkgmtime(&c);
+}
+
 void *fiber_this_thread() {
     return IsThreadAFiber() ? GetCurrentFiber() : ConvertThreadToFiber(nullptr);
 }
@@ -243,6 +248,11 @@ std::tm local(std::time_t t) {
     std::tm r{};
     localtime_r(&t, &r);
     return r;
+}
+
+std::time_t from_utc(const std::tm &t) {
+    std::tm c = t;
+    return timegm(&c);
 }
 
 #endif

@@ -9,7 +9,9 @@
 
 #include <algorithm>
 
+#ifndef Q_OS_WIN
 #include <unistd.h>
+#endif
 
 #ifndef HK_ROOT
 #define HK_ROOT "."
@@ -112,9 +114,31 @@ void mergeControls() {
 QString lightsFile(const QString &family) { return configDir() + "/lights/" + family + ".txt"; }
 
 QString lightsSocket() {
+#ifdef Q_OS_WIN
+    return "127.0.0.1:47817";   // Windows: TCP on this computer only (runtime/host/lights.h)
+#else
     QString run = qEnvironmentVariable("XDG_RUNTIME_DIR");
     if (run.isEmpty()) return QDir::tempPath() + QString("/hiraku-lights-%1.sock").arg(getuid());
     return run + "/hiraku-lights.sock";
+#endif
+}
+
+QString exeName(const QString &base) {
+#ifdef Q_OS_WIN
+    return base + ".exe";
+#else
+    return base;
+#endif
+}
+
+QStringList python() {
+#ifdef Q_OS_WIN
+    if (QString py = QStandardPaths::findExecutable("py"); !py.isEmpty()) return {py, "-3"};
+    if (QString p = QStandardPaths::findExecutable("python"); !p.isEmpty()) return {p};
+    return {};
+#else
+    return {"python3"};
+#endif
 }
 
 QString familyName(const QString &family) {

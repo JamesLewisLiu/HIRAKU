@@ -31,7 +31,7 @@
 //                       later ones win; `name = value` lines; read again when they change)
 //     --bindings FILE   controls (see runtime/host/input.h)
 //     --lights FILE     drive HID controller LEDs from the cabinet lamps (see runtime/host/lights.h)
-//     --lights-socket P publish the lamps on a UNIX socket at path P (docs/LIGHTS.md)
+//     --lights-socket P publish the lamps on a UNIX socket at path P, or on TCP at HOST:PORT (docs/LIGHTS.md)
 //     --reader PATH, --scard, --cardio  real e-AMUSEMENT card readers, with --window (see
 //                       runtime/host/readers.h)
 //     --bio2 PATH       beatmania IIDX's BIO2 I/O board as the cabinet's controls and lamps, with

@@ -132,14 +132,14 @@ QList<Game> scanGames() {
         // else where the README's build puts it
         bool built = false;
         for (const QString &d : {bin, QCoreApplication::applicationDirPath(), root + "/bin", root + "/build/cmake"}) {
-            QFileInfo exe(d + "/hiraku-" + g.id);
+            QFileInfo exe(d + "/" + cfg::exeName("hiraku-" + g.id));
             if (exe.isFile() && exe.isExecutable()) {
                 g.exe = exe.absoluteFilePath();
                 built = true;
                 break;
             }
         }
-        if (!built) g.exe = bin + "/hiraku-" + g.id;
+        if (!built) g.exe = bin + "/" + cfg::exeName("hiraku-" + g.id);
         bool installed = QFileInfo::exists(root + "/dumps/" + g.id + "/machine.txt");
         g.status = !installed ? Game::NotInstalled : built ? Game::Ready : Game::NotBuilt;
         out.push_back(g);

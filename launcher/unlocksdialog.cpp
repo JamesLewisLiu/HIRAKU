@@ -112,10 +112,15 @@ UnlocksDialog::UnlocksDialog(const QString &game, const QString &title, bool run
 }
 
 QJsonObject UnlocksDialog::run(const QStringList &extra, QString *err) {
+    const QStringList py = cfg::python();
+    if (py.isEmpty()) {
+        *err = "tools/unlock.py needs Python 3 (python.org)";
+        return {};
+    }
     QProcess p;
-    p.start("python3", QStringList{cfg::rootDir() + "/tools/unlock.py", m_game, "--json", "--nvram", cfg::nvramDir(m_game)} + extra);
+    p.start(py[0], py.mid(1) + QStringList{cfg::rootDir() + "/tools/unlock.py", m_game, "--json", "--nvram", cfg::nvramDir(m_game)} + extra);
     if (!p.waitForFinished(15000)) {
-        *err = "tools/unlock.py did not answer (is python3 installed?)";
+        *err = "tools/unlock.py did not answer (is Python 3 installed?)";
         return {};
     }
     QJsonObject o = QJsonDocument::fromJson(p.readAllStandardOutput()).object();

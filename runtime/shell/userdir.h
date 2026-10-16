@@ -6,7 +6,8 @@
 // moves (or goes on a USB stick) as one. Otherwise the XDG folders.
 //
 //   portable           not portable
-//   <root>/user/data   $XDG_DATA_HOME/hiraku   (~/.local/share/hiraku; on Windows %APPDATA%\hiraku)
+//   <root>/user/data   $XDG_DATA_HOME/hiraku   (~/.local/share/hiraku; on Windows %LOCALAPPDATA%\hiraku,
+//                                                as the launcher's Qt has it)
 //   <root>/user/config $XDG_CONFIG_HOME/hiraku (~/.config/hiraku; the launcher's)
 //
 // The launcher (launcher/config.cpp) and tools/unlock.py follow the same rule.
@@ -27,7 +28,7 @@ inline bool portable(const std::string &root) {
 inline std::string user_data_dir(const std::string &root) {
     if (portable(root)) return root + "/user/data";
 #ifdef _WIN32
-    if (const char *appdata = getenv("APPDATA"); appdata && *appdata) return std::string(appdata) + "/hiraku";
+    if (const char *appdata = getenv("LOCALAPPDATA"); appdata && *appdata) return std::string(appdata) + "/hiraku";
 #endif
     const char *xdg = getenv("XDG_DATA_HOME"), *home = getenv("HOME");
     return (xdg && *xdg ? std::string(xdg) : std::string(home ? home : ".") + "/.local/share") + "/hiraku";

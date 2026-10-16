@@ -657,7 +657,12 @@ void MainWindow::startIngest() {
     m_logDock->show();
     log("\n$ tools/ingest.py " + paths.join(' ') + "\n");
     m_ingest.setWorkingDirectory(cfg::rootDir());
-    m_ingest.start("python3", QStringList{script} + paths);
+    const QStringList py = cfg::python();
+    if (py.isEmpty()) {
+        QMessageBox::warning(this, "HIRAKU", "Adding games runs tools/ingest.py, which needs Python 3 (python.org).");
+        return;
+    }
+    m_ingest.start(py[0], py.mid(1) + QStringList{script} + paths);
 }
 
 void MainWindow::log(const QString &text) {

@@ -17,7 +17,10 @@ set(CMAKE_CXX_COMPILER_TARGET ${HK_TRIPLE})
 set(CMAKE_EXE_LINKER_FLAGS_INIT "-fuse-ld=lld -static -pthread")
 set(CMAKE_CROSSCOMPILING_EMULATOR wine)
 set(HK_WIN_DEPS ${CMAKE_CURRENT_LIST_DIR}/../out/win-deps)
-set(CMAKE_FIND_ROOT_PATH /usr/${HK_TRIPLE} ${HK_WIN_DEPS})
+set(CMAKE_FIND_ROOT_PATH /usr/${HK_TRIPLE} ${HK_WIN_DEPS} ${HK_WIN_DEPS}/qt6)
+# the launcher's Qt: a static Windows qtbase (tools/win-deps.sh), its build tools (moc, rcc, uic)
+# the host's, of the same version
+set(QT_HOST_PATH /usr)
 # pkg-config only sees the Windows libraries (zstd); not the host's, whose headers are glibc's
 set(ENV{PKG_CONFIG_LIBDIR} ${HK_WIN_DEPS}/lib/pkgconfig)
 set(ENV{PKG_CONFIG_PATH} "")

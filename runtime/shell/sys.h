@@ -40,6 +40,7 @@ double thread_cpu_ms();   // the calling thread's CPU time
 long major_faults();      // the process's page faults that read the disk (0 where unknown)
 std::tm utc(std::time_t t);
 std::tm local(std::time_t t);
+std::time_t from_utc(const std::tm &t);   // utc() backwards (timegm)
 
 #ifdef _WIN32
 // Win32 fibers, for the Firebeat core's guest threads (runtime/core/glue.cpp): Windows checks

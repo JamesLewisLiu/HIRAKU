@@ -203,17 +203,26 @@ LightsDialog::LightsDialog(const QString &family, QWidget *parent) : QDialog(par
     showFamily(m_familyBox->currentData().toString());
 
     // live lamps from a running game
-    connect(&m_socket, &QLocalSocket::readyRead, this, &LightsDialog::onSocketData);
-    connect(&m_socket, &QLocalSocket::disconnected, this, [this] {
+    connect(&m_socket, &decltype(m_socket)::readyRead, this, &LightsDialog::onSocketData);
+    connect(&m_socket, &decltype(m_socket)::disconnected, this, [this] {
         m_liveGame.clear();
         m_liveState.clear();
         showFamily(m_family);
     });
     connect(&m_reconnect, &QTimer::timeout, this, [this] {
-        if (m_socket.state() == QLocalSocket::UnconnectedState) m_socket.connectToServer(cfg::lightsSocket());
+        if (m_socket.state() == decltype(m_socket)::UnconnectedState) connectLive();
     });
     m_reconnect.start(1000);
+    connectLive();
+}
+
+void LightsDialog::connectLive() {
+#ifdef Q_OS_WIN
+    const QString at = cfg::lightsSocket();
+    m_socket.connectToHost(at.section(':', 0, 0), (quint16)at.section(':', 1).toUInt());
+#else
     m_socket.connectToServer(cfg::lightsSocket());
+#endif
 }
 
 LightsDialog::~LightsDialog() {

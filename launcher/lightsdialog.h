@@ -5,6 +5,7 @@
 
 #include <QDialog>
 #include <QLocalSocket>
+#include <QTcpSocket>
 #include <QMap>
 #include <QSet>
 #include <QStringList>
@@ -55,7 +56,12 @@ private:
     std::vector<hk::hidout::Device> m_devices;
     hk::hidout::Writer m_writer;
     QSet<QString> m_driven;                      // outputs this dialog lit: turned off on close
+#ifdef Q_OS_WIN
+    QTcpSocket m_socket;   // the game's lamps: on Windows at 127.0.0.1:PORT (cfg::lightsSocket)
+#else
     QLocalSocket m_socket;
+#endif
+    void connectLive();
     QTimer m_reconnect;
     QByteArray m_buf;
     QString m_liveFamily, m_liveGame;

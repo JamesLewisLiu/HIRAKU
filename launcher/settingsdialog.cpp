@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "settingsdialog.h"
 
+#include <algorithm>
+
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDialogButtonBox>
@@ -18,6 +20,7 @@
 #include <QRandomGenerator>
 #include <QRegularExpression>
 #include <QRegularExpressionValidator>
+#include <QSettings>
 #include <QSpinBox>
 #include <QVBoxLayout>
 
@@ -240,9 +243,18 @@ SettingsDialog::SettingsDialog(QWidget *parent) : QDialog(parent) {
     // real readers, as spice2x's -reader, -scard and -cardio (runtime/host/readers.h)
     auto *rd = new QGroupBox("Card readers (pop'n music 9-14, GuitarFreaks, DrumMania)");
     auto *fr = new QFormLayout(rd);
-    QStringList ports;   // a port's /dev/serial/by-id name stays the same whichever USB socket it is in
+    QStringList ports;
+#ifdef Q_OS_WIN
+    {   // the COM ports Windows has now
+        QSettings comm("HKEY_LOCAL_MACHINE\\HARDWARE\\DEVICEMAP\\SERIALCOMM", QSettings::NativeFormat);
+        for (const QString &k : comm.allKeys()) ports << comm.value(k).toString();
+        std::sort(ports.begin(), ports.end(), [](const QString &a, const QString &b) { return a.mid(3).toInt() < b.mid(3).toInt(); });
+    }
+#else
+    // a port's /dev/serial/by-id name stays the same whichever USB socket it is in
     for (const QFileInfo &f : QDir("/dev/serial/by-id").entryInfoList(QDir::System | QDir::Files)) ports << f.absoluteFilePath();
     for (const QString &f : QDir("/dev").entryList({"ttyUSB*", "ttyACM*"}, QDir::System)) ports << "/dev/" + f;
+#endif
     for (int n = 0; n < 2; n++) {
         m_reader[n] = new QComboBox;
         m_reader[n]->setEditable(true);
@@ -257,12 +269,21 @@ SettingsDialog::SettingsDialog(QWidget *parent) : QDialog(parent) {
     }
     m_scard = new QCheckBox("NFC readers (ACR122U and the like) through PC/SC (-scard): the first is player 1's");
     m_scard->setChecked(s.value("readers/scard", false).toBool());
+#ifdef Q_OS_WIN
+    m_scard->setToolTip("Through Windows' own smart card service. Cards that aren't e-AMUSEMENT PASSes (FeliCa, phones) "
+                        "get an E00401 number, as spice2x's -scardfix.");
+#else
     m_scard->setToolTip("Needs the pcscd service (systemctl enable --now pcscd.socket). Cards that aren't e-AMUSEMENT "
                         "PASSes (FeliCa, phones) get an E00401 number, as spice2x's -scardfix.");
+#endif
     fr->addRow("", m_scard);
     m_cardio = new QCheckBox("cardio readers (USB HID, -cardio): the first is player 1's");
     m_cardio->setChecked(s.value("readers/cardio", false).toBool());
     m_cardio->setToolTip("Read through /dev/hidraw: a udev rule lets you open it (docs/PLAY.md, Card readers).");
+#ifdef Q_OS_WIN
+    m_cardio->setEnabled(false);
+    m_cardio->setToolTip("Not on Windows yet.");
+#endif
     fr->addRow("", m_cardio);
     v->addWidget(rd);
 

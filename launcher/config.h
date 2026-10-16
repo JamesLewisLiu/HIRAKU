@@ -23,7 +23,11 @@ QString nvramDir(const QString &game);     // where the game's NVRAM is (or will
 QString controlsFile(const QString &family);  // the family's controls set's file
 void mergeControls();                       // once: a set's members' old files joined into the set's
 QString lightsFile(const QString &family);
-QString lightsSocket();                    // $XDG_RUNTIME_DIR/hiraku-lights.sock
+QString lightsSocket();                    // $XDG_RUNTIME_DIR/hiraku-lights.sock; on Windows 127.0.0.1:PORT
+QString exeName(const QString &base);      // a program's file name: base, or base.exe on Windows
+// Python 3 for tools/*.py: the program and the arguments before the script's ("python3"; on
+// Windows the "py -3" launcher, else "python"). Empty if there's none.
+QStringList python();
 
 QString familyName(const QString &family); // "pop'n music"
 QList<QPair<QString, QStringList>> familySeries();   // ("beatmania", {djbm, iidx, bm3}), ...

@@ -17,13 +17,6 @@
 //              games set their clocks to what ntp.get says and stamp their own times "+9")
 //     --quiet  don't print each call
 //     --no-relay  no NET TAISEN relay
-#include <arpa/inet.h>
-#include <netinet/in.h>
-#include <sys/socket.h>
-#include <sys/stat.h>
-#include <sys/time.h>
-#include <unistd.h>
-
 #include <cctype>
 #include <csignal>
 #include <cstdio>
@@ -36,6 +29,8 @@
 #include "python/easerver.h"
 #include "python/lobby.h"
 #include "python/netrelay.h"
+#include "shell/net.h"
+#include "shell/sys.h"
 #include "sys573/eagfdm.h"
 
 namespace {
@@ -55,7 +50,7 @@ bool read_request(int fd, std::string &req) {
             if (req.size() >= he + 4 + body) return true;
         }
         if (req.size() > (1u << 21)) return false;
-        const ssize_t n = recv(fd, buf, sizeof buf, 0);
+        const ssize_t n = hk::net::recv(fd, buf, sizeof buf);
         if (n <= 0) return false;
         req.append(buf, (size_t)n);
     }
@@ -63,8 +58,11 @@ bool read_request(int fd, std::string &req) {
 
 int64_t parse_clock(const char *s) {
     struct tm tm {};
-    if (!strptime(s, "%Y-%m-%d %H:%M:%S", &tm) && !strptime(s, "%Y-%m-%d", &tm)) return -1;
-    return (int64_t)timegm(&tm);
+    if (sscanf(s, "%d-%d-%d %d:%d:%d", &tm.tm_year, &tm.tm_mon, &tm.tm_mday, &tm.tm_hour, &tm.tm_min, &tm.tm_sec) < 3)
+        return -1;
+    tm.tm_year -= 1900;
+    tm.tm_mon -= 1;
+    return (int64_t)hk::sys::from_utc(tm);
 }
 
 }  // namespace
@@ -95,7 +93,7 @@ int main(int argc, char **argv) {
             return a == "--help" || a == "-h" ? 0 : 2;
         }
     }
-    mkdir(data.c_str(), 0755);
+    hk::sys::make_dir(data);
     // the game's own modules, by its model (GuitarFreaks xx39, DrumMania xx40: "D40:J:A:A")
     hk::ea::Server server(data, [](hk::ea::Server &s, const hk::ea::Call &c, const hk::ea::Request &r, const std::string &host) {
         const std::string g = c.model.substr(1, 2);
@@ -124,16 +122,17 @@ int main(int argc, char **argv) {
         return model.size() == 3 && (model.compare(1, 2, "39") == 0 || model.compare(1, 2, "40") == 0);
     };
 
+#ifdef SIGPIPE
     signal(SIGPIPE, SIG_IGN);
-    const int ls = socket(AF_INET, SOCK_STREAM, 0);
-    const int one = 1;
-    setsockopt(ls, SOL_SOCKET, SO_REUSEADDR, &one, sizeof one);
+#endif
+    const int ls = hk::net::socket(AF_INET, SOCK_STREAM, 0);
+    hk::net::set_int(ls, SOL_SOCKET, SO_REUSEADDR, 1);
     sockaddr_in sa{};
     sa.sin_family = AF_INET;
     sa.sin_port = htons((uint16_t)port);
     if (inet_pton(AF_INET, bind_addr.c_str(), &sa.sin_addr) != 1) { fprintf(stderr, "--bind: an IPv4 address\n"); return 2; }
     if (bind(ls, (sockaddr *)&sa, sizeof sa) != 0 || listen(ls, 16) != 0) {
-        fprintf(stderr, "hiraku-eamuse: %s:%d: %s\n", bind_addr.c_str(), port, strerror(errno));
+        fprintf(stderr, "hiraku-eamuse: %s:%d: %s\n", bind_addr.c_str(), port, hk::net::error().c_str());
         return 1;
     }
     printf("hiraku-eamuse: e-AMUSE3 on %s:%d, data in %s\n", bind_addr.c_str(), port, data.c_str());
@@ -145,22 +144,18 @@ int main(int argc, char **argv) {
     }
     fflush(stdout);
     for (;;) {   // one connection at a time: the game makes one request per connection (HTTP/1.0)
-        sockaddr_in peer{};
-        socklen_t pl = sizeof peer;
-        const int fd = accept(ls, (sockaddr *)&peer, &pl);
+        const int fd = hk::net::accept(ls);
         if (fd < 0) continue;
-        timeval tv{10, 0};
-        setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof tv);
-        setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof tv);
+        hk::net::set_timeouts(fd, 10000);
         std::string req;
         if (read_request(fd, req)) {
             const std::string answer = gfdm(req) ? server.handle(req) : popn.handle(req);
             for (size_t sent = 0; sent < answer.size();) {
-                const ssize_t n = send(fd, answer.data() + sent, answer.size() - sent, 0);
+                const ssize_t n = hk::net::send(fd, answer.data() + sent, answer.size() - sent);
                 if (n <= 0) break;
                 sent += (size_t)n;
             }
         }
-        close(fd);
+        hk::net::close(fd);
     }
 }

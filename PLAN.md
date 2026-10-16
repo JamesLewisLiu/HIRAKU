@@ -2029,7 +2029,16 @@ Keep the regression suite and the MAME comparisons on Linux. To check: no file n
 - Image streams: a CHD's stream was a `fopencookie` stream, which Windows has no counterpart of. Its readers now use `image::pread`, `image::size` and `image::close` (`runtime/dev/image.h`); on Windows a CHD's stream is a stand-in only those know.
 - Pulled forward from phases 2-3, as they were small: the Winsock layer (the 573 session link, the e-AMUSEMENT client, the lights socket), the ACIO serial port as a Win32 COM port, PC/SC through `winscard`. Still Linux only: cardio (hidraw), `hiraku-eamuse`, the profiler (`HK_PROFILE`), the ACIO tests (pseudo-terminals), Twinkle's background video (no FFmpeg for Windows yet).
 - **Checked under Wine 2026-10-16**, digests compared with Linux: popn7-attract, bm3final-practice, bm37th-play (18 GB disk), kbm-attract (Firebeat, 1.35 M fiber switches in popn7's 3600 frames); bm1stmix-boot, popn1j-boot (DJ Main); ddr3mj-boot, ddr3mj-install → ddr3mj-attract, drmn10m-install → drmn10m-boot (573, with its write guard and the NVRAM chain); bmiidx3-boot → bmiidx3-play (Twinkle). All 13 the same as Linux, NVRAM included. (bmiidx3's two stored baselines predate 271fb51's 4x CD drive; they were compared with today's Linux build.)
-- Not yet: a window and sound under Wine or on real Windows (all runs above were headless), the session cable between two Wine processes, the e-AMUSEMENT server.
+- Not yet: a window and sound under Wine or on real Windows (all runs above were headless), the session cable between two Wine processes.
+
+**Phase 2 (2026-10-16): the e-AMUSEMENT server, the launcher, the zip.**
+- `hiraku-eamuse.exe`: the server and the NET TAISEN relay on `net.h` (`netrelay.cpp`, `tools/eamuse/server.cpp`; `--clock` without `strptime`/`timegm`). Under Wine: it answers a call and its relay port listens.
+- Lamps: `--lights-socket HOST:PORT` listens on TCP (any OS); the Windows launcher uses `127.0.0.1:47817` (Windows' `QLocalSocket` is a named pipe, which the game can't serve). Checked: the Windows popn7 under Wine, read from Linux.
+- Launcher: `hiraku-<id>.exe`; Python found as `py -3` or `python` (`cfg::python()`) for ingest and unlocks; COM ports listed from the registry; PC/SC wording; cardio off; the Linux-only environment restore left out. Saves in `%LOCALAPPDATA%\hiraku`, where the launcher's Qt keeps its own (runtime and `tools/unlock.py`).
+- Qt for Windows: qtbase 6.12.0 (the host's version, whose moc/rcc/uic build the launcher) cross-built static with the same clang (`tools/win-deps.sh`, 4th argument): the launcher is one `.exe`, no Qt DLLs. Qt 6.12's Windows plugin doesn't build with OpenGL off: left on (dynamic OpenGL, nothing extra needed).
+- `tools/package-win.sh BUILD OUT.zip [portable]`: the games and launcher stripped, SDL3.dll, games/, docs/, tools' Python scripts, a README. Checked: popn7 run from the unpacked zip gives its baseline digest.
+- **Checked under Wine** (in a nested `kwin_wayland --virtual --xwayland`, so nothing on the owner's screen): the launcher lists the 80 games with the built `.exe`s ready; started from it, popn7 runs windowed to its attract; the launcher's settings and the game's saves land in `%LOCALAPPDATA%\hiraku`. Linux unchanged: popn7-attract, ddr3mj-boot and the 573 session pair give their baselines.
+- Not yet: every game built for Windows and the full zip (16 `.exe`s so far), `tools/ingest.py` on Windows (7-Zip, chdman, paths), HID lights on Windows (`hidout` reads Linux's hidraw), real Windows at all (phase 3).
 
 ## M0 steps (all done)
 

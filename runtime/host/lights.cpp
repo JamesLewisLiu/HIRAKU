@@ -3,6 +3,7 @@
 
 #include <condition_variable>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <fstream>
 #include <mutex>
@@ -119,7 +120,23 @@ bool lights_init(const std::string &game, const std::string &family, const std::
             }
         }
     }
-    if (!socket_path.empty()) {
+    const size_t colon = socket_path.rfind(':');
+    if (!socket_path.empty() && colon != std::string::npos && socket_path.find_first_of("/\\") == std::string::npos) {
+        // HOST:PORT, TCP (Windows' launcher: it has no Unix sockets to read)
+        sockaddr_in a{};
+        a.sin_family = AF_INET;
+        a.sin_port = htons((uint16_t)atoi(socket_path.c_str() + colon + 1));
+        g_listen = net::socket(AF_INET, SOCK_STREAM, 0);
+        if (g_listen >= 0) net::set_int(g_listen, SOL_SOCKET, SO_REUSEADDR, 1);
+        if (g_listen < 0 || inet_pton(AF_INET, socket_path.substr(0, colon).c_str(), &a.sin_addr) != 1 ||
+            !net::set_nonblocking(g_listen) || bind(g_listen, (sockaddr *)&a, sizeof a) != 0 || listen(g_listen, 8) != 0) {
+            fprintf(stderr, "lights: cannot listen on %s: %s\n", socket_path.c_str(), net::error().c_str());
+            if (g_listen >= 0) net::close(g_listen);
+            g_listen = -1;
+        } else {
+            printf("lights: socket %s\n", socket_path.c_str());
+        }
+    } else if (!socket_path.empty()) {
         sockaddr_un a{};
         a.sun_family = AF_UNIX;
         if (socket_path.size() >= sizeof a.sun_path) {

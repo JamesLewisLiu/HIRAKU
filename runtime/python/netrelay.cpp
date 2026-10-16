@@ -2,19 +2,12 @@
 // NET TAISEN online through hiraku-eamuse's relay (netrelay.h).
 #include "python/netrelay.h"
 
-#include <arpa/inet.h>
-#include <cerrno>
 #include <chrono>
 #include <cstdio>
 #include <cstring>
-#include <fcntl.h>
 #include <map>
-#include <netdb.h>
-#include <netinet/in.h>
-#include <netinet/tcp.h>
-#include <poll.h>
-#include <sys/socket.h>
-#include <unistd.h>
+
+#include "shell/net.h"
 
 #include "python/lobby.h"
 
@@ -45,8 +38,8 @@ std::string dotted(uint32_t a) {
 bool send_all(int fd, const void *p, size_t n) {
     const char *c = (const char *)p;
     while (n) {
-        ssize_t k = send(fd, c, n, MSG_NOSIGNAL);
-        if (k < 0 && errno == EINTR) continue;
+        ssize_t k = net::send(fd, c, n);
+        if (k < 0 && net::interrupted()) continue;
         if (k <= 0) return false;
         c += k;
         n -= (size_t)k;
@@ -57,8 +50,8 @@ bool send_all(int fd, const void *p, size_t n) {
 bool recv_all(int fd, void *p, size_t n) {
     char *c = (char *)p;
     while (n) {
-        ssize_t k = recv(fd, c, n, 0);
-        if (k < 0 && errno == EINTR) continue;
+        ssize_t k = net::recv(fd, c, n);
+        if (k < 0 && net::interrupted()) continue;
         if (k <= 0) return false;
         c += k;
         n -= (size_t)k;
@@ -76,12 +69,13 @@ bool send_packet(int fd, const LanCable::Packet &k) {
 // --- the cabinet's side ---
 
 RelayClient::~RelayClient() {
-    if (fd_ >= 0) shutdown(fd_, SHUT_RDWR);
+    if (fd_ >= 0) net::shutdown(fd_);
     if (thread_.joinable()) thread_.join();
-    if (fd_ >= 0) close(fd_);
+    if (fd_ >= 0) net::close(fd_);
 }
 
 bool RelayClient::open(const std::string &host, uint16_t port, int seconds, std::string *error) {
+    net::start();
     addrinfo hints{}, *res = nullptr;
     hints.ai_family = AF_UNSPEC;
     hints.ai_socktype = SOCK_STREAM;
@@ -91,40 +85,26 @@ bool RelayClient::open(const std::string &host, uint16_t port, int seconds, std:
     }
     int fd = -1;
     for (addrinfo *a = res; a && fd < 0; a = a->ai_next) {
-        fd = socket(a->ai_family, a->ai_socktype, a->ai_protocol);
+        fd = net::socket(a->ai_family, a->ai_socktype, a->ai_protocol);
         if (fd < 0) continue;
-        // connect within `seconds`
-        fcntl(fd, F_SETFL, O_NONBLOCK);
-        int r = connect(fd, a->ai_addr, a->ai_addrlen);
-        if (r < 0 && errno == EINPROGRESS) {
-            pollfd p{fd, POLLOUT, 0};
-            int err = 0;
-            socklen_t len = sizeof err;
-            r = poll(&p, 1, seconds * 1000) == 1 && getsockopt(fd, SOL_SOCKET, SO_ERROR, &err, &len) == 0 && !err ? 0 : -1;
-            if (err) errno = err;
-        }
-        if (r != 0) {
-            *error = host + ":" + std::to_string(port) + ": " + (errno ? strerror(errno) : "no answer");
-            close(fd);
+        if (!net::connect_within(fd, a->ai_addr, a->ai_addrlen, seconds * 1000)) {
+            *error = host + ":" + std::to_string(port) + ": " + net::error();
+            net::close(fd);
             fd = -1;
         }
     }
     freeaddrinfo(res);
     if (fd < 0) return false;
-    fcntl(fd, F_SETFL, 0);
-    int one = 1;
-    setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof one);
-    timeval tv{seconds, 0};
-    setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof tv);
+    net::set_int(fd, IPPROTO_TCP, TCP_NODELAY, 1);
+    net::set_recv_timeout(fd, seconds * 1000);
     Hello mine{MAGIC, VERSION, 0}, theirs{};
     if (!send_all(fd, &mine, sizeof mine) || !recv_all(fd, &theirs, sizeof theirs) || theirs.magic != MAGIC ||
         theirs.version != VERSION) {
         *error = host + ":" + std::to_string(port) + ": not a HIRAKU relay (or another version)";
-        close(fd);
+        net::close(fd);
         return false;
     }
-    tv = {0, 0};
-    setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof tv);
+    net::set_recv_timeout(fd, 0);
     fd_ = fd;
     address_ = theirs.address;
     thread_ = std::thread([this] { reader(); });
@@ -158,9 +138,9 @@ void RelayClient::exchange(std::vector<LanCable::Packet> &out, std::vector<LanCa
             if (!send_packet(fd_, k)) { lost = true; break; }
     if (lost) {
         fprintf(stderr, "relay: the connection is gone; NET TAISEN online is off now\n");
-        shutdown(fd_, SHUT_RDWR);
+        net::shutdown(fd_);
         if (thread_.joinable()) thread_.join();
-        close(fd_);
+        net::close(fd_);
         fd_ = -1;
     }
 }
@@ -168,16 +148,15 @@ void RelayClient::exchange(std::vector<LanCable::Packet> &out, std::vector<LanCa
 // --- the server's side ---
 
 bool RelayServer::start(const std::string &bind_addr, uint16_t port) {
-    listen_fd_ = socket(AF_INET, SOCK_STREAM, 0);
-    const int one = 1;
-    setsockopt(listen_fd_, SOL_SOCKET, SO_REUSEADDR, &one, sizeof one);
+    listen_fd_ = net::socket(AF_INET, SOCK_STREAM, 0);
+    net::set_int(listen_fd_, SOL_SOCKET, SO_REUSEADDR, 1);
     sockaddr_in sa{};
     sa.sin_family = AF_INET;
     sa.sin_port = htons(port);
     if (inet_pton(AF_INET, bind_addr.c_str(), &sa.sin_addr) != 1 || bind(listen_fd_, (sockaddr *)&sa, sizeof sa) != 0 ||
         listen(listen_fd_, 16) != 0) {
-        fprintf(stderr, "relay: %s:%u: %s\n", bind_addr.c_str(), port, strerror(errno));
-        close(listen_fd_);
+        fprintf(stderr, "relay: %s:%u: %s\n", bind_addr.c_str(), port, net::error().c_str());
+        net::close(listen_fd_);
         listen_fd_ = -1;
         return false;
     }
@@ -198,29 +177,26 @@ void RelayServer::run() {
     const auto t0 = std::chrono::steady_clock::now();
     auto say = [&](const std::string &s) { if (log) log("relay: " + s); };
     for (;;) {
-        std::vector<pollfd> fds{{listen_fd_, POLLIN, 0}};
-        for (auto &[fd, c] : cabinets) fds.push_back({fd, POLLIN, 0});
-        if (poll(fds.data(), fds.size(), -1) < 0) {
-            if (errno == EINTR) continue;
+        std::vector<pollfd> fds{net::watch(listen_fd_, POLLIN)};
+        for (auto &[fd, c] : cabinets) fds.push_back(net::watch(fd, POLLIN));
+        if (net::poll(fds.data(), fds.size(), -1) < 0) {
+            if (net::interrupted()) continue;
             return;
         }
         if (fds[0].revents & POLLIN) {
-            sockaddr_in peer{};
-            socklen_t pl = sizeof peer;
-            const int fd = accept(listen_fd_, (sockaddr *)&peer, &pl);
+            const int fd = net::accept(listen_fd_);
             if (fd >= 0) {
-                int one = 1;
-                setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof one);
+                net::set_int(fd, IPPROTO_TCP, TCP_NODELAY, 1);
                 cabinets[fd];
             }
         }
         std::vector<int> gone;
         for (size_t i = 1; i < fds.size(); i++) {
             if (!(fds[i].revents & (POLLIN | POLLHUP | POLLERR))) continue;
-            const int fd = fds[i].fd;
+            const int fd = net::fd_of(fds[i]);
             Cabinet &c = cabinets[fd];
             char buf[8192];
-            const ssize_t n = recv(fd, buf, sizeof buf, 0);
+            const ssize_t n = net::recv(fd, buf, sizeof buf);
             if (n <= 0) { gone.push_back(fd); continue; }
             c.in.append(buf, (size_t)n);
             if (!c.greeted) {
@@ -267,7 +243,7 @@ void RelayServer::run() {
         for (int fd : gone)
             if (auto it = cabinets.find(fd); it != cabinets.end()) {
                 if (it->second.greeted) say(dotted(it->second.address) + " left");
-                close(fd);
+                net::close(fd);
                 cabinets.erase(it);
             }
     }
