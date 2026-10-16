@@ -2,15 +2,11 @@
 // e-AMUSEMENT online: the game's HTTP requests forwarded to a real server (remote.h).
 #include "eamuse/remote.h"
 
-#include <netdb.h>
-#include <sys/socket.h>
-#include <sys/time.h>
-#include <unistd.h>
-
 #include <cctype>
-#include <cerrno>
 #include <cstdlib>
 #include <cstring>
+
+#include "shell/net.h"
 
 namespace hk::ea {
 
@@ -51,6 +47,7 @@ std::string Remote::exchange(const Lan::Target &t, const std::string &request, s
         break;
     }
 
+    net::start();
     addrinfo hints{}, *res = nullptr;
     hints.ai_socktype = SOCK_STREAM;
     if (int e = getaddrinfo(host.c_str(), std::to_string(port).c_str(), &hints, &res); e != 0) {
@@ -59,28 +56,26 @@ std::string Remote::exchange(const Lan::Target &t, const std::string &request, s
     }
     int fd = -1;
     for (addrinfo *a = res; a; a = a->ai_next) {
-        fd = socket(a->ai_family, a->ai_socktype, a->ai_protocol);
+        fd = net::socket(a->ai_family, a->ai_socktype, a->ai_protocol);
         if (fd < 0) continue;
-        timeval tv{15, 0};   // the game gives up after about as long
-        setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof tv);
-        setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof tv);
-        if (connect(fd, a->ai_addr, a->ai_addrlen) == 0) break;
-        close(fd);
+        net::set_timeouts(fd, 15000);   // the game gives up after about as long
+        if (connect(fd, a->ai_addr, (int)a->ai_addrlen) == 0) break;
+        net::close(fd);
         fd = -1;
     }
     freeaddrinfo(res);
-    if (fd < 0) { *error = host_header + ": " + std::strerror(errno); return ""; }
+    if (fd < 0) { *error = host_header + ": " + net::error(); return ""; }
 
     for (size_t sent = 0; sent < req.size();) {
-        const ssize_t n = send(fd, req.data() + sent, req.size() - sent, MSG_NOSIGNAL);
-        if (n <= 0) { *error = host_header + ": send: " + std::strerror(errno); close(fd); return ""; }
+        const ssize_t n = net::send(fd, req.data() + sent, req.size() - sent);
+        if (n <= 0) { *error = host_header + ": send: " + net::error(); net::close(fd); return ""; }
         sent += (size_t)n;
     }
     std::string answer;
     char buf[4096];
     for (;;) {   // HTTP/1.0: the answer ends where the server closes (or its Content-Length)
-        const ssize_t n = recv(fd, buf, sizeof buf, 0);
-        if (n < 0) { *error = host_header + ": recv: " + std::strerror(errno); close(fd); return ""; }
+        const ssize_t n = net::recv(fd, buf, sizeof buf);
+        if (n < 0) { *error = host_header + ": recv: " + net::error(); net::close(fd); return ""; }
         if (n == 0) break;
         answer.append(buf, (size_t)n);
         const size_t he = answer.find("\r\n\r\n");
@@ -91,7 +86,7 @@ std::string Remote::exchange(const Lan::Target &t, const std::string &request, s
             answer.size() >= he + 4 + std::strtoul(head.c_str() + cl + 17, nullptr, 10))
             break;
     }
-    close(fd);
+    net::close(fd);
     if (answer.empty()) *error = host_header + ": no answer";
     return answer;
 }

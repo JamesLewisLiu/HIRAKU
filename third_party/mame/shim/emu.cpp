@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // HIRAKU: the MAME framework subset declared in emu.h.
 #include "emu.h"
+#include "shell/sys.h"
 
 #include <ctime>
 #include <map>
@@ -204,9 +205,7 @@ void device_slot_interface::hk_create_card(machine_config &config) {
 
 void system_time::set(time_t t) {
     time = t;
-    struct tm lt, ut;
-    localtime_r(&t, &lt);
-    gmtime_r(&t, &ut);
+    struct tm lt = hk::sys::local(t), ut = hk::sys::utc(t);
     local_time.set(lt);
     utc_time.set(ut);
 }

@@ -12,6 +12,8 @@ set(HK ${HIRAKU_DIR})
 # HIRAKU's shell: the same sources as HIRAKU's hiraku_shell, hiraku_cabinet and hiraku_host
 add_library(hk_python_shell STATIC
 	${HK}/runtime/shell/cabinet.cpp
+	${HK}/runtime/shell/sys.cpp
+	${HK}/runtime/shell/net.cpp
 	${HK}/runtime/host/hiddesc.cpp
 	${HK}/runtime/host/script.cpp
 	${HK}/runtime/host/macro.cpp

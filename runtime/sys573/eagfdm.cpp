@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // e-AMUSEMENT for the System 573 GuitarFreaks and DrumMania (eagfdm.h).
 #include "sys573/eagfdm.h"
+#include "shell/sys.h"
 
 #include <algorithm>
 #include <cstring>
@@ -273,8 +274,7 @@ std::string Eamuse::answer(ea::Server &s, const ea::Call &call, const ea::Reques
             std::string ids;
             for (size_t i = 0; i < nr; i++) ids += std::to_string(order[i].first) + "?";
             const time_t t = s.now ? (time_t)s.now() : 0;
-            struct tm tm;
-            gmtime_r(&t, &tm);
+            const struct tm tm = sys::utc(t);
             char day[16];
             snprintf(day, sizeof day, "%04d%02d%02d", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday);
             return ok + "<favorite nr=\"" + std::to_string(nr) + "\" netids=\"" + ids + "\" from=\"" + day + "\" to=\"" + day +
@@ -285,8 +285,7 @@ std::string Eamuse::answer(ea::Server &s, const ea::Call &call, const ea::Reques
     }
     if (m == "ntp" && f == "get") {   // pop'n 9's form, for now
         const time_t t = s.now ? (time_t)s.now() : 0;
-        struct tm tm;
-        gmtime_r(&t, &tm);
+        const struct tm tm = sys::utc(t);
         char b[160];
         snprintf(b, sizeof b, "<ntp status=\"0\"><time year=\"%d\" month=\"%d\" day=\"%d\" hour=\"%d\" min=\"%d\" sec=\"%d\"></time></ntp>",
                  tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec);

@@ -2,9 +2,9 @@
 #include "imagedev/harddriv.h"
 
 #include "dev/image.h"   // HIRAKU's image reader: a hard disk CHD read in place
+#include "shell/sys.h"
 
 #include <fcntl.h>
-#include <sys/mman.h>
 #include <unistd.h>
 
 #include <map>
@@ -23,9 +23,9 @@ harddisk_image_device::harddisk_image_device(const machine_config &mconfig, cons
     : device_t(mconfig, HARDDISK, tag, owner, clock), device_image_interface(mconfig, *this) {}
 
 harddisk_image_device::~harddisk_image_device() {
-    if (m_map) munmap((void *)m_map, m_map_size);
+    hk::sys::unmap_file(m_map, m_map_size);
     if (m_fd >= 0) close(m_fd);
-    if (m_chd) fclose(m_chd);
+    hk::image::close(m_chd);
 }
 
 void harddisk_image_device::hk_set_disk(const std::string &tag, const std::string &path, u32 cylinders, u32 heads, u32 sectors) {
@@ -45,12 +45,11 @@ void harddisk_image_device::device_start() {
         m_sectors = (u64)hk::image::chd_size(m_chd) / 512;
         return;
     }
-    m_fd = open(it->second.path.c_str(), O_RDONLY);
+    m_fd = open(it->second.path.c_str(), O_RDONLY | O_BINARY);
     if (m_fd < 0) fatalerror("%s: cannot open the disk image %s", tag(), it->second.path.c_str());
     m_sectors = (u64)lseek(m_fd, 0, SEEK_END) / 512;
     m_map_size = m_sectors * 512;
-    void *p = m_map_size ? mmap(nullptr, m_map_size, PROT_READ, MAP_PRIVATE, m_fd, 0) : MAP_FAILED;
-    if (p != MAP_FAILED) m_map = (const u8 *)p;   // else pread(), a sector at a time
+    m_map = (const u8 *)hk::sys::map_file(m_fd, m_map_size);   // if not, pread(), a sector at a time
 }
 
 bool harddisk_image_device::read(u32 lba, void *buffer) {
@@ -65,13 +64,13 @@ bool harddisk_image_device::read(u32 lba, void *buffer) {
     const uint64_t stretch = (uint64_t)lba * 512 >> 23;
     if (stretch != m_readahead) {
         m_readahead = stretch;
-        posix_fadvise(m_fd, (off_t)(stretch << 23), 2 << 23, POSIX_FADV_WILLNEED);
+        hk::sys::will_need(m_fd, stretch << 23, 2 << 23);
     }
     if (m_map) {
         memcpy(buffer, m_map + (size_t)lba * 512, 512);
         return true;
     }
-    return pread(m_fd, buffer, 512, (off_t)lba * 512) == 512;
+    return hk::sys::pread(m_fd, buffer, 512, (u64)lba * 512) == 512;
 }
 
 bool harddisk_image_device::write(u32 lba, const void *buffer) {

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // e-AMUSE3: the pieces every game shares (protocol.h).
 #include "eamuse/protocol.h"
+#include "shell/sys.h"
 
 #include <sys/stat.h>
 
@@ -257,7 +258,7 @@ std::string Store::read(const std::string &name) const {
 
 void Store::write(const std::string &name, const std::string &data) const {
     if (dir_.empty()) return;
-    mkdir(dir_.c_str(), 0755);
+    sys::make_dir(dir_);
     const std::string path = dir_ + "/" + name, tmp = path + ".tmp";
     {
         std::ofstream f(tmp, std::ios::binary | std::ios::trunc);

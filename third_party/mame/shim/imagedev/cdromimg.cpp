@@ -24,7 +24,7 @@ bool track_type(const std::string &t, u32 &type, u32 &size) {
 }  // namespace
 
 cdrom_file::~cdrom_file() {
-    for (FILE *f : m_files) fclose(f);
+    for (FILE *f : m_files) hk::image::close(f);
 }
 
 bool cdrom_file::open(const std::string &path) {
@@ -36,8 +36,7 @@ bool cdrom_file::open(const std::string &path) {
         FILE *f = hk::image::fopen_image(path);
         if (!f) return false;
         m_files.push_back(f);
-        fseeko(f, 0, SEEK_END);
-        u32 frames = (u32)(ftello(f) / 2048);
+        u32 frames = (u32)(hk::image::size(f) / 2048);
         cdtoc.numtrks = 1;
         track_info &t = cdtoc.tracks[0];
         t.trktype = CD_TRACK_MODE1;
@@ -67,12 +66,13 @@ bool cdrom_file::open(const std::string &path) {
             const char *rest = q;
             if (*q == '"') { char *e = strchr(q + 1, '"'); name.assign(q + 1, e ? e : q + 1); rest = e ? e + 1 : q + 1; }
             else { char *e = strpbrk(q, " \t\r\n"); name.assign(q, e ? e : q + strlen(q)); rest = e ? e : q + strlen(q); }
-            cur_le = strcasestr(rest, "MOTOROLA") == nullptr;
+            std::string up(rest);
+            for (char &ch : up) ch = (char)toupper((unsigned char)ch);
+            cur_le = up.find("MOTOROLA") == std::string::npos;
             cur = hk::image::fopen_image(name.size() && name[0] == '/' ? name : dir + name);
             if (!cur) { fclose(cue); return false; }
             m_files.push_back(cur);
-            fseeko(cur, 0, SEEK_END);
-            cur_size = (u64)ftello(cur);
+            cur_size = (u64)hk::image::size(cur);
         } else if (!strncasecmp(p, "TRACK ", 6)) {
             char type[32] = {};
             int n = 0;
@@ -103,7 +103,7 @@ bool cdrom_file::open(const std::string &path) {
         u64 start = (u64)index01[k].second * t.datasize;
         u64 end = 0;
         if (k + 1 < cdtoc.numtrks && index01[k + 1].first == f) end = (u64)index01[k + 1].second * t.datasize;
-        else { fseeko(f, 0, SEEK_END); end = (u64)ftello(f); }
+        else end = (u64)hk::image::size(f);
         t.frames = t.logframes = (u32)((end - start) / t.datasize);
         t.logframeofs = logofs;
         m_part[k] = {f, start, t.trktype == CD_TRACK_AUDIO && le[k]};
@@ -125,8 +125,7 @@ bool cdrom_file::read_partial(void *dst, u32 lba, u32 track, u32 offset, u32 len
     const track_info &t = cdtoc.tracks[track];
     const file_part &fp = m_part[track];
     u64 pos = fp.offset + (u64)(lba - t.logframeofs) * t.datasize + offset;
-    if (fseeko(fp.f, (off_t)pos, SEEK_SET) != 0) return false;
-    return fread(dst, 1, len, fp.f) == len;
+    return hk::image::pread(fp.f, dst, len, pos) == (ssize_t)len;
 }
 
 bool cdrom_file::read_data(u32 lbasector, void *buffer, u32 datatype, bool) {

@@ -17,9 +17,7 @@
 #include "sys573/mips_ops.h"
 #include "machine/ram.h"
 
-#include <signal.h>
-#include <sys/mman.h>
-#include <unistd.h>
+#include "shell/sys.h"
 
 // the game's blocks (tools/mipsgen.py; none without a recording)
 extern const hk573_block *const hk573_parts[];
@@ -62,7 +60,6 @@ struct Guard {
     size_t size = 0;
     std::vector<uint32_t> faults;
     std::vector<uint8_t> prot;
-    struct sigaction old_segv {};
     uint64_t total_faults = 0, protects = 0;
 
     bool has(const uint8_t *p) const { return p >= base && p < base + size; }
@@ -71,34 +68,29 @@ struct Guard {
     bool protect(size_t i) {
         if (prot[i]) return true;
         if (faults[i] >= GIVE_UP) return false;
-        if (mprotect(base + i * page_size, page_size, PROT_READ) != 0) return false;
+        if (!sys::protect_pages(base + i * page_size, page_size, false)) return false;
         prot[i] = 1;
         protects++;
         return true;
     }
 } g_guard;
 
-void on_segv(int sig, siginfo_t *si, void *uc) {
+// a write to a protected page (sys::catch_write_faults): true if it was one of ours
+bool on_write(void *address) {
     Guard &gd = g_guard;
-    const uint8_t *a = static_cast<const uint8_t *>(si->si_addr);
+    const uint8_t *a = static_cast<const uint8_t *>(address);
     if (gd.has(a)) {
         const size_t i = gd.page(a);
         if (gd.prot[i]) {
-            mprotect(gd.base + i * gd.page_size, gd.page_size, PROT_READ | PROT_WRITE);
+            sys::protect_pages(gd.base + i * gd.page_size, gd.page_size, true);
             gd.prot[i] = 0;
             gd.faults[i]++;
             gd.total_faults++;
             g_epoch++;
-            return;   // the write runs again, now allowed
+            return true;   // the write runs again, now allowed
         }
     }
-    // not ours: as if we weren't here
-    sigaction(SIGSEGV, &gd.old_segv, nullptr);
-    if (gd.old_segv.sa_flags & SA_SIGINFO) {
-        if (gd.old_segv.sa_sigaction) gd.old_segv.sa_sigaction(sig, si, uc);
-    } else if (gd.old_segv.sa_handler != SIG_DFL && gd.old_segv.sa_handler != SIG_IGN) {
-        gd.old_segv.sa_handler(sig);
-    }
+    return false;
 }
 
 // which instructions end a block: a jump (after its delay slot), or one a block always hands to
@@ -375,16 +367,12 @@ void init(psxcpu_device &cpu) {
     if (const char *gv = getenv("HK_573_GUARD"); !gv || strcmp(gv, "0") != 0) {
         ram_device &ram = X::ram(cpu);
         Guard &gd = g_guard;
-        gd.page_size = (size_t)sysconf(_SC_PAGESIZE);
+        gd.page_size = sys::page_size();
         gd.base = ram.pointer();
         gd.size = ram.size() & ~(gd.page_size - 1);
         gd.faults.assign(gd.size / gd.page_size, 0);
         gd.prot.assign(gd.size / gd.page_size, 0);
-        struct sigaction sa {};
-        sa.sa_sigaction = on_segv;
-        sa.sa_flags = SA_SIGINFO | SA_NODEFER;
-        sigemptyset(&sa.sa_mask);
-        sigaction(SIGSEGV, &sa, &gd.old_segv);
+        sys::catch_write_faults(on_write);
     }
     map_changed(X::program(cpu));
     cpu.m_hk_tab = g.tab.data();

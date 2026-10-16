@@ -27,7 +27,7 @@ bool is_chd(const std::string &path);
 std::string chd_kind(const std::string &path);
 
 // The image as a read-only stream ("rb"): a plain file, or a CHD as chdman would extract it.
-// nullptr if it cannot be opened. Close with fclose().
+// nullptr if it cannot be opened. Close with close() (below).
 FILE *fopen_image(const std::string &path);
 
 // A CD's cue sheet: the .cue file itself, or for a CD CHD the sheet `chdman extractcd` writes
@@ -42,5 +42,13 @@ ssize_t pread(FILE *f, void *buf, size_t n, uint64_t off);
 
 // a CHD stream's size (as extracted); -1 for a plain file's (use its fd)
 int64_t chd_size(FILE *f);
+
+// an image stream's size: a plain file's, or a CHD's as extracted; -1 if it can't be told
+int64_t size(FILE *f);
+
+// Closes a stream of fopen_image(). Read image streams with pread() and size(), not with stdio:
+// on Windows, which has no streams of a program's own making, a CHD's stream is a stand-in only
+// these functions know (PLAN.md section 26).
+void close(FILE *f);
 
 }  // namespace hk::image

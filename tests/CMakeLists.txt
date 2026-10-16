@@ -25,13 +25,16 @@ target_link_libraries(test_hiddesc PRIVATE hiraku_cabinet)
 add_test(NAME hid_outputs COMMAND test_hiddesc)
 
 # Konami ACIO devices on the PC (runtime/host/acio.h). Real card readers: the serial reader's dialogue against a pretend reader on a pseudo-terminal
-add_executable(test_readers acio/test_readers.cpp)
-target_link_libraries(test_readers PRIVATE hiraku_shell)
-add_test(NAME card_readers COMMAND test_readers)
-# beatmania IIDX's BIO2 I/O board against a pretend BI2A and a pretend machine
-add_executable(test_bio2 acio/test_bio2.cpp)
-target_link_libraries(test_bio2 PRIVATE hiraku_shell)
-add_test(NAME bio2_board COMMAND test_bio2)
+# (Linux only: Windows has no pseudo-terminals to pretend with)
+if(NOT WIN32)
+  add_executable(test_readers acio/test_readers.cpp)
+  target_link_libraries(test_readers PRIVATE hiraku_shell)
+  add_test(NAME card_readers COMMAND test_readers)
+  # beatmania IIDX's BIO2 I/O board against a pretend BI2A and a pretend machine
+  add_executable(test_bio2 acio/test_bio2.cpp)
+  target_link_libraries(test_bio2 PRIVATE hiraku_shell)
+  add_test(NAME bio2_board COMMAND test_bio2)
+endif()
 
 # ATA security (SECURITY UNLOCK) on a hard disk, as MAME does it (DJ Main complete MIX on)
 add_executable(test_ata_security ata/test_ata_security.cpp)

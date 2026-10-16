@@ -1,11 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "lights.h"
 
-#include <sys/socket.h>
-#include <sys/un.h>
-#include <unistd.h>
-
-#include <cerrno>
 #include <condition_variable>
 #include <cstdio>
 #include <cstring>
@@ -16,6 +11,7 @@
 
 #include "../shell/core.h"
 #include "../shell/cabinet.h"
+#include "../shell/net.h"
 #include "hidout.h"
 
 namespace hk::host {
@@ -39,14 +35,14 @@ bool g_have_pending = false, g_stop = false, g_running = false;
 uint64_t g_seen_changes = ~0ull;
 
 bool send_all(int fd, const std::string &s) {
-    return send(fd, s.data(), s.size(), MSG_NOSIGNAL | MSG_DONTWAIT) == (ssize_t)s.size();
+    return net::send_now(fd, s.data(), s.size()) == (ssize_t)s.size();
 }
 
 void broadcast(const std::string &s) {
     for (size_t k = 0; k < g_clients.size();)
         if (send_all(g_clients[k], s)) k++;
         else {   // gone, or too slow to keep up: drop it
-            ::close(g_clients[k]);
+            net::close(g_clients[k]);
             g_clients.erase(g_clients.begin() + (long)k);
         }
 }
@@ -70,11 +66,12 @@ void thread_main() {
             stop = g_stop;
         }
         if (g_listen >= 0)
-            for (int fd; (fd = accept4(g_listen, nullptr, nullptr, SOCK_NONBLOCK | SOCK_CLOEXEC)) >= 0;) {
+            for (int fd; (fd = net::accept(g_listen)) >= 0;) {
+                net::set_nonblocking(fd);
                 std::string all = g_hello;
                 for (size_t k = 0; k < g_defs.size(); k++) all += g_defs[k].name + "=" + (last[k] ? "1\n" : "0\n");
                 if (send_all(fd, all)) g_clients.push_back(fd);
-                else ::close(fd);
+                else net::close(fd);
             }
         if (state.size() == last.size()) {
             std::string lines;
@@ -129,11 +126,12 @@ bool lights_init(const std::string &game, const std::string &family, const std::
             fprintf(stderr, "lights: socket path too long: %s\n", socket_path.c_str());
         } else {
             strcpy(a.sun_path, socket_path.c_str());
-            unlink(socket_path.c_str());   // a previous run's
-            g_listen = socket(AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0);
-            if (g_listen < 0 || bind(g_listen, (sockaddr *)&a, sizeof a) != 0 || listen(g_listen, 8) != 0) {
-                fprintf(stderr, "lights: cannot listen on %s: %s\n", socket_path.c_str(), strerror(errno));
-                if (g_listen >= 0) ::close(g_listen);
+            net::remove_path(socket_path);   // a previous run's
+            g_listen = net::socket(AF_UNIX, SOCK_STREAM, 0);
+            if (g_listen < 0 || !net::set_nonblocking(g_listen) || bind(g_listen, (sockaddr *)&a, sizeof a) != 0 ||
+                listen(g_listen, 8) != 0) {
+                fprintf(stderr, "lights: cannot listen on %s: %s\n", socket_path.c_str(), net::error().c_str());
+                if (g_listen >= 0) net::close(g_listen);
                 g_listen = -1;
             } else {
                 g_sock_path = socket_path;
@@ -171,11 +169,11 @@ void lights_close() {
     g_cv.notify_one();
     g_thread.join();
     g_running = false;
-    for (int fd : g_clients) ::close(fd);
+    for (int fd : g_clients) net::close(fd);
     g_clients.clear();
     if (g_listen >= 0) {
-        ::close(g_listen);
-        unlink(g_sock_path.c_str());
+        net::close(g_listen);
+        net::remove_path(g_sock_path);
         g_listen = -1;
     }
 }

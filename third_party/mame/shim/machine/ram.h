@@ -3,8 +3,7 @@
 #pragma once
 
 #include "emu.h"
-
-#include <unistd.h>
+#include "shell/sys.h"
 
 class ram_device : public device_t {
 public:
@@ -29,12 +28,12 @@ private:
     // recompiled blocks can write-protect the pages holding code (runtime/sys573/mips.cpp)
     void allocate() {
         if (m_data) return;
-        const size_t page = (size_t)sysconf(_SC_PAGESIZE);
+        const size_t page = hk::sys::page_size();
         const size_t n = ((size_t)m_size + page - 1) & ~(page - 1);
-        m_data.reset(static_cast<u8 *>(aligned_alloc(page, n ? n : page)));
+        m_data.reset(static_cast<u8 *>(hk::sys::alloc_pages(n ? n : page)));
         memset(m_data.get(), m_value, n);
     }
-    struct freer { void operator()(u8 *p) const { free(p); } };
+    struct freer { void operator()(u8 *p) const { hk::sys::free_pages(p); } };
 
 public:
 

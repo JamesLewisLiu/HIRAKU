@@ -16,6 +16,10 @@ add_compile_options(-Wall -Wextra -fno-strict-aliasing)
 # -march), and a signed plain char, as on x86-64 (it is unsigned on AArch64).
 add_compile_options(-ffp-contract=off -fsigned-char)
 include_directories(${CMAKE_SOURCE_DIR}/include)
+if(WIN32)
+  # 64-bit file offsets (off_t, fseeko, stat) as on Linux: the disk images are bigger than 2 GiB
+  add_compile_definitions(_FILE_OFFSET_BITS=64)
+endif()
 
 # Profile-guided optimisation (tools/pgo.py): HIRAKU's machines are interpreters, schedulers and
 # renderers whose hot paths clang lays out better when it has counts from real runs. pgo.py
@@ -115,6 +119,7 @@ add_library(hiraku_xt446 STATIC
   ${HK_H8_GEN})
 target_include_directories(hiraku_xt446 PRIVATE ${HK_MAME}/shim ${HK_MAME}/src/devices ${HK_MAME_GEN})
 target_include_directories(hiraku_xt446 PUBLIC runtime)
+target_link_libraries(hiraku_xt446 PUBLIC hiraku_sys)
 # The MEG's effect programs compiled to C++ from a recording (HK_MEG_RECORD=build/xt446/meg.txt,
 # never committed: it holds the firmware's programs). Every build: meggen.py does nothing unless
 # the output would change; with no recording the table is empty and the MEG is interpreted.
@@ -130,9 +135,17 @@ target_compile_options(hiraku_xt446 PRIVATE -w -O3)
 add_executable(hiraku-xt446 tools/xt446/xt446_render.cpp runtime/core/sampler.cpp)
 target_link_libraries(hiraku-xt446 PRIVATE hiraku_xt446)
 
+# --- what Linux and Windows do differently (runtime/shell/sys.h) ------------------
+add_library(hiraku_sys STATIC runtime/shell/sys.cpp runtime/shell/net.cpp)
+target_include_directories(hiraku_sys PUBLIC runtime)
+if(WIN32)
+  target_link_libraries(hiraku_sys PUBLIC ws2_32)
+endif()
+
 # --- cabinet tables, lights file formats (shared with the launcher) -------------
 add_library(hiraku_cabinet STATIC runtime/shell/cabinet.cpp runtime/host/hiddesc.cpp)
 target_include_directories(hiraku_cabinet PUBLIC runtime)
+target_link_libraries(hiraku_cabinet PUBLIC hiraku_sys)
 
 # --- the shell: what every machine core shares (runtime/shell/core.h) --------------
 # Input scripts; the host front end below. Cores provide hk::core().
@@ -146,7 +159,10 @@ find_package(PkgConfig QUIET)
 if(PkgConfig_FOUND)
   pkg_check_modules(PCSC QUIET IMPORTED_TARGET libpcsclite)
 endif()
-if(PCSC_FOUND)
+if(WIN32)
+  target_link_libraries(hiraku_shell PRIVATE winscard)   # Windows' own PC/SC
+  target_compile_definitions(hiraku_shell PRIVATE HK_WITH_PCSC=1)
+elseif(PCSC_FOUND)
   target_link_libraries(hiraku_shell PRIVATE PkgConfig::PCSC)
   target_compile_definitions(hiraku_shell PRIVATE HK_WITH_PCSC=1)
   message(STATUS "hiraku: PC/SC ${PCSC_VERSION}: NFC card readers enabled")
@@ -168,7 +184,7 @@ target_compile_options(hk_libchdr PRIVATE -O2 -w)
 target_link_libraries(hk_libchdr PUBLIC PkgConfig::ZSTD ZLIB::ZLIB)
 add_library(hiraku_image STATIC runtime/dev/image.cpp)
 target_include_directories(hiraku_image PUBLIC runtime)
-target_link_libraries(hiraku_image PUBLIC hk_libchdr)
+target_link_libraries(hiraku_image PUBLIC hk_libchdr hiraku_sys)
 add_executable(hiraku-chdcat runtime/dev/chdcat.cpp)
 target_link_libraries(hiraku-chdcat PRIVATE hiraku_image)
 
@@ -243,6 +259,10 @@ if(SDL3_FOUND)
     target_link_libraries(hiraku_host PRIVATE ${WAYLAND_CLIENT_LIB})
     target_compile_definitions(hiraku_host PRIVATE HK_WITH_WAYLAND=1)
     message(STATUS "hiraku: Wayland presentation feedback and fifo enabled")
+  endif()
+  if(WIN32)   # SDL3.dll beside the games, where Windows looks for it
+    add_custom_target(hiraku_sdl3_dll ALL
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:SDL3::SDL3-shared> ${CMAKE_BINARY_DIR})
   endif()
   message(STATUS "hiraku: SDL3 front end enabled")
 endif()
@@ -377,10 +397,14 @@ target_include_directories(hiraku_sys573 PUBLIC runtime)
 target_link_libraries(hiraku_sys573 PUBLIC hiraku_mame573 hiraku_cabinet)
 # hiraku-eamuse: the e-AMUSEMENT server on the network, for several cabinets (tools/eamuse/server.cpp):
 # the System 573's and the Python core's (docs/EAMUSE3.md); plain C++, no emulator
-add_executable(hiraku-eamuse tools/eamuse/server.cpp runtime/sys573/eagfdm.cpp runtime/eamuse/protocol.cpp
-  runtime/eamuse/lan.cpp runtime/eamuse/server.cpp runtime/eamuse/remote.cpp runtime/python/easerver.cpp
-  runtime/python/lobby.cpp runtime/python/netrelay.cpp)
-target_include_directories(hiraku-eamuse PRIVATE runtime)
+# (not on Windows yet: PLAN.md section 26, phase 2)
+if(NOT WIN32)
+  add_executable(hiraku-eamuse tools/eamuse/server.cpp runtime/sys573/eagfdm.cpp runtime/eamuse/protocol.cpp
+    runtime/eamuse/lan.cpp runtime/eamuse/server.cpp runtime/eamuse/remote.cpp runtime/python/easerver.cpp
+    runtime/python/lobby.cpp runtime/python/netrelay.cpp)
+  target_include_directories(hiraku-eamuse PRIVATE runtime)
+  target_link_libraries(hiraku-eamuse PRIVATE hiraku_sys)
+endif()
 target_compile_options(hiraku_sys573 PRIVATE -O2 -Wno-unused-parameter)
 hk_pgo(sys573 hiraku_mame573)
 

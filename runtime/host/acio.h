@@ -53,7 +53,7 @@ private:
     void dump(const char *dir, const std::vector<uint8_t> &bytes) const;
 
     std::string path_;
-    int fd_ = -1;
+    intptr_t fd_ = -1;   // a file descriptor; on Windows, the port's HANDLE
     uint8_t id_ = 0;
     bool log_ = false;
 };

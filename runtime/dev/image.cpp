@@ -15,9 +15,12 @@
 #include <memory>
 #include <mutex>
 #include <thread>
-#include <unistd.h>
 #include <unordered_map>
 #include <vector>
+
+#include <sys/stat.h>
+
+#include "shell/sys.h"
 
 namespace hk::image {
 
@@ -314,6 +317,7 @@ std::map<FILE *, Cookie *> &streams() {
     return *s;
 }
 
+#ifndef _WIN32
 ssize_t c_read(void *c, char *buf, size_t n) {
     Cookie *k = (Cookie *)c;
     ssize_t r = k->chd->pread(buf, n, k->pos);
@@ -330,6 +334,8 @@ int c_seek(void *c, off64_t *off, int whence) {
     *off = to;
     return 0;
 }
+
+#endif
 
 int c_close(void *c) {
     Cookie *k = (Cookie *)c;
@@ -366,8 +372,13 @@ FILE *fopen_image(const std::string &path) {
     auto c = open_chd(path);
     if (!c) return nullptr;
     Cookie *k = new Cookie{c, 0};
+#ifdef _WIN32
+    // no fopencookie: a stand-in stream (the null device's), which pread() and size() know
+    FILE *f = fopen("NUL", "rb");
+#else
     cookie_io_functions_t io = {c_read, nullptr, c_seek, c_close};
     FILE *f = fopencookie(k, "rb", io);
+#endif
     if (!f) {
         delete k;
         return nullptr;
@@ -402,13 +413,38 @@ ssize_t pread(FILE *f, void *buf, size_t n, uint64_t off) {
         if (it != streams().end()) k = it->second;
     }
     if (k) return k->chd->pread(buf, n, off);
-    return ::pread(fileno(f), buf, n, (off_t)off);
+    return sys::pread(fileno(f), buf, n, off);
 }
 
 int64_t chd_size(FILE *f) {
     std::lock_guard<std::mutex> lock(g_streams_mu);
     auto it = streams().find(f);
     return it == streams().end() ? -1 : (int64_t)it->second->chd->size();
+}
+
+int64_t size(FILE *f) {
+    if (int64_t n = chd_size(f); n >= 0) return n;
+#ifdef _WIN32
+    struct _stat64 st;
+    return _fstat64(fileno(f), &st) == 0 ? (int64_t)st.st_size : -1;
+#else
+    struct stat st;
+    return fstat(fileno(f), &st) == 0 ? (int64_t)st.st_size : -1;
+#endif
+}
+
+void close(FILE *f) {
+    if (!f) return;
+#ifdef _WIN32
+    Cookie *k = nullptr;
+    {
+        std::lock_guard<std::mutex> lock(g_streams_mu);
+        auto it = streams().find(f);
+        if (it != streams().end()) k = it->second;
+    }
+    if (k) c_close(k);
+#endif
+    fclose(f);   // a CHD's, elsewhere: c_close
 }
 
 }  // namespace hk::image

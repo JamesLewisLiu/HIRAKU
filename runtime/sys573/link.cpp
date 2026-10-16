@@ -7,12 +7,10 @@
 #include <cstdlib>
 #include <cstdio>
 #include <cstring>
-#include <netdb.h>
-#include <netinet/in.h>
-#include <netinet/tcp.h>
-#include <sys/socket.h>
-#include <sys/un.h>
-#include <unistd.h>
+#include <chrono>
+#include <thread>
+
+#include "shell/net.h"
 
 namespace hk::k573 {
 
@@ -33,7 +31,7 @@ struct StepHeader {
 };
 
 // "host:port" (TCP) unless it looks like a path
-bool is_tcp(const std::string &w) { return w.find('/') == std::string::npos && w.rfind(':') != std::string::npos; }
+bool is_tcp(const std::string &w) { return w.find_first_of("/\\") == std::string::npos && w.rfind(':') != std::string::npos; }
 
 int tcp_socket(const std::string &w, bool host) {
     const size_t c = w.rfind(':');
@@ -42,20 +40,20 @@ int tcp_socket(const std::string &w, bool host) {
     hints.ai_family = AF_UNSPEC;
     hints.ai_socktype = SOCK_STREAM;
     hints.ai_flags = host ? AI_PASSIVE : 0;
+    net::start();
     if (getaddrinfo(name.empty() ? nullptr : name.c_str(), port.c_str(), &hints, &res) != 0) return -1;
     int fd = -1;
     for (addrinfo *a = res; a && fd < 0; a = a->ai_next) {
-        fd = socket(a->ai_family, a->ai_socktype, a->ai_protocol);
+        fd = net::socket(a->ai_family, a->ai_socktype, a->ai_protocol);
         if (fd < 0) continue;
-        int one = 1;
         if (host) {
-            setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &one, sizeof one);
-            if (bind(fd, a->ai_addr, a->ai_addrlen) == 0 && listen(fd, 1) == 0) break;
-        } else if (connect(fd, a->ai_addr, a->ai_addrlen) == 0) {
-            setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof one);
+            net::set_int(fd, SOL_SOCKET, SO_REUSEADDR, 1);
+            if (bind(fd, a->ai_addr, (int)a->ai_addrlen) == 0 && listen(fd, 1) == 0) break;
+        } else if (connect(fd, a->ai_addr, (int)a->ai_addrlen) == 0) {
+            net::set_int(fd, IPPROTO_TCP, TCP_NODELAY, 1);
             break;
         }
-        close(fd);
+        net::close(fd);
         fd = -1;
     }
     freeaddrinfo(res);
@@ -67,15 +65,15 @@ int unix_socket(const std::string &path, bool host) {
     a.sun_family = AF_UNIX;
     if (path.size() >= sizeof a.sun_path) return -1;
     memcpy(a.sun_path, path.c_str(), path.size() + 1);
-    int fd = socket(AF_UNIX, SOCK_STREAM, 0);
+    int fd = net::socket(AF_UNIX, SOCK_STREAM, 0);
     if (fd < 0) return -1;
     if (host) {
-        unlink(path.c_str());
+        net::remove_path(path);
         if (bind(fd, (sockaddr *)&a, sizeof a) == 0 && listen(fd, 1) == 0) return fd;
     } else if (connect(fd, (sockaddr *)&a, sizeof a) == 0) {
         return fd;
     }
-    close(fd);
+    net::close(fd);
     return -1;
 }
 
@@ -88,21 +86,18 @@ bool SessionLink::open(const std::string &where, bool host, attotime quantum) {
     if (host) {
         int ls = tcp ? tcp_socket(where, true) : unix_socket(where, true);
         if (ls < 0) {
-            fprintf(stderr, "session: can't listen at %s: %s\n", where.c_str(), strerror(errno));
+            fprintf(stderr, "session: can't listen at %s: %s\n", where.c_str(), net::error().c_str());
             return false;
         }
         fprintf(stderr, "session: waiting for the other cabinet at %s\n", where.c_str());
-        m_fd = accept(ls, nullptr, nullptr);
-        close(ls);
-        if (!tcp) unlink(where.c_str());
-        if (m_fd >= 0 && tcp) {
-            int one = 1;
-            setsockopt(m_fd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof one);
-        }
+        m_fd = net::accept(ls);
+        net::close(ls);
+        if (!tcp) net::remove_path(where);
+        if (m_fd >= 0 && tcp) net::set_int(m_fd, IPPROTO_TCP, TCP_NODELAY, 1);
     } else {
         for (int tries = 0; tries < 6000 && m_fd < 0; tries++) {   // ten minutes (regress: the host may still be booting)
             m_fd = tcp ? tcp_socket(where, false) : unix_socket(where, false);
-            if (m_fd < 0) usleep(100000);
+            if (m_fd < 0) std::this_thread::sleep_for(std::chrono::milliseconds(100));
         }
     }
     if (m_fd < 0) {
@@ -113,7 +108,7 @@ bool SessionLink::open(const std::string &where, bool host, attotime quantum) {
     if (!send_all(&mine, sizeof mine) || !recv_all(&theirs, sizeof theirs) || theirs.magic != MAGIC ||
         theirs.version != VERSION || theirs.quantum_attos != mine.quantum_attos) {
         fprintf(stderr, "session: the other side isn't a matching HIRAKU 573 (version or quantum)\n");
-        close(m_fd);
+        net::close(m_fd);
         m_fd = -1;
         return false;
     }
@@ -219,8 +214,8 @@ size_t SessionLink::mix_audio(float *lr, size_t frames) {
 bool SessionLink::send_all(const void *p, size_t n) {
     const char *c = (const char *)p;
     while (n) {
-        ssize_t k = send(m_fd, c, n, MSG_NOSIGNAL);
-        if (k < 0 && errno == EINTR) continue;
+        ssize_t k = net::send(m_fd, c, n);
+        if (k < 0 && net::interrupted()) continue;
         if (k <= 0) return false;
         c += k;
         n -= (size_t)k;
@@ -231,8 +226,8 @@ bool SessionLink::send_all(const void *p, size_t n) {
 bool SessionLink::recv_all(void *p, size_t n) {
     char *c = (char *)p;
     while (n) {
-        ssize_t k = recv(m_fd, c, n, 0);
-        if (k < 0 && errno == EINTR) continue;
+        ssize_t k = net::recv(m_fd, c, n);
+        if (k < 0 && net::interrupted()) continue;
         if (k <= 0) return false;
         c += k;
         n -= (size_t)k;
@@ -243,7 +238,7 @@ bool SessionLink::recv_all(void *p, size_t n) {
 void SessionLink::lost(const char *why) {
     fprintf(stderr, "session: the other cabinet is gone (%s) at %.3f s; the cable is idle now\n", why,
             m_machine ? m_machine->time().as_double() : 0.0);
-    close(m_fd);
+    net::close(m_fd);
     m_fd = -1;
     if (m_sync_timer) m_sync_timer->adjust(attotime::never);
 }

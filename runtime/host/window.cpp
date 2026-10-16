@@ -2,7 +2,6 @@
 #include "window.h"
 
 #include <SDL3/SDL.h>
-#include <dlfcn.h>
 
 #include <algorithm>
 #include <atomic>
@@ -211,11 +210,11 @@ std::atomic<bool> g_stop{false};
 std::thread *g_thread = nullptr;   // never destroyed: a game ends with exit(), the thread still writing
 
 bool load(std::string &why) {
-    static void *lib = dlopen("libasound.so.2", RTLD_NOW | RTLD_LOCAL);
+    static SDL_SharedObject *lib = SDL_LoadObject("libasound.so.2");   // dlopen, RTLD_NOW | RTLD_LOCAL
     if (!lib) return why = "no libasound.so.2", false;
     bool ok = true;
     auto get = [&](auto &f, const char *name) {
-        f = reinterpret_cast<std::remove_reference_t<decltype(f)>>(dlsym(lib, name));
+        f = reinterpret_cast<std::remove_reference_t<decltype(f)>>(SDL_LoadFunction(lib, name));
         if (!f) ok = false, why = std::string("libasound has no ") + name;
     };
     get(api.open, "snd_pcm_open"), get(api.close, "snd_pcm_close"), get(api.hw_malloc, "snd_pcm_hw_params_malloc");

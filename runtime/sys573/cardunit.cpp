@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // The e-AMUSEMENT GuitarFreaks and DrumMania's card units (cardunit.h).
 #include "sys573/cardunit.h"
+#include "shell/sys.h"
 
 #include <sys/stat.h>
 
@@ -87,7 +88,7 @@ bool CardUnit::card_read(int player, const std::string &number) {
         save();
         r.number = number;
         r.file = dir_.empty() ? "" : dir_ + "/cards/" + number + ".bin";
-        if (!dir_.empty()) mkdir((dir_ + "/cards").c_str(), 0755);
+        if (!dir_.empty()) sys::make_dir(dir_ + "/cards");
         static const uint8_t blank[] = {0x08, 0x1f, 0x7d, 0xf0, 0x56};   // as configure()'s
         memset(r.data, 0, sizeof r.data);
         memcpy(r.data, blank, sizeof blank);

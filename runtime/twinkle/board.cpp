@@ -8,6 +8,7 @@
 #endif
 
 #include "shell/cabinet.h"
+#include "shell/sys.h"
 #include "sys573/mips.h"
 
 #include "emu.h"
@@ -687,7 +688,7 @@ bool init(const Config &cfg) {
     running_machine &m = *g.machine;
     m.m_exact = true;
     m.m_base_time = cfg.rtc_time;
-    if (!cfg.nvram_dir.empty()) { mkdir(cfg.nvram_dir.c_str(), 0755); m.m_nvram_dir = cfg.nvram_dir; }
+    if (!cfg.nvram_dir.empty()) { sys::make_dir(cfg.nvram_dir); m.m_nvram_dir = cfg.nvram_dir; }
 
     std::vector<u8> bios = load_file(rom(cfg.bios)), spu = load_file(rom(cfg.spu)), dongle = load_file(rom(cfg.dongle));
     if (bios.size() != 0x80000 || spu.size() != 0x80000 || dongle.empty()) {

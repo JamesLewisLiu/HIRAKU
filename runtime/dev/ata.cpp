@@ -3,6 +3,7 @@
 
 #include "../core/prof.h"
 #include "image.h"
+#include "shell/sys.h"
 
 #include <algorithm>
 #include <cstdlib>
@@ -43,7 +44,7 @@ std::string base_name(const std::string &path) {
 // ---------------------------------------------------------------------------
 
 DiscImage::~DiscImage() {
-    if (f_) fclose(f_);
+    image::close(f_);
 }
 
 // A cue sheet with one FILE: tracks, their modes and INDEX 01 positions. Sector
@@ -92,10 +93,10 @@ bool DiscImage::parse_cue(const std::string &cue, std::string &bin) {
 void warm_cache(const std::string &path, uint64_t size) {
     if (size > (1536ull << 20) || getenv("HK_NO_PREFETCH")) return;
     std::thread([path] {
-        int fd = ::open(path.c_str(), O_RDONLY);
+        int fd = ::open(path.c_str(), O_RDONLY | O_BINARY);
         if (fd < 0) return;
         std::vector<char> buf(1 << 20);
-        for (off_t off = 0; ::pread(fd, buf.data(), buf.size(), off) > 0; off += (off_t)buf.size()) {}
+        for (uint64_t off = 0; sys::pread(fd, buf.data(), buf.size(), off) > 0; off += buf.size()) {}
         ::close(fd);
     }).detach();
 }
@@ -113,8 +114,9 @@ bool DiscImage::open(const std::string &path0) {
     f_ = image::fopen_image(path);
     if (!f_) return false;
     name_ = base_name(path);
-    fseeko(f_, 0, SEEK_END);
-    uint64_t size = (uint64_t)ftello(f_);
+    const int64_t size0 = image::size(f_);
+    if (size0 < 0) return false;
+    const uint64_t size = (uint64_t)size0;
     struct stat st;   // a CHD: its compressed file is what gets read
     warm_cache(path, image::is_chd(path) && stat(path.c_str(), &st) == 0 ? (uint64_t)st.st_size : size);
     if (cue && (tracks_.size() > 1 || tracks_[0].audio)) {
@@ -133,8 +135,7 @@ bool DiscImage::open(const std::string &path0) {
     }
     // a single data track: tell the sector format from the file itself
     uint8_t head[16];
-    fseeko(f_, 0, SEEK_SET);
-    if (fread(head, 1, 16, f_) != 16) return false;
+    if (image::pread(f_, head, 16, 0) != 16) return false;
     static const uint8_t sync[12] = {0, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0};
     Track t;
     if (memcmp(head, sync, 12) == 0 && size % 2352 == 0) { t.size = 2352; t.skip = 16; }
@@ -157,8 +158,7 @@ bool DiscImage::read_sector(uint32_t lba, uint8_t *out) const {
     if (lba >= nsectors_) return false;
     const Track &t = tracks_[track_of(lba)];
     if (t.audio || lba - t.start >= t.frames) return false;
-    fseeko(f_, (off_t)(t.offset + (uint64_t)(lba - t.start) * t.size + t.skip), SEEK_SET);
-    return fread(out, 1, 2048, f_) == 2048;
+    return image::pread(f_, out, 2048, t.offset + (uint64_t)(lba - t.start) * t.size + t.skip) == 2048;
 }
 
 // n data sectors from lba: one pread per run within a track (raw 2352-byte
@@ -196,11 +196,11 @@ void DiscImage::prefetch(uint32_t lba, uint32_t count) const {
     if (!count || lba >= nsectors_) return;
     const Track &t = tracks_[track_of(lba)];
     uint64_t off = t.offset + (uint64_t)(lba - t.start) * t.size;
-    posix_fadvise(fileno(f_), (off_t)off, (off_t)((uint64_t)count * t.size + READ_AHEAD), POSIX_FADV_WILLNEED);
+    sys::will_need(fileno(f_), off, (uint64_t)count * t.size + READ_AHEAD);
 }
 
 void DiskImage::prefetch(uint32_t lba, uint32_t count) const {
-    if (count) posix_fadvise(fileno(f_), (off_t)lba * 512, (off_t)((uint64_t)count * 512 + READ_AHEAD), POSIX_FADV_WILLNEED);
+    if (count) sys::will_need(fileno(f_), (uint64_t)lba * 512, (uint64_t)count * 512 + READ_AHEAD);
 }
 
 bool DiskImage::read_sectors(uint32_t lba, uint32_t n, uint8_t *out) const {
@@ -214,28 +214,26 @@ bool DiscImage::read_audio(uint32_t lba, uint8_t *out) const {
     if (lba >= nsectors_) return false;
     const Track &t = tracks_[track_of(lba)];
     if (!t.audio || lba - t.start >= t.frames) return false;   // data, or a pregap: silence
-    fseeko(f_, (off_t)(t.offset + (uint64_t)(lba - t.start) * t.size), SEEK_SET);
-    return fread(out, 1, 2352, f_) == 2352;
+    return image::pread(f_, out, 2352, t.offset + (uint64_t)(lba - t.start) * t.size) == 2352;
 }
 
 DiskImage::~DiskImage() {
-    if (f_) fclose(f_);
+    image::close(f_);
 }
 
 bool DiskImage::open(const std::string &path) {
     f_ = image::fopen_image(path);   // a raw image, or a hard disk CHD (image.h)
     if (!f_) return false;
     name_ = base_name(path);
-    fseeko(f_, 0, SEEK_END);
-    nsectors_ = (uint32_t)((uint64_t)ftello(f_) / 512);
+    const int64_t size = image::size(f_);
+    nsectors_ = size > 0 ? (uint32_t)((uint64_t)size / 512) : 0;
     return nsectors_ > 0;
 }
 
 bool DiskImage::read_sector(uint32_t lba, uint8_t *out) const {
     prof::Scope ps(prof::DISK);
     if (lba >= nsectors_) return false;
-    fseeko(f_, (off_t)lba * 512, SEEK_SET);
-    return fread(out, 1, 512, f_) == 512;
+    return image::pread(f_, out, 512, (uint64_t)lba * 512) == 512;
 }
 
 namespace {

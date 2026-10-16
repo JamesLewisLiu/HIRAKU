@@ -6,10 +6,12 @@
 
 #include "acio.h"
 
+#ifndef _WIN32
 #include <dirent.h>
 #include <fcntl.h>
 #include <poll.h>
 #include <unistd.h>
+#endif
 
 #include <algorithm>
 #include <cerrno>
@@ -25,8 +27,20 @@
 #include <vector>
 
 #ifdef HK_WITH_PCSC
+#ifdef _WIN32
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#include <winscard.h>
+#define MAX_ATR_SIZE 33   // pcsc-lite's name for it
+#else
 #include <PCSC/winscard.h>
 #include <PCSC/wintypes.h>
+#endif
 #endif
 
 namespace hk::host {
@@ -216,6 +230,7 @@ void scard_run() {
 #endif
 
 // ---- cardio readers through hidraw ----
+#ifndef _WIN32
 
 // A HID report descriptor's items: whether it has usage page 0xffca (cardio), and report ids
 bool cardio_descriptor(const std::vector<uint8_t> &d, bool &ids) {
@@ -307,6 +322,11 @@ void cardio_run() {
     }
     for (auto &d : devs) close(d.fd);
 }
+#else
+void cardio_run() {   // Windows' HID calls: not yet (PLAN.md section 26)
+    fprintf(stderr, "cardio: not on Windows yet\n");
+}
+#endif
 
 // The reader's 10-key bits (spice2x's acioemu/icca.cpp, as pop'n 14's own reader: python/icca.h):
 // 0-9, then the key beside 0 and the one beside that

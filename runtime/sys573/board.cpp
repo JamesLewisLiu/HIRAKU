@@ -6,6 +6,7 @@
 #include "sys573/mips.h"
 
 #include "shell/cabinet.h"
+#include "shell/sys.h"
 
 #include "emu.h"
 #include "screen.h"
@@ -786,7 +787,7 @@ bool init(const Config &cfg) {
     running_machine &m = *g.machine;
     m.m_exact = true;
     m.m_base_time = cfg.rtc_time;
-    if (!cfg.nvram_dir.empty()) { mkdir(cfg.nvram_dir.c_str(), 0755); m.m_nvram_dir = cfg.nvram_dir; }
+    if (!cfg.nvram_dir.empty()) { sys::make_dir(cfg.nvram_dir); m.m_nvram_dir = cfg.nvram_dir; }
 
     struct R { const char *tag; std::string file; } regions[] = {
         {":maincpu:rom", rom(cfg.bios)},

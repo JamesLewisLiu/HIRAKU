@@ -1964,6 +1964,73 @@ The owner's MAME 0.243 BEMANI archive, what HIRAKU doesn't run yet, and a plan i
   - NVRAM seeds;
   - CHDs read in place (`runtime/dev/image.h`, `--keep-chd`).
 
+## 25. Real cabinet hardware: card readers and the BIO2 (2026-10-16)
+
+Konami's ACIO bus from the PC's side, after spice2x (`runtime/host/acio.h`), in commit d2dc121. The owner has an e-AMUSEMENT serial reader, an NFC or cardio reader, and (later) an IIDX BIO2 board. Everything below was tested only against pretend devices on pseudo-terminals (`tests/acio/`) and, for the readers, in pop'n 14 with a scripted reader; none of it has met the real hardware.
+
+**Done:**
+- Card readers (`runtime/host/readers.h`): `--reader PATH` (spice2x's serial dialogue: key exchange, encrypted status), `--scard` (PC/SC), `--cardio` (hidraw). A card held there is the player's card (`Core::card_read`): pop'n 9–14 (`make_card()`), GuitarFreaks and DrumMania's card units (`cards/NUMBER.bin`). The 10-key goes to the game, 00 as Enter where it has no 00.
+- `--bio2 PATH` (`runtime/host/bio2.h`): the BIO2 with IIDX 25–26's BI2A firmware as the beatmania cabinet's controls and lamps, in spice2x's `games/iidx/bi2a.cpp` layout.
+- Launcher: Settings > Card readers, Settings > Cabinet I/O. Docs: docs/PLAY.md, "Card readers" and "Cabinet I/O".
+
+**Bring-up, when the hardware is at hand** (`HK_ACIO_LOG=1` prints every packet):
+1. **BIO2** (the least certain): start IIDX on Twinkle with the board set in Settings > Cabinet I/O.
+   - Does it answer the handshake, and at which rate (115200, 57600, 38400 or 19200 are tried)?
+   - Does it say BI2A? A board flashed by IIDX 27 or later says something else, which means ACIO2 (below).
+   - The start-up sent is 0001, 0002, 0003, 0100, then 0152 in a loop, about every 2 ms. spice2x only plays the board's side, so whether the board needs more (the 0120 watchdog the game sends; its payload is unknown) is open. If the board stops answering after a while, that's the first suspect.
+   - The turntables' direction (byte 16/17 deltas, × 4 to 1024 a turn), each key and button, the five sliders (high nibbles), the coin count (byte 8).
+   - The lamps: keys, panel, spotlights 1–8, neon, and the ticker showing the 16-segment text.
+2. **Serial reader:** pop'n 14 (IC card) and pop'n 12 or 13 (magnetic on the game's side), then two readers on GuitarFreaks. Check that the 10-key's keys are the right ones. spice2x's own 10-key path looked wrong, so HIRAKU maps the reader's bits as pop'n 14's reader emulation does (`python/icca.h`).
+3. **NFC (PC/SC):** pcscd running, an e-AMUSEMENT PASS read as E004… in the same byte order as on the serial reader (ISO 15693 ids come backwards from PC/SC; `readers.cpp` reverses them by the ATR), and a FeliCa card given an E00401… number.
+4. **cardio:** the udev rule, then the report layout: a report id, 1 for ISO 15693 and 2 for FeliCa, then 8 bytes; a descriptor without report ids is read from byte 0.
+5. **GuitarFreaks and DrumMania card units in a running game:** needs `--npu` and the network unit's disk; that code path has run in no game yet.
+
+**Next after that:**
+- If the BIO2 runs BI2X firmware: ACIO2. spice2x's `acio2emu/` has the framing: a variable-length size, CRC4/CRC7, byte-stuffed, raw, replace or LZ payloads, obfuscation. It also has the BI2X node's commands (784 poll, 785 output), but the IIDX input layout on the wire is not in spice2x (only libaio-level, `games/iidx/bi2x_hook.cpp`).
+- The BIO2's sliders and Effect for beatmania III (its effector is "Effect 1..7"), if wanted.
+- spice2x's source (2026-10-03) is in `~/Downloads/spice2x-26-10-03-full/src/`; an unpacked copy was in `out/scratch/spice2x/`.
+
+## 26. Windows (written 2026-10-16)
+
+Windows x64 builds of the launcher and the games, cross-built on Linux and tested under Wine first, as the ARM port was with qemu (§22). The cores are plain C++ (the ARM port settled `char` and floating point, so results should match Linux bit for bit). SDL3, Qt6, zstd, zlib and libchdr all run on Windows, and spice2x, where the card readers and BIO2 code came from, is a Windows program. What has to move is the layer that talks to the system.
+
+**Toolchain:** mingw-w64 (GCC 16, Arch's `mingw-w64-gcc`), with `cmake/mingw-w64.cmake` as the toolchain file, statically linked so the folder needs no mingw runtime. This is the EZ2 port's setup, proven there under Wine. The dependencies live outside the tree in `out/win-deps/`: SDL3's official mingw development package, and zlib and zstd cross-built from source (`tools/win-deps.sh`). clang's PGO flags (`-fprofile-instr-*`) are left out of that build; llvm-mingw would bring them back later if the speed is wanted. MSVC is not planned: it would mean redoing the GCC flags and attributes, and it is the toolchain most likely to choke on the recompiled code's very large functions.
+
+**What changes, by area:**
+
+| Area | Files | Linux → Windows | Phase |
+|---|---|---|---|
+| PowerPC fibers | `runtime/core/glue.cpp` | The assembly switch is ELF-only (System V registers). Use Win32 fibers (`ConvertThreadToFiber`/`CreateFiber`/`SwitchToFiber`), which don't make a system call. | 1 |
+| 573 self-modifying-code guard | `runtime/sys573/mips.cpp` | `mprotect` + SIGSEGV → `VirtualProtect` + a vectored exception handler | 1 |
+| Disk reads, files | `runtime/dev/image.cpp`, `ata.cpp`, the `stat` calls | `pread` → `ReadFile` at an offset; 64-bit offsets; `stat`/`S_ISDIR` → `std::filesystem` or `_stat64` | 1 |
+| Save and settings folders | `runtime/shell/userdir.h`, `launcher/config.cpp` | XDG → `%APPDATA%\hiraku`; the portable `user/` folder is the natural Windows default | 1 |
+| Linux-only pieces | Wayland pacing, the direct ALSA path, the profiling samplers (`sampler.cpp`, `HK_PY_PROFILE`), hidraw | Left out of the Windows build in CMake, with stubs where called | 1 |
+| Process niceties | `runtime/main.cpp` | `setrlimit`/`nice` → `SetPriorityClass` or nothing | 1 |
+| Networking | `sys573/link.cpp`, `python/lancable.cpp`, `netrelay.cpp`, `eaclient.cpp`, `eamuse/remote.cpp`, `tools/eamuse/server.cpp` | BSD sockets → Winsock behind one small shim header (`WSAStartup`, `closesocket`, `WSAPoll`, non-blocking setup); Unix sockets → loopback TCP | 2 |
+| Lights socket | `host/lights.cpp`, the launcher's `getuid()` | Unix socket → loopback TCP or a named pipe | 2 |
+| Launcher | `launcher/` | `.exe` names when it looks for the games; `windeployqt`; the serial device lists | 2 |
+| Packaging | — | A zip: the launcher, `hiraku-<id>.exe`, the Qt and SDL DLLs, an empty `user/`. Unsigned builds get SmartScreen warnings. | 2 |
+| Frame pacing | `host/pacing.cpp` | Wayland presentation feedback → plain SDL vsync first, then DXGI frame statistics or `DwmGetCompositionTimingInfo` | 3 |
+| Audio latency | `host/window.cpp` | SDL3's WASAPI; `--fine-sound`'s 1 ms timer → `CREATE_WAITABLE_TIMER_HIGH_RESOLUTION` | 3 |
+| Card readers and BIO2 | `host/acio.cpp`, `readers.cpp`, `hidout.cpp`, Settings | termios → Win32 COM (`\\.\COMn`, DCB, COMMTIMEOUTS); pcsc-lite → winscard; hidraw → Windows HID or SDL's hidapi | 3 |
+| Python | Reliquary's tree | PCSX2 builds on Windows only with MSVC or clang-cl, so a separate toolchain and PCSX2's Windows dependency bundle; HIRAKU's host files in `hk_python_shell` must build under clang-cl too. How far Reliquary has drifted from Windows-buildable upstream is unknown. | 4 |
+
+**Phases:**
+1. **Builds and boots under Wine:** the games (Firebeat, Twinkle, DJ Main, 573) build as `.exe` and reach attract with SDL's default audio and vsync. No network and no cabinet hardware yet. Check: repeatable regression cases give the same hashes under Wine as on Linux.
+2. **The launcher and networking:** Qt launcher, Winsock shim, lights socket, the zip.
+3. **Parity on real Windows:** pacing, the audio timer, card readers, BIO2, HID lights. Wine can't prove latency or hardware.
+4. **Python** (a separate track): clang-cl inside Reliquary's tree.
+
+Keep the regression suite and the MAME comparisons on Linux. To check: no file names in the game data that differ only by case (Windows treats them as one).
+
+**Phase 1 (2026-10-16): done for the four cores HIRAKU builds itself.**
+- Toolchain: clang 23 targeting `x86_64-w64-mingw32` on Arch's mingw-w64 (headers, CRT, libstdc++, winpthreads), lld, statically linked: the same compiler as the Linux builds rather than mingw's GCC. `cmake/x86_64-w64-mingw32.cmake`; `tools/win-deps.sh` puts SDL3 (its mingw package), zlib and zstd in `out/win-deps`. The build's own `hiraku-recomp` runs under Wine; its output is the Linux one's byte for byte, line ends aside.
+- `runtime/shell/sys.{h,cpp}`: page memory and protection, the write-fault handler (SIGSEGV on Linux, a vectored exception handler on Windows), `pread`, mapped files, folders, calendar time, the program's path, thread CPU time; Win32 fibers for the Firebeat core's guest threads. `runtime/shell/net.{h,cpp}`: sockets (Winsock). Linux keeps what it called before, moved behind these.
+- Image streams: a CHD's stream was a `fopencookie` stream, which Windows has no counterpart of. Its readers now use `image::pread`, `image::size` and `image::close` (`runtime/dev/image.h`); on Windows a CHD's stream is a stand-in only those know.
+- Pulled forward from phases 2-3, as they were small: the Winsock layer (the 573 session link, the e-AMUSEMENT client, the lights socket), the ACIO serial port as a Win32 COM port, PC/SC through `winscard`. Still Linux only: cardio (hidraw), `hiraku-eamuse`, the profiler (`HK_PROFILE`), the ACIO tests (pseudo-terminals), Twinkle's background video (no FFmpeg for Windows yet).
+- **Checked under Wine 2026-10-16**, digests compared with Linux: popn7-attract, bm3final-practice, bm37th-play (18 GB disk), kbm-attract (Firebeat, 1.35 M fiber switches in popn7's 3600 frames); bm1stmix-boot, popn1j-boot (DJ Main); ddr3mj-boot, ddr3mj-install → ddr3mj-attract, drmn10m-install → drmn10m-boot (573, with its write guard and the NVRAM chain); bmiidx3-boot → bmiidx3-play (Twinkle). All 13 the same as Linux, NVRAM included. (bmiidx3's two stored baselines predate 271fb51's 4x CD drive; they were compared with today's Linux build.)
+- Not yet: a window and sound under Wine or on real Windows (all runs above were headless), the session cable between two Wine processes, the e-AMUSEMENT server.
+
 ## M0 steps (all done)
 
 1. ~~`git init` HIRAKU and add `.gitignore` for `dumps/` and `build/`~~ Done.

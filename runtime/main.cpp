@@ -51,9 +51,6 @@
 //
 // The machine is described by dumps/<game>/machine.txt and dumps/<game>/rom/,
 // both written by tools/ingest.py from the user's own dumps.
-#include <sys/resource.h>
-#include <sys/stat.h>
-#include <unistd.h>
 
 #include <algorithm>
 #include <atomic>
@@ -71,6 +68,7 @@
 #include "host/script.h"
 #include "shell/core.h"
 #include "shell/userdir.h"
+#include "shell/sys.h"
 #ifdef HK_WITH_SDL
 #include "host/lights.h"
 #include "host/bio2.h"
@@ -121,12 +119,8 @@ struct FrameTimes {
         double cpu = 0;
         long faults = 0;
         if (log) {
-            timespec ts;
-            clock_gettime(CLOCK_THREAD_CPUTIME_ID, &ts);
-            cpu = (double)ts.tv_sec * 1e3 + (double)ts.tv_nsec / 1e6;
-            rusage ru;
-            getrusage(RUSAGE_SELF, &ru);
-            faults = ru.ru_majflt;
+            cpu = hk::sys::thread_cpu_ms();
+            faults = hk::sys::major_faults();
         }
         if (last) {
             double ms = (double)((t - last) - (w - last_wait)) * prof::ns_per_tick() / 1e6;
@@ -172,7 +166,7 @@ constexpr uint64_t HASH_SEED = 0xcbf29ce484222325ull;
 
 void mkdirs(const std::string &path) {
     for (size_t k = 1; k <= path.size(); k++)
-        if (k == path.size() || path[k] == '/') mkdir(path.substr(0, k).c_str(), 0755);
+        if (k == path.size() || path[k] == '/') hk::sys::make_dir(path.substr(0, k));
 }
 
 // The HIRAKU root (dumps/, games/, out/): $HIRAKU_ROOT (the launcher passes its own), else a
@@ -181,13 +175,9 @@ void mkdirs(const std::string &path) {
 // folder holding the binary or its parent (a copied build).
 std::string find_root() {
     if (const char *r = getenv("HIRAKU_ROOT"); r && *r) return r;
-    struct stat st;
-    auto has_dumps = [&st](const std::string &d) { return stat((d + "/dumps").c_str(), &st) == 0 && S_ISDIR(st.st_mode); };
+    auto has_dumps = [](const std::string &d) { return hk::sys::is_dir(d + "/dumps"); };
     std::string dir, up;
-    char exe[4096];
-    ssize_t n = readlink("/proc/self/exe", exe, sizeof exe - 1);
-    if (n > 0) {
-        exe[n] = 0;
+    if (const std::string exe = hk::sys::exe_path(); !exe.empty()) {
         dir = exe;
         dir.erase(dir.rfind('/'));
         up = dir.substr(0, dir.rfind('/'));

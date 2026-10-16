@@ -25,12 +25,19 @@
 // switch). On x86-64 and AArch64 the switch is a few instructions of our own:
 // libc's swapcontext also saves and restores the signal mask, a system call
 // each time, which cost ~14 % of a whole run (and Android's libc has no
-// ucontext functions at all). Other hosts use ucontext.
+// ucontext functions at all). Windows has fibers of its own (SwitchToFiber, no system call
+// either), which also keep the thread's idea of its stack right (shell/sys.h). Other hosts use
+// ucontext.
+#if defined(_WIN32)
+#define HK_FIBER_WIN32 1
+#include "shell/sys.h"
+#else
 #include <sys/mman.h>
 #if (defined(__x86_64__) || defined(__aarch64__)) && defined(__ELF__)
 #define HK_FIBER_ASM 1
 #else
 #include <ucontext.h>
+#endif
 #endif
 
 #include <cstdio>
@@ -129,7 +136,9 @@ hk_fiber_switch:
 #endif
 
 struct Fiber {
-#if HK_FIBER_ASM
+#if HK_FIBER_WIN32
+    void *handle = nullptr;    // the Win32 fiber (the host thread's: made at its first switch)
+#elif HK_FIBER_ASM
     void *sp = nullptr;        // saved stack pointer while not running
 #else
     ucontext_t uc{};
@@ -149,7 +158,11 @@ int g_next_id = 1;
 bool g_fibers_enabled = false;
 
 void free_fiber(Fiber *f) {
+#if HK_FIBER_WIN32
+    sys::fiber_delete(f->handle);
+#else
     munmap(f->stack, FIBER_STACK);
+#endif
     delete f;
 }
 
@@ -210,6 +223,10 @@ void *fiber_stack_init(void *stack) {
 Fiber *new_thread_fiber() {
     auto *f = new Fiber;
     f->id = g_next_id++;
+#if HK_FIBER_WIN32
+    f->handle = sys::fiber_new(FIBER_STACK, thread_main);
+    if (!f->handle) fatal(g_c, "cannot make a fiber");
+#else
     f->stack = mmap(nullptr, FIBER_STACK, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_STACK, -1, 0);
     if (f->stack == MAP_FAILED) fatal(g_c, "cannot allocate a fiber stack");
 #if HK_FIBER_ASM
@@ -220,6 +237,7 @@ Fiber *new_thread_fiber() {
     f->uc.uc_stack.ss_size = FIBER_STACK;
     f->uc.uc_link = nullptr;
     makecontext(&f->uc, thread_main, 0);
+#endif
 #endif
     return f;
 }
@@ -247,7 +265,10 @@ void switch_threads(hk_ctx *c, uint32_t my_frame, uint32_t my_resume, uint32_t t
     }
     g_stats.thread_switches++;
     g_cur = next;
-#if HK_FIBER_ASM
+#if HK_FIBER_WIN32
+    if (!me->handle) me->handle = sys::fiber_this_thread();
+    sys::fiber_switch(next->handle);
+#elif HK_FIBER_ASM
     hk_fiber_switch(&me->sp, next->sp);
 #else
     swapcontext(&me->uc, &next->uc);

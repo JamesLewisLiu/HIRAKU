@@ -5,6 +5,8 @@
 // hk-profile.txt as executable-relative addresses (symbolise with
 // llvm-symbolizer --obj=<binary>). Samples in shared libraries are written as
 // "count 0xoffset library [symbol]", with the offset relative to the library.
+// Linux only (signals, ucontext, the ELF loader's list): nothing on Windows.
+#ifndef _WIN32
 #include <dlfcn.h>
 #include <link.h>
 #include <signal.h>
@@ -69,3 +71,4 @@ struct Init {
     }
 } g_init;
 }  // namespace
+#endif
