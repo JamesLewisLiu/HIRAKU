@@ -1,0 +1,9 @@
+# DrumMania V (drmnvj, Konami Python 2): power-on from the dumps' disk and NVRAM. The PS2 BIOS starts
+# Konami's boot program (1.2.0) from the hard disk; it brings the network up (DHCP from the core,
+# runtime/python/ethnet.h), asks download.eamuse.konami.fun for updates (no such name) and starts
+# the game. GEE02JAA checks the session link (no GuitarFreaks: it gives up), then attract: the
+# title (INSERT COIN(S)), HIT CHART and the first demo play.
+game drmnvj
+
+from 0 every 600 snap
+at 13200 quit

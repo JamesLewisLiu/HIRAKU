@@ -11,7 +11,9 @@ no audio device. Runs are memory-capped (systemd-run) and time-limited.
 
 usage: run.py <game> [--seconds N] [--snap-every S] [--frames N] [--hash-every N]
               [--interp] [--unlimited] [--renderer 13|14|11] [--out DIR]
-  game: a .py1 name in the collection (popn9 … popn14, dstagef, dogstdx, wswe, wswe2k3, pesta, ppool)
+  game: a .py1 name in the collection (popn9 … popn14, dstagef, dogstdx, wswe, wswe2k3, pesta, ppool),
+        or a .py2 name in the Python 2 sets ($HK_PYTHON2_SETS: <game>.py2 and <game>/ beside it,
+        the retail BIOS in bios/, $HK_PY2_BIOS naming it)
 With the oracle patch (reliquary-oracle.patch), DIR/framehash.txt gets EE/IOP RAM
 hashes every --hash-every vsyncs and --frames stops the run at that vsync.
 Snapshots: a savestate over PINE every S seconds; its Screenshot.png and the EE
@@ -22,6 +24,7 @@ import argparse, os, shutil, socket, struct, subprocess, sys, time, zipfile, glo
 COLL = os.environ.get("HK_PYTHON_SETS", os.path.expanduser("~/Downloads/konami-python-1-collection"))
 WORK = os.environ.get("HK_PYTHON_WORK", "/run/media/roganis/DATA/Python-work")
 BIN = os.environ.get("HK_RELIQUARY", f"{WORK}/pcsx2-reliquary/build/bin/pcsx2-qt")
+COLL2 = os.environ.get("HK_PYTHON2_SETS", os.path.expanduser("~/Downloads/konami-python-2"))
 TEMPLATE = f"{COLL}/PCSX2/inis/PCSX2.ini"
 
 
@@ -50,9 +53,13 @@ def prepare(game, data, interp, slot, renderer=13):
     root = f"{data}/PCSX2"   # -datapath D keeps everything in D/PCSX2
     os.makedirs(f"{root}/inis")
     os.makedirs(f"{data}/bios")
-    for f in glob.glob(f"{COLL}/bios/COH-H31000.*"):
+    py2 = os.path.exists(f"{COLL2}/{game}.py2")
+    sets, ext = (COLL2, "py2") if py2 else (f"{COLL}/kpython1", "py1")
+    # Python 2 boots a retail PS2 BIOS (Reliquary's retail BIOS path); Python 1 the COH-H31000
+    bios = os.environ.get("HK_PY2_BIOS", "ps2-0190j-20030822.bin") if py2 else "COH-H31000.BIN"
+    for f in glob.glob(f"{COLL2}/bios/*" if py2 else f"{COLL}/bios/COH-H31000.*"):
         os.symlink(f, f"{data}/bios/{os.path.basename(f)}")
-    gsrc = f"{COLL}/kpython1/{game}"
+    gsrc = f"{sets}/{game}"
     gdst = f"{data}/game/{game}"
     os.makedirs(gdst)
     for f in os.listdir(gsrc):
@@ -61,7 +68,7 @@ def prepare(game, data, interp, slot, renderer=13):
             os.symlink(s, f"{gdst}/{f}")
         else:
             shutil.copy2(s, f"{gdst}/{f}")
-    shutil.copy2(f"{COLL}/kpython1/{game}.py1", f"{data}/game/{game}.py1")
+    shutil.copy2(f"{sets}/{game}.{ext}", f"{data}/game/{game}.{ext}")
 
     lines = open(TEMPLATE, encoding="utf-8").read().splitlines()
     lines = [l for l in lines if l.split("=")[0].strip() not in ("MainWindowGeometry", "MainWindowState")]
@@ -76,7 +83,7 @@ def prepare(game, data, interp, slot, renderer=13):
                  ("ArcadeKelfOverrideKbitFile", "arcade_kelf_override_kbit"),
                  ("ArcadeKelfOverrideKcFile", "arcade_kelf_override_kc")):
         S(lines, "Security", k, f"{COLL}/keys/{f}.bin")
-    S(lines, "Filenames", "BIOS", "COH-H31000.BIN")
+    S(lines, "Filenames", "BIOS", bios)
     S(lines, "Filenames", "ArcadeBIOS", "COH-H31000.BIN")
     S(lines, "EmuCore", "EnablePINE", "true")
     S(lines, "EmuCore", "PINESlot", str(slot))
@@ -91,6 +98,12 @@ def prepare(game, data, interp, slot, renderer=13):
     S(lines, "EmuCore/GS", "VsyncEnable", "0")
     S(lines, "SPU2/Output", "Backend", "Null")
     S(lines, "MemoryCards", "Slot2_Enable", "false")   # a Python cabinet has only the dongle, in slot 1
+    if py2:
+        # Python 2's boot program waits for the network: PCSX2's user-mode Sockets adapter, its
+        # own DHCP and DNS answering the game
+        for k, v in (("EthApi", "Sockets"), ("EthDevice", "Auto"), ("InterceptDHCP", "true"),
+                     ("ModeDNS1", "Internal"), ("ModeDNS2", "Internal")):
+            S(lines, "DEV9/Eth", k, v)
     S(lines, "Logging", "EnableFileLogging", "true")
     S(lines, "Logging", "EnableSystemConsole", "true")
     S(lines, "Logging", "EnableEEConsole", "true")
@@ -100,7 +113,7 @@ def prepare(game, data, interp, slot, renderer=13):
         for k in ("EnableEE", "EnableIOP", "EnableVU0", "EnableVU1"):
             S(lines, "EmuCore/CPU/Recompiler", k, "false")
     open(f"{root}/inis/PCSX2.ini", "w", encoding="utf-8").write("\n".join(lines) + "\n")
-    return f"{data}/game/{game}.py1"
+    return f"{data}/game/{game}.{ext}"
 
 
 class Pine:

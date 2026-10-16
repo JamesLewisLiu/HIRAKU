@@ -1,0 +1,9 @@
+# DrumMania V2 (drmnv2j, revision 2005-11-28, Konami Python 2): power-on from the dumps' disk and
+# NVRAM. Boot program 2.2.0 brings the network up (runtime/python/ethnet.h), finds no update server,
+# then starts the disk's newer boot program, which starts F02-JA 20051128-0. The session check
+# (no GuitarFreaks) gives up, then attract: BEMANI EXPO, the title (INSERT COINS), HIT CHART and the
+# first demo play (リライト).
+game drmnv2j
+
+from 0 every 600 snap
+at 14400 quit

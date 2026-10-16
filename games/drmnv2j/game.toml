@@ -1,0 +1,12 @@
+# DrumMania V2 (F02:J:A:A, GEF02JAA), Konami 2005: Konami Python 2
+id = "drmnv2j"
+title = "DrumMania V2"
+family = "drmn"         # DrumMania cabinet: five pads, the bass pedal, select buttons
+mame = "drmnv2j"        # MAME set name (its revisions 2006-01-12, 2005-11-28 drmnv2ja, 2005-10-16 drmnv2jb)
+core = "python"         # PCSX2 Reliquary hosted by HIRAKU (runtime/python/, PLAN.md section 23)
+first_boot = "the boot program asks the network for updates and checks the session link before attract, about three minutes the first time"
+
+[python]
+board = "python2"       # a PS2 (SCPH-50000 class) with the P2IO board on USB and the hard disk on DEV9
+partition = "F02-JA"    # the disk's installed game (its disk keeps V's E02-JA too; the last one is installed)
+input_type = 0          # Reliquary's P2IO profile: DrumMania

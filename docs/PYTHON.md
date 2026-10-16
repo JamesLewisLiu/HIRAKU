@@ -29,7 +29,11 @@ Working files live outside the repo, in `/run/media/roganis/DATA/Python-work/`: 
 ### Python 2 (2005–2007)
 - A COH-H55000 (SCPH-50000-class) PS2. The I/O board is a USB device (P2IO, H8S/2218) [S: MAME kpython2.cpp].
 - The HDD sits on the PS2's own DEV9/ATA and is **DNAS-bound** to the console (i.LINK ID) and the disk (HDD ID) [S: MAME, Reliquary docs].
-- No Python 2 media is on hand.
+- **On hand (2026-10-16):** DrumMania V (`drmnvj`, E02:J:A:A) and V2 (`drmnv2j`, revision 2005-11-28) [V]:
+  - each a 40,000,000,000-byte PS2 hard disk (APA partitions `__mbr`, `__net`, `__system`, `__sysconf`, `__common`, `PP.KNAC_00001` (the boot program), `PC.KNAC_00001.00672.<code>` (the game, 1 GiB pieces), `...DOWNLOAD`), as CHDs (`chdman createhd -c lzma,zlib`: the default codecs take tens of GB of RAM);
+  - the black and white DS2430 dongles (8-byte serial first, Reliquary's "old" layout), the HDD ID (128 bytes) and the i.LINK ID (8 bytes); the same IDs in both sets;
+  - the BIOS MAME names, `ps2-0190j-20030822.bin`, from a PS2 BIOS collection (SHA-1 `0ea98a25…`); no console NVRAM: the core's sets use one made from Reliquary's generated NVRAM and a set-up Japanese console's OSD blocks (PLAN.md §23, PY-6).
+- **How they boot** [V]: the BIOS starts the disk's boot program (V: 1.2.0 of 2005-05-11; V2: 2.2.0, which starts a newer 2.2.0 of 2005-11-24 from the disk); it brings up the network, asks a server for updates (these disks name `download.eamuse.konami.fun`), starts the game (`F02-JA 20051128-0`); the game checks the session link to its GuitarFreaks (UDP broadcasts), then attract.
 
 ## 2. The catalogue (BEMANI first)
 

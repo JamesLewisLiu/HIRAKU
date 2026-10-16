@@ -77,11 +77,13 @@
 #include "pcsx2/Memory.h"
 #include "pcsx2/R5900.h"
 #include "pcsx2/SIO/Pad/Pad.h"
+#include "pcsx2/USB/USB.h"
 #include "pcsx2/VMManager.h"
 
 #include "python/cardunit.h"
 #include "python/icca.h"
 #include "python/eanet.h"
+#include "python/ethnet.h"
 #include "python/eaclient.h"
 #include "python/easerver.h"
 #include "python/lancable.h"
@@ -179,6 +181,15 @@ const std::map<std::string, std::string> POPN_INPUTS = {
     {"P1 Button 7", "P2Down"}, {"P1 Button 8", "P2Left"}, {"P1 Button 9", "P2Right"},
     {"Coin 1", "Coin1"},       {"Coin 2", "Coin2"},       {"Test", "Test"},
     {"Service", "Service"},    {"1 Player Start", "P1Start"},
+};
+
+// Konami Python 2 (PY-6): the cabinet families' inputs (MAME's names, shell/cabinet.cpp) on the
+// P2IO board, as Reliquary's Python 2 USB device names them (usb-python2.cpp, Bindings)
+const std::map<std::string, std::string> PY2_INPUTS = {
+    {"Hi-Hat", "DMHiHat"},        {"Snare", "DMSnare"},       {"High Tom", "DMHighTom"}, {"Low Tom", "DMLowTom"},
+    {"Cymbal", "DMCymbal"},       {"Bass Drum", "DMBassDrum"}, {"Select L", "DMSelectLeft"},
+    {"Select R", "DMSelectRight"}, {"1 Player Start", "DMStart"}, {"Coin 1", "Coin1"},
+    {"Coin 2", "Coin2"},          {"Test", "Test"},           {"Service", "Service"},
 };
 
 // The e-AMUSEMENT 10-key (cardunit.h): its keys' PS/2 set 2 scan codes, as the game maps them
@@ -396,6 +407,14 @@ public:
         }
         if (o.nvram_dir.empty() && exists(run_dir_)) FileSystem::RecursiveDeleteDirectory(run_dir_.c_str());
         mkdirs(run_dir_);
+        if (m["board"] == "python2") {
+            python2_ = true;
+            if (!lan_where_.empty()) { fprintf(stderr, "--lan-host/--lan-join: pop'n music only\n"); return false; }
+            if (!write_py2(o, m)) return false;
+            const std::string bios = o.data_path(m["bios"]);
+            if (!exists(bios)) { fprintf(stderr, "python: missing BIOS %s\n", bios.c_str()); return false; }
+            return init_emulator(bios, o.data_path(m["keys"]));
+        }
         io_mode_ = m["io_mode"];
         std::string py1 = "[Game]\nName=" + m["name"] + "\nIoMode=" + io_mode_ + "\n";
         if (!m["game_id"].empty()) py1 += "GameId=" + m["game_id"] + "\n";
@@ -525,6 +544,37 @@ public:
     }
     const std::string &family() const override { return family_; }
 
+    // Konami Python 2 (PLAN.md section 23, PY-6): Reliquary's .py2 descriptor. The console's NVRAM
+    // (the BIOS writes it) is the run's own copy; the disk's writes go to the overlay under
+    // pcsx2/, so a run starts from the dumps. The network is the core's own (ethnet.h).
+    bool write_py2(const Options &o, std::map<std::string, std::string> &m) {
+        std::string py2 = "[Game]\nName=" + m["name"] + "\nRegion=NTSC-J\nInputType=" +
+                          (m["input_type"].empty() ? std::string("0") : m["input_type"]) + "\n";
+        if (!m["game_id"].empty()) py2 += "GameId=" + m["game_id"] + "\n";
+        for (const char *dip : {"DIPSW1", "DIPSW2", "DIPSW3", "DIPSW4", "Force31kHz"}) py2 += std::string(dip) + "=false\n";
+        struct F { const char *key, *ini; bool writable; };
+        const F files[] = {
+            {"hdd", "HddImagePath", false},         {"hdd_id", "HddIdPath", false},
+            {"ilink_id", "IlinkIdPath", false},     {"nvram", "NvRamPath", true},
+            {"dongle_black", "DongleBlackPath", false}, {"dongle_white", "DongleWhitePath", false},
+        };
+        for (const F &f : files) {
+            if (m[f.key].empty()) continue;
+            const std::string src = o.data_path(m[f.key]);
+            if (!exists(src)) { fprintf(stderr, "python: missing %s (%s)\n", src.c_str(), f.key); return false; }
+            std::string path = src;
+            if (f.writable) {
+                path = run_dir_ + "/" + base_name(src);
+                if (!exists(path) && !copy_file(src, path)) { fprintf(stderr, "python: cannot copy %s\n", src.c_str()); return false; }
+            }
+            py2 += std::string(f.ini) + "=" + path + "\n";
+        }
+        py1_path_ = run_dir_ + "/" + o.game + ".py2";
+        eth_ = std::make_unique<hk::py::EtherNet>();
+        if (!FileSystem::WriteStringToFile(py1_path_.c_str(), py2)) { fprintf(stderr, "python: cannot write %s\n", py1_path_.c_str()); return false; }
+        return true;
+    }
+
     void set_frame_hook(FrameHook h) override { frame_hook_ = std::move(h); }
     void set_audio_sink(AudioSink s) override { audio_sink_ = std::move(s); }
     void set_on_fatal(std::function<void()> f) override { on_fatal_ = std::move(f); }
@@ -549,6 +599,16 @@ public:
                 fflush(net_log_);
             };
             Hiraku::net_command = [](u32 ch, const u32 *p, u32 q) { return self_->net_->command(ch, p, q); };
+        }
+        if (eth_) {   // Python 2: the PS2's own network adapter, answered here (ethnet.h)
+            if (net_log_) eth_->log = [this](const std::string &s) {
+                std::lock_guard<std::mutex> l(net_log_mutex_);
+                fprintf(net_log_, "%llu %s\n", (unsigned long long)frame_, s.c_str());
+                fflush(net_log_);
+            };
+            Hiraku::eth_send = [](const u8 *f, u32 n) { self_->eth_->send(f, n); };
+            Hiraku::eth_poll = [](u8 *f, u32 capacity) { return self_->eth_->take(f, capacity); };
+            Hiraku::sync_disk = true;   // the hard disk's writes at once, not at the I/O thread's pace
         }
         if (card_) Hiraku::uart_write = [](const u8 *data, u32 size) {
             std::vector<uint8_t> reply;
@@ -684,7 +744,8 @@ public:
         }
         auto it = binds_.find(name);
         if (it == binds_.end()) return false;
-        FireWire::SetP1IOBindValue(it->second, value ? 1.0f : 0.0f);
+        if (python2_) USB::SetDeviceBindValue(0, it->second, value ? 1.0f : 0.0f);   // the P2IO, on USB port 1
+        else FireWire::SetP1IOBindValue(it->second, value ? 1.0f : 0.0f);
         return true;
     }
     int audio_rate() const override { return 48000; }
@@ -729,7 +790,9 @@ private:
             {"MgChallengeIvFile", "civ"}, {"MgCardKeyStoreFile", "cks"}, {"MgEncryptedKeyStoreFile", "eks"},
             {"MgKeyStoreKeyFile", "kek"}, {"ArcadeKelfOverrideKbitFile", "arcade_kelf_override_kbit"},
             {"ArcadeKelfOverrideKcFile", "arcade_kelf_override_kc"}};
-        for (const auto &[k, f] : key_files) si.SetStringValue("Security", k, (keys + "/" + f + ".bin").c_str());
+        for (const auto &[k, f] : key_files)
+            if (!python2_ || !strstr(k, "Arcade"))   // Python 2 boots the retail way: no arcade KELF overrides
+                si.SetStringValue("Security", k, (keys + "/" + f + ".bin").c_str());
         si.SetBoolValue("EmuCore", "EnablePatches", false);
         si.SetBoolValue("EmuCore", "EnableCheats", false);
         si.SetBoolValue("EmuCore", "EnablePINE", false);
@@ -760,6 +823,7 @@ private:
         si.ClearSection("Hotkeys");
         si.ClearSection("FireWire");   // no host bindings: the shell sets the inputs
         si.SetBoolValue("MemoryCards", "Slot2_Enable", false);
+        if (python2_) si.SetBoolValue("MemoryCards", "Slot1_Enable", false);   // Python 2 has no memory-card dongle
         si.SetBoolValue("Logging", "EnableSystemConsole", pcsx2_log_);
         si.SetBoolValue("Logging", "EnableFileLogging", false);
         si.SetBoolValue("Logging", "EnableEEConsole", pcsx2_log_);
@@ -785,6 +849,12 @@ private:
     // MAME input names -> the interface board's bind indices (Reliquary's names)
     void bind_inputs() {
         std::map<std::string, u32> by_name;
+        if (python2_) {
+            for (const InputBindingInfo &b : USB::GetDeviceBindings(0)) by_name[b.name] = b.bind_index;
+            for (const auto &[mame, p2io] : PY2_INPUTS)
+                if (auto it = by_name.find(p2io); it != by_name.end()) binds_[mame] = it->second;
+            return;
+        }
         for (const InputBindingInfo &b : FireWire::GetP1IOBindings()) by_name[b.name] = b.bind_index;
         for (const auto &[mame, p1io] : POPN_INPUTS)
             if (auto it = by_name.find(p1io); it != by_name.end()) binds_[mame] = it->second;
@@ -1086,6 +1156,8 @@ private:
     bool interp_ = false, pcsx2_log_ = false, no_picture_ = false, picture_now_ = true, autoplay_ = false;
     bool full_frames_ = true, fill_screen_ = false;
     double cover_w_ = 1.0, cover_h_ = 1.0;   // display_cover() of pic_
+    bool python2_ = false;   // a Konami Python 2 (write_py2)
+    std::unique_ptr<hk::py::EtherNet> eth_;
     bool bare_board_ = false;   // --bare-board: no card unit or e-AMUSEMENT network, as plain Reliquary
     std::span<const u8> font_data_;   // mapped for the process's life
     std::map<std::string, u32> binds_;

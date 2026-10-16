@@ -288,9 +288,130 @@
  if(ENABLE_GSRUNNER)
  	add_subdirectory(pcsx2-gsrunner)
  else()
+--- a/pcsx2/DEV9/net.cpp
++++ b/pcsx2/DEV9/net.cpp
+@@ -15,6 +15,7 @@
+ #endif
+ #include "pcap_io.h"
+ #include "sockets.h"
++#include "HirakuHooks.h"
+ 
+ #include "PacketReader/EthernetFrame.h"
+ #include "PacketReader/IP/IP_Packet.h"
+@@ -23,6 +24,9 @@
+ NetAdapter* nif;
+ std::thread rx_thread;
+ 
++void (*Hiraku::eth_send)(const u8* frame, u32 size) = nullptr;
++u32 (*Hiraku::eth_poll)(u8* frame, u32 capacity) = nullptr;
++
+ std::mutex rx_mutex;
+ 
+ volatile bool RxRunning = false;
+@@ -49,6 +53,11 @@
+ 
+ void tx_put(NetPacket* pkt)
+ {
++	if (Hiraku::eth_send)
++	{
++		Hiraku::eth_send(reinterpret_cast<const u8*>(pkt->buffer), static_cast<u32>(pkt->size));
++		return;
++	}
+ 	if (nif != nullptr)
+ 		nif->send(pkt);
+ 	//pkt must be copied if its not processed by here, since it can be allocated on the callers stack
+@@ -92,6 +101,11 @@
+ 
+ void InitNet()
+ {
++	if (Hiraku::eth_send && Hiraku::eth_poll)
++	{
++		Console.WriteLn("DEV9: the network is the host's (HIRAKU)");
++		return;
++	}
+ 	NetAdapter* na = GetNetAdapter();
+ 
+ 	if (!na)
+@@ -134,7 +148,7 @@
+ 				InitNet();
+ 				return;
+ 			}
+-			else
++			else if (nif)
+ 				nif->reloadSettings();
+ 		}
+ 		else
+--- a/pcsx2/DEV9/smap.cpp
++++ b/pcsx2/DEV9/smap.cpp
+@@ -15,6 +15,7 @@
+ #include "smap.h"
+ #include "net.h"
+ #include "pcap_io.h"
++#include "HirakuHooks.h"
+ 
+ bool has_link = true;
+ volatile bool fireIntR = false;
+@@ -861,6 +862,18 @@
+ 
+ void smap_async(u32 cycles)
+ {
++	if (Hiraku::eth_poll)
++	{
++		NetPacket pkt;
++		while (rx_fifo_can_rx())
++		{
++			const u32 n = Hiraku::eth_poll(reinterpret_cast<u8*>(pkt.buffer), sizeof(pkt.buffer));
++			if (!n)
++				break;
++			pkt.size = static_cast<int>(n);
++			rx_process(&pkt);
++		}
++	}
+ 	if (fireIntR)
+ 	{
+ 		fireIntR = false;
+--- a/pcsx2/DEV9/ATA/ATA_State.cpp
++++ b/pcsx2/DEV9/ATA/ATA_State.cpp
+@@ -7,6 +7,7 @@
+ #include "ATA.h"
+ #include "ChdHddImage.h"
+ #include "DEV9/DEV9.h"
++#include "HirakuHooks.h"
+ 
+ #if _WIN32
+ #include "pathcch.h"
+@@ -22,6 +23,8 @@
+ static_assert(sizeof(off_t) >= 8, "off_t is not 64bit");
+ #endif
+ 
++bool Hiraku::sync_disk = false;
++
+ ATA::ATA()
+ {
+ 	//Power on, Would do self-Diag + Hardware Init
+--- a/pcsx2/DEV9/ATA/Commands/ATA_CmdDMA.cpp
++++ b/pcsx2/DEV9/ATA/Commands/ATA_CmdDMA.cpp
+@@ -3,6 +3,7 @@
+ 
+ #include "DEV9/ATA/ATA.h"
+ #include "DEV9/DEV9.h"
++#include "HirakuHooks.h"
+ 
+ void ATA::DRQCmdDMADataToHost()
+ {
+@@ -52,6 +53,9 @@
+ 	entry.length = currentWriteLength;
+ 	entry.sector = currentWriteSectors;
+ 	writeQueue.Enqueue(entry);
++	if (Hiraku::sync_disk)
++		while (IO_Write())
++			;
+ 	currentWrite = nullptr;
+ 	currentWriteLength = 0;
+ 	currentWriteSectors = 0;
 --- a/pcsx2/HirakuHooks.h
 +++ b/pcsx2/HirakuHooks.h
-@@ -0,0 +1,44 @@
+@@ -0,0 +1,55 @@
 +// SPDX-License-Identifier: GPL-3.0+
 +// HIRAKU (local patch, not upstream): taps for running this emulator as a HIRAKU
 +// machine core (runtime/python/ in HIRAKU). All are null unless a host sets them.
@@ -334,4 +455,15 @@
 +	void net_respond(u32 channel, const u32* words);
 +	void net_write(u32 iop_address, const u8* data, u32 size);
 +	bool iop_read(u32 iop_address, u8* data, u32 size);
++	// The PS2's own network adapter (DEV9 SMAP, Python 2's network port), when a host sets
++	// both: no host adapter is opened and no receive thread runs. eth_send gets each Ethernet
++	// frame the game sends (CPU thread, IOP time); eth_poll is asked for the host's frames for
++	// the game from SMAP's update (CPU thread, IOP time: deterministic), one per call, its size
++	// returned (0: none now).
++	extern void (*eth_send)(const u8* frame, u32 size);
++	extern u32 (*eth_poll)(u8* frame, u32 capacity);
++	// The PS2's hard disk (DEV9 ATA): true to write each sector run as the game sends it, on the
++	// CPU thread, instead of queuing it for the I/O thread, whose pace (host time) would decide
++	// when a flush or a waiting command completes.
++	extern bool sync_disk;
 +} // namespace Hiraku

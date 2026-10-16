@@ -202,6 +202,9 @@ CASES = {
                                              "--lan-host", "out/regress/work/popn14-lan.sock"], "popn14-eamuse-on", "popn14-nettaisen-b"),
     "popn14-nettaisen-b": ("popn14", 29300, ["--script", "oracle/scripts/popn14-nettaisen-b.his", "-card0", "E004010000001402",
                                              "--lan-join", "out/regress/work/popn14-lan.sock"], "popn14-eamuse-on", "popn14-nettaisen-a"),
+    # Konami Python 2 (PY-6): the boot program, the core's network and the attract
+    "drmnvj-attract": ("drmnvj", 13200, ["--script", "oracle/scripts/drmnvj-attract.his"]),
+    "drmnv2j-attract": ("drmnv2j", 14400, ["--script", "oracle/scripts/drmnv2j-attract.his"]),
 }
 
 # Twinkle: the cases above run MAME's program CD drive (--mame-cd), so they stay in lockstep

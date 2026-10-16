@@ -6,6 +6,7 @@
     tools/ingest.py DISC [--romset SET.zip] [--hdd IMG] [--dvd ISO] [--cd2 CUE]   (roles given)
     tools/ingest.py --exe FIREBEAT.EXE           (a loose program, Firebeat)
     tools/ingest.py SET.py1 [--bios DIR] [--keys DIR]   (Konami Python: Reliquary's descriptor)
+    tools/ingest.py SET.py2 [--bios DIR] [--keys DIR]   (Konami Python 2: the same, its retail BIOS)
 
 Files can be MAME ROM sets (.zip, .7z), MAME CHDs, and disc or disk images
 (.cue/.bin, .iso, .img); a folder stands for the files in it. CHDs are
@@ -31,6 +32,7 @@ import glob
 import hashlib
 import os
 import shutil
+import struct
 import subprocess
 import sys
 import tomllib
@@ -486,6 +488,111 @@ def link_or_copy(src: str, dst: str) -> str:
         return "symlinked"
 
 
+PY2_FILES = (   # .py2 key -> machine.txt key; the disk is linked, the rest copied to rom/
+    ("HddImagePath", "hdd"), ("HddIdPath", "hdd_id"), ("IlinkIdPath", "ilink_id"), ("NvRamPath", "nvram"),
+    ("DongleBlackPath", "dongle_black"), ("DongleWhitePath", "dongle_white"))
+
+
+def apa_partitions(img) -> list[str]:
+    """The names in a PS2 hard disk's APA partition chain (each header: 'APA\\0' at 4, next at 8, id at 16)."""
+    names, sector = [], 0
+    for _ in range(4096):
+        h = img.read(sector * 512, 512)
+        if h[4:8] != b"APA\0":
+            break
+        names.append(h[16:48].split(b"\0")[0].decode("ascii", "replace"))
+        sector = struct.unpack_from("<I", h, 8)[0]
+        if sector == 0:
+            break
+    return names
+
+
+def ingest_python2(args, py2: str) -> int:
+    """A Konami Python 2 game, from its .py2 descriptor (PCSX2 Reliquary's format). The disk is
+    an ordinary PS2 hard disk; the game is its last Konami game partition (PC.KNAC_<...>.<code>,
+    not DOWNLOAD: an update keeps the older game's), matched to games/*/game.toml's partition."""
+    import configparser
+    import pythonfs
+    ini = configparser.ConfigParser(interpolation=None, strict=False, comment_prefixes=(";", "#"))
+    ini.optionxform = str
+    ini.read(py2, encoding="utf-8")
+    if "Game" not in ini:
+        print(f"ERROR    {py2}: no [Game] section")
+        return 1
+    g = ini["Game"]
+    base = os.path.dirname(os.path.abspath(py2))
+    files = {}
+    for key, name in PY2_FILES:
+        v = g.get(key, "").strip()
+        if v:
+            files[name] = os.path.normpath(v if os.path.isabs(v) else os.path.join(base, v))
+            if not os.path.exists(files[name]):
+                print(f"ERROR    {key} = {v}: no such file")
+                return 1
+    if "hdd" not in files or "hdd_id" not in files:
+        print("ERROR    the .py2 names no disk or no HDD ID (HddImagePath, HddIdPath)")
+        return 1
+    try:
+        parts = apa_partitions(pythonfs.open_image(files["hdd"]))
+    except OSError as e:
+        print(f"ERROR    reading {files['hdd']}: {e}")
+        return 1
+    games = [n.rsplit(".", 1)[-1] for n in parts if n.startswith("PC.") and not n.endswith(".DOWNLOAD")]
+    if not games:
+        print(f"ERROR    {files['hdd']}: no Konami game partition (partitions: {', '.join(parts) or 'none'})")
+        return 1
+    code = games[-1]
+    game = next((x for x in all_games() if x.get("core") == "python"
+                 and x.get("python", {}).get("partition") == code), None)
+    if game is None:
+        print(f"game     unknown - no Python games/*/game.toml has partition = \"{code}\"")
+        return 1
+    gid = game["id"]
+    print(f"game     {gid}: {game['title']} (Konami Python 2, partition {code})")
+    outdir = os.path.join(args.out, gid)
+    for sub in ("rom", "bios", "keys"):
+        os.makedirs(os.path.join(outdir, sub), exist_ok=True)
+    machine = {"core": "python", "board": "python2", "family": game["family"], "name": g.get("Name", game["title"]),
+               "game_id": g.get("GameId", ""),
+               "input_type": g.get("InputType", str(game.get("python", {}).get("input_type", 0)))}
+    for name, src in files.items():
+        if name == "hdd":
+            how = link_or_copy(src, os.path.join(outdir, os.path.basename(src)))
+            machine[name] = os.path.basename(src)
+            print(f"disk     {os.path.basename(src)} ({how})")
+        else:
+            shutil.copy2(src, os.path.join(outdir, "rom", os.path.basename(src)))
+            machine[name] = "rom/" + os.path.basename(src)
+    # the retail BIOS Python 2 boots: MAME's ps2-0190j-20030822.bin (SCPH-50000, v1.90 Japan)
+    bios = args.bios or find_near(base, "bios")
+    bios_bin = sorted(glob.glob(os.path.join(bios, "ps2-0190j*.bin"))) if bios else []
+    if not bios_bin:
+        print("ERROR    no Python 2 BIOS (ps2-0190j-20030822.bin, the SCPH-50000's v1.90): give --bios DIR")
+        return 1
+    shutil.copy2(bios_bin[0], os.path.join(outdir, "bios", os.path.basename(bios_bin[0])))
+    machine["bios"] = "bios/" + os.path.basename(bios_bin[0])
+    keys = args.keys or find_near(base, "keys") or find_near(os.path.join(base, "..", "konami-python-1-collection"), "keys")
+    missing = [k for k in PY_KEYS[:4] if not keys or not os.path.exists(os.path.join(keys, k + ".bin"))]
+    if missing:
+        print(f"ERROR    MagicGate key files missing ({', '.join(k + '.bin' for k in missing)}): give --keys DIR")
+        return 1
+    for k in PY_KEYS[:4]:
+        shutil.copy2(os.path.join(keys, k + ".bin"), os.path.join(outdir, "keys", k + ".bin"))
+    machine["keys"] = "keys"
+    if "nvram" not in machine:
+        print("note     no NvRamPath: the BIOS will stop at its first-time language setup (docs/PYTHON.md)")
+    print(f"bios     {os.path.basename(bios_bin[0])}, keys copied (dumps/ is gitignored: they stay out of the repo)")
+    machine_path = os.path.join(outdir, "machine.txt")
+    order = ["core", "board", "family", "name", "game_id", "input_type", "hdd", "hdd_id", "ilink_id", "nvram",
+             "dongle_black", "dongle_white", "bios", "keys"]
+    with open(machine_path, "w") as fh:
+        for k in order:
+            if machine.get(k):
+                fh.write(f"{k}={machine[k]}\n")
+    print(f"wrote    {os.path.relpath(machine_path, ROOT)}")
+    return 0
+
+
 def ingest_python(args, py1: str) -> int:
     """A Konami Python 1 game, from its .py1 descriptor (PCSX2 Reliquary's format)."""
     import configparser
@@ -822,6 +929,13 @@ def main() -> int:
             py1 += sorted(glob.glob(os.path.join(f, "*.py1"))) + ([near] if os.path.exists(near) else [])
     if py1:
         return ingest_python(args, py1[0])
+    py2 = [f for f in args.inputs if f.lower().endswith(".py2")]
+    for f in args.inputs:
+        if os.path.isdir(f):
+            near = os.path.normpath(f) + ".py2"
+            py2 += sorted(glob.glob(os.path.join(f, "*.py2"))) + ([near] if os.path.exists(near) else [])
+    if py2:
+        return ingest_python2(args, py2[0])
     return ingest_auto(args, args.inputs)
 
 
