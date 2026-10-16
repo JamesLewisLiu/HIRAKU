@@ -91,6 +91,9 @@ public:
     // the sound before letting the next frame run, not before showing this one
     // (runtime/host/window.cpp, window_frame), so the picture comes a frame sooner.
     virtual bool audio_per_frame() const { return false; }
+    // A real card reader read this card (16 hex digits, E004...): it is now `player`'s (0, 1) card,
+    // put to the game's reader as the player would. false for a machine without that reader.
+    virtual bool card_read(int /*player*/, const std::string & /*number*/) { return false; }
     // Move player's turntable by `delta` encoder counts (cores without one ignore it).
     virtual void turntable_add(int player, int delta) = 0;
     // Lamps as the game last drove them, in cab::lamps(family()) order (1 = lit),

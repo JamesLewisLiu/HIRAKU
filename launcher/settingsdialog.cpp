@@ -237,6 +237,49 @@ SettingsDialog::SettingsDialog(QWidget *parent) : QDialog(parent) {
     fe->addRow("Auto Card Insert:", m_autocard);
     v->addWidget(ea);
 
+    // real readers, as spice2x's -reader, -scard and -cardio (runtime/host/readers.h)
+    auto *rd = new QGroupBox("Card readers (pop'n music 9-14, GuitarFreaks, DrumMania)");
+    auto *fr = new QFormLayout(rd);
+    QStringList ports;   // a port's /dev/serial/by-id name stays the same whichever USB socket it is in
+    for (const QFileInfo &f : QDir("/dev/serial/by-id").entryInfoList(QDir::System | QDir::Files)) ports << f.absoluteFilePath();
+    for (const QString &f : QDir("/dev").entryList({"ttyUSB*", "ttyACM*"}, QDir::System)) ports << "/dev/" + f;
+    for (int n = 0; n < 2; n++) {
+        m_reader[n] = new QComboBox;
+        m_reader[n]->setEditable(true);
+        m_reader[n]->addItem("");
+        m_reader[n]->addItems(ports);
+        m_reader[n]->setCurrentText(s.value(QString("readers/serial%1").arg(n)).toString());
+        m_reader[n]->lineEdit()->setPlaceholderText("none");
+        m_reader[n]->setToolTip("-reader: a Konami e-AMUSEMENT reader with its 10-key on a serial port (a USB-serial "
+                                "adapter). A card held to it is the player's card in the game; its 10-key is the "
+                                "game's (00 is Enter where the game has no 00).");
+        fr->addRow(QString("Player %1 serial reader:").arg(n + 1), m_reader[n]);
+    }
+    m_scard = new QCheckBox("NFC readers (ACR122U and the like) through PC/SC (-scard): the first is player 1's");
+    m_scard->setChecked(s.value("readers/scard", false).toBool());
+    m_scard->setToolTip("Needs the pcscd service (systemctl enable --now pcscd.socket). Cards that aren't e-AMUSEMENT "
+                        "PASSes (FeliCa, phones) get an E00401 number, as spice2x's -scardfix.");
+    fr->addRow("", m_scard);
+    m_cardio = new QCheckBox("cardio readers (USB HID, -cardio): the first is player 1's");
+    m_cardio->setChecked(s.value("readers/cardio", false).toBool());
+    m_cardio->setToolTip("Read through /dev/hidraw: a udev rule lets you open it (docs/PLAY.md, Card readers).");
+    fr->addRow("", m_cardio);
+    v->addWidget(rd);
+
+    auto *cab = new QGroupBox("Cabinet I/O (the beatmania games)");
+    auto *fc = new QFormLayout(cab);
+    m_bio2 = new QComboBox;
+    m_bio2->setEditable(true);
+    m_bio2->addItem("");
+    m_bio2->addItems(ports);
+    m_bio2->setCurrentText(s.value("cabinet/bio2").toString());
+    m_bio2->lineEdit()->setPlaceholderText("none");
+    m_bio2->setToolTip("--bio2: beatmania IIDX's BIO2 I/O board (IIDX 25-26's BI2A firmware) on its USB serial port: "
+                       "the cabinet's keys, turntables, buttons, effector and coin, and its lamps and ticker, for "
+                       "beatmania IIDX, III and the DJ Main games.");
+    fc->addRow("IIDX BIO2 board:", m_bio2);
+    v->addWidget(cab);
+
     auto *paths = new QGroupBox("Folders");
     auto *fp = new QFormLayout(paths);
     m_root = new QLineEdit(s.value("paths/root").toString());
@@ -299,6 +342,10 @@ void SettingsDialog::accept() {
     s.setValue("eamuse/pcbid", m_pcbid->text().trimmed().toUpper());
     for (int n = 0; n < 2; n++) s.setValue(QString("eamuse/card%1").arg(n), m_card[n]->text().trimmed().toUpper());
     s.setValue("eamuse/autocard", m_autocard->currentData().toString());
+    for (int n = 0; n < 2; n++) s.setValue(QString("readers/serial%1").arg(n), m_reader[n]->currentText().trimmed());
+    s.setValue("readers/scard", m_scard->isChecked());
+    s.setValue("readers/cardio", m_cardio->isChecked());
+    s.setValue("cabinet/bio2", m_bio2->currentText().trimmed());
     s.sync();
     QDialog::accept();
 }

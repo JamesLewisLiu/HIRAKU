@@ -1078,6 +1078,8 @@ double seconds() { return g.machine ? g.machine->m_basetime.as_double() : 0.0; }
 uint64_t frame_count() { return g.frames; }
 const std::string &family() { return g.cfg.family; }
 
+bool card_read(int player, const std::string &number) { return g_cards.fitted() && g_cards.card_read(player, number); }
+
 bool set_input(const std::string &name, int value) {
     if (g_cards.set_input(name, value)) return true;   // the card units' slots and 10-keys
     sys573_state &st = *g.state;

@@ -22,4 +22,7 @@ private:
     QCheckBox *m_smartea;
     QComboBox *m_autocard;
     QLineEdit *m_eaUrl, *m_pcbid, *m_card[2];
+    QComboBox *m_reader[2];                 // serial card readers (runtime/host/readers.h)
+    QCheckBox *m_scard, *m_cardio;
+    QComboBox *m_bio2;                      // beatmania IIDX's BIO2 board (runtime/host/bio2.h)
 };

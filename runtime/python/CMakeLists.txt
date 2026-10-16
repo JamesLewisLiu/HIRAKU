@@ -15,6 +15,9 @@ add_library(hk_python_shell STATIC
 	${HK}/runtime/host/hiddesc.cpp
 	${HK}/runtime/host/script.cpp
 	${HK}/runtime/host/macro.cpp
+	${HK}/runtime/host/acio.cpp
+	${HK}/runtime/host/readers.cpp
+	${HK}/runtime/host/bio2.cpp
 	${HK}/runtime/host/hidout.cpp
 	${HK}/runtime/host/window.cpp
 	${HK}/runtime/host/picture.cpp
@@ -24,6 +27,15 @@ add_library(hk_python_shell STATIC
 target_include_directories(hk_python_shell PUBLIC ${HK}/runtime ${HK}/include)
 target_compile_definitions(hk_python_shell PUBLIC HK_WITH_SDL=1)
 target_link_libraries(hk_python_shell PUBLIC SDL3::SDL3)
+# NFC card readers through PC/SC (runtime/host/readers.h, --scard): optional, as in HIRAKU's build
+find_package(PkgConfig QUIET)
+if(PkgConfig_FOUND)
+	pkg_check_modules(HK_PCSC QUIET IMPORTED_TARGET libpcsclite)
+endif()
+if(HK_PCSC_FOUND)
+	target_link_libraries(hk_python_shell PRIVATE PkgConfig::HK_PCSC)
+	target_compile_definitions(hk_python_shell PRIVATE HK_WITH_PCSC=1)
+endif()
 find_path(HK_WAYLAND_CLIENT_INCLUDE wayland-client.h)
 find_library(HK_WAYLAND_CLIENT_LIB wayland-client)
 if(HK_WAYLAND_CLIENT_INCLUDE AND HK_WAYLAND_CLIENT_LIB)

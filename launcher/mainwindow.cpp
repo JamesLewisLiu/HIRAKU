@@ -486,6 +486,15 @@ QStringList MainWindow::arguments(const Game &g) const {
             if (QString c = s.value(QString("eamuse/card%1").arg(n)).toString(); !c.isEmpty()) a << QString("-card%1").arg(n) << c;
         if (QString ac = s.value("eamuse/autocard", "off").toString(); ac != "off") a << "-autocard" << ac;
     }
+    if (g.core == "python" || g.family == "drmn" || g.family == "gtrf") {   // the e-AMUSEMENT card readers (runtime/host/readers.h)
+        const QString r0 = s.value("readers/serial0").toString(), r1 = s.value("readers/serial1").toString();
+        if (!r0.isEmpty() || !r1.isEmpty()) a << "--reader" << r0;   // "": player 2's only
+        if (!r1.isEmpty()) a << "--reader" << r1;
+        if (s.value("readers/scard", false).toBool()) a << "--scard";
+        if (s.value("readers/cardio", false).toBool()) a << "--cardio";
+    }
+    if (QString b = s.value("cabinet/bio2").toString(); !b.isEmpty() && cfg::controlsSet(g.family) == "beatmania")
+        a << "--bio2" << b;   // the IIDX cabinet's controls and lamps (runtime/host/bio2.h)
     if (!cfg::nvramBase().isEmpty()) a << "--nvram" << cfg::nvramDir(g.id);
     if (installCassette(g)) a << "--cassette" << "install";
     a << UnlocksDialog::macroArguments(g.id);   // codes typed at every start

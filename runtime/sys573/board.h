@@ -77,6 +77,7 @@ double seconds();
 uint64_t frame_count();
 const std::string &family();
 bool set_input(const std::string &name, int value);
+bool card_read(int player, const std::string &number);   // a real card reader's card (cardunit.h)
 const std::vector<uint8_t> &lamp_state();
 uint64_t lamp_changes();
 std::string sound_report();                // the mix's peak and how much of it clips ("" without sound)

@@ -160,6 +160,20 @@ By hand: write a bindings file and pass `--bindings FILE`. See `docs/bindings-bm
 
 **Lights:** `--lights FILE` drives HID controller LEDs from the cabinet lamps, and `--lights-socket PATH` publishes them for other tools. See [LIGHTS.md](LIGHTS.md).
 
+### Card readers
+
+A real e-AMUSEMENT card reader can stand in for the cabinet's: a card held to it becomes that player's card in the game and is put to the game's reader, and its 10-key is the game's. That works in pop'n music 9–14 (one reader, player 1's) and in GuitarFreaks and DrumMania with their card units (`--npu`). A card's number is its 16 hex digits. A pop'n card is the save folder's `cards/NUMBER.bin` or IC card NUMBER, as `-card0` would make it; a 573 card unit's is `cards/NUMBER.bin`. Set the readers in the launcher's **Settings > Card readers**, or give the options yourself (`runtime/host/readers.h`), as spice2x spells them:
+
+- `--reader PATH`: a Konami e-AMUSEMENT reader (the ICCA/ICCB/ICCC readers spice2x's `-reader` drives) on a USB-serial adapter. Use its `/dev/serial/by-id/...` name, which stays the same whichever socket it's in. A second `--reader` is player 2's. Serial ports belong to the `uucp` group on Arch and CachyOS (`dialout` elsewhere): `sudo usermod -aG uucp $USER`, then log in again. The reader's 00 key is Enter in games whose 10-key has no 00.
+- `--scard`: NFC readers such as the ACR122U, through PC/SC. Needs `pcsc-lite` and `ccid`, and the service running: `systemctl enable --now pcscd.socket`. If the kernel's `pn533_usb` driver takes the ACR122U first, blacklist it (`echo "blacklist pn533_usb" | sudo tee /etc/modprobe.d/no-pn533.conf`). A card that isn't an e-AMUSEMENT PASS (FeliCa, a phone) gets an `E00401…` number, as spice2x's `-scardfix` does.
+- `--cardio`: cardio readers (USB HID), read through `/dev/hidraw*`, which only root can open by default. A udev rule lets you: `/etc/udev/rules.d/70-cardio.rules` with `KERNEL=="hidraw*", ATTRS{idVendor}=="VVVV", ATTRS{idProduct}=="PPPP", TAG+="uaccess"` (the reader's IDs: `lsusb`).
+
+The first reader of each kind is player 1's, the second player 2's. A card held to the reader is read once (it stays read for 3 s), and a card the game already holds has to be taken back (Insert, the card button) before another goes in.
+
+### Cabinet I/O: beatmania IIDX's BIO2
+
+`--bio2 PATH` (**Settings > Cabinet I/O**) takes a real IIDX cabinet's BIO2 board, as IIDX 25 and 26 drive it (its BI2A firmware), on its USB serial port. Its keys, turntables, start, EFFECT, VEFX, TEST, SERVICE, effector sliders and coin become the game's controls, and the game's lamps light its key lamps, panel, spotlights and neon, with the ticker showing beatmania IIDX's 16-segment display. It's for the beatmania games: IIDX on Twinkle uses everything, and III and the DJ Main games use what their cabinets have. A board with IIDX 27's BI2X firmware speaks Konami's newer ACIO2, which HIRAKU doesn't yet; it says so. The layout is spice2x's, not yet checked on a board: if the turntables turn the wrong way or a control is missing, `HK_ACIO_LOG=1` shows the board's packets.
+
 ## Latency
 
 **In the game:** HIRAKU measures it as the time from a key press to the RF5C400 starting the keysound. beatmania III scans its keys once per video frame (59.94 Hz), so this is **2–20 ms, mean about 9.5 ms**, exactly as on a real cabinet. Everything above that is the PC.

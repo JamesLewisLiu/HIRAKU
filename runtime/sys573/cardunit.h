@@ -46,11 +46,16 @@ public:
     // "Card" / "P2 Card" (insert, or take back), "Keypad 0".."Keypad 9", "Keypad Clear", ...
     // ("P2 Keypad ..." for the second reader)
     bool set_input(const std::string &name, int value);
+    // A real card reader read this card (readers.h): reader `player` takes the save folder's
+    // cards/NUMBER.bin (a blank card the first time) and it goes in. While another card is in the
+    // reader, nothing (the player takes that back first).
+    bool card_read(int player, const std::string &number);
     void save();   // the cards, as written
 
 private:
     struct Reader {
         std::string file;
+        std::string number;             // a real card's (card_read), or "": the save folder's card<N>.bin
         uint8_t data[128] = {};
         bool inserted = false;
         uint32_t keys = 0, last_keys = 0;   // held 10-key keys (bits of KEYS)

@@ -2,6 +2,8 @@
 // The e-AMUSEMENT GuitarFreaks and DrumMania's card units (cardunit.h).
 #include "sys573/cardunit.h"
 
+#include <sys/stat.h>
+
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -72,6 +74,30 @@ void CardUnit::select(bool extio) {
     if (log_ && machine_) fprintf(stderr, "card: %.6f switched %s\n", machine_->time().as_double(), extio ? "in" : "out");
     selected_ = extio;
     if (on_select) on_select(extio);
+}
+
+bool CardUnit::card_read(int player, const std::string &number) {
+    if (player < 0 || player >= (int)readers_.size()) return false;
+    Reader &r = readers_[player];
+    if (r.inserted) {
+        if (r.number != number) printf("card: reader %d holds a card: take it back first\n", player + 1);
+        return true;
+    }
+    if (r.number != number) {
+        save();
+        r.number = number;
+        r.file = dir_.empty() ? "" : dir_ + "/cards/" + number + ".bin";
+        if (!dir_.empty()) mkdir((dir_ + "/cards").c_str(), 0755);
+        static const uint8_t blank[] = {0x08, 0x1f, 0x7d, 0xf0, 0x56};   // as configure()'s
+        memset(r.data, 0, sizeof r.data);
+        memcpy(r.data, blank, sizeof blank);
+        if (FILE *f = r.file.empty() ? nullptr : fopen(r.file.c_str(), "rb")) {
+            if (fread(r.data, 1, sizeof r.data, f) != sizeof r.data) memcpy(r.data, blank, sizeof blank);
+            fclose(f);
+        }
+    }
+    r.inserted = true;
+    return true;
 }
 
 void CardUnit::save() {

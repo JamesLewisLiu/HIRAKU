@@ -122,7 +122,9 @@ QString softwareHtml() {
     h += "<li><b>" + link("https://www.qemu.org", "QEMU") +
          "</b> (GPL-2.0): the reference for the PowerPC instruction tests.</li>";
     h += "<li><b>" + link("https://spice2x.github.io", "spice2x") +
-         "</b>: the names and meanings of the e-AMUSEMENT options.</li>";
+         "</b> (GPL-3.0, the sp2xdev team and the SpiceTools contributors): the names and meanings of the "
+         "e-AMUSEMENT options, and the real card readers' and the BIO2 board's dialogue (its reader/ and "
+         "games/iidx/); its cardio (Felix) and PC/SC (nolm) readers (MIT) for what those readers send.</li>";
     h += "<li><b>" + link("https://remywiki.com", "RemyWiki") +
          "</b>: event codes, unlocks and song facts.</li>";
     h += "</ul>";

@@ -136,9 +136,21 @@ target_include_directories(hiraku_cabinet PUBLIC runtime)
 
 # --- the shell: what every machine core shares (runtime/shell/core.h) --------------
 # Input scripts; the host front end below. Cores provide hk::core().
-add_library(hiraku_shell STATIC runtime/host/script.cpp runtime/host/macro.cpp)
+add_library(hiraku_shell STATIC runtime/host/script.cpp runtime/host/macro.cpp runtime/host/acio.cpp runtime/host/readers.cpp
+            runtime/host/bio2.cpp)
 target_include_directories(hiraku_shell PUBLIC runtime)
-target_link_libraries(hiraku_shell PUBLIC hiraku_cabinet)
+find_package(Threads REQUIRED)
+target_link_libraries(hiraku_shell PUBLIC hiraku_cabinet Threads::Threads)
+# NFC card readers through PC/SC (runtime/host/readers.h, --scard): optional
+find_package(PkgConfig QUIET)
+if(PkgConfig_FOUND)
+  pkg_check_modules(PCSC QUIET IMPORTED_TARGET libpcsclite)
+endif()
+if(PCSC_FOUND)
+  target_link_libraries(hiraku_shell PRIVATE PkgConfig::PCSC)
+  target_compile_definitions(hiraku_shell PRIVATE HK_WITH_PCSC=1)
+  message(STATUS "hiraku: PC/SC ${PCSC_VERSION}: NFC card readers enabled")
+endif()
 
 # ATA/ATAPI bus and disc/disk images (both cores)
 # Disc and disk images, CHDs read in place (runtime/dev/image.h): libchdr (BSD-3), its FLAC

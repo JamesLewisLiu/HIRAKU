@@ -159,6 +159,7 @@ public:
     const uint8_t *mem(uint32_t addr, uint32_t len) const override { return k573::mem(addr, len); }
     uint64_t frame_count() const override { return k573::frame_count(); }
     bool set_input(const std::string &name, int value) override { return k573::set_input(name, value); }
+    bool card_read(int player, const std::string &number) override { return k573::card_read(player, number); }
     int script_button_delay() const override { return 1; }   // MAME latches digital inputs a frame late
     void turntable_add(int, int) override {}
     const std::vector<uint8_t> &lamp_state() const override { return k573::lamp_state(); }

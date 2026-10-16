@@ -442,36 +442,9 @@ public:
                     ea_.card[0] = id;
                     FileSystem::WriteStringToFile((run_dir_ + "/card0.txt").c_str(), ea_.card[0] + "\n");
                 }
-                printf("e-AMUSEMENT: IC card %s%s\n", ea_.card[0].c_str(), ea_.autocard[0] ? ", presented by itself" : "");
-                card_ = std::make_unique<hk::py::IcCardUnit>(ea_.card[0]);
-            } else {
-                std::string card_file = run_dir_ + "/card.bin";
-                if (!ea_.card[0].empty()) {
-                    mkdirs(run_dir_ + "/cards");
-                    card_file = run_dir_ + "/cards/" + ea_.card[0] + ".bin";
-                    printf("e-AMUSEMENT: card %s%s\n", ea_.card[0].c_str(), ea_.autocard[0] ? ", presented by itself" : "");
-                }
-                const bool had_card = exists(card_file);
-                auto unit = std::make_unique<hk::py::CardUnit>(card_file, hk::py::CardUnit::fresh_header(o.game));
-                // one card for all the pop'n games (docs/EAMUSE3.md, "One card for all"): a numbered
-                // card this game has never seen is shown as the game before's card, as that game left
-                // it in its save, so this game offers to carry the player over
-                static const std::map<std::string, std::string> before = {
-                    {"popn10", "popn9"}, {"popn11", "popn10"}, {"popn12", "popn11"}, {"popn13", "popn12"}};
-                if (!had_card && !ea_.card[0].empty() && !shared_saves_.empty())
-                    if (auto it = before.find(o.game); it != before.end()) {
-                        std::ifstream f(shared_saves_ + "/" + it->second + "/cards/" + ea_.card[0] + ".bin", std::ios::binary);
-                        std::vector<uint8_t> older((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
-                        if (older.size() == 128 && (older[0] & 0x40)) {   // a card that game registered
-                            unit->present_older(std::move(older));
-                            printf("e-AMUSEMENT: card %s is new to this game: it is shown as %s's, to carry its player over\n",
-                                   ea_.card[0].c_str(), it->second.c_str());
-                            unit->note = [](const std::string &s) { printf("card: %s\n", s.c_str()); fflush(stdout); };
-                            card_unit_ = unit.get();
-                        }
-                    }
-                card_ = std::move(unit);
             }
+            game_ = o.game;
+            make_card();
             hk::py::VirtualNet::Io io;
             io.write = [](uint32_t addr, const uint8_t *d, uint32_t n) { Hiraku::net_write(addr, d, n); };
             io.respond = [](uint32_t ch, const uint32_t w[8]) { Hiraku::net_respond(ch, w); };
@@ -638,6 +611,62 @@ public:
         return eeMem->Main + addr;
     }
     uint64_t frame_count() const override { return frame_; }
+
+    // The card reader for ea_.card[0] (-card0, card0.txt, a real reader's card): pop'n 14's IC card,
+    // or the magnetic card of pop'n 9-13, a file per number (cards/NUMBER.bin; card.bin without one)
+    void make_card() {
+        card_unit_ = nullptr;
+        if (game_ == "popn14") {
+            printf("e-AMUSEMENT: IC card %s%s\n", ea_.card[0].c_str(), ea_.autocard[0] ? ", presented by itself" : "");
+            card_ = std::make_unique<hk::py::IcCardUnit>(ea_.card[0]);
+            return;
+        }
+        std::string card_file = run_dir_ + "/card.bin";
+        if (!ea_.card[0].empty()) {
+            mkdirs(run_dir_ + "/cards");
+            card_file = run_dir_ + "/cards/" + ea_.card[0] + ".bin";
+            printf("e-AMUSEMENT: card %s%s\n", ea_.card[0].c_str(), ea_.autocard[0] ? ", presented by itself" : "");
+        }
+        const bool had_card = exists(card_file);
+        auto unit = std::make_unique<hk::py::CardUnit>(card_file, hk::py::CardUnit::fresh_header(game_));
+        // one card for all the pop'n games (docs/EAMUSE3.md, "One card for all"): a numbered
+        // card this game has never seen is shown as the game before's card, as that game left
+        // it in its save, so this game offers to carry the player over
+        static const std::map<std::string, std::string> before = {
+            {"popn10", "popn9"}, {"popn11", "popn10"}, {"popn12", "popn11"}, {"popn13", "popn12"}};
+        if (!had_card && !ea_.card[0].empty() && !shared_saves_.empty())
+            if (auto it = before.find(game_); it != before.end()) {
+                std::ifstream f(shared_saves_ + "/" + it->second + "/cards/" + ea_.card[0] + ".bin", std::ios::binary);
+                std::vector<uint8_t> older((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+                if (older.size() == 128 && (older[0] & 0x40)) {   // a card that game registered
+                    unit->present_older(std::move(older));
+                    printf("e-AMUSEMENT: card %s is new to this game: it is shown as %s's, to carry its player over\n",
+                           ea_.card[0].c_str(), it->second.c_str());
+                    unit->note = [](const std::string &s) { printf("card: %s\n", s.c_str()); fflush(stdout); };
+                    card_unit_ = unit.get();
+                }
+            }
+        card_ = std::move(unit);
+    }
+
+    // A real card reader's card (runtime/host/readers.h): player 1's card from now on, as -card0
+    // would have made it, and put to the slot. While the slot or the reader has a card, nothing:
+    // the player takes that back first.
+    bool card_read(int player, const std::string &number) override {
+        if (!card_ || player != 0) return false;
+        if (card_->card_offered()) {
+            if (number != ea_.card[0]) printf("card: the reader has a card: take it back first\n");
+            return true;
+        }
+        if (number != ea_.card[0]) {
+            ea_.card[0] = number;
+            make_card();
+        }
+        card_->card_button();
+        if (!card_->card_offered()) card_->card_button();   // that took back the card given out: now this one
+        card_changed();
+        return true;
+    }
 
     bool set_input(const std::string &name, int value) override {
         if (card_ && (name == "Card" || KEYPAD_SCAN.count(name))) {
@@ -931,6 +960,7 @@ private:
 
     Options opt_;
     std::string family_, run_dir_, py1_path_, io_mode_;
+    std::string game_;   // the game's id (popn9 ... popn14)
     std::unique_ptr<hk::py::CardReader> card_;
     FILE *card_log_ = nullptr;
     std::unique_ptr<hk::py::VirtualNet> net_;
