@@ -115,8 +115,7 @@ MainWindow::MainWindow() {
     connect(m_stop, &QAction::triggered, this, &MainWindow::stop);
     connect(m_controls, &QAction::triggered, this, [this] {
         auto *g = selected();
-        ControlsDialog d(g ? g->family : "bm3", this);
-        d.exec();
+        controls(g ? g->family : "bm3");
     });
     connect(m_lights, &QAction::triggered, this, [this] {
         auto *g = selected();
@@ -494,6 +493,14 @@ QStringList MainWindow::arguments(const Game &g) const {
     return a;
 }
 
+void MainWindow::controls(const QString &family) {
+    ControlsDialog d(family, this);
+    d.setGames(m_games);
+    if (d.exec() != QDialog::Accepted || d.gameToTry().isEmpty()) return;
+    statusBar()->showMessage("Trying the controls: once the game is running, " + d.testHint(), 60000);
+    play(d.gameToTry());
+}
+
 void MainWindow::play(const QString &id) {
     const Game *g = find(id);
     if (!g) {
@@ -556,8 +563,7 @@ void MainWindow::contextMenu(const QPoint &pos) {
     menu.addAction(m_play);
     menu.addSeparator();
     menu.addAction(QIcon::fromTheme("input-gaming"), "Controls for " + cfg::controlsSetName(cfg::controlsSet(family)) + "…", this, [this, family] {
-        ControlsDialog d(family, this);
-        d.exec();
+        controls(family);
     });
     menu.addAction("Lights for " + cfg::familyName(family) + "…", this, [this, family] {
         LightsDialog d(family, this);

@@ -36,6 +36,7 @@ private:
     QStringList arguments(const Game &g) const;
     void stop();
     void contextMenu(const QPoint &pos);
+    void controls(const QString &family);   // the Controls dialog, which can end by starting a game to try them
     void log(const QString &text);
 
     QList<Game> m_games;

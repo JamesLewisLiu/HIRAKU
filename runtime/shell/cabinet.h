@@ -40,6 +40,11 @@ struct Entry {
     int line = 0;
 };
 std::vector<Entry> parse_list_file(const std::string &text);
+
+// A controller as bindings name it ("joy[DAO FPS]:button3"): SDL's name, with the characters the
+// syntax uses ([ ] @ , # =) and control characters made '_', and no spaces at the ends. A second
+// controller of the same name is "<name>@2", and so on, in the order SDL lists them.
+std::string pad_name(const std::string &sdl_name);
 std::string format_entry(const std::string &name, const std::vector<std::string> &items);
 
 }  // namespace hk::cab

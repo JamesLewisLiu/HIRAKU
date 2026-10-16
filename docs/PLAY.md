@@ -147,7 +147,14 @@ Joysticks are opened at start and when plugged in. The console lists them as `jo
 
 The defaults map `joy0` buttons 0–4 to the keys (0–6 on IIDX), axis 0 to the turntable, button 7 to beatmania III's pedal, 8 to start and 9 to Effect (DJ Main, IIDX); coin is the 5 key.
 
-IIDX-style controllers differ in which button and axis numbers they use. The easiest way to map one is the launcher's **Controls** dialog: click a binding, then press the button or spin the turntable. Pressing anything already bound lights up its name, and a warning sign marks an input bound to two controls of one game. The dialog saves `~/.config/hiraku/controls/<cabinet>.txt`, which the launcher passes as `--bindings`. The beatmania cabinets (DJ Main, IIDX, III) share one file, `beatmania.txt`, and the pop'n music ones (DJ Main, Firebeat, Python) share `popn.txt`: each game uses the controls it has and ignores the rest.
+IIDX-style controllers differ in which button and axis numbers they use. The easiest way to map one is the launcher's **Controls** dialog: click a binding, then press the button or spin the turntable. Pressing anything lights up what it's bound to, and the dialog shows the last input pressed. A warning sign marks an input bound to two controls of one game, and binding one offers to move it.
+
+- **Controllers by name.** The dialog binds a controller by its name (`joy[DAO FPS]:button3`), so it keeps its bindings whichever order controllers are plugged in. Older bindings by number (`joy0`) still work; the dialog offers to tie them to the controllers connected.
+- **Set up**: *Bind all in turn* asks for each control in order (Back and Skip as you go). Each controller can take the cabinet's default layout or a layout you saved for it, as player 1 or 2, and player 1's controller can be copied to player 2's. Saved layouts live in `controls/layouts/` in the settings folder, so they carry to another PC.
+- **Turntables**: a binding's menu sets the speed (×0.5 to ×3) and can reverse the direction; the dial beside it turns as the game will see it.
+- **Try in a game** saves and starts one of the cabinet's games; press Test there for its I/O check.
+
+The dialog saves `~/.config/hiraku/controls/<cabinet>.txt`, which the launcher passes as `--bindings`. The beatmania cabinets (DJ Main, IIDX, III) share one file, `beatmania.txt`, and the pop'n music ones (DJ Main, Firebeat, Python) share `popn.txt`: each game uses the controls it has and ignores the rest.
 
 By hand: write a bindings file and pass `--bindings FILE`. See `docs/bindings-bm3.example`; the format is in `runtime/host/input.h`.
 

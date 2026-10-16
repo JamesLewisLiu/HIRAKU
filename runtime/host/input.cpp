@@ -4,6 +4,7 @@
 #include <SDL3/SDL.h>
 
 #include <cmath>
+#include <cstdlib>
 #include <cstdio>
 #include <fstream>
 #include <map>
@@ -22,11 +23,14 @@ struct Binding {
     Src src;
     int joy = 0, index = 0, hat_dir = 0;
     SDL_Keycode key = 0;
+    std::string dev = {};  // the controller by name (joy[<dev>]), or "": by number (joy<N>)
+    double scale = 1.0;    // an analog axis: its turntable counts times this (negative: reversed)
 };
 
 std::map<std::string, std::vector<Binding>> g_bind;   // input name -> bindings
 std::map<std::string, int> g_held;                    // input name -> number of bound sources down
 std::vector<SDL_Joystick *> g_joys;
+std::vector<std::string> g_joy_dev;                   // each one's name as bindings give it ("" once unplugged)
 int16_t g_axis_last[16][16];
 bool g_axis_seen[16][16];
 double g_tt_scale = 1024.0 / 65536.0 * 4;             // turntable counts per axis unit (one wrap = 4 x 256)
@@ -42,21 +46,42 @@ bool parse_binding(const std::string &b, Binding &out) {
         out.key = SDL_GetKeyFromName(k.c_str());
         return out.key != SDLK_UNKNOWN;
     }
-    int joy, idx;
+    // the controller: joy<N> by number (the order they were found), joy[<name>] by name
+    int joy = 0, idx;
+    std::string dev, r;
+    if (b.rfind("joy[", 0) == 0) {
+        size_t e = b.find("]:");
+        if (e == std::string::npos) return false;
+        dev = b.substr(4, e - 4);
+        r = b.substr(e + 2);
+    } else {
+        size_t c = b.find(':');
+        if (sscanf(b.c_str(), "joy%d:", &joy) != 1 || c == std::string::npos) return false;
+        r = b.substr(c + 1);
+    }
     char rest[32] = {};
-    if (sscanf(b.c_str(), "joy%d:button%d", &joy, &idx) == 2) { out = {Src::button, joy, idx}; return true; }
-    if (sscanf(b.c_str(), "joy%d:hat%d:%31s", &joy, &idx, rest) == 3) {
+    if (sscanf(r.c_str(), "button%d", &idx) == 1 && r.rfind("button", 0) == 0) {
+        out = {Src::button, joy, idx};
+    } else if (sscanf(r.c_str(), "hat%d:%31s", &idx, rest) == 2) {
         std::string d = rest;
         int dir = d == "up" ? SDL_HAT_UP : d == "down" ? SDL_HAT_DOWN : d == "left" ? SDL_HAT_LEFT : d == "right" ? SDL_HAT_RIGHT : 0;
         out = {Src::hat, joy, idx, dir};
-        return dir != 0;
+        if (!dir) return false;
+    } else if (sscanf(r.c_str(), "axis%d%31s", &idx, rest) >= 1) {
+        std::string x = rest;
+        out = {x == "-" ? Src::axis_neg : x == "+" ? Src::axis_pos : Src::axis, joy, idx};
+        if (!x.empty() && x[0] == '*') {   // axis<K>*<scale>: a turntable's speed, negative to reverse it
+            char *end = nullptr;
+            out.scale = strtod(x.c_str() + 1, &end);
+            if (*end || out.scale == 0) return false;
+        } else if (!x.empty() && x != "-" && x != "+") {
+            return false;
+        }
+    } else {
+        return false;
     }
-    if (sscanf(b.c_str(), "joy%d:axis%d%31s", &joy, &idx, rest) >= 2) {
-        std::string r = rest;
-        out = {r == "-" ? Src::axis_neg : r == "+" ? Src::axis_pos : Src::axis, joy, idx};
-        return true;
-    }
-    return false;
+    out.dev = dev;
+    return true;
 }
 
 void load_text(const std::string &text, const char *origin) {
@@ -86,6 +111,33 @@ int joy_index(SDL_JoystickID id) {
     return -1;
 }
 
+// The joystick a binding means now, or -1 (a named one that isn't plugged in)
+int bound_joy(const Binding &b) {
+    if (b.dev.empty()) return b.joy;
+    for (size_t k = 0; k < g_joy_dev.size(); k++)
+        if (g_joy_dev[k] == b.dev) return (int)k;
+    return -1;
+}
+
+bool from(const Binding &b, SDL_JoystickID id) {
+    int j = joy_index(id);
+    return j >= 0 && j == bound_joy(b);
+}
+
+// Slots stay as they were found (joy<N> keeps its meaning); an unplugged one loses its name, so a
+// controller plugged back in gets it again rather than "<name>@2"
+void add_joystick(SDL_Joystick *j) {
+    std::string name = cab::pad_name(SDL_GetJoystickName(j) ? SDL_GetJoystickName(j) : ""), dev = name;
+    int same = 1;
+    for (auto &d : g_joy_dev)
+        if (d == name || d.rfind(name + "@", 0) == 0) same++;
+    if (same > 1) dev += "@" + std::to_string(same);
+    g_joys.push_back(j);
+    g_joy_dev.push_back(dev);
+    fprintf(stderr, "input: joy%zu = joy[%s] (%d buttons, %d axes)\n", g_joys.size() - 1, dev.c_str(), SDL_GetNumJoystickButtons(j),
+            SDL_GetNumJoystickAxes(j));
+}
+
 }  // namespace
 
 void input_init(const std::string &file) {
@@ -99,22 +151,21 @@ void input_init(const std::string &file) {
     int n = 0;
     SDL_JoystickID *ids = SDL_GetJoysticks(&n);
     for (int k = 0; k < n; k++)
-        if (SDL_Joystick *j = SDL_OpenJoystick(ids[k])) {
-            g_joys.push_back(j);
-            fprintf(stderr, "input: joy%zu = %s (%d buttons, %d axes)\n", g_joys.size() - 1, SDL_GetJoystickName(j),
-                    SDL_GetNumJoystickButtons(j), SDL_GetNumJoystickAxes(j));
-        }
+        if (SDL_Joystick *j = SDL_OpenJoystick(ids[k])) add_joystick(j);
     SDL_free(ids);
 }
 
 void input_joystick_added(unsigned int id) {
     for (auto *j : g_joys)
         if (SDL_GetJoystickID(j) == id) return;   // already open (enumerated at start)
-    if (SDL_Joystick *j = SDL_OpenJoystick(id)) {
-        g_joys.push_back(j);
-        fprintf(stderr, "input: joy%zu = %s (%d buttons, %d axes) connected\n", g_joys.size() - 1, SDL_GetJoystickName(j),
-                SDL_GetNumJoystickButtons(j), SDL_GetNumJoystickAxes(j));
-    }
+    if (SDL_Joystick *j = SDL_OpenJoystick(id)) add_joystick(j);
+}
+
+void input_joystick_removed(unsigned int id) {
+    int k = joy_index(id);
+    if (k < 0 || g_joy_dev[k].empty()) return;
+    fprintf(stderr, "input: joy%d = joy[%s] unplugged\n", k, g_joy_dev[k].c_str());
+    g_joy_dev[k].clear();
 }
 
 void input_event(const SDL_Event &e) {
@@ -127,17 +178,17 @@ void input_event(const SDL_Event &e) {
                 break;
             case SDL_EVENT_JOYSTICK_BUTTON_DOWN:
             case SDL_EVENT_JOYSTICK_BUTTON_UP:
-                if (b.src == Src::button && joy_index(e.jbutton.which) == b.joy && e.jbutton.button == b.index)
+                if (b.src == Src::button && from(b, e.jbutton.which) && e.jbutton.button == b.index)
                     press(name, e.type == SDL_EVENT_JOYSTICK_BUTTON_DOWN);
                 break;
             case SDL_EVENT_JOYSTICK_HAT_MOTION:
-                if (b.src == Src::hat && joy_index(e.jhat.which) == b.joy && e.jhat.hat == b.index) {
+                if (b.src == Src::hat && from(b, e.jhat.which) && e.jhat.hat == b.index) {
                     bool down = (e.jhat.value & b.hat_dir) != 0;
                     if (down != (g_held[name] > 0)) press(name, down);
                 }
                 break;
             case SDL_EVENT_JOYSTICK_AXIS_MOTION:
-                if ((b.src == Src::axis_neg || b.src == Src::axis_pos) && joy_index(e.jaxis.which) == b.joy && e.jaxis.axis == b.index) {
+                if ((b.src == Src::axis_neg || b.src == Src::axis_pos) && from(b, e.jaxis.which) && e.jaxis.axis == b.index) {
                     bool down = b.src == Src::axis_neg ? e.jaxis.value < -16384 : e.jaxis.value > 16384;
                     if (down != (g_held[name] > 0)) press(name, down);
                 }
@@ -159,16 +210,17 @@ void input_update(double ms) {
         if (whole) core().turntable_add(p, whole);
         // analog axis: follow its motion (wrapping, as turntable encoders do)
         for (auto &b : g_bind[base]) {
-            if (b.src != Src::axis || b.joy >= (int)g_joys.size() || b.index >= 16) continue;
-            int16_t a = SDL_GetJoystickAxis(g_joys[b.joy], b.index);
-            if (g_axis_seen[b.joy][b.index]) {
-                int d = (int)a - g_axis_last[b.joy][b.index];
+            int j = bound_joy(b);
+            if (b.src != Src::axis || j < 0 || j >= (int)g_joys.size() || j >= 16 || b.index >= 16) continue;
+            int16_t a = SDL_GetJoystickAxis(g_joys[j], b.index);
+            if (g_axis_seen[j][b.index]) {
+                int d = (int)a - g_axis_last[j][b.index];
                 if (d > 32768) d -= 65536;
                 if (d < -32768) d += 65536;
-                if (d) core().turntable_add(p, (int)std::lround(d * g_tt_scale));
+                if (d) core().turntable_add(p, (int)std::lround(d * g_tt_scale * b.scale));
             }
-            g_axis_last[b.joy][b.index] = a;
-            g_axis_seen[b.joy][b.index] = true;
+            g_axis_last[j][b.index] = a;
+            g_axis_seen[j][b.index] = true;
         }
     }
 }
@@ -179,14 +231,19 @@ std::string input_describe() {
         s += "  " + name + " =";
         for (auto &b : list) {
             char buf[64];
+            const std::string pad = b.dev.empty() ? "joy" + std::to_string(b.joy) : "joy[" + b.dev + "]";
+            const char *P = pad.c_str();
             switch (b.src) {
             case Src::key: snprintf(buf, sizeof buf, " key:%s", SDL_GetKeyName(b.key)); break;
-            case Src::button: snprintf(buf, sizeof buf, " joy%d:button%d", b.joy, b.index); break;
-            case Src::axis: snprintf(buf, sizeof buf, " joy%d:axis%d", b.joy, b.index); break;
-            case Src::axis_neg: snprintf(buf, sizeof buf, " joy%d:axis%d-", b.joy, b.index); break;
-            case Src::axis_pos: snprintf(buf, sizeof buf, " joy%d:axis%d+", b.joy, b.index); break;
+            case Src::button: snprintf(buf, sizeof buf, " %s:button%d", P, b.index); break;
+            case Src::axis:
+                if (b.scale != 1.0) snprintf(buf, sizeof buf, " %s:axis%d*%g", P, b.index, b.scale);
+                else snprintf(buf, sizeof buf, " %s:axis%d", P, b.index);
+                break;
+            case Src::axis_neg: snprintf(buf, sizeof buf, " %s:axis%d-", P, b.index); break;
+            case Src::axis_pos: snprintf(buf, sizeof buf, " %s:axis%d+", P, b.index); break;
             case Src::hat:
-                snprintf(buf, sizeof buf, " joy%d:hat%d:%s", b.joy, b.index,
+                snprintf(buf, sizeof buf, " %s:hat%d:%s", P, b.index,
                          b.hat_dir == SDL_HAT_UP ? "up" : b.hat_dir == SDL_HAT_DOWN ? "down" : b.hat_dir == SDL_HAT_LEFT ? "left" : "right");
                 break;
             }

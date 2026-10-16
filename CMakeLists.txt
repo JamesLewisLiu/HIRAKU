@@ -246,6 +246,7 @@ if(Qt6_FOUND AND TARGET hiraku_hidout)
     launcher/games.cpp
     launcher/inputs.cpp
     launcher/mainwindow.cpp
+    launcher/capturedialog.cpp
     launcher/controlsdialog.cpp
     launcher/lightsdialog.cpp
     launcher/settingsdialog.cpp

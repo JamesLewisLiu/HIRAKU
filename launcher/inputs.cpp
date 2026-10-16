@@ -6,6 +6,8 @@
 
 #include <SDL3/SDL.h>
 
+#include <cmath>
+
 namespace {
 
 // The runtime spells these by name: ',' separates bindings (runtime/host/input.cpp)
@@ -108,12 +110,62 @@ QString describeBinding(const QString &b) {
             if (k == a.alias) return QString(a.key);
         return k;
     }
-    static const QRegularExpression re(R"(^joy(\d+):(button|axis|hat)(\d+)(.*)$)");
-    auto m = re.match(b);
-    if (!m.hasMatch()) return b;
-    QString rest = m.captured(4);
+    static const QRegularExpression re(R"(^(button|axis|hat)(\d+)(.*)$)");
+    QString pad = bindingPad(b);
+    auto m = re.match(bindingRest(b));
+    if (pad.isEmpty() || !m.hasMatch()) return b;
+    QString who = pad.startsWith("joy[") ? pad.mid(4, pad.size() - 5).replace('@', " (") + (pad.contains('@') ? ")" : "")
+                                         : "Pad " + pad.mid(3);
+    QString rest = m.captured(3);
     if (rest.startsWith(':')) rest = " " + rest.mid(1);
-    return QString("Pad %1: %2 %3%4").arg(m.captured(1), m.captured(2), m.captured(3), rest);
+    if (rest.startsWith('*')) {
+        double s = axisScale(b);
+        QStringList how;
+        if (s < 0) how << "reversed";
+        if (std::abs(s) != 1) how << QString("×%1").arg(std::abs(s));
+        rest = how.isEmpty() ? QString() : " (" + how.join(", ") + ")";
+    }
+    return QString("%1: %2 %3%4").arg(who, m.captured(1), m.captured(2), rest);
+}
+
+QString bindingPad(const QString &b) {
+    if (b.startsWith("key:")) return "key";
+    if (b.startsWith("joy[")) {
+        int e = b.indexOf("]:");
+        return e < 0 ? QString() : b.left(e + 1);
+    }
+    static const QRegularExpression re(R"(^joy\d+(?=:))");
+    return re.match(b).captured(0);
+}
+
+QString bindingRest(const QString &b) {
+    QString pad = bindingPad(b);
+    return pad.isEmpty() ? b : b.mid(pad.size() + 1);
+}
+
+QString bindingWith(const QString &pad, const QString &rest) { return pad + ":" + rest; }
+
+QString canonicalBinding(const QString &b) {
+    QString pad = bindingPad(b), rest = bindingRest(b);
+    if (pad.isEmpty() || pad == "key") return b;
+    if (int j = Joysticks::instance().indexOf(pad); j >= 0) pad = QString("joy%1").arg(j);
+    if (int star = rest.indexOf('*'); star >= 0) rest.truncate(star);
+    return bindingWith(pad, rest);
+}
+
+double axisScale(const QString &b) {
+    QString rest = bindingRest(b);
+    int star = rest.indexOf('*');
+    bool ok = false;
+    double s = star < 0 ? 1.0 : rest.mid(star + 1).toDouble(&ok);
+    return star < 0 || (ok && s != 0) ? s : 1.0;
+}
+
+QString withAxisScale(const QString &b, double scale) {
+    QString rest = bindingRest(b);
+    if (int star = rest.indexOf('*'); star >= 0) rest.truncate(star);
+    if (scale != 1.0) rest += "*" + QString::number(scale, 'g', 4);
+    return bindingWith(bindingPad(b), rest);
 }
 
 QString normalizeBinding(const QString &b) {
@@ -141,11 +193,38 @@ Joysticks::Joysticks() {
 void Joysticks::reopen() {
     for (void *j : m_joys) SDL_CloseJoystick((SDL_Joystick *)j);
     m_joys.clear();
+    m_pads.clear();
     int n = 0;
     SDL_JoystickID *ids = SDL_GetJoysticks(&n);
     for (int k = 0; k < n; k++)
-        if (SDL_Joystick *j = SDL_OpenJoystick(ids[k])) m_joys.push_back(j);
+        if (SDL_Joystick *j = SDL_OpenJoystick(ids[k])) {
+            // as the runtime names them (runtime/host/input.cpp add_joystick): a second of a name is "<name>@2"
+            const char *raw = SDL_GetJoystickName(j);
+            QString name = QString::fromStdString(hk::cab::pad_name(raw ? raw : ""));
+            int same = 1;
+            for (const QString &p : m_pads)
+                if (p == "joy[" + name + "]" || p.startsWith("joy[" + name + "@")) same++;
+            m_joys.push_back(j);
+            m_pads << "joy[" + name + (same > 1 ? QString("@%1").arg(same) : QString()) + "]";
+        }
     SDL_free(ids);
+}
+
+QString Joysticks::pad(int joy) const { return joy >= 0 && joy < m_pads.size() ? m_pads[joy] : QString(); }
+
+QString Joysticks::label(int joy) const {
+    QString p = pad(joy);
+    if (p.isEmpty()) return {};
+    p = p.mid(4, p.size() - 5);
+    int at = p.indexOf('@');
+    return at < 0 ? p : p.left(at) + " (" + p.mid(at + 1) + ")";
+}
+
+int Joysticks::indexOf(const QString &pad) const {
+    if (pad.startsWith("joy[")) return (int)m_pads.indexOf(pad);
+    bool ok = false;
+    int j = pad.mid(3).toInt(&ok);
+    return pad.startsWith("joy") && ok && j >= 0 && j < m_joys.size() ? j : -1;
 }
 
 QStringList Joysticks::names() const {

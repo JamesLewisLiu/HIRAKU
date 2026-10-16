@@ -8,10 +8,14 @@
 //             "Test", "Service", "P1 Foot", "Effect 3"), or a turntable:
 //             "P1 Turntable" (an analog axis), "P1 Turntable -" / "+" (buttons)
 //   binding:  key:<SDL key name>        e.g. key:Z, key:Left Shift, key:F2
-//             joy<N>:button<K>          joystick N (0-based), button K
-//             joy<N>:axis<K>            analog axis (turntables)
-//             joy<N>:axis<K>-, +        an axis direction used as a button
-//             joy<N>:hat<K>:<up|down|left|right>
+//             <pad>:button<K>           a controller's button K
+//             <pad>:axis<K>             analog axis (turntables)
+//             <pad>:axis<K>*<S>         the same, turning S times as fast (negative: reversed)
+//             <pad>:axis<K>-, +         an axis direction used as a button
+//             <pad>:hat<K>:<up|down|left|right>
+//   pad:      joy<N>                    controller N (0-based), in the order they were found
+//             joy[<name>]               the controller of that name (cab::pad_name: "DAO FPS"),
+//                                       wherever it is plugged in; "<name>@2" a second one
 // Defaults for the game's family are built in (runtime/shell/cabinet.cpp); a
 // file only needs the changes.
 #pragma once
@@ -25,6 +29,7 @@ namespace hk::host {
 void input_init(const std::string &bindings_file);   // "" = defaults only
 void input_event(const SDL_Event &e);
 void input_joystick_added(unsigned int instance_id);   // hot-plugged controller
+void input_joystick_removed(unsigned int instance_id); // unplugged
 void input_update(double elapsed_ms);                 // turntable keys, analog axes
 std::string input_describe();                         // the active bindings, for --help
 

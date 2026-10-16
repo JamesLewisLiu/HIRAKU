@@ -479,6 +479,13 @@ std::vector<Entry> parse_list_file(const std::string &text) {
     return out;
 }
 
+std::string pad_name(const std::string &sdl_name) {
+    std::string s;
+    for (char c : sdl_name) s += (unsigned char)c < 0x20 || std::string("[]@,#=").find(c) != std::string::npos ? '_' : c;
+    s = trim(s);
+    return s.empty() ? "Controller" : s;
+}
+
 std::string format_entry(const std::string &name, const std::vector<std::string> &items) {
     std::string s = name + " =";
     for (size_t k = 0; k < items.size(); k++) s += (k ? ", " : " ") + items[k];

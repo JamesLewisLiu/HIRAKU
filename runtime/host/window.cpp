@@ -121,6 +121,7 @@ void poll() {
         if (e.type == SDL_EVENT_WINDOW_ENTER_FULLSCREEN) SDL_HideCursor();
         if (e.type == SDL_EVENT_WINDOW_LEAVE_FULLSCREEN) SDL_ShowCursor();
         if (e.type == SDL_EVENT_JOYSTICK_ADDED) input_joystick_added(e.jdevice.which);
+        if (e.type == SDL_EVENT_JOYSTICK_REMOVED) input_joystick_removed(e.jdevice.which);
         input_event(e);
     }
     auto now = std::chrono::steady_clock::now();
