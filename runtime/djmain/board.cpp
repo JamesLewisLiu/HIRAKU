@@ -19,6 +19,8 @@
 #include "k056832.h"
 #include "m68k.h"
 
+extern "C" void hk_dj_itrace_frame(uint64_t frame);   // HK_DJ_ITRACE (below)
+
 namespace hk::dj {
 
 namespace {
@@ -114,13 +116,19 @@ void vb_interrupt() {
 // interrupt, so an instant interrupt (before it sleeps) would be lost. Here
 // the drive shows BSY and the interrupt waits until the busy time is over.
 // ---------------------------------------------------------------------------
-constexpr int HDD_HEADS = 16, HDD_SECTORS = 63;
+uint32_t g_hdd_heads = 16, g_hdd_sectors = 63;   // the disk's geometry (Config::hdd_chs)
 uint64_t g_ata_busy_until = 0;       // CPU clock when the drive stops being busy
 bool g_ata_irq_deferred = false;      // AtaBus raised its interrupt while busy
 bool g_ata_event = false;             // a busy period is pending
 uint8_t g_ata_regs[8]{};              // the task file as written (for the LBA)
 uint8_t g_ata_command = 0;
 uint64_t g_ata_cur_lba = 0;           // MAME m_cur_lba: where the heads are
+// a PIO read in progress (READ SECTORS / MULTIPLE): MAME moves the heads a sector at a time, as each
+// sector is loaded (next_sector() in finished_read()), and a sector loads only once the game has
+// read the one before. So where the heads are at the next command depends on how much was read.
+bool g_ata_pio_read = false;
+uint64_t g_ata_pio_start = 0;
+uint32_t g_ata_pio_count = 0, g_ata_pio_words = 0;
 uint64_t g_ata_index_since = 0;       // CPU clock of the last status read that showed IDX
 uint32_t g_hdd_cylinders = 1;
 
@@ -166,12 +174,23 @@ uint64_t ata_lba() {
     const uint8_t dev = g_ata_regs[6];
     if (dev & 0x40) return (uint64_t)(dev & 0x0f) << 24 | (uint64_t)g_ata_regs[5] << 16 | (uint64_t)g_ata_regs[4] << 8 | g_ata_regs[3];
     const uint32_t cyl = (uint32_t)g_ata_regs[5] << 8 | g_ata_regs[4];
-    return ((uint64_t)cyl * HDD_HEADS + (dev & 0x0f)) * HDD_SECTORS + (g_ata_regs[3] ? g_ata_regs[3] - 1 : 0);
+    return ((uint64_t)cyl * g_hdd_heads + (dev & 0x0f)) * g_hdd_sectors + (g_ata_regs[3] ? g_ata_regs[3] - 1 : 0);
+}
+
+// MAME m_cur_lba after a PIO read: one next_sector() for every sector loaded but the last of the
+// command. The first loads when the command completes, each next once the game has read the one
+// before (fill_buffer()).
+void ata_settle_heads() {
+    if (!g_ata_pio_read) return;
+    g_ata_pio_read = false;
+    const uint32_t loaded = std::min<uint32_t>(g_ata_pio_count, 1 + g_ata_pio_words / 256);
+    g_ata_cur_lba = g_ata_pio_start + loaded - (loaded == g_ata_pio_count ? 1 : 0);
 }
 
 // MAME seek_time(): from the current cylinder to the command's
 uint64_t ata_seek_cycles() {
-    const uint64_t spc = HDD_HEADS * HDD_SECTORS, lba = ata_lba();
+    ata_settle_heads();
+    const uint64_t spc = (uint64_t)g_hdd_heads * g_hdd_sectors, lba = ata_lba();
     const int64_t diff = std::llabs((int64_t)(g_ata_cur_lba / spc) - (int64_t)(lba / spc));
     g_ata_cur_lba = lba;
     if (diff == 0) return as_to_cycles(TIME_BETWEEN_SECTORS_AS);
@@ -189,14 +208,24 @@ void ata_write(int cs, int reg, uint16_t v) {
                     (double)now() / CPU_HZ, m68k_get_reg(nullptr, M68K_REG_PPC), g_ata_command, (unsigned long long)ata_lba(),
                     g_ata_regs[2]);
         switch (g_ata_command) {
-        case 0x20: case 0x21: case 0xc4: case 0xc8: case 0xc9: case 0x40: case 0x41: {
+        case 0x20: case 0x21: case 0xc4: {
             ata_start_busy(ata_seek_cycles());   // read_first_sector()
-            // MAME next_sector(): the heads follow every sector but the last
+            // the heads follow the sectors as the game reads them (ata_settle_heads)
+            g_ata_pio_read = true;
+            g_ata_pio_start = g_ata_cur_lba;
+            g_ata_pio_count = g_ata_regs[2] ? g_ata_regs[2] : 256;
+            g_ata_pio_words = 0;
+            break;
+        }
+        case 0xc8: case 0xc9: case 0x40: case 0x41: {
+            ata_start_busy(ata_seek_cycles());   // read_first_sector()
+            // DMA and VERIFY run through every sector: MAME's next_sector() for all but the last
             const uint32_t count = g_ata_regs[2] ? g_ata_regs[2] : 256;
             g_ata_cur_lba += count - 1;
             break;
         }
         case 0xec: case 0x10: case 0x91: case 0xef: case 0xe7:
+            ata_settle_heads();
             ata_start_busy(as_to_cycles(MINIMUM_COMMAND_TIME_AS));
             break;
         default:
@@ -224,6 +253,7 @@ uint16_t ata_read(int cs, int reg) {
         if (cs == 0 || status) return ata_index(0xd0);   // BSY | DRDY | DSC
     }
     const bool irq_before = g_hold1;
+    if (cs == 0 && reg == 0 && g_ata_pio_read) g_ata_pio_words++;
     uint16_t v = g_ata.read(cs, reg);
     if (status) v = ata_index(v);
     // READ SECTORS: the next sector's interrupt comes 400 ns after the last word
@@ -339,6 +369,15 @@ uint32_t turntable_r(uint32_t mask) {
     return result;
 }
 
+// HK_DJ_UNMAPPED=1: the first 40 accesses outside the map, with the PC (MAME logs its own unmapped ones)
+void log_unmapped(const char *what, uint32_t a, uint32_t data, uint32_t mask) {
+    static const bool on = getenv("HK_DJ_UNMAPPED") != nullptr;
+    static int n = 0;
+    if (on && n++ < 40)
+        fprintf(stderr, "unmapped %s %06x = %08x mask %08x at pc %06x\n", what, a, data, mask,
+                m68k_get_reg(nullptr, M68K_REG_PPC));
+}
+
 uint32_t bus_read32(uint32_t a, uint32_t mask) {
     a &= 0xfffffc;   // 24-bit address bus (68EC020), dword aligned
     if (a < 0x100000) return be32(g_rom, a);
@@ -392,6 +431,7 @@ uint32_t bus_read32(uint32_t a, uint32_t mask) {
     if (a - g_ata_base[1] < 0x10)
         return read16x2((a - g_ata_base[1]) >> 2, mask, [](uint32_t o, uint16_t) { return (uint32_t)ata_read(1, (int)o); });
     g_stats.unmapped++;
+    log_unmapped("read", a, 0, mask);
     return 0;
 }
 
@@ -468,6 +508,7 @@ void bus_write32(uint32_t a, uint32_t data, uint32_t mask) {
     if (a - g_ata_base[1] < 0x10)
         return write16x2((a - g_ata_base[1]) >> 2, data, mask, [](uint32_t o, uint16_t d, uint16_t) { ata_write(1, (int)o, d); });
     g_stats.unmapped++;
+    log_unmapped("write", a, data, mask);
 }
 
 // Byte lanes of address a within its dword (big-endian)
@@ -699,13 +740,18 @@ bool init(const Config &cfg) {
         return false;
     }
     g_ata_disk_sectors = disk->disk->sectors();
+    // MAME's drive takes the geometry from the CHD; its cylinders set the seek times
+    g_hdd_heads = cfg.hdd_chs[1] ? cfg.hdd_chs[1] : 16;
+    g_hdd_sectors = cfg.hdd_chs[2] ? cfg.hdd_chs[2] : 63;
+    disk->disk->set_geometry(cfg.hdd_chs[0], g_hdd_heads, g_hdd_sectors);
     disk->master_password = cfg.ata_master_password;   // MAME init_<game>(): complete MIX and later
     disk->user_password = cfg.ata_user_password;
     g_ata.attach(0, std::move(disk));
     g_ata.log = cfg.ata_log;
     g_ata.pio_end_irq = false;   // MAME's drive
     g_ata.irq = ata_irq_from_bus;
-    g_hdd_cylinders = std::max<uint32_t>(1, std::min<uint32_t>(g_ata_disk_sectors / (HDD_HEADS * HDD_SECTORS), 16383));
+    g_hdd_cylinders = std::max<uint32_t>(1, cfg.hdd_chs[0] ? cfg.hdd_chs[0] :
+                                                std::min<uint32_t>(g_ata_disk_sectors / (g_hdd_heads * g_hdd_sectors), 16383));
     update_lamps();
 
     m68k_init();
@@ -744,6 +790,7 @@ void run() {
         screen_update();
         sound_flush();
         if (g_frame_hook) g_frame_hook(g_frame, g_screen.data(), SCREEN_W, SCREEN_H);
+        hk_dj_itrace_frame(g_frame);
         run_until(g_frame * FRAME_CYCLES + VBLANK_CYCLES);
         if (g_present_hook) {
             screen_update();
@@ -830,6 +877,33 @@ void m68k_write_memory_32(unsigned int a, unsigned int v) { hk::dj::write32(a, v
 unsigned int m68k_read_disassembler_8(unsigned int a) { return hk::dj::read8(a); }
 unsigned int m68k_read_disassembler_16(unsigned int a) { return hk::dj::read16(a); }
 unsigned int m68k_read_disassembler_32(unsigned int a) { return hk::dj::read32(a); }
+
+// HK_DJ_ITRACE=FROM,TO,FILE: every instruction run from frame FROM's end to frame TO's, as
+// "PC: disassembly" lines, to compare with MAME's debugger trace (oracle .his `itrace on|off`)
+int hk_dj_itrace_on = 0;
+static FILE *g_itrace_file = nullptr;
+
+void hk_dj_itrace(unsigned int pc) {
+    char buf[128];
+    m68k_disassemble(buf, pc, M68K_CPU_TYPE_68EC020);
+    fprintf(g_itrace_file, "%llu %06X: %s\n", (unsigned long long)(hk::dj::g_cycles + m68k_cycles_run()), pc, buf);
+}
+
+// at each frame's end: start or stop the trace
+void hk_dj_itrace_frame(uint64_t frame) {
+    static long from = -1, to = -1;
+    static bool parsed = false;
+    if (!parsed) {
+        parsed = true;
+        if (const char *e = getenv("HK_DJ_ITRACE")) {
+            char file[512] = {};
+            if (sscanf(e, "%ld,%ld,%511s", &from, &to, file) == 3) g_itrace_file = fopen(file, "w");
+        }
+    }
+    if (!g_itrace_file) return;
+    hk_dj_itrace_on = (long)frame >= from && (long)frame < to;
+    if ((long)frame == to) fflush(g_itrace_file);
+}
 
 int hk_dj_int_ack(int level) {
     // HOLD_LINE: the acknowledge clears the line

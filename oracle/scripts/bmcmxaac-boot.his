@@ -1,0 +1,13 @@
+# beatmania complete MIX (ver AA-C), Konami 1999: as bm1stmix-boot.his.
+# beatmania (DJ Main): power-on -> POST -> attract, no inputs. Hashes the work
+# RAM, the sprite list and the palette every frame, snapshots every 60 frames
+# (POST, the S RAM test, the HDD check, then attract mode), so HIRAKU's
+# DJ Main core can be compared with MAME frame by frame.
+game bmcmxaac
+
+hash ram  0x400000 0x410000     # 68EC020 work RAM
+hash obj  0x801000 0x801800     # sprite list
+hash pal  0x480000 0x484440     # palette
+
+from 0 every 60 snap
+at 9000 quit

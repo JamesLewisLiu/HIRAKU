@@ -89,10 +89,13 @@ if [[ -n "${MAME_BIN:-}" ]]; then
 else
     extra=()
     [[ -n "${HIRAKU_LUA:-}" ]] && extra=(--filesystem="$(dirname "$(realpath "$HIRAKU_LUA")")":ro --env=HIRAKU_LUA="$(realpath "$HIRAKU_LUA")")
+    # a rompath of links (out/oracle-roms: an archive under MAME's current names) points elsewhere
+    while IFS= read -r d; do extra+=(--filesystem="$d":ro); done < <(
+        find "$roms" -maxdepth 1 -type l -exec realpath {} + 2>/dev/null | xargs -r -d '\n' -n1 dirname | sort -u)
     # The flatpak sees only what it is given: every path and every variable.
     "${cap[@]}" flatpak run \
         --filesystem="$roms":ro --filesystem="$root" --filesystem="$(dirname "$script")":ro "${extra[@]}" \
-        --env=HIRAKU_OUT="$out" --env=HIRAKU_SCRIPT="$script" --env=HIRAKU_TAPS="${HIRAKU_TAPS:-all}" --env=HIRAKU_NOFOLD="${HIRAKU_NOFOLD:-}" \
+        --env=HIRAKU_OUT="$out" --env=HIRAKU_ITRACE_CYCLES="${HIRAKU_ITRACE_CYCLES:-}" --env=HIRAKU_SCRIPT="$script" --env=HIRAKU_TAPS="${HIRAKU_TAPS:-all}" --env=HIRAKU_NOFOLD="${HIRAKU_NOFOLD:-}" \
         org.mamedev.MAME "${args[@]}" > "$out/mame.log" 2>&1 || true
 fi
 

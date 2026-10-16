@@ -12,3 +12,4 @@ tiles   = ["970jba07.22d", "970jba08.23d", "970jba09.25d", "970jba10.27d"]
 
 [hdd]
 chd = "970jba11"
+chs = "12316,16,32"       # its geometry (cylinders, heads, sectors), as the CHD gives it to MAME's drive

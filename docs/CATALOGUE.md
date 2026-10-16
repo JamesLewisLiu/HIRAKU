@@ -236,6 +236,36 @@ The order is by what each step costs against what it opens. Every step keeps the
 - **DDR 3rd regional (B):** `ddr3mk`, `ddr3mka`, `ddr3ma`, on `ddr3mj`'s path.
 - **Exit:** each listed set boots and plays a song, and the launcher shows it ready.
 
+#### Phase 1 progress (2026-10-16)
+
+**Installed from the archive: 19 games.**
+- DJ Main: `bm2ndmixa`, `bm3rdmixa`, `bmclubmx`, `bmcompmxb`, `bs4thmix`, `hmcompmx`, `hmcompm2`, `popn1a`, `popn1k`, `popnstex`.
+- System 573: `ddr3mk` (with the rar's installed NVRAM as its seed), `ddr3mka`, `ddr3ma`.
+- Twinkle: `bmiidx3a`, `bmiidx3b`, `bmiidxa`, `bmiidxsa`, `bmiidx7`, `bmiidx6a`.
+- New manifests: the six IIDX revisions and the three DDR 3rd regional versions.
+- A revision shares its parent's video disc and hard disk: a hard link, or a symbolic one where the parent's sits on another filesystem.
+
+**Ingest learned three more things:**
+- ROM file names an older MAME used, told by CRC (`803k a01.bin` is now `803k_a01.bin`).
+- `--game ID`, for a clone inside its parent's merged set (the rar's `ddr3mk.zip` holds `ddr3mka`/`ddr3ma`).
+- CD sharing between games.
+
+**Every game checked against MAME at boot.**
+- Same script, MAME's power-on clock; an `out/oracle-roms` rompath of links under current names; Twinkle `--mame-cd`.
+- **All in lockstep:** main/work RAM on every frame, every snapshot.
+- `bmiidxa` (1st style) is checked against the SIO1-patched MAME (`oracle/mame-patches`), as `bmiidx` is: stock MAME stops it at E600.
+- The DDR Korea/Asia clones must not get the archive's own zips: MAME then loads their pre-master cassette dumps by name.
+
+**DJ Main, the whole catalogue in lockstep.**
+- Checking the new DJ Main sets showed the known M13 gap (PLAN.md): later games leave MAME's RAM about 78 s in.
+- **Two causes:**
+  1. Musashi's per-bit cost on rotates by a register count, which MAME doesn't charge before the 68030.
+  2. Each disk's own geometry: MAME's drive takes it from the CHD; HIRAKU assumed 16×63.
+- Found by cycle-stamped instruction traces of both CPUs (`HK_DJ_ITRACE`, `HIRAKU_ITRACE_CYCLES=1`).
+- **Now all 25 DJ Main sets on hand run cycle-exact through boot and attract.** `bscompmx` and `popn1` have no media here.
+- Regress cases `bmclubmx-boot`, `bmcompm2-boot` and `popnstex-boot` are added, with baselines recorded.
+- Still to do: a scripted game on each IIDX revision against MAME (running), the DDR 3rd regional install and a stage, and the launcher check.
+
 ### Phase 2: System 573 analog catalogue (1–2 weeks; MAME is the oracle)
 
 - **DDR 1st (`dstage` family), DDR 2nd variants, `dsftkd`:** the `ddr2m` path, with the cassette variant and I/O per set.

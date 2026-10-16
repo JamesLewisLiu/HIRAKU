@@ -1,0 +1,24 @@
+# beatmania IIDX (GQ863 VER. JAA), Konami 1999
+id = "bmiidxa"
+title = "beatmania IIDX (JAA)"
+family = "iidx"         # IIDX cabinet: 7 keys and a turntable per player, VEFX, Effect, 5 effector sliders
+mame = "bmiidxa"         # MAME set name, used by the oracle
+core = "twinkle"        # Twinkle (runtime/twinkle/, PLAN.md section 21)
+# MAME flags this set NOT_WORKING: its DVD player check needs CTS on the PS1's SIO1, which MAME's
+# SIO doesn't have (E600 DVD INIT ERROR). HIRAKU's SIO1 has it here (TW-5).
+
+[roms]
+bios = "863a03.7b"      # Twinkle BIOS (27C040), the same chip in every set
+spu = "863a05.2x"       # the SPU board's 68000 program (27C4096), the same in every set
+dongle = "863a02"       # the security dongle's X76F041 (MAME BAD_DUMP: write/config passwords unknown)
+
+[board]
+dongle = "x76f041"      # MAME twinklex
+dvd_port = "sio1"       # the DVD player on the PS1's SIO1, over the mini-DIN (1st style), with its CTS
+
+[cd]
+chd = "gq863a01"     # the program CD, on the SCSI bus
+video_chd = "gq863a04"  # the Video CD in the external player (background videos)
+
+[hdd]
+chd = "863hdda01"       # the SPU board's hard disk: keysounds and music

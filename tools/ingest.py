@@ -123,6 +123,17 @@ def copy_romset(romset: str, romdir: str) -> list[str]:
     return names
 
 
+def forced_game(args, core: str | None) -> dict | None:
+    """The game --game names (of that core, if given), or None."""
+    gid = getattr(args, "game", None)
+    if not gid:
+        return None
+    g = next((g for g in all_games() if g["id"] == gid), None)
+    if g is None:
+        sys.exit(f"ERROR    --game {gid}: no games/{gid}/game.toml")
+    return g if core is None or g.get("core") == core else None
+
+
 def copy_set_with_parents(romset: str, romdir: str, set_name: str) -> list[str]:
     """The set's files, and those of the sets MAME also looks in (its parent, its BIOS, its
     devices: the multi-session unit's, the network unit's) when they sit beside it, as in a MAME
@@ -149,13 +160,22 @@ def copy_set_with_parents(romset: str, romdir: str, set_name: str) -> list[str]:
                     names.append(n)
             shutil.rmtree(tmp, ignore_errors=True)
             break
+    # ROMs under an older MAME's file names ("803k a01.bin" is now "803k_a01.bin"): a copy under the
+    # current name, found by size and CRC
+    have = mameset.archive_crcs(romdir)
+    by_crc = {sc: f for f, sc in have.items()}
+    for f, size, crc in mameset.needed_roms(set_name):
+        if f not in have and (size, crc) in by_crc:
+            shutil.copyfile(os.path.join(romdir, by_crc[(size, crc)]), os.path.join(romdir, f))
+            print(f"rom      {f} (from {by_crc[(size, crc)]}: an older MAME's name)")
+            names.append(f)
     return names
 
 
 def ingest_djmain(args) -> int:
     """A DJ Main game: the MAME ROM set (program, sprites, tiles) and the hard disk."""
     set_name = set_name_of(args.romset)
-    game = next((g for g in all_games() if g.get("core") == "djmain" and g.get("mame") == set_name), None)
+    game = forced_game(args, "djmain") or next((g for g in all_games() if g.get("core") == "djmain" and g.get("mame") == set_name), None)
     if game is None:
         print(f"game     unknown - no DJ Main games/*/game.toml has mame = \"{set_name}\"")
         return 1
@@ -181,13 +201,16 @@ def ingest_djmain(args) -> int:
             machine[k] = game["hdd"][k]
         else:
             machine.pop(k, None)
+    # the disk's geometry, as MAME's drive gets it from the CHD: seek times depend on its cylinders
+    if game["hdd"].get("chs"):
+        machine["hdd_chs"] = game["hdd"]["chs"]
     if args.hdd:
         machine["hdd"] = media_path(args.hdd, outdir)
     if not machine.get("hdd"):
         print(f"ERROR    no hard disk: add {game['hdd']['chd']}.chd (or its raw image)")
         return 1
     with open(machine_path, "w") as fh:
-        for k in ["core", "family", "map", "program", "sprites", "tiles", "hdd", "ata_master_password", "ata_user_password"]:
+        for k in ["core", "family", "map", "program", "sprites", "tiles", "hdd", "hdd_chs", "ata_master_password", "ata_user_password"]:
             if k in machine:
                 fh.write(f"{k}={machine[k]}\n")
     print(f"wrote    {os.path.relpath(machine_path, ROOT)}")
@@ -197,7 +220,7 @@ def ingest_djmain(args) -> int:
 def ingest_sys573(args) -> int:
     """A System 573 game: the MAME set (BIOS, cassette and I/O board chips) and the CD."""
     set_name = set_name_of(args.romset) if args.romset else None
-    game = next((g for g in all_games() if g.get("core") == "sys573" and g.get("mame") == set_name), None)
+    game = forced_game(args, "sys573") or next((g for g in all_games() if g.get("core") == "sys573" and g.get("mame") == set_name), None)
     if game is None:
         print(f"game     unknown - no System 573 games/*/game.toml has mame = \"{set_name}\"")
         return 1
@@ -277,7 +300,7 @@ def ingest_twinkle(args) -> int:
     """A Twinkle game (beatmania IIDX): the MAME set (BIOS, SPU program, dongle), the program
     CD on the SCSI bus, the Video CD for the external player, and the SPU board's hard disk."""
     set_name = set_name_of(args.romset) if args.romset else None
-    game = next((g for g in all_games() if g.get("core") == "twinkle" and g.get("mame") == set_name), None)
+    game = forced_game(args, "twinkle") or next((g for g in all_games() if g.get("core") == "twinkle" and g.get("mame") == set_name), None)
     if game is None:
         print(f"game     unknown - no Twinkle games/*/game.toml has mame = \"{set_name}\"")
         return 1
@@ -662,11 +685,11 @@ def ingest_auto(args, inputs: list[str]) -> int:
         print("ERROR    nothing to ingest: give ROM sets (.zip/.7z), CHDs or disc images")
         return 1
 
-    # the game, when a set or a CHD names it
+    # the game, when a set or a CHD names it (or --game does)
     by_set = {g["mame"]: g for g in games if g.get("mame")}
-    hint = None
-    romset_for = None
-    for r in romsets:
+    hint = forced_game(args, None)
+    romset_for = romsets[0] if hint and romsets else None
+    for r in romsets if hint is None else []:
         name = set_name_of(r)
         if name in by_set:
             hint = by_set[name]
@@ -774,6 +797,8 @@ def main() -> int:
     ap.add_argument("--cd2", metavar="CUE", help="second disc on the main ATA bus (ParaParaParadise audio CD)")
     ap.add_argument("--bios", metavar="DIR", help="Konami Python: the folder with the arcade BIOS (default: a bios/ near the .py1)")
     ap.add_argument("--keys", metavar="DIR", help="Konami Python: the folder with the MagicGate key files (default: a keys/ near the .py1)")
+    ap.add_argument("--game", metavar="ID", help="install as this game (games/ID): a clone from its parent's merged set, "
+                    "whose name is the parent's")
     ap.add_argument("--keep-chd", action="store_true", help="DJ Main, System 573, Twinkle: read the CHDs where they are "
                     "instead of extracting them (the game then needs them there)")
     ap.add_argument("--nvram-seed", metavar="DIR", help="System 573: a MAME NVRAM folder (nvram/<set>/) with the game "

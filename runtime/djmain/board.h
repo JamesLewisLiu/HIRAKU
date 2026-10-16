@@ -21,6 +21,7 @@ struct Config {
     std::vector<std::string> sprites;      // 4 files: two interleaved pairs
     std::vector<std::string> tiles;        // 4 files: two interleaved pairs
     std::string hdd;                       // raw IDE disk image
+    uint32_t hdd_chs[3] = {0, 16, 63};     // its geometry: cylinders (0: from the size), heads, sectors a track
     std::string map = "j";                 // MAME's address map: main_map_j, _u (UA/KA/AA sets) or _a (popn1 TA/AA)
     std::vector<uint8_t> ata_master_password, ata_user_password;   // 32 bytes each, or none
     bool ata_log = false;

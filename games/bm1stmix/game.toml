@@ -14,3 +14,4 @@ tiles   = ["753jaa07.22d", "753jaa08.23d", "753jaa09.25d", "753jaa10.27d"] # K05
 
 [hdd]
 chd = "753jaa11"        # IDE hard disk; no ATA password before complete MIX
+chs = "2796,16,63"       # its geometry (cylinders, heads, sectors), as the CHD gives it to MAME's drive

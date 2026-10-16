@@ -245,8 +245,18 @@ int hk_dj_int_ack(int level);   /* runtime/djmain/board.cpp: clears a held line,
  * instruction.
  */
 #ifndef M68K_INSTRUCTION_HOOK
-#define M68K_INSTRUCTION_HOOK       M68K_OPT_OFF
-#define M68K_INSTRUCTION_CALLBACK(pc) your_instruction_hook_function(pc)
+/* HIRAKU: an instruction trace for comparing with MAME's debugger trace (HK_DJ_ITRACE,
+   runtime/djmain/board.cpp); off, it costs one predicted branch an instruction */
+#define M68K_INSTRUCTION_HOOK       M68K_OPT_SPECIFY_HANDLER
+#ifdef __cplusplus
+extern "C"
+#endif
+extern int hk_dj_itrace_on;
+#ifdef __cplusplus
+extern "C"
+#endif
+void hk_dj_itrace(unsigned int pc);
+#define M68K_INSTRUCTION_CALLBACK(pc) do { if (__builtin_expect(hk_dj_itrace_on, 0)) hk_dj_itrace(pc); } while (0)
 #endif
 
 

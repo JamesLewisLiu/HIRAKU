@@ -50,6 +50,9 @@ public:
         cfg.sprites = split(machine["sprites"]);
         cfg.tiles = split(machine["tiles"]);
         cfg.hdd = o.data_path(machine["hdd"]);
+        // the disk's geometry (games/<id>/game.toml [hdd] chs, from its CHD as MAME's drive gets it)
+        if (!machine["hdd_chs"].empty())
+            sscanf(machine["hdd_chs"].c_str(), "%u,%u,%u", &cfg.hdd_chs[0], &cfg.hdd_chs[1], &cfg.hdd_chs[2]);
         if (!machine["map"].empty()) cfg.map = machine["map"];
         // ATA passwords as 64 hex digits (games/<id>/game.toml [hdd], from MAME's init_<game>())
         auto hex = [](const std::string &h) {

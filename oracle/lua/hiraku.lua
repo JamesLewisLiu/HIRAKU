@@ -84,6 +84,8 @@ elseif cpu.shortname == "cxd8530cq" then
     }
     MIRRORS = { 0x00000000, 0x80000000, 0xa0000000 }
     AMASK = 0x1fffffff
+elseif mach.devices[":k055555"] ~= nil or cpu.shortname == "m68ec020" then
+    GROUPS = {}   -- DJ Main: no MMIO groups yet (the Firebeat ones are outside its 24-bit bus)
 end
 
 -- Twinkle's SPU board: the 68000's view (MAME twinkle.cpp sound_map). Wave RAM itself
@@ -395,7 +397,13 @@ local function run(a)
         if dbg == nil then error("itrace needs EXACT_PC=1 (the debugger)") end
         if a[2] == "on" then
             local path = string.format("%s/itrace-f%d.txt", OUT, frame)
-            dbg:command(string.format("trace %s,maincpu,noloop", path))
+            -- HIRAKU_ITRACE_CYCLES=1: each line starts with the CPU's total cycles (DJ Main's
+            -- HK_DJ_ITRACE writes the same), to find an instruction whose cost differs
+            if os.getenv("HIRAKU_ITRACE_CYCLES") then
+                dbg:command(string.format('trace %s,maincpu,noloop,{tracelog "%%d ",totalcycles}', path))
+            else
+                dbg:command(string.format("trace %s,maincpu,noloop", path))
+            end
             say("f%d itrace on -> %s", frame, path)
         else
             dbg:command("trace off,maincpu")

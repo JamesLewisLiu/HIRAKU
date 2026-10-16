@@ -1,0 +1,22 @@
+# beatmania IIDX 6th style (GCB4U VER. JAA), Konami 2001
+id = "bmiidx6a"
+title = "beatmania IIDX 6th style (JAA)"
+family = "iidx"         # IIDX cabinet: 7 keys and a turntable per player, VEFX, Effect, 5 effector sliders
+mame = "bmiidx6a"        # MAME set name, used by the oracle
+core = "twinkle"        # Twinkle (runtime/twinkle/, PLAN.md section 21)
+
+[roms]
+bios = "863a03.7b"      # Twinkle BIOS (27C040), the same chip in every set
+spu = "863a05.2x"       # the SPU board's 68000 program (27C4096), the same in every set
+dongle = "b4u"          # the security dongle's M24C02 EEPROM
+
+[board]
+dongle = "m24c02"       # MAME twinklei: I2C EEPROM (2nd style and later)
+dvd_port = "uart"       # the DVD player on the super I/O's second 16550 (Substream and later)
+
+[cd]
+chd = "b4ujaa01"        # the program CD, on the SCSI bus
+video_chd = "b4ujaa02"  # the DVD in the external player (background videos; MAME keeps it as a hard disk CHD)
+
+[hdd]
+chd = "b4ujaa03"        # the SPU board's hard disk: keysounds and music

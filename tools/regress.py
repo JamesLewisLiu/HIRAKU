@@ -58,6 +58,11 @@ CASES = {
     "popn1j-boot": ("popn1j", 9000, ["--script", "oracle/scripts/popn1j-boot.his"]),
     "bm1stmix-play": ("bm1stmix", 12600, ["--script", "oracle/scripts/bm1stmix-play.his"]),
     "popn1j-play": ("popn1j", 13500, ["--script", "oracle/scripts/popn1j-play.his"]),
+    # the later disks' own geometries and the 68020's rotates (2026-10-16): Club MIX (255 heads),
+    # complete MIX 2 (15 heads, ATA passwords), pop'n stage EX (32 sectors a track)
+    "bmclubmx-boot": ("bmclubmx", 9000, ["--script", "oracle/scripts/bmclubmx-boot.his"]),
+    "bmcompm2-boot": ("bmcompm2", 9000, ["--script", "oracle/scripts/bmcompm2-boot.his"]),
+    "popnstex-boot": ("popnstex", 9000, ["--script", "oracle/scripts/popnstex-boot.his"]),
     # System 573: power-on, BIOS, CD boot, the game's checks, ERROR 147 (no install yet);
     # in lockstep with MAME at the pin (PLAN.md section 19). The clock is fixed.
     "ddr3mj-boot": ("ddr3mj", 3600, ["--rtc", "1791804639", "--script", "oracle/scripts/ddr3mj-boot.his"]),
@@ -518,6 +523,12 @@ def write_times(times, total, what, jobs):
              "# case  start s  end s  wall s"]
     for case, t0, t1 in sorted(times, key=lambda t: t[1]):
         lines.append(f"{case}\t{t0:.0f}\t{t1:.0f}\t{t1 - t0:.0f}")
+    # a run of some cases keeps the other cases' times from before (their wall times order the
+    # next full run), marked as from an earlier run
+    ran = {c for c, _, _ in times}
+    for case, wall in sorted(last_times().items()):
+        if case not in ran:
+            lines.append(f"{case}\t-\t-\t{wall:.0f}")
     with open(os.path.join(OUT, "times.txt"), "w") as f:
         f.write("\n".join(lines) + "\n")
     if times:

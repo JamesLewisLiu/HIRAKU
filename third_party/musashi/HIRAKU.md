@@ -7,7 +7,7 @@ Musashi (MIT licence, `LICENSE`) at upstream commit `COMMIT`. It is built twice:
 ## Local changes
 
 Cycle-cost hooks, so a configuration can use MAME's 68020 timing. All default to Musashi's own behaviour, so the 68000 build is unchanged:
-- `HK_SHIFT_CYCLES(shift)` replaces `shift<<CYC_SHIFT` in the shift and rotate handlers: 36 sites in `m68kops.c` and `m68k_in.c`.
+- `HK_SHIFT_CYCLES(shift)` replaces `shift<<CYC_SHIFT` and `orig_shift<<CYC_SHIFT` in the shift and rotate handlers: 52 sites in each of `m68kops.c` and `m68k_in.c`. The `orig_shift` ones (ROL/ROR/ROXL/ROXR by a register count, and ROL.B/ROR.B by a count) were missed at first, until beatmania 4th MIX's decompression loop (`rol.l D5,D6`) showed the difference against MAME (2026-10-16).
 - `HK_MOVEM_STORE_CYCLES(count, cyc)` replaces `count<<CYC_MOVEM_W/L` in the MOVEM register-to-memory handlers: 12 sites in `m68kops.c`, 2 in `m68k_in.c`.
 - `HK_TRAP_EXCEPTION_CYCLES(vector)` replaces `CYC_EXCEPTION[vector] - CYC_INSTRUCTION[REG_IR]` in `m68ki_exception_trap` and `m68ki_exception_trapN`: 2 sites in `m68kcpu.h`.
 - `HK_COUNT_RESET_CYCLES`: when 1, `m68k_execute()` counts the reset exception's cycles in what it returns and in `m68k_cycles_run()`. Upstream takes them from the first slice without reporting them, so the caller's clock runs behind by that much: 1 site in `m68kcpu.c`.

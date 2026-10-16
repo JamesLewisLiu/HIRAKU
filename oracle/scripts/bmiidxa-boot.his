@@ -1,0 +1,11 @@
+# beatmania IIDX (GQ863 VER. JAA), Konami 1999: as bmiidx-boot.his, whose game it is a revision or a sibling of.
+# beatmania IIDX (1st style, Twinkle): first power-on from blank NVRAM, no inputs. MAME flags
+# this set NOT_WORKING: the DVD player check needs RTS->CTS on the PS1's SIO1, which MAME's SIO
+# lacks (PLAN.md section 21, TW-5). This run records where MAME stops; bmiidx-clear.his goes on
+# from there with CTS.
+game bmiidxa
+
+hash ram  0x80000000 0x80400000   # 4 MiB main RAM (KSEG0)
+
+from 0 every 60 snap
+at 3600 quit

@@ -8409,7 +8409,7 @@ M68KMAKE_OP(ror, 8, s, .)
 	uint res = ROR_8(src, shift);
 
 	if(orig_shift != 0)
-		USE_CYCLES(orig_shift<<CYC_SHIFT);
+		USE_CYCLES(HK_SHIFT_CYCLES(orig_shift));
 
 	*r_dst = MASK_OUT_BELOW_8(*r_dst) | res;
 
@@ -8468,7 +8468,7 @@ M68KMAKE_OP(ror, 8, r, .)
 
 	if(orig_shift != 0)
 	{
-		USE_CYCLES(orig_shift<<CYC_SHIFT);
+		USE_CYCLES(HK_SHIFT_CYCLES(orig_shift));
 
 		*r_dst = MASK_OUT_BELOW_8(*r_dst) | res;
 		FLAG_C = src << (8-((shift-1)&7));
@@ -8495,7 +8495,7 @@ M68KMAKE_OP(ror, 16, r, .)
 
 	if(orig_shift != 0)
 	{
-		USE_CYCLES(orig_shift<<CYC_SHIFT);
+		USE_CYCLES(HK_SHIFT_CYCLES(orig_shift));
 
 		*r_dst = MASK_OUT_BELOW_16(*r_dst) | res;
 		FLAG_C = (src >> ((shift - 1) & 15)) << 8;
@@ -8522,7 +8522,7 @@ M68KMAKE_OP(ror, 32, r, .)
 
 	if(orig_shift != 0)
 	{
-		USE_CYCLES(orig_shift<<CYC_SHIFT);
+		USE_CYCLES(HK_SHIFT_CYCLES(orig_shift));
 
 		*r_dst = res;
 		FLAG_C = (src >> ((shift - 1) & 31)) << 8;
@@ -8563,7 +8563,7 @@ M68KMAKE_OP(rol, 8, s, .)
 	uint res = ROL_8(src, shift);
 
 	if(orig_shift != 0)
-		USE_CYCLES(orig_shift<<CYC_SHIFT);
+		USE_CYCLES(HK_SHIFT_CYCLES(orig_shift));
 
 	*r_dst = MASK_OUT_BELOW_8(*r_dst) | res;
 
@@ -8622,7 +8622,7 @@ M68KMAKE_OP(rol, 8, r, .)
 
 	if(orig_shift != 0)
 	{
-		USE_CYCLES(orig_shift<<CYC_SHIFT);
+		USE_CYCLES(HK_SHIFT_CYCLES(orig_shift));
 
 		if(shift != 0)
 		{
@@ -8657,7 +8657,7 @@ M68KMAKE_OP(rol, 16, r, .)
 
 	if(orig_shift != 0)
 	{
-		USE_CYCLES(orig_shift<<CYC_SHIFT);
+		USE_CYCLES(HK_SHIFT_CYCLES(orig_shift));
 
 		if(shift != 0)
 		{
@@ -8692,7 +8692,7 @@ M68KMAKE_OP(rol, 32, r, .)
 
 	if(orig_shift != 0)
 	{
-		USE_CYCLES(orig_shift<<CYC_SHIFT);
+		USE_CYCLES(HK_SHIFT_CYCLES(orig_shift));
 
 		*r_dst = res;
 
@@ -8823,7 +8823,7 @@ M68KMAKE_OP(roxr, 8, r, .)
 		uint src   = MASK_OUT_ABOVE_8(*r_dst);
 		uint res   = ROR_9(src | (XFLAG_AS_1() << 8), shift);
 
-		USE_CYCLES(orig_shift<<CYC_SHIFT);
+		USE_CYCLES(HK_SHIFT_CYCLES(orig_shift));
 
 		FLAG_C = FLAG_X = res;
 		res = MASK_OUT_ABOVE_8(res);
@@ -8853,7 +8853,7 @@ M68KMAKE_OP(roxr, 16, r, .)
 		uint src   = MASK_OUT_ABOVE_16(*r_dst);
 		uint res   = ROR_17(src | (XFLAG_AS_1() << 16), shift);
 
-		USE_CYCLES(orig_shift<<CYC_SHIFT);
+		USE_CYCLES(HK_SHIFT_CYCLES(orig_shift));
 
 		FLAG_C = FLAG_X = res >> 8;
 		res = MASK_OUT_ABOVE_16(res);
@@ -8887,7 +8887,7 @@ M68KMAKE_OP(roxr, 32, r, .)
 
 		res = ROR_33_64(res, shift);
 
-		USE_CYCLES(orig_shift<<CYC_SHIFT);
+		USE_CYCLES(HK_SHIFT_CYCLES(orig_shift));
 
 		FLAG_C = FLAG_X = res >> 24;
 		res = MASK_OUT_ABOVE_32(res);
@@ -8914,7 +8914,7 @@ M68KMAKE_OP(roxr, 32, r, .)
 	uint new_x_flag = src & (1 << (shift - 1));
 
 	if(orig_shift != 0)
-		USE_CYCLES(orig_shift<<CYC_SHIFT);
+		USE_CYCLES(HK_SHIFT_CYCLES(orig_shift));
 
 	if(shift != 0)
 	{
@@ -9048,7 +9048,7 @@ M68KMAKE_OP(roxl, 8, r, .)
 		uint src   = MASK_OUT_ABOVE_8(*r_dst);
 		uint res   = ROL_9(src | (XFLAG_AS_1() << 8), shift);
 
-		USE_CYCLES(orig_shift<<CYC_SHIFT);
+		USE_CYCLES(HK_SHIFT_CYCLES(orig_shift));
 
 		FLAG_C = FLAG_X = res;
 		res = MASK_OUT_ABOVE_8(res);
@@ -9078,7 +9078,7 @@ M68KMAKE_OP(roxl, 16, r, .)
 		uint src   = MASK_OUT_ABOVE_16(*r_dst);
 		uint res   = ROL_17(src | (XFLAG_AS_1() << 16), shift);
 
-		USE_CYCLES(orig_shift<<CYC_SHIFT);
+		USE_CYCLES(HK_SHIFT_CYCLES(orig_shift));
 
 		FLAG_C = FLAG_X = res >> 8;
 		res = MASK_OUT_ABOVE_16(res);
@@ -9112,7 +9112,7 @@ M68KMAKE_OP(roxl, 32, r, .)
 
 		res = ROL_33_64(res, shift);
 
-		USE_CYCLES(orig_shift<<CYC_SHIFT);
+		USE_CYCLES(HK_SHIFT_CYCLES(orig_shift));
 
 		FLAG_C = FLAG_X = res >> 24;
 		res = MASK_OUT_ABOVE_32(res);
@@ -9139,7 +9139,7 @@ M68KMAKE_OP(roxl, 32, r, .)
 	uint new_x_flag = src & (1 << (32 - shift));
 
 	if(orig_shift != 0)
-		USE_CYCLES(orig_shift<<CYC_SHIFT);
+		USE_CYCLES(HK_SHIFT_CYCLES(orig_shift));
 
 	if(shift != 0)
 	{

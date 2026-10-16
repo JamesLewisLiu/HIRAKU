@@ -352,9 +352,11 @@ AtaDevice *AtaBus::cur() { return drives_[(device_ >> 4) & 1].get(); }
 
 uint32_t AtaBus::lba() const {
     if (device_ & 0x40) return (uint32_t)(device_ & 0x0f) << 24 | (uint32_t)cyl_hi_ << 16 | (uint32_t)cyl_lo_ << 8 | sector_;
-    // CHS with the geometry IDENTIFY reports: 16 heads, 63 sectors per track
+    // CHS with the geometry IDENTIFY reports (16 heads and 63 sectors a track unless the disk has its own)
+    const AtaDevice *d = drives_[(device_ >> 4) & 1].get();
+    const uint32_t heads = d && d->disk ? d->disk->heads() : 16, secs = d && d->disk ? d->disk->track_sectors() : 63;
     uint32_t cyl = (uint32_t)cyl_hi_ << 8 | cyl_lo_;
-    return (cyl * 16 + (device_ & 0x0f)) * 63 + (sector_ ? sector_ - 1 : 0);
+    return (cyl * heads + (device_ & 0x0f)) * secs + (sector_ ? sector_ - 1 : 0);
 }
 
 uint16_t AtaBus::read_dma() {
@@ -564,11 +566,11 @@ void AtaBus::disk_command(uint8_t cmd) {
             for (int k = 0; k < words * 2; k++) id[2 * i + (k ^ 1)] = (uint8_t)((size_t)k < strlen(s) ? s[k] : ' ');
         };
         uint32_t n = d->disk->sectors();
-        uint32_t cyls = std::min<uint32_t>(n / (16 * 63), 16383);
+        const uint32_t cyls = d->disk->cylinders(), heads = d->disk->heads(), secs = d->disk->track_sectors();
         w(0, 0x0040);                                    // fixed disk
         w(1, (uint16_t)cyls);
-        w(3, 16);
-        w(6, 63);
+        w(3, (uint16_t)heads);
+        w(6, (uint16_t)secs);
         str(10, 10, "HIRAKU0000000001");
         str(23, 4, "1.0");
         str(27, 20, "HIRAKU ATA DISK");
@@ -576,10 +578,10 @@ void AtaBus::disk_command(uint8_t cmd) {
         w(49, 0x0300);                                   // LBA, DMA
         w(53, 0x0003);
         w(54, (uint16_t)cyls);
-        w(55, 16);
-        w(56, 63);
-        w(57, (uint16_t)(cyls * 16 * 63));
-        w(58, (uint16_t)((cyls * 16 * 63) >> 16));
+        w(55, (uint16_t)heads);
+        w(56, (uint16_t)secs);
+        w(57, (uint16_t)(cyls * heads * secs));
+        w(58, (uint16_t)((cyls * heads * secs) >> 16));
         w(60, (uint16_t)n);
         w(61, (uint16_t)(n >> 16));
         w(63, 0x0007);                                   // multiword DMA 0-2

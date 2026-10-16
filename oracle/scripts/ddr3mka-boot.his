@@ -1,0 +1,11 @@
+# Dance Dance Revolution 3rd Mix - Ver.Korea (GN887 VER. KAA), Konami 2000: as ddr3mj-boot.his, whose game it is a revision or a sibling of.
+# DDR 3rd Mix (System 573): power-on, no inputs. The 573 BIOS runs, finds the
+# onboard flash empty and boots the CD, which stops at ERROR 147 until the game
+# is installed. Hashes the main RAM every frame and snapshots every 60 frames,
+# so HIRAKU's 573 core can be compared with MAME through the BIOS.
+game ddr3mka
+
+hash ram  0x80000000 0x80400000   # 4 MiB main RAM (KSEG0)
+
+from 0 every 60 snap
+at 3600 quit

@@ -115,6 +115,44 @@ def _run_with_progress(cmd: list[str], label: str) -> str:
     return text
 
 
+def _link(src: str, dst: str) -> None:
+    """A hard link to another game's copy; a symbolic one to where it really is when that is on
+    another filesystem (a big disk kept elsewhere, dumps/<game>/<disk> a link to it)."""
+    try:
+        os.link(src, dst)
+    except OSError:
+        os.symlink(os.path.realpath(src), dst)
+
+
+def _cue_layout(cue: str) -> list[tuple[str, int]]:
+    """A one-FILE cue sheet's tracks as chdman's info names them: (TYPE, FRAMES)."""
+    names = {"MODE1/2048": "MODE1", "MODE1/2352": "MODE1_RAW", "MODE2/2336": "MODE2", "MODE2/2048": "MODE2_FORM1",
+             "MODE2/2324": "MODE2_FORM2", "MODE2/2352": "MODE2_RAW", "AUDIO": "AUDIO"}
+    tracks, starts = [], []
+    with open(cue) as fh:
+        for line in fh:
+            w = line.split()
+            if w[:1] == ["TRACK"] and len(w) >= 3:
+                tracks.append(names.get(w[2], w[2]))
+            elif w[:2] == ["INDEX", "01"] and len(w) >= 3:
+                m, sec, f = (int(x) for x in w[2].split(":"))
+                starts.append((m * 60 + sec) * 75 + f)
+    binf = cue[:-4] + ".bin"
+    if len(tracks) != len(starts) or not os.path.exists(binf):
+        return []
+    sizes = {"MODE1": 2048, "MODE1_RAW": 2352, "MODE2": 2336, "MODE2_FORM1": 2048, "MODE2_FORM2": 2324,
+             "MODE2_RAW": 2352, "AUDIO": 2352}
+    total = os.path.getsize(binf)
+    out = []
+    for k, t in enumerate(tracks):
+        if k + 1 < len(tracks):
+            out.append((t, starts[k + 1] - starts[k]))
+        else:
+            used = sum(f * sizes.get(tt, 2352) for tt, f in out)
+            out.append((t, (total - used) // sizes.get(t, 2352)))
+    return out
+
+
 def extract(chd: str, outdir: str) -> tuple[str, str]:
     """Extract chd into outdir: (path, kind). A CD gives NAME.cue + NAME.bin, a DVD
     NAME.iso, a hard disk NAME.img. Kept if already there and the right size."""
@@ -128,6 +166,15 @@ def extract(chd: str, outdir: str) -> tuple[str, str]:
         if os.path.exists(cue) and os.path.exists(binf) and os.path.getsize(binf) > 0:
             print(f"have     {os.path.basename(cue)}")
             return cue, "cd"
+        # Sets that share a disc (a revision's Video CD is its parent's): link the other game's copy
+        # when the CHD's track layout (TYPE, FRAMES) is the same as its cue sheet's
+        for other in glob.glob(os.path.join(os.path.dirname(os.path.abspath(outdir)), "*", name + ".cue")):
+            obin = other[:-4] + ".bin"
+            if os.path.exists(obin) and _cue_layout(other) == [(t["type"], t["frames"]) for t in ci.tracks]:
+                _link(obin, binf)
+                shutil.copyfile(other, cue)
+                print(f"linked   {os.path.basename(cue)} (same disc as {os.path.basename(os.path.dirname(other))})")
+                return cue, "cd"
         tmp = base + ".part"
         os.makedirs(tmp, exist_ok=True)
         _run_with_progress(cmd0 + ["extractcd", "-f", "-i", chd, "-o", os.path.join(tmp, name + ".cue"),
@@ -144,7 +191,7 @@ def extract(chd: str, outdir: str) -> tuple[str, str]:
     # Sets that share a disk (bm3rdmix/bm3rdmixe, bmcompm2/hmcompm2...): link the other game's copy.
     for other in glob.glob(os.path.join(os.path.dirname(os.path.abspath(outdir)), "*", name + ext)):
         if os.path.getsize(other) == ci.logical:
-            os.link(other, out)
+            _link(other, out)
             print(f"linked   {os.path.basename(out)} (same disk as {os.path.basename(os.path.dirname(other))})")
             return out, ci.kind
     free = shutil.disk_usage(outdir).free

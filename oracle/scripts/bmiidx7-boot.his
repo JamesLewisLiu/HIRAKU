@@ -1,0 +1,12 @@
+# beatmania IIDX 7th style (GCB44 VER. JAB), Konami 2002: as bmiidx7a-boot.his, whose game it is a revision or a sibling of.
+# beatmania IIDX (Twinkle, bmiidx7a): first power-on from blank NVRAM. The device check passes
+# everything but the backup RAM: E150 BACKUP DATA ERROR, then "1P START = BACKUP CLEAR"
+# (by ~3100). 1P Start clears it and the game goes on to attract. Hashes the main RAM every
+# frame and snapshots every 60 frames, for lockstep with MAME (PLAN.md section 21, TW-5).
+game bmiidx7
+
+hash ram  0x80000000 0x80400000   # 4 MiB main RAM (KSEG0)
+
+at 3600 press "1 Player Start" 8
+from 0 every 60 snap
+at 10000 quit

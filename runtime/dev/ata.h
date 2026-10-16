@@ -4,6 +4,7 @@
 // emulation through the oracle trace (oracle/), not ported line by line.
 #pragma once
 
+#include <algorithm>
 #include <cstdint>
 #include <cstdio>
 #include <functional>
@@ -62,12 +63,19 @@ public:
     bool read_sectors(uint32_t lba, uint32_t n, uint8_t *out) const;   // n of them, 512 bytes each
     void prefetch(uint32_t lba, uint32_t count) const;
     uint32_t sectors() const { return nsectors_; }
+    // the geometry the drive reports (IDENTIFY) and addresses CHS by: 16 heads and 63 sectors a
+    // track unless set (a DJ Main disk's, as MAME gets it from the CHD); cylinders from the size
+    void set_geometry(uint32_t cylinders, uint32_t heads, uint32_t sectors) { cyls_ = cylinders, heads_ = heads, secs_ = sectors; }
+    uint32_t heads() const { return heads_; }
+    uint32_t track_sectors() const { return secs_; }
+    uint32_t cylinders() const { return cyls_ ? cyls_ : std::min<uint32_t>(nsectors_ / (heads_ * secs_), 16383); }
     ~DiskImage();
 
 private:
     FILE *f_ = nullptr;
     std::string name_;
     uint32_t nsectors_ = 0;
+    uint32_t cyls_ = 0, heads_ = 16, secs_ = 63;
 };
 
 // A device on the bus: an ATAPI CD/DVD drive (disc may be absent) or an ATA hard disk.

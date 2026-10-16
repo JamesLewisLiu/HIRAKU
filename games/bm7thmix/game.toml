@@ -12,6 +12,7 @@ tiles   = ["b07jaa07.22d", "b07jaa08.23d", "b07jaa09.25d", "b07jaa10.27d"]
 
 [hdd]
 chd = "b07jaa11"
+chs = "730,255,63"       # its geometry (cylinders, heads, sectors), as the CHD gives it to MAME's drive
 # ATA security, from MAME init_bm7thmix(): the disk stays locked until the game sends these
 ata_master_password = "4d4743284b294e4f4d4120494c41204c49524847535452205345524545562e44"
 ata_user_password = "4442564b3f4e4a255a520c3e15046f0a777174166d730c0c0c067c6e77747d7a"
