@@ -2,6 +2,7 @@
 #include "ata.h"
 
 #include "../core/prof.h"
+#include "image.h"
 
 #include <algorithm>
 #include <cstdlib>
@@ -9,6 +10,7 @@
 #include <thread>
 
 #include <fcntl.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 namespace hk {
@@ -16,11 +18,11 @@ namespace hk {
 namespace {
 // pread, timed: a read the game waits on stops the machine, so a slow one is reported (a cold
 // cache on a slow drive, a USB stick, a disk waking up). HK_DISK_LOG=1 reports every read.
-ssize_t timed_pread(int fd, void *buf, size_t n, off_t off, const std::string &name) {
+ssize_t timed_pread(FILE *f, void *buf, size_t n, off_t off, const std::string &name) {
     static const bool all = getenv("HK_DISK_LOG") != nullptr;
     static int reported = 0;
     const uint64_t t0 = prof::now_ns();
-    const ssize_t r = ::pread(fd, buf, n, off);
+    const ssize_t r = image::pread(f, buf, n, (uint64_t)off);   // a plain file's, or a CHD's (image.h)
     const double ms = (double)(prof::now_ns() - t0) / 1e6;
     if (all || (ms >= 50.0 && reported < 20)) {
         if (!all) reported++;
@@ -47,7 +49,7 @@ DiscImage::~DiscImage() {
 // A cue sheet with one FILE: tracks, their modes and INDEX 01 positions. Sector
 // sizes follow the modes, so a file may mix them.
 bool DiscImage::parse_cue(const std::string &cue, std::string &bin) {
-    FILE *c = fopen(cue.c_str(), "r");
+    FILE *c = image::fopen_cue(cue);   // a CD CHD's: the sheet chdman extractcd writes
     if (!c) return false;
     char line[1024];
     uint32_t pregap = 0;
@@ -101,18 +103,20 @@ void warm_cache(const std::string &path, uint64_t size) {
 bool DiscImage::open(const std::string &path0) {
     std::string path = path0;
     bool cue = path.size() > 4 && (path.substr(path.size() - 4) == ".cue" || path.substr(path.size() - 4) == ".CUE");
+    cue = cue || image::chd_kind(path) == "cd";   // a CD CHD reads as its .cue and .bin
     if (cue) {
         std::string bin;
         if (!parse_cue(path, bin)) return false;
         auto slash = path.find_last_of('/');
         path = (slash == std::string::npos ? std::string() : path.substr(0, slash + 1)) + bin;
     }
-    f_ = fopen(path.c_str(), "rb");
+    f_ = image::fopen_image(path);
     if (!f_) return false;
     name_ = base_name(path);
     fseeko(f_, 0, SEEK_END);
     uint64_t size = (uint64_t)ftello(f_);
-    warm_cache(path, size);
+    struct stat st;   // a CHD: its compressed file is what gets read
+    warm_cache(path, image::is_chd(path) && stat(path.c_str(), &st) == 0 ? (uint64_t)st.st_size : size);
     if (cue && (tracks_.size() > 1 || tracks_[0].audio)) {
         // file offsets: each track's sectors at its own size, in order
         uint64_t off = 0;
@@ -169,10 +173,10 @@ bool DiscImage::read_sectors(uint32_t lba, uint32_t n, uint8_t *out) const {
         const uint32_t run = std::min(n, t.frames - (lba - t.start));
         const off_t off = (off_t)(t.offset + (uint64_t)(lba - t.start) * t.size);
         if (t.size == 2048 && t.skip == 0) {
-            if (timed_pread(fileno(f_), out, (size_t)run * 2048, off, name_) != (ssize_t)run * 2048) return false;
+            if (timed_pread(f_, out, (size_t)run * 2048, off, name_) != (ssize_t)run * 2048) return false;
         } else {
             raw.resize((size_t)run * t.size);
-            if (timed_pread(fileno(f_), raw.data(), raw.size(), off, name_) != (ssize_t)raw.size()) return false;
+            if (timed_pread(f_, raw.data(), raw.size(), off, name_) != (ssize_t)raw.size()) return false;
             for (uint32_t k = 0; k < run; k++) memcpy(out + (size_t)k * 2048, raw.data() + (size_t)k * t.size + t.skip, 2048);
         }
         lba += run;
@@ -202,7 +206,7 @@ void DiskImage::prefetch(uint32_t lba, uint32_t count) const {
 bool DiskImage::read_sectors(uint32_t lba, uint32_t n, uint8_t *out) const {
     prof::Scope ps(prof::DISK);
     if (lba >= nsectors_ || n > nsectors_ - lba) return false;
-    return timed_pread(fileno(f_), out, (size_t)n * 512, (off_t)lba * 512, name_) == (ssize_t)n * 512;
+    return timed_pread(f_, out, (size_t)n * 512, (off_t)lba * 512, name_) == (ssize_t)n * 512;
 }
 
 bool DiscImage::read_audio(uint32_t lba, uint8_t *out) const {
@@ -219,7 +223,7 @@ DiskImage::~DiskImage() {
 }
 
 bool DiskImage::open(const std::string &path) {
-    f_ = fopen(path.c_str(), "rb");
+    f_ = image::fopen_image(path);   // a raw image, or a hard disk CHD (image.h)
     if (!f_) return false;
     name_ = base_name(path);
     fseeko(f_, 0, SEEK_END);

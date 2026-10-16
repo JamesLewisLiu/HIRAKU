@@ -39,6 +39,7 @@ import zipfile
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import chd  # noqa: E402
 import fbexe  # noqa: E402
+import mameset  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -57,9 +58,32 @@ def known_games() -> dict[str, dict]:
 
 
 def set_name_of(romset: str) -> str:
-    """A MAME set's name: the archive's name without extension, or the folder's."""
+    """A MAME set's name, as games/*/game.toml has it: the archive's (or folder's) name, unless
+    an older MAME named the set otherwise, which its contents tell (tools/mameset.py)."""
     base = os.path.basename(os.path.normpath(romset))
-    return base if os.path.isdir(romset) else base.rsplit(".", 1)[0]
+    name = base if os.path.isdir(romset) else base.rsplit(".", 1)[0]
+    try:
+        current = mameset.current_name(name, romset)
+    except (OSError, ValueError, zipfile.BadZipFile):
+        current = None
+    if current and current != name:
+        print(f"set      {name} is MAME's {current} (an older MAME's name: told by its ROMs)")
+        return current
+    return name
+
+
+def check_dumps(set_name: str, romdir: str) -> None:
+    """Says which of the set's ROMs are other dumps than current MAME's: an older MAME's set
+    can carry an older dump of a chip (the 573 cassettes' EEPROMs were redone since 0.243).
+    The game may still run; it won't match MAME's reference runs."""
+    if set_name not in mameset.load():
+        return
+    have = mameset.archive_crcs(romdir)
+    want = {f: (s, c) for f, s, c in mameset.needed_roms(set_name)}
+    for f, sc in sorted(have.items()):
+        if f in want and want[f] != sc and sc not in want.values():
+            print(f"note     {f} is another dump than MAME {mameset.load_build()}'s (CRC {sc[1]}, MAME's "
+                  f"{want[f][1]}): an older MAME's set? The game may run, but not as MAME's does")
 
 
 def copy_romset(romset: str, romdir: str) -> list[str]:
@@ -99,6 +123,35 @@ def copy_romset(romset: str, romdir: str) -> list[str]:
     return names
 
 
+def copy_set_with_parents(romset: str, romdir: str, set_name: str) -> list[str]:
+    """The set's files, and those of the sets MAME also looks in (its parent, its BIOS, its
+    devices: the multi-session unit's, the network unit's) when they sit beside it, as in a MAME
+    rompath: a split or merged set keeps its BIOS in sys573.zip, gq863.zip, ..."""
+    names = copy_romset(romset, romdir)
+    if set_name not in mameset.load():
+        return names
+    sets = mameset.load()
+    others = mameset.chain(set_name)[1:]
+    for c in mameset.chain(set_name):
+        others += sets[c].get("refs", [])
+    here = os.path.dirname(os.path.abspath(romset))
+    have = set(names)
+    for o in dict.fromkeys(others):
+        for cand in (os.path.join(here, o + ".zip"), os.path.join(here, o + ".7z"), os.path.join(here, o)):
+            if not os.path.exists(cand) or os.path.abspath(cand) == os.path.abspath(romset):
+                continue
+            tmp = romdir + ".parent"
+            shutil.rmtree(tmp, ignore_errors=True)
+            for n in copy_romset(cand, tmp) if os.path.isfile(cand) or os.listdir(cand) else []:
+                if n not in have:
+                    shutil.move(os.path.join(tmp, n), os.path.join(romdir, n))
+                    have.add(n)
+                    names.append(n)
+            shutil.rmtree(tmp, ignore_errors=True)
+            break
+    return names
+
+
 def ingest_djmain(args) -> int:
     """A DJ Main game: the MAME ROM set (program, sprites, tiles) and the hard disk."""
     set_name = set_name_of(args.romset)
@@ -109,7 +162,8 @@ def ingest_djmain(args) -> int:
     gid = game["id"]
     print(f"game     {gid}: {game['title']} (DJ Main)")
     outdir = os.path.join(args.out, gid)
-    names = set(copy_romset(args.romset, os.path.join(outdir, "rom")))
+    names = set(copy_set_with_parents(args.romset, os.path.join(outdir, "rom"), set_name))
+    check_dumps(set_name, os.path.join(outdir, "rom"))
     roms = game["roms"]
     missing = [f for k in ("program", "sprites", "tiles") for f in roms[k] if f not in names]
     if missing:
@@ -150,7 +204,8 @@ def ingest_sys573(args) -> int:
     gid = game["id"]
     print(f"game     {gid}: {game['title']} (System 573)")
     outdir = os.path.join(args.out, gid)
-    names = set(copy_romset(args.romset, os.path.join(outdir, "rom")))
+    names = set(copy_set_with_parents(args.romset, os.path.join(outdir, "rom"), set_name))
+    check_dumps(set_name, os.path.join(outdir, "rom"))
     roms = game["roms"]
     keys = ("bios", "h8", "cassette_eeprom", "cassette_id", "install_eeprom", "install_id", "digital_id",
             "msu_flash", "msu_rtc")
@@ -196,6 +251,25 @@ def ingest_sys573(args) -> int:
             if k in machine:
                 fh.write(f"{k}={machine[k]}\n")
     print(f"wrote    {os.path.relpath(machine_path, ROOT)}")
+    if getattr(args, "nvram_seed", None):
+        return keep_nvram_seed(args.nvram_seed, outdir)
+    return 0
+
+
+def keep_nvram_seed(src: str, outdir: str) -> int:
+    """A MAME NVRAM folder with the game installed (flash, timekeeper, cassette, PC Cards), kept
+    as dumps/<game>/nvram-seed/: the launcher copies it into the game's saves on its first start,
+    so that start skips the install from CD. HIRAKU keeps NVRAM under MAME's file names."""
+    files = [f for f in sorted(os.listdir(src)) if os.path.isfile(os.path.join(src, f))]
+    if not files:
+        print(f"ERROR    {src}: no NVRAM files")
+        return 1
+    dst = os.path.join(outdir, "nvram-seed")
+    shutil.rmtree(dst, ignore_errors=True)
+    os.makedirs(dst)
+    for f in files:
+        shutil.copyfile(os.path.join(src, f), os.path.join(dst, f))
+    print(f"nvram    {len(files)} files from {src}: the starting saves ({os.path.relpath(dst, ROOT) if dst.startswith(ROOT) else dst})")
     return 0
 
 
@@ -210,7 +284,8 @@ def ingest_twinkle(args) -> int:
     gid = game["id"]
     print(f"game     {gid}: {game['title']} (Twinkle)")
     outdir = os.path.join(args.out, gid)
-    names = set(copy_romset(args.romset, os.path.join(outdir, "rom")))
+    names = set(copy_set_with_parents(args.romset, os.path.join(outdir, "rom"), set_name))
+    check_dumps(set_name, os.path.join(outdir, "rom"))
     roms = game["roms"]
     keys = ("bios", "spu", "dongle")
     missing = [roms[k] for k in keys if roms.get(k) and roms[k] not in names]
@@ -232,8 +307,10 @@ def ingest_twinkle(args) -> int:
     for flag, key in (("cd", "cd"), ("video_cd", "video_cd"), ("hdd", "hdd")):
         if getattr(args, flag, None):
             machine[key] = media_path(getattr(args, flag), outdir)
-    # a DVD (an image of 2048-byte sectors, not a .cue) is the player's disc from 6th style on
-    if machine.get("video_cd") and not machine["video_cd"].lower().endswith(".cue"):
+    # a DVD (an image of 2048-byte sectors, not a .cue or a CD's CHD) is the player's disc from 6th style on
+    v = machine.get("video_cd", "")
+    if v and not v.lower().endswith(".cue") and not (v.lower().endswith(".chd") and
+                                                      chd.info(v if v.startswith("/") else os.path.join(outdir, v)).kind == "cd"):
         machine["video_dvd"] = machine.pop("video_cd")
     # the disk's geometry (MAME's IDE disk reports it): the CHD's, else 16 heads and 63 sectors
     if getattr(args, "hdd_chs", None):
@@ -510,6 +587,27 @@ ARCHIVES = (".zip", ".7z")
 IMAGES = (".chd", ".cue", ".iso", ".img", ".bin", ".raw")
 
 
+def disk_name(c: str) -> str:
+    """A CHD's disk name as MAME has it: from its header's SHA-1 when MAME knows the disk (a
+    renamed file is still told), else the file's name. Says so when the file's name is one of
+    MAME's disks but its contents aren't (an older dump)."""
+    stem = os.path.splitext(os.path.basename(c))[0]
+    try:
+        sha1 = mameset.chd_sha1(c)
+    except OSError:
+        return stem
+    owners = mameset.disk_owner(sha1) if sha1 else []
+    names = {d for _, d in owners}
+    if names and stem not in names:
+        name = sorted(names)[0]
+        print(f"disk     {os.path.basename(c)} is MAME's {name} (told by its SHA-1)")
+        return name
+    if not names and any(stem == d[0] for m in mameset.load().values() for d in m.get("disks", [])):
+        print(f"note     {os.path.basename(c)}: another dump than MAME {mameset.load_build()}'s {stem} "
+              f"(SHA-1 {sha1}); it may still work")
+    return stem
+
+
 def gather(paths: list[str], set_names: set[str]) -> list[str]:
     """The files to look at: folders expanded (a folder named after a MAME set is that
     set, as in a MAME rompath); a .bin a .cue names left to the .cue."""
@@ -569,14 +667,13 @@ def ingest_auto(args, inputs: list[str]) -> int:
     hint = None
     romset_for = None
     for r in romsets:
-        name = os.path.basename(os.path.normpath(r))
-        name = name if os.path.isdir(r) else name.rsplit(".", 1)[0]
+        name = set_name_of(r)
         if name in by_set:
             hint = by_set[name]
             romset_for = r
     if hint is None:
         for c in chds:
-            stem = os.path.splitext(os.path.basename(c))[0]
+            stem = disk_name(c)
             for g in games:
                 if stem in (g.get("hdd", {}).get("chd"), g.get("cd", {}).get("chd"), g.get("cd", {}).get("msu_chd"),
                             g.get("cd", {}).get("hdd_chd"), g.get("cd", {}).get("video_chd")):
@@ -587,9 +684,20 @@ def ingest_auto(args, inputs: list[str]) -> int:
     # CHDs: extracted next to the game's other data (or set aside until the program says which game)
     dest = os.path.join(args.out, hint["id"] if hint else INCOMING)
     media = []   # (path, kind)
+    disk_of = {}  # extracted image -> MAME's disk name (a renamed CHD's too)
+    # --keep-chd: DJ Main, System 573 and Twinkle read their CHDs in place (runtime/dev/image.h),
+    # so nothing is extracted; Firebeat's program CD still is (its program is unpacked from it)
+    keep = args.keep_chd and hint is not None and hint.get("core") in ("djmain", "sys573", "twinkle")
     for c in chds:
+        if keep:
+            p, kind = os.path.abspath(c), chd.info(c).kind
+            disk_of[p] = disk_name(c)
+            print(f"image    {p} ({kind}, read in place)")
+            media.append((p, kind))
+            continue
         try:
             p, kind = chd.extract(c, dest)
+            disk_of[p] = disk_name(c)
         except chd.ChdError as e:
             print(f"ERROR    {e}")
             return 1
@@ -630,7 +738,7 @@ def ingest_auto(args, inputs: list[str]) -> int:
         # the runtime CD, the multi-session unit's (DrumMania 4th Mix and later) and the network
         # unit's data installer (e-AMUSEMENT GuitarFreaks and DrumMania), by name
         want = hint.get("cd", {})
-        stem = lambda p: os.path.splitext(os.path.basename(p))[0]
+        stem = lambda p: disk_of.get(p) or os.path.splitext(os.path.basename(p))[0]
         args.msu_cd = next((p for p in cds if stem(p) == want.get("msu_chd")), None) if want.get("msu_chd") else None
         args.hdd_cd = next((p for p in cds if stem(p) == want.get("hdd_chd")), None) if want.get("hdd_chd") else None
         args.cd = next((p for p in cds if stem(p) == want.get("chd")), None) or \
@@ -638,7 +746,7 @@ def ingest_auto(args, inputs: list[str]) -> int:
         return ingest_sys573(args)
     if core == "twinkle":
         want = hint.get("cd", {})
-        stem = lambda p: os.path.splitext(os.path.basename(p))[0]
+        stem = lambda p: disk_of.get(p) or os.path.splitext(os.path.basename(p))[0]
         args.cd = next((p for p in cds if stem(p) == want.get("chd")), None)
         # the player's disc: a Video CD, or (6th style on) a DVD, which MAME keeps as a hard disk CHD,
         # so the SPU board's disk is told from it by name
@@ -666,7 +774,16 @@ def main() -> int:
     ap.add_argument("--cd2", metavar="CUE", help="second disc on the main ATA bus (ParaParaParadise audio CD)")
     ap.add_argument("--bios", metavar="DIR", help="Konami Python: the folder with the arcade BIOS (default: a bios/ near the .py1)")
     ap.add_argument("--keys", metavar="DIR", help="Konami Python: the folder with the MagicGate key files (default: a keys/ near the .py1)")
+    ap.add_argument("--keep-chd", action="store_true", help="DJ Main, System 573, Twinkle: read the CHDs where they are "
+                    "instead of extracting them (the game then needs them there)")
+    ap.add_argument("--nvram-seed", metavar="DIR", help="System 573: a MAME NVRAM folder (nvram/<set>/) with the game "
+                    "installed; kept as the game's starting saves (a folder named nvram/<set> is told by itself)")
     args = ap.parse_args()
+    # a MAME nvram/<set>/ folder among the inputs is the starting saves, not a set of loose ROMs
+    for f in list(args.inputs):
+        if os.path.isdir(f) and os.path.basename(os.path.dirname(os.path.normpath(f))) == "nvram":
+            args.inputs.remove(f)
+            args.nvram_seed = args.nvram_seed or f
     args.disc = None
     if args.exe:
         return ingest_firebeat(args)

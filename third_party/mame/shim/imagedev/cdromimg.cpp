@@ -2,6 +2,8 @@
 // HIRAKU: see cdromimg.h.
 #include "imagedev/cdromimg.h"
 
+#include "dev/image.h"   // HIRAKU's image reader: a CHD reads as chdman's extract
+
 #include <map>
 
 DEFINE_DEVICE_TYPE(CDROM, cdrom_image_device, "cdrom_image", "CD-ROM Image")
@@ -27,9 +29,11 @@ cdrom_file::~cdrom_file() {
 
 bool cdrom_file::open(const std::string &path) {
     auto ends = [&](const char *e) { size_t n = strlen(e); return path.size() >= n && strcasecmp(path.c_str() + path.size() - n, e) == 0; };
-    if (!ends(".cue")) {
+    // a CD CHD reads as the .cue and .bin chdman extractcd writes (runtime/dev/image.h)
+    const bool chd_cd = hk::image::chd_kind(path) == "cd";
+    if (!ends(".cue") && !chd_cd) {
         // an .iso: one MODE1/2048 track
-        FILE *f = fopen(path.c_str(), "rb");
+        FILE *f = hk::image::fopen_image(path);
         if (!f) return false;
         m_files.push_back(f);
         fseeko(f, 0, SEEK_END);
@@ -44,7 +48,7 @@ bool cdrom_file::open(const std::string &path) {
         cdtoc.tracks[1].logframeofs = frames;
         return true;
     }
-    FILE *cue = fopen(path.c_str(), "r");
+    FILE *cue = hk::image::fopen_cue(path);
     if (!cue) return false;
     std::string dir = path.substr(0, path.find_last_of('/') + 1);
     char line[1024];
@@ -64,7 +68,7 @@ bool cdrom_file::open(const std::string &path) {
             if (*q == '"') { char *e = strchr(q + 1, '"'); name.assign(q + 1, e ? e : q + 1); rest = e ? e + 1 : q + 1; }
             else { char *e = strpbrk(q, " \t\r\n"); name.assign(q, e ? e : q + strlen(q)); rest = e ? e : q + strlen(q); }
             cur_le = strcasestr(rest, "MOTOROLA") == nullptr;
-            cur = fopen((name.size() && name[0] == '/' ? name : dir + name).c_str(), "rb");
+            cur = hk::image::fopen_image(name.size() && name[0] == '/' ? name : dir + name);
             if (!cur) { fclose(cue); return false; }
             m_files.push_back(cur);
             fseeko(cur, 0, SEEK_END);

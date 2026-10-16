@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "imagedev/harddriv.h"
 
+#include "dev/image.h"   // HIRAKU's image reader: a hard disk CHD read in place
+
 #include <fcntl.h>
 #include <sys/mman.h>
 #include <unistd.h>
@@ -23,6 +25,7 @@ harddisk_image_device::harddisk_image_device(const machine_config &mconfig, cons
 harddisk_image_device::~harddisk_image_device() {
     if (m_map) munmap((void *)m_map, m_map_size);
     if (m_fd >= 0) close(m_fd);
+    if (m_chd) fclose(m_chd);
 }
 
 void harddisk_image_device::hk_set_disk(const std::string &tag, const std::string &path, u32 cylinders, u32 heads, u32 sectors) {
@@ -32,12 +35,18 @@ void harddisk_image_device::hk_set_disk(const std::string &tag, const std::strin
 void harddisk_image_device::device_start() {
     auto it = disks().find(tag());
     if (it == disks().end() || it->second.path.empty()) return;
-    m_fd = open(it->second.path.c_str(), O_RDONLY);
-    if (m_fd < 0) fatalerror("%s: cannot open the disk image %s", tag(), it->second.path.c_str());
     m_info.cylinders = it->second.c;
     m_info.heads = it->second.h;
     m_info.sectors = it->second.s;
     m_info.sectorbytes = 512;
+    if (hk::image::is_chd(it->second.path)) {   // the CHD itself, through a cache of its hunks
+        m_chd = hk::image::fopen_image(it->second.path);
+        if (!m_chd) fatalerror("%s: cannot open the disk image %s", tag(), it->second.path.c_str());
+        m_sectors = (u64)hk::image::chd_size(m_chd) / 512;
+        return;
+    }
+    m_fd = open(it->second.path.c_str(), O_RDONLY);
+    if (m_fd < 0) fatalerror("%s: cannot open the disk image %s", tag(), it->second.path.c_str());
     m_sectors = (u64)lseek(m_fd, 0, SEEK_END) / 512;
     m_map_size = m_sectors * 512;
     void *p = m_map_size ? mmap(nullptr, m_map_size, PROT_READ, MAP_PRIVATE, m_fd, 0) : MAP_FAILED;
@@ -50,6 +59,7 @@ bool harddisk_image_device::read(u32 lba, void *buffer) {
         return true;
     }
     if (lba >= m_sectors) return false;
+    if (m_chd) return hk::image::pread(m_chd, buffer, 512, (u64)lba * 512) == 512;
     // read-ahead: entering a new 8 MiB stretch, ask the kernel for the next one too, so a cold page
     // cache doesn't stall the machine a sector at a time (the image is read the same either way)
     const uint64_t stretch = (uint64_t)lba * 512 >> 23;

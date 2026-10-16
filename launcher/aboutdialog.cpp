@@ -32,6 +32,8 @@ const Licence kLicences[] = {
     {"SoftFloat 2b (Musashi's FPU)", "third_party/musashi/softfloat/README.txt", 0},
     {"Berkeley SoftFloat 3: BSD-3-Clause", "third_party/mame/src/3rdparty/softfloat3/COPYING.txt", 0},
     {"minimp3: CC0", "third_party/mame/src/3rdparty/minimp3/minimp3.h", 8},
+    {"libchdr: BSD-3-Clause", "third_party/libchdr/LICENSE.txt", 0},
+    {"LZMA SDK (libchdr's LZMA decoder): public domain", "third_party/libchdr/lzma/LICENSE.txt", 0},
     {"crt-royale: GNU GPL v2", "third_party/slang-shaders/crt/shaders/crt-royale/LICENSE.TXT", 0},
     {"crt-guest-advanced-fast: GNU GPL v2 or later", "third_party/slang-shaders/crt/shaders/guest/fast/bloom_horizontal.slang", 22},
     {"Wayland presentation-time: MIT", "third_party/wayland/presentation-time.xml", 26},
@@ -86,6 +88,11 @@ QString softwareHtml() {
          "The Regents of the University of California) in the MIPS CPUs.</li>";
     h += "<li><b>" + link("https://github.com/lieff/minimp3", "minimp3") +
          "</b> (CC0, lieff): the MP3 decoding of the 573's digital I/O board and the multi-session unit.</li>";
+    h += "<li><b>" + link("https://github.com/rtissera/libchdr", "libchdr") +
+         "</b> (BSD-3-Clause, Romain Tisserand and contributors), with " +
+         link("https://github.com/mackron/dr_libs", "dr_flac") + " (public domain or MIT-0, David Reid) and the " +
+         link("https://www.7-zip.org/sdk.html", "LZMA SDK") + "'s decoder (public domain, Igor Pavlov): "
+         "MAME's CHDs read in place.</li>";
     h += "<li><b>" + link("https://github.com/libretro/slang-shaders", "libretro slang-shaders") +
          "</b> (GPL-2.0-or-later): crt-guest-advanced-fast (guest(r), with Dr. Venom) and "
          "crt-royale (TroggleMonkey), the picture's CRT shaders.</li>";

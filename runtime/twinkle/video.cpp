@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "twinkle/video.h"
+#include "dev/image.h"
 
 extern "C" {
 #include <libavcodec/avcodec.h>
@@ -12,6 +13,7 @@ extern "C" {
 #include <cstring>
 #include <fcntl.h>
 #include <fstream>
+#include <sstream>
 #include <strings.h>
 
 namespace hk::twinkle {
@@ -28,9 +30,12 @@ PlayerVideo::~PlayerVideo() {
 }
 
 bool PlayerVideo::open(const std::string &path) {
-    const bool cue = path.size() > 4 && strcasecmp(path.c_str() + path.size() - 4, ".cue") == 0;
+    // a Video CD's CHD reads as the .cue and .bin chdman extractcd writes, a DVD's as its image
+    // (runtime/dev/image.h)
+    const bool cue = (path.size() > 4 && strcasecmp(path.c_str() + path.size() - 4, ".cue") == 0) ||
+                     hk::image::chd_kind(path) == "cd";
     if (!cue) {
-        m_bin = fopen(path.c_str(), "rb");
+        m_bin = hk::image::fopen_image(path);
         if (!m_bin) { fprintf(stderr, "video: cannot read %s\n", path.c_str()); return false; }
         if (!open_dvd()) {
             fclose(m_bin);
@@ -42,7 +47,10 @@ bool PlayerVideo::open(const std::string &path) {
     }
     // the .cue's one FILE, MODE2/2352 throughout (chdman's extractcd of a Video CD)
     const std::string &cue_path = path;
-    std::ifstream f(cue_path);
+    std::istringstream sheet(hk::image::chd_cue_text(cue_path));
+    std::ifstream file;
+    if (!hk::image::is_chd(cue_path)) file.open(cue_path);
+    std::istream &f = hk::image::is_chd(cue_path) ? (std::istream &)sheet : (std::istream &)file;
     std::string line, bin;
     while (std::getline(f, line)) {
         auto p = line.find("FILE \"");
@@ -56,7 +64,7 @@ bool PlayerVideo::open(const std::string &path) {
         auto slash = cue_path.rfind('/');
         if (slash != std::string::npos) bin = cue_path.substr(0, slash + 1) + bin;
     }
-    m_bin = fopen(bin.c_str(), "rb");
+    m_bin = hk::image::fopen_image(bin);
     if (!m_bin) { fprintf(stderr, "video: cannot read %s\n", bin.c_str()); return false; }
     fseek(m_bin, 0, SEEK_END);
     m_sectors = (uint32_t)(ftell(m_bin) / RAW);

@@ -402,6 +402,7 @@ void MainWindow::updateActions() {
 }
 
 static bool installCassette(const Game &g);
+static QString nvramSeed(const Game &g);
 
 void MainWindow::showDetails() {
     const Game *g = selected();
@@ -421,7 +422,10 @@ void MainWindow::showDetails() {
         if (pre >= 0) h += "<pre>" + how.mid(pre + 2) + "</pre>";   // (a not-installed text has none)
     } else {
         bool fresh = !QFileInfo::exists(cfg::nvramDir(g->id));
-        if (fresh && !g->firstBoot.isEmpty())
+        if (fresh && !nvramSeed(*g).isEmpty())
+            h += "<p><b>First boot:</b> the game starts installed, from the saves kept with its data "
+                 "(<tt>nvram-seed</tt>, from a MAME NVRAM folder).</p>";
+        else if (fresh && !g->firstBoot.isEmpty())
             h += "<p><b>First boot:</b> " + g->firstBoot.toHtmlEscaped() + "</p>";
         if (installCassette(*g))
             h += "<p><b>The install cassette is in the slot</b> for the next start: the game installs itself from "
@@ -438,13 +442,21 @@ void MainWindow::showDetails() {
     m_details->setText(h);
 }
 
+// Saves to start a game from, kept with its data by tools/ingest.py (--nvram-seed): a MAME NVRAM
+// folder with the game installed, so a System 573 game's first start skips its install from CD.
+// "" if none.
+static QString nvramSeed(const Game &g) {
+    QString d = cfg::rootDir() + "/dumps/" + g.id + "/nvram-seed";
+    return QFileInfo(d).isDir() ? d : QString();
+}
+
 // A System 573 game that installs from CD with an install cassette (ddr3mj): its first boot (no
-// saves yet) has that cassette in the slot, as does the next start after "Boot once with the
-// install cassette" (an install stopped halfway). Otherwise the game's own cassette.
+// saves yet, and none to start from) has that cassette in the slot, as does the next start after
+// "Boot once with the install cassette" (an install stopped halfway). Otherwise the game's own cassette.
 static bool installCassette(const Game &g) {
     if (!g.installCassette) return false;
     if (cfg::settings().value("cassette/" + g.id).toString() == "install") return true;
-    return !QFileInfo::exists(cfg::nvramDir(g.id));
+    return !QFileInfo::exists(cfg::nvramDir(g.id)) && nvramSeed(g).isEmpty();
 }
 
 QStringList MainWindow::arguments(const Game &g) const {
@@ -499,6 +511,13 @@ void MainWindow::play(const QString &id) {
         return;
     }
     m_log->clear();
+    // the first start of a game with saves to start from: they become its saves
+    if (QString seed = nvramSeed(*g); !seed.isEmpty() && !QFileInfo::exists(cfg::nvramDir(g->id))) {
+        QDir().mkpath(cfg::nvramDir(g->id));
+        for (const QFileInfo &f : QDir(seed).entryInfoList(QDir::Files))
+            QFile::copy(f.filePath(), cfg::nvramDir(g->id) + "/" + f.fileName());
+        log("saves: started from " + seed + "\n");
+    }
     QStringList args = arguments(*g);
     log("$ " + g->exe + " " + args.join(' ') + "\n");
     m_running = g->id;

@@ -107,13 +107,19 @@ done
 cp -r "$root/games" "$root/docs" "$root/shaders" "$d/"
 cp -r "$root/oracle/scripts" "$d/scripts"
 mkdir -p "$d/tools"
-cp "$root"/tools/{ingest.py,chd.py,fbexe.py,pack-data.py,regress.py,unlock.py,pythonfs.py,chdread.py} "$d/tools/"
+cp "$root"/tools/{ingest.py,chd.py,fbexe.py,pack-data.py,regress.py,unlock.py,pythonfs.py,chdread.py,mameset.py,catalogue.py} "$d/tools/"
+# MAME's BEMANI sets as data: ingest tells a set by its contents (tools/mameset.py)
+cp -r "$root/tools/data" "$d/tools/"
 # e-AMUSEMENT (Konami Python): the server checker and the game's calls (docs/EAMUSE3.md)
 mkdir -p "$d/tools/eamuse" && cp "$root"/tools/eamuse/{check.py,corpus.json} "$d/tools/eamuse/"
 mkdir -p "$d/tools/eamuse/bemaniutils" && cp "$root"/tools/eamuse/bemaniutils/{README.md,popn9-python.patch} "$d/tools/eamuse/bemaniutils/"
 # Konami Python ingest reads disks in place through libchdr (tools/chdread.py)
 [ -f "$root/build/libchdr_mini.so" ] && mkdir -p "$d/build" && cp "$root/build/libchdr_mini.so" "$d/build/"
 cp "$root/LICENSE" "$d/" 2>/dev/null || true
+# the licences of the code taken from other projects, where Help > About HIRAKU reads them
+for f in $(grep -o '"third_party/[^"]*"' "$root/launcher/aboutdialog.cpp" | tr -d '"'); do
+	mkdir -p "$d/$(dirname "$f")" && cp "$root/$f" "$d/$f"
+done
 cat > "$d/README.txt" <<'EOF'
 HIRAKU, a build for another Linux PC.
 

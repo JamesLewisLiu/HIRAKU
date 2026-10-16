@@ -141,8 +141,28 @@ target_include_directories(hiraku_shell PUBLIC runtime)
 target_link_libraries(hiraku_shell PUBLIC hiraku_cabinet)
 
 # ATA/ATAPI bus and disc/disk images (both cores)
+# Disc and disk images, CHDs read in place (runtime/dev/image.h): libchdr (BSD-3), its FLAC
+# decoder (dr_flac, public domain) and the LZMA SDK's decoder (public domain), in third_party/libchdr
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(ZSTD REQUIRED IMPORTED_TARGET libzstd)
+find_package(ZLIB REQUIRED)
+add_library(hk_libchdr STATIC
+  third_party/libchdr/src/libchdr_bitstream.c third_party/libchdr/src/libchdr_cdrom.c
+  third_party/libchdr/src/libchdr_chd.c third_party/libchdr/src/libchdr_flac.c
+  third_party/libchdr/src/libchdr_huffman.c third_party/libchdr/lzma/LzmaDec.c)
+target_include_directories(hk_libchdr PUBLIC third_party/libchdr/include PRIVATE third_party/libchdr/lzma)
+target_compile_definitions(hk_libchdr PRIVATE _7ZIP_ST Z7_ST)
+target_compile_options(hk_libchdr PRIVATE -O2 -w)
+target_link_libraries(hk_libchdr PUBLIC PkgConfig::ZSTD ZLIB::ZLIB)
+add_library(hiraku_image STATIC runtime/dev/image.cpp)
+target_include_directories(hiraku_image PUBLIC runtime)
+target_link_libraries(hiraku_image PUBLIC hk_libchdr)
+add_executable(hiraku-chdcat runtime/dev/chdcat.cpp)
+target_link_libraries(hiraku-chdcat PRIVATE hiraku_image)
+
 add_library(hiraku_ata STATIC runtime/dev/ata.cpp)
 target_include_directories(hiraku_ata PUBLIC runtime)
+target_link_libraries(hiraku_ata PUBLIC hiraku_image)
 
 # --- the Firebeat core: PPC403 runtime and the Firebeat board ------------------------
 add_library(hiraku_rt STATIC
@@ -333,6 +353,7 @@ set(HK_573_OPT "-O3" CACHE STRING "compiler optimisation flags for the System 57
 separate_arguments(HK_573_OPT_LIST UNIX_COMMAND "${HK_573_OPT}")
 add_library(hiraku_mame573 STATIC ${HK_573_MAME})
 target_include_directories(hiraku_mame573 PUBLIC ${HK_573_INC})
+target_link_libraries(hiraku_mame573 PUBLIC hiraku_image)   # CHDs read in place (runtime/dev/image.h)
 target_compile_options(hiraku_mame573 PRIVATE -w ${HK_573_OPT_LIST})
 target_link_libraries(hiraku_mame573 PUBLIC hk_softfloat3)
 

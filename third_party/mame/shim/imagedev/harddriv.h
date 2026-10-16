@@ -20,7 +20,7 @@ public:
     // HIRAKU: the image and its geometry, before the machine starts; none = no disk
     static void hk_set_disk(const std::string &tag, const std::string &path, u32 cylinders, u32 heads, u32 sectors);
 
-    bool exists() const { return m_fd >= 0; }
+    bool exists() const { return m_fd >= 0 || m_chd; }
     const hard_disk_file::info &get_info() const { return m_info; }
     void get_inquiry_data(std::vector<u8> &data) const { data.clear(); }   // a CHD's IDNT: none
     bool read(u32 lba, void *buffer);
@@ -31,6 +31,7 @@ protected:
 
 private:
     int m_fd = -1;
+    FILE *m_chd = nullptr;   // HIRAKU: a hard disk CHD, read in place (runtime/dev/image.h)
     u64 m_sectors = 0;
     u64 m_readahead = ~u64(0);   // the 8 MiB stretch last read ahead
     const u8 *m_map = nullptr;   // the image, mapped (a sector is then a copy, not a system call)

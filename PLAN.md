@@ -1934,6 +1934,15 @@ The owner's media arrived (Reliquary `.py1` sets beside popn9). Survey, then sup
 - Still open: Python 2 media; a clean `dstagef`.
 - Licence: linking Reliquary makes the Python binaries GPL-3.0 as a whole (its Python 2 files carry only the repo's GPL-3). HIRAKU's own code stays GPL-3.0-or-later.
 
+## 24. The rest of the catalogue (written 2026-10-15)
+
+The owner's MAME 0.243 BEMANI archive, what HIRAKU doesn't run yet, and a plan in seven phases: [docs/CATALOGUE.md](docs/CATALOGUE.md).
+- **Phase 0 (done 2026-10-16):**
+  - `tools/catalogue.py` and `tools/mameset.py`: sets told by contents;
+  - ingest of older MAME names and split sets;
+  - NVRAM seeds;
+  - CHDs read in place (`runtime/dev/image.h`, `--keep-chd`).
+
 ## M0 steps (all done)
 
 1. ~~`git init` HIRAKU and add `.gitignore` for `dumps/` and `build/`~~ Done.
