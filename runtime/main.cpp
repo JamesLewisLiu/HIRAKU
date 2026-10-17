@@ -280,7 +280,11 @@ int main(int argc, char **argv) {
         }
         else if (!machine.option(a, val)) { fprintf(stderr, "unknown option %s (--help lists them)\n", a.c_str()); return 2; }
     }
+#ifdef _WIN32
+    setvbuf(stdout, nullptr, _IONBF, 0);   // Windows has no line buffering (_IOLBF is full), and MSVC's runtime rejects its size 0
+#else
     setvbuf(stdout, nullptr, _IOLBF, 0);
+#endif
     mkdirs(out);
     opt.out = out;
 
