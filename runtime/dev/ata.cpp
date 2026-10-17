@@ -747,7 +747,13 @@ void AtaBus::packet_done() {
         start_data_in(std::move(s));
         break;
     }
-    case 0x1b:                                           // START STOP UNIT
+    case 0x1b:   // START STOP UNIT: stops CD audio (MAME's t10mmc abort_audio): Keyboardmania ends its demo's song so
+        if (d->cdda.playing) {
+            if (sync) sync();
+            stop_audio(d);
+        }
+        finish(false);
+        break;
     case 0x1e:                                           // PREVENT ALLOW MEDIUM REMOVAL
     case 0x2b:                                           // SEEK
     case 0xbb:                                           // SET CD SPEED
