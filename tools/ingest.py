@@ -500,6 +500,19 @@ def link_or_copy(src: str, dst: str) -> str:
         return "symlinked"
 
 
+def copy_disk(src: str, dst: str) -> str:
+    """A hard link where the filesystems allow it, else a copy (not a symlink: the source can go)."""
+    if os.path.lexists(dst):
+        os.remove(dst)
+    try:
+        os.link(src, dst)
+        return "linked"
+    except OSError:
+        shutil.copyfile(src, dst + ".part")
+        os.replace(dst + ".part", dst)
+        return "copied"
+
+
 PY2_FILES = (   # .py2 key -> machine.txt key; the disk is linked, the rest copied to rom/
     ("HddImagePath", "hdd"), ("HddIdPath", "hdd_id"), ("IlinkIdPath", "ilink_id"), ("NvRamPath", "nvram"),
     ("DongleBlackPath", "dongle_black"), ("DongleWhitePath", "dongle_white"))
@@ -608,15 +621,56 @@ def ingest_python2(args, py2: str) -> int:
 def ingest_python(args, py1: str) -> int:
     """A Konami Python 1 game, from its .py1 descriptor (PCSX2 Reliquary's format)."""
     import configparser
-    import pythonfs
     ini = configparser.ConfigParser(interpolation=None, strict=False, comment_prefixes=(";", "#"))
     ini.optionxform = str
     ini.read(py1, encoding="utf-8")
     if "Game" not in ini:
         print(f"ERROR    {py1}: no [Game] section")
         return 1
-    g = ini["Game"]
-    base = os.path.dirname(os.path.abspath(py1))
+    return ingest_python1(args, dict(ini["Game"]), os.path.dirname(os.path.abspath(py1)))
+
+
+# A Konami Python 1 set's files by name (MAME's and Reliquary's collection's), for a set's
+# folder given without its .py1
+PY1_NAMES = (("BbsRamPath", "m48t58y.u48"), ("IoBootRomPath", "b22a01.u42"), ("IoConfigRomPath", "*.crom"),
+             ("InternalDonglePath", "ds2430.u3"), ("ExternalDonglePath", "ds2430_*.u3"),
+             ("MemoryCardDonglePath", "*.ps2"), ("MemoryCardIdPath", "*.id"))
+
+
+def python1_folder(folder: str) -> dict | None:
+    """A Konami Python 1 set's folder without its .py1 (copied without it, or MAME's): the .py1's
+    keys from the files' names, when a disk in it is one games/*/game.toml names ([python] hdd).
+    The game id is the external dongle's (ds2430_black_gce12jab.u3: GCE12JAB), as the .py1s have it."""
+    disks = {x["python"]["hdd"]: x for x in all_games() if x.get("core") == "python" and x.get("python", {}).get("hdd")}
+    disk = next((c for c in sorted(glob.glob(os.path.join(folder, "*.chd")))
+                 if os.path.splitext(os.path.basename(c))[0] in disks), None)
+    if disk is None:
+        return None
+    game = disks[os.path.splitext(os.path.basename(disk))[0]]
+    g = {"Name": game["title"], "HddImagePath": disk}
+    for key, pattern in PY1_NAMES:
+        found = sorted(glob.glob(os.path.join(folder, pattern)))
+        if found:
+            g[key] = found[0]
+    dongle = os.path.basename(g.get("ExternalDonglePath", ""))
+    if dongle.startswith("ds2430_black_"):
+        g["GameId"] = os.path.splitext(dongle)[0][len("ds2430_black_"):].upper()
+    return g
+
+
+def python_support(args, base: str, what: str, has: str) -> str | None:
+    """The arcade BIOS's or the MagicGate keys' folder (what: bios, keys; has: a file in it): given
+    (--bios, --keys, or a folder of that name dropped with the game), near the set (a collection
+    keeps them beside its sets), or an already added Python game's copy (dumps/*/bios, keys)."""
+    for d in (getattr(args, what), find_near(base, what)) + tuple(sorted(glob.glob(os.path.join(args.out, "*", what)))):
+        if d and os.path.exists(os.path.join(d, has)):
+            return d
+    return None
+
+
+def ingest_python1(args, g: dict, base: str) -> int:
+    """A Konami Python 1 game from its .py1's keys (paths relative to base)."""
+    import pythonfs
     files = {}
     for key, name in PY1_FILES:
         v = g.get(key, "").strip()
@@ -651,29 +705,40 @@ def ingest_python(args, py1: str) -> int:
                "game_id": g.get("GameId", "")}
     for name, src in files.items():
         if name in ("hdd", "cf"):
-            how = link_or_copy(src, os.path.join(outdir, os.path.basename(src)))
+            to = os.path.join(outdir, os.path.basename(src))
+            if args.copy_chd and os.path.isfile(to) and not os.path.islink(to) and os.path.getsize(to) == os.path.getsize(src):
+                how = "have"
+            elif args.copy_chd:
+                how = copy_disk(src, to)   # the launcher's: the files given (a USB stick) can go afterwards
+            else:
+                how = link_or_copy(src, to)
             machine[name] = os.path.basename(src)
             print(f"disk     {os.path.basename(src)} ({how})")
         else:
             shutil.copy2(src, os.path.join(outdir, "rom", os.path.basename(src)))
             machine[name] = "rom/" + os.path.basename(src)
-    bios = args.bios or find_near(base, "bios")
+    bios = python_support(args, base, "bios", "COH-H31000.BIN")
     bios_bin = sorted(glob.glob(os.path.join(bios, "*.BIN")) + glob.glob(os.path.join(bios, "*.bin"))) if bios else []
     if not bios_bin:
-        print("ERROR    no arcade BIOS (COH-H31000.BIN with its .NVM and .MEC): give --bios DIR")
+        print("ERROR    no arcade BIOS (COH-H31000.BIN with its .NVM and .MEC): add the folder bios/ that holds it "
+              "with the game (or put it beside the game's folder), or give --bios DIR")
         return 1
     stem = os.path.splitext(bios_bin[0])[0]
     for f in glob.glob(stem + ".*"):
-        if not f.lower().endswith(".txt"):
-            shutil.copy2(f, os.path.join(outdir, "bios", os.path.basename(f)))
+        to = os.path.join(outdir, "bios", os.path.basename(f))
+        if not f.lower().endswith(".txt") and not (os.path.exists(to) and os.path.samefile(f, to)):
+            shutil.copy2(f, to)
     machine["bios"] = "bios/" + os.path.basename(bios_bin[0])
-    keys = args.keys or find_near(base, "keys")
+    keys = python_support(args, base, "keys", "kek.bin")
     missing = [k for k in PY_KEYS if not keys or not os.path.exists(os.path.join(keys, k + ".bin"))]
     if missing:
-        print(f"ERROR    MagicGate key files missing ({', '.join(k + '.bin' for k in missing)}): give --keys DIR")
+        print(f"ERROR    MagicGate key files missing ({', '.join(k + '.bin' for k in missing)}): add the folder keys/ "
+              "that holds them with the game (or put it beside the game's folder), or give --keys DIR")
         return 1
     for k in PY_KEYS:
-        shutil.copy2(os.path.join(keys, k + ".bin"), os.path.join(outdir, "keys", k + ".bin"))
+        f, to = os.path.join(keys, k + ".bin"), os.path.join(outdir, "keys", k + ".bin")
+        if not (os.path.exists(to) and os.path.samefile(f, to)):   # a game added again: its own copy
+            shutil.copy2(f, to)
     machine["keys"] = "keys"
     print(f"bios     {os.path.basename(bios_bin[0])}, keys copied (dumps/ is gitignored: they stay out of the repo)")
     machine_path = os.path.join(outdir, "machine.txt")
@@ -958,14 +1023,34 @@ def main() -> int:
         return ingest_firebeat(args)
     if not args.inputs and not args.romset:
         ap.error("give the game's files (ROM set, CHDs, images), or --exe")
-    # Konami Python: a .py1, or a set's folder (Reliquary's collections keep <set>.py1 beside it)
-    py1 = [f for f in args.inputs if f.lower().endswith(".py1")]
+    # Konami Python: the arcade BIOS's and the MagicGate keys' folders, given with the games
+    for f in list(args.inputs):
+        name = os.path.basename(os.path.normpath(f)).lower()
+        if os.path.isdir(f) and name in ("bios", "keys") and os.path.exists(
+                os.path.join(f, "COH-H31000.BIN" if name == "bios" else "kek.bin")):
+            args.inputs.remove(f)
+            setattr(args, name, getattr(args, name) or f)
+    if not args.inputs:
+        print("ERROR    only the BIOS or the keys: add them with a Konami Python game")
+        return 1
+    # Konami Python: a .py1, or a set's folder (Reliquary's collections keep <set>.py1 beside it;
+    # without it, the folder's files say what they are); each game given is added
+    py1, folders = [f for f in args.inputs if f.lower().endswith(".py1")], []
     for f in args.inputs:
         if os.path.isdir(f):
             near = os.path.normpath(f) + ".py1"
-            py1 += sorted(glob.glob(os.path.join(f, "*.py1"))) + ([near] if os.path.exists(near) else [])
-    if py1:
-        return ingest_python(args, py1[0])
+            found = sorted(glob.glob(os.path.join(f, "*.py1"))) + ([near] if os.path.exists(near) else [])
+            if found:
+                py1.append(found[0])
+            elif (g := python1_folder(f)) is not None:
+                folders.append((f, g))
+    if py1 or folders:
+        rc = 0
+        for f in py1:
+            rc |= ingest_python(args, f)
+        for f, g in folders:
+            rc |= ingest_python1(args, g, os.path.abspath(f))
+        return rc
     py2 = [f for f in args.inputs if f.lower().endswith(".py2")]
     for f in args.inputs:
         if os.path.isdir(f):
