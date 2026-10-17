@@ -153,6 +153,7 @@ QString familyName(const QString &family) {
     if (family == "djpopn") return "pop'n music (DJ Main)";
     if (family == "djpstage") return "pop'n stage (DJ Main)";
     if (family == "ddr") return "Dance Dance Revolution (System 573)";
+    if (family == "ddrsolo") return "Dance Dance Revolution Solo (System 573)";
     if (family == "drmn") return "DrumMania (System 573)";
     if (family == "gtrf") return "GuitarFreaks (System 573)";
     if (family == "pypopn") return "pop'n music (Konami Python)";
@@ -163,7 +164,7 @@ QString familyName(const QString &family) {
 QList<QPair<QString, QStringList>> familySeries() {
     return {{"beatmania", {"djbm", "iidx", "bm3"}},
             {"pop'n music", {"djpopn", "popn", "pypopn", "djpstage"}},
-            {"Other games", {"ddr", "drmn", "gtrf", "kbm", "ppp"}}};
+            {"Other games", {"ddr", "ddrsolo", "drmn", "gtrf", "kbm", "ppp"}}};
 }
 
 QString controlsSet(const QString &family) {
@@ -195,7 +196,7 @@ QString controlsMemberName(const QString &family) {
 }
 
 QList<QPair<QString, QStringList>> controlsSeries() {
-    return {{"", {"beatmania", "popn", "djpstage", "ddr", "drmn", "gtrf", "kbm", "ppp"}}};
+    return {{"", {"beatmania", "popn", "djpstage", "ddr", "ddrsolo", "drmn", "gtrf", "kbm", "ppp"}}};
 }
 
 QStringList families() {

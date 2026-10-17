@@ -1,0 +1,11 @@
+# Dance Dance Revolution Solo Bass Mix (GQ894 VER. JAA), Konami 1999: the first power-on from blank
+# NVRAM. The CD asks "DO YOU WANT TO INITIALIZE FLASH-ROM?"; Test answers yes, and the flash is
+# erased and filled: "FLASH-ROM INITIALIZE COMPLETE" by frame ~11000. Hashes the main RAM every
+# frame and snapshots every 60 frames, to compare with MAME.
+game ddrsbm
+
+hash ram  0x80000000 0x80400000   # 4 MiB main RAM (KSEG0)
+
+at 1500 press "Service Mode" 8
+from 0 every 60 snap
+at 12000 quit

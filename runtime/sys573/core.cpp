@@ -94,6 +94,7 @@ public:
         get("pccard1", cfg.pccard1);
         get("pccard2", cfg.pccard2);
         get("cassette", cfg.cassette);
+        get("install_kind", cfg.install_kind);
         cfg.memory_card_reader = machine["memory_card_reader"] == "1";
         cfg.msu = machine["msu"] == "1";
         if (cfg.msu) cfg.msu_cd = o.data_path(machine["msu_cd"]);

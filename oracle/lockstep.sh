@@ -44,6 +44,11 @@ quit="$(awk '$1=="at" && $3=="quit" {print $2}' "$script" | tail -1)"
 
 m="out/oracle/$game/$run"
 h="out/oracle-h/$game-$run"
+# HIRAKU's binary as it is now: a rebuild during MAME's half can't change what the run compares
+exe="out/oracle-h/.bin-$game-$run-$$"
+mkdir -p out/oracle-h
+cp "build/cmake/hiraku-$game" "$exe"
+trap 'rm -f "$exe"' EXIT
 nv="out/oracle-h/$game-$run-nvram"
 rm -rf "$h" "$nv"
 mkdir -p "$h" "$nv"
@@ -81,7 +86,7 @@ fi
 rtc="$(grep -o 'power-on time [0-9]*' "$m/log.txt" 2>/dev/null | head -1 | awk '{print $NF}' || true)"
 args=(--frames $((quit + 1)) --out "$h" --script "$script" --nvram "$nv" "${extra[@]}")
 [[ -n "$rtc" ]] && args+=(--rtc "$rtc")
-systemd-run --user --scope -q -p MemoryMax=3G nice "build/cmake/hiraku-$game" "${args[@]}" "$@" > "$h.log" 2>&1 || true
+systemd-run --user --scope -q -p MemoryMax=3G nice "$root/$exe" "${args[@]}" "$@" > "$h.log" 2>&1 || true
 echo "=== $game $run ($(grep -h '^frames' "$h.log" | cut -c1-80))"
 verdict="$(python3 oracle/snapcmp.py "$h" "$m" 2>&1 | grep -E "^hash|^snapshots|Error|error" || true)"
 echo "$verdict"

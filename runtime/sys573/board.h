@@ -27,6 +27,7 @@ struct Config {
     // chips MAME's set has filled already, as "device:file": a set's installed flash (29f016a.27h)
     // and timekeeper (m48t58); each device starts from its region, as in MAME
     std::vector<std::string> preload;
+    std::string install_kind;              // the install cassette's variant when not the game's (cassxzi: "xi")
     // MAME's install cassette, for the first boot of games that install from CD with one (ddr3mj:
     // ksys573.cpp's note 3): its files, and which cassette is in the slot, "game" or "install"
     std::string install_eeprom, install_id;

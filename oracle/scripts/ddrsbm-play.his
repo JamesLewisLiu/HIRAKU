@@ -1,0 +1,26 @@
+# Dance Dance Revolution Solo Bass Mix: from what ddrsbm-install.his left, a power-on with the
+# installed flash: the flash and memory checks, the data loading, the warning and the title, then
+# four coins (two a credit), Start through the caution, mode and song select, and the first song
+# stepped on all six panels every 8 frames (a panel name presses both its sensors): CLEARED, and
+# the next stage's song select. Hashes the main RAM every frame, snapshots every 60 frames.
+game ddrsbm
+
+hash ram  0x80000000 0x80400000   # 4 MiB main RAM (KSEG0)
+
+at 17000 press "Coin 1" 8
+at 17100 press "Coin 1" 8
+at 17200 press "Coin 1" 8
+at 17300 press "Coin 1" 8
+at 17500 press "1 Player Start" 8
+at 18100 press "1 Player Start" 8
+at 18700 press "1 Player Start" 8
+at 19300 press "1 Player Start" 8
+at 19900 press "1 Player Start" 8
+from 20300 every 8 press "P1 Left" 4
+from 20300 every 8 press "P1 Down" 4
+from 20300 every 8 press "P1 Up" 4
+from 20300 every 8 press "P1 Right" 4
+from 20300 every 8 press "P1 Up-Left" 4
+from 20300 every 8 press "P1 Up-Right" 4
+from 0 every 60 snap
+at 23000 quit

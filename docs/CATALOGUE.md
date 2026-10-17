@@ -407,6 +407,42 @@ Split across three sessions on the owner's request:
   5. **Solo** last: its own FPGA map, 6-panel pads and outputs.
 - **Exit:** each plays a song; `ddrmax2` and `ddrextrm` in regress; worst frame inside the N100 budget (§19).
 
+#### Phase 3 progress (2026-10-17)
+
+Split across three sessions again:
+- 3rd Mix Plus, the 4th Mixes and Solo here;
+- 5thMIX, MAX, MAX2 and EXTREME in a second session (bbfe79a);
+- DDR USA and Dancing Stage in a third (cefdb4b).
+
+The fork wasn't needed as the oracle: with current dumps, MAME at the pin runs every one of these games, and that's what they're compared with.
+
+**In lockstep with MAME (main RAM and every snapshot), from the first boot's install to a song:**
+
+| Sets | Notes |
+|---|---|
+| `ddr3mp` | Installs with no input, like `ddr3mj`. |
+| `ddr4m`, `ddr4mj`, `ddr4mp`, `ddr4mps` | The CD first offers to update the CD-ROM drive's firmware (NOTE 604): Test goes on. INFO 506 by frame ~22,800. `ddr4mp` and `ddr4mps` then say the RTC RAM was cleared (NOTE 605): Test again. Three coins a credit on `ddr4m` (AAA). `ddr4mps` is Solo: six panels, two sensors each. |
+| `ddrusa` | NOTE 604: Test, and the install is done by frame ~7,500. |
+| `ddr5m`, `ddrmax` | NOTE 604, then the install; NOTE 605 after it. |
+| `ddrmax2`, `ddrextrm` | Install with no input; NOTE 605 after it. EXTREME runs its beginner tutorial first. Regress `ddrmax2-install`, `ddrmax2-play`, `ddrextrm-install`, `ddrextrm-play`. |
+| `ddrsbm` | Solo Bass Mix: Test answers INITIALIZE FLASH-ROM?, then a game from that flash. |
+
+**The 573 core:**
+- The Solo cabinet (`ddrsolo` family): MAME's ports, each panel's two sensors (a script or the shell can press a panel, which presses both), the lamp outputs, and IN2's bit 7 cleared at init as MAME's driver does.
+- Solo Bass Mix's own FPGA program (MAME's `set_ddrsbm_fpga`): the MP3 counter runs free from power-on, and the game syncs its playback to it. Without it, the game waited at READY with the counter at 0; the cycle-exact traces matched, and two bytes of RAM gave it away.
+- `preload` for the timekeeper as well as the flash.
+- The install cassette's own variant (`install_kind`), when it differs from the game cassette's: X76F041 install beside a ZS01 game cassette, as on 3rd Mix Plus and the 4th Mixes.
+
+**The rompath:** an older clone zip shadows a merged parent zip that holds the current dumps under `<clone>/`, since MAME loads by name. So `ddr4mj.zip` had to go from the oracle rompath, as `ddr3mka`/`ddr3ma` had in Phase 1.
+
+**Left, all for media:**
+- **Cassette dumps older than MAME's** (MAME stops at the same ERROR 121, or "insert the security cassette", that HIRAKU does):
+  - `dsem`, `dsem2`, `dsfdr`, `dsfdct`, `dsfdcta`;
+  - `ddr4ms`, `ddr4msj`;
+  - `ddrs2k`, `ddrs2kj`.
+  - No zip in the archive has the current dumps. The exception is `dsfdr`'s install cassette, the common X76F041 one, but its ZS01 game cassette is missing. The manifests are in, so the dumps are all these sets need.
+- `ddrkara2` isn't in the archive.
+
 ### Phase 4: GuitarFreaks and DrumMania 2nd–10th (3–5 weeks)
 
 - **Base:** the `drmn10m` and `gtfrk11m` code, going backwards.

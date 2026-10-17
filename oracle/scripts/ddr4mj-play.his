@@ -1,0 +1,19 @@
+# Dance Dance Revolution 4th Mix (G*A33 VER. JAA): a game, from what ddr4mj-install.his left (the
+# flash and the PC Card installed; the game cassette in): the title is at frame ~6,900. Two coins
+# at the title, Start twice; the selects time out to their defaults; the song played by stepping
+# on all four panels every 8 frames. Hashes the main RAM every frame, snapshots every 60 frames,
+# to compare with MAME.
+game ddr4mj
+
+hash ram  0x80000000 0x80400000   # 4 MiB main RAM (KSEG0)
+
+at 7000 press "Coin 1" 8
+at 7040 press "Coin 1" 8
+at 7200 press "1 Player Start" 8
+at 7400 press "1 Player Start" 8
+from 9700 every 8 press "P1 Left" 4
+from 9700 every 8 press "P1 Down" 4
+from 9700 every 8 press "P1 Up" 4
+from 9700 every 8 press "P1 Right" 4
+from 0 every 60 snap
+at 18700 quit

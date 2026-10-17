@@ -116,6 +116,24 @@ std::vector<Control> make_ddr() {
     return c;
 }
 
+// Dance Dance Revolution Solo (System 573, MAME ksys573.cpp "ddrsolo"): one player, six panels
+// (up-left and up-right too), each read by two sensors ("P1 Left 1", "P1 Left 2"); a panel here
+// presses both. Select L/R beside Start.
+std::vector<Control> make_ddrsolo() {
+    std::vector<Control> c;
+    const char *dirs[6] = {"Left", "Down", "Up", "Right", "Up-Left", "Up-Right"};
+    const char *keys[6] = {"key:Left, joy0:button0", "key:Down, joy0:button1", "key:Up, joy0:button2",
+                           "key:Right, joy0:button3", "key:Q, joy0:button4", "key:E, joy0:button5"};
+    for (int k = 0; k < 6; k++) c.push_back({std::string("P1 ") + dirs[k], std::string(dirs[k]) + " panel", "Player 1", false, keys[k]});
+    c.push_back({"1 Player Start", "Start", "Player 1", false, "key:1, joy0:button9"});
+    c.push_back({"P1 Select L", "Select left", "Player 1", false, "key:Z, joy0:button6"});
+    c.push_back({"P1 Select R", "Select right", "Player 1", false, "key:C, joy0:button7"});
+    c.push_back({"Coin 1", "Coin", "Cabinet", false, "key:5, joy0:button8"});
+    c.push_back({"Test", "Test", "Cabinet", false, "key:F2"});
+    c.push_back({"Service", "Service", "Cabinet", false, "key:9"});
+    return c;
+}
+
 // The e-AMUSEMENT card unit's slot and 10-key (System 573 GuitarFreaks and DrumMania with the
 // network unit, runtime/sys573/cardunit.h; the names as pop'n's on Konami Python). `prefix`: ""
 // for the first reader, "P2 " for GuitarFreaks' second, whose 10-key has no keys by default.
@@ -390,6 +408,15 @@ std::vector<Lamp> make_ddr_lamps() {
     return l;
 }
 
+// DDR Solo: the outputs MAME's ddrsolo_output_callback names (reg 0, bit = output number)
+std::vector<Lamp> make_ddrsolo_lamps() {
+    return {
+        {"Extra Ball 1", "Cabinet", 0, 10}, {"Extra Ball 2", "Cabinet", 0, 9}, {"Extra Ball 3", "Cabinet", 0, 11},
+        {"Extra Ball 4", "Cabinet", 0, 8}, {"Speaker", "Cabinet", 0, 16}, {"Start Lamp", "Panel", 0, 20},
+        {"Body Center", "Cabinet", 0, 21}, {"Body Right", "Cabinet", 0, 22}, {"Body Left", "Cabinet", 0, 23},
+    };
+}
+
 // DrumMania: the digital board's outputs as MAME's drmn_output_callback names them (DrumMania
 // 2nd and later). reg 0, bit = output number.
 std::vector<Lamp> make_drmn_lamps() {
@@ -429,7 +456,7 @@ std::string trim(std::string s) {
 const std::vector<Control> &controls(const std::string &family) {
     static const std::map<std::string, std::vector<Control>> all = {
         {"bm3", make_bm3()}, {"popn", make_popn()}, {"ppp", make_ppp()}, {"kbm", make_kbm()},
-        {"djbm", make_djbm()}, {"djpopn", make_djpopn()}, {"djpstage", make_djpstage()}, {"ddr", make_ddr()},
+        {"djbm", make_djbm()}, {"djpopn", make_djpopn()}, {"djpstage", make_djpstage()}, {"ddr", make_ddr()}, {"ddrsolo", make_ddrsolo()},
         {"drmn", make_drmn()}, {"gtrf", make_gtrf()}, {"iidx", make_iidx()}, {"pypopn", make_pypopn()}};
     auto f = all.find(family);
     return f != all.end() ? f->second : all.at("bm3");
@@ -439,7 +466,7 @@ const std::vector<Lamp> &lamps(const std::string &family) {
     static const std::map<std::string, std::vector<Lamp>> all = {
         {"bm3", make_bm3_lamps()}, {"popn", make_popn_lamps()}, {"ppp", make_ppp_lamps()}, {"kbm", make_kbm_lamps()},
         {"djbm", make_djbm_lamps()}, {"djpopn", make_djpopn_lamps()}, {"djpstage", make_djpstage_lamps()},
-        {"ddr", make_ddr_lamps()}, {"drmn", make_drmn_lamps()}, {"gtrf", make_gtrf_lamps()}, {"iidx", make_iidx_lamps()},
+        {"ddr", make_ddr_lamps()}, {"ddrsolo", make_ddrsolo_lamps()}, {"drmn", make_drmn_lamps()}, {"gtrf", make_gtrf_lamps()}, {"iidx", make_iidx_lamps()},
         {"pypopn", make_pypopn_lamps()}};
     auto f = all.find(family);
     return f != all.end() ? f->second : all.at("bm3");

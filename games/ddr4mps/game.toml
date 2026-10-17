@@ -1,0 +1,27 @@
+# Dance Dance Revolution 4th Mix Plus Solo (G*A34 VER. JBA), Konami 2000: generated from MAME's ksys573.cpp (tools/gen573.py)
+id = "ddr4mps"
+title = "Dance Dance Revolution 4thMIX PLUS Solo"
+family = "ddrsolo"      # DDR Solo cabinet: one player, six panels (up-left, up-right too), Select L/R
+mame = "ddr4mps"        # MAME set name, used by the oracle
+core = "sys573"         # System 573 (runtime/sys573/, PLAN.md section 19); digital I/O board
+install_cassette = "yes"   # the launcher's first boot uses the install cassette (--cassette install)
+
+[roms]
+bios = "700a01.22g"             # 573 BIOS
+h8 = "h8a01.bin"                # the H8's start-up response (JVS check)
+cassette_eeprom = "gca34jb.u1"  # the game cassette's ZS01
+cassette_id = "gca34jb.u6"      # ... and its DS2401 serial number
+install_eeprom = "gea34jb.u1"   # the install cassette's X76F041 (first boot: --cassette install)
+install_id = "gea34jb.u6"       # ... and its DS2401
+digital_id = "digital-id.bin"   # the digital I/O board's DS2401
+preload = ["m48t58:gca34jb.22h"]   # chips the set has filled: device:file (MAME's regions)
+
+[board]
+io_board = "digital"            # GX894-PWB(B): FPGA + MAS3507D MP3
+cassette = "zi"                 # MAME's cassette variant: ZS01 + DS2401 (casszi)
+install_kind = "xi"             # the install cassette's variant: X76F041 + DS2401
+pccard2 = "32mb"                # MAME's pccard2_32mb(): a Fujitsu 32 MiB flash card in slot 2
+memory_card_reader = true       # the JVS memory card reader
+
+[cd]
+chd = "a34jba02"        # the runtime CD

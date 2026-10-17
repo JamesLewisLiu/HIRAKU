@@ -231,6 +231,7 @@ public:
     void gn845pwbb_clk_w(int offset, int data);
     void ddr_output_callback(offs_t offset, u8 data);
     void drmn_output_callback(offs_t offset, u8 data);
+    void ddrsolo_output_callback(offs_t offset, u8 data);
     void set_lamp(offs_t offset, bool lit);
 };
 
@@ -356,7 +357,11 @@ void sys573_state::device_add_mconfig(machine_config &config) {
         KONAMI_573_DIGITAL_IO_BOARD(config, m_k573dio, XTAL(19'660'800));
         // ddr3m(): DDR's outputs; drmn2m() to drmn10m(): DrumMania's
         if (c.family == "drmn") m_k573dio->output_callback().set(*this, &sys573_state::drmn_output_callback);
+        else if (c.family == "ddrsolo") m_k573dio->output_callback().set(*this, &sys573_state::ddrsolo_output_callback);
         else m_k573dio->output_callback().set(*this, &sys573_state::ddr_output_callback);
+        // ddrsbm(): Solo Bass Mix's own FPGA program, whose MP3 counter runs free from power-on (the
+        // game syncs its playback to it; without, it waits at READY with the counter at 0)
+        if (c.game == "ddrsbm") m_k573dio->set_ddrsbm_fpga(true);
     }
     // k573a(): the analog board is the driver's own handlers (konami573a_map); init_ddr() sends
     // its outputs to ddr_output_callback (gx700pwbf_output)
@@ -382,12 +387,14 @@ void sys573_state::device_add_mconfig(machine_config &config) {
     }
     // the cassette: konami573() adds cassx(); ddr3m's cassyyi() replaces it
     // (cassyyi() and cassxxi() add the install cassette, of the game's kind)
+    // (cassxzi() pairs a ZS01 game cassette with an X76F041 install cassette: install_kind)
     for (const char *slot : {"game", "install"}) {
         if (!strcmp(slot, "install") && c.install_eeprom.empty()) continue;
-        if (c.cassette == "zi") m_cassette->option_add(slot, KONAMI573_CASSETTE_ZI);   // casszi(): ZS01 + DS2401
-        else if (c.cassette == "yi") m_cassette->option_add(slot, KONAMI573_CASSETTE_YI);
-        else if (c.cassette == "xi") m_cassette->option_add(slot, KONAMI573_CASSETTE_XI);
-        else if (c.cassette == "y") m_cassette->option_add(slot, KONAMI573_CASSETTE_Y);
+        const std::string &kind = !strcmp(slot, "install") && !c.install_kind.empty() ? c.install_kind : c.cassette;
+        if (kind == "zi") m_cassette->option_add(slot, KONAMI573_CASSETTE_ZI);   // casszi(): ZS01 + DS2401
+        else if (kind == "yi") m_cassette->option_add(slot, KONAMI573_CASSETTE_YI);
+        else if (kind == "xi") m_cassette->option_add(slot, KONAMI573_CASSETTE_XI);
+        else if (kind == "y") m_cassette->option_add(slot, KONAMI573_CASSETTE_Y);
         else m_cassette->option_add(slot, KONAMI573_CASSETTE_X);
     }
     m_cassette->set_default_option(c.cassette_slot.c_str());
@@ -456,6 +463,8 @@ void sys573_state::device_start() {
     m_h8_length = (int)h8->bytes();
     m_h8_index = 0;
     m_stage_mask = 0xffffffff;   // ddr_state::machine_start
+    // ddrsolo: IN2's 0x80 (P2 START) is an unwired custom bit, active high: it reads 0
+    if (cfg.family == "ddrsolo") m_in2_buttons &= ~0x0080u;
     // gtrfrks: the effect knobs (MAME's dials, PORT_REVERSE over 0..3) read 3 at rest: m_stage's
     // reset value already has those bits set
     m_lamps.assign(cab::lamps(cfg.family).size(), 0);
@@ -714,6 +723,15 @@ void sys573_state::drmn_output_callback(offs_t offset, u8 data) {
     switch (offset) {
     case 0: case 1: case 2: case 3: case 8: case 12: set_lamp(offset, !data); break;
     case 9: case 11: case 13: case 14: set_lamp(offset, data != 0); break;
+    default: break;
+    }
+}
+
+// MAME's ddrsolo_output_callback (ksys573.cpp): the extra balls, the speaker, Start and the body
+// lamps, lit at data 0; the stage outputs (4, 7, 12, 15) aren't wired on a Solo cabinet
+void sys573_state::ddrsolo_output_callback(offs_t offset, u8 data) {
+    switch (offset) {
+    case 8: case 9: case 10: case 11: case 16: case 20: case 21: case 22: case 23: set_lamp(offset, !data); break;
     default: break;
     }
 }
@@ -1138,6 +1156,22 @@ bool set_input(const std::string &name, int value) {
         const int sh = name[1] == '1' ? 8 : 0;
         st.m_stage = (st.m_stage & ~(3u << sh)) | ((u32)(3 - value) & 3) << sh;   // PORT_REVERSE: 3 - position
         return true;
+    }
+    // DDR Solo (MAME's ddrsolo ports): each panel's two sensors; a panel name presses both
+    if (g.cfg.family == "ddrsolo") {
+        static const std::map<std::string, std::pair<int, u32>> solo = {
+            {"P1 Left 1", {0, 0x100}}, {"P1 Right 1", {0, 0x200}}, {"P1 Up 1", {0, 0x400}}, {"P1 Down 1", {0, 0x800}},
+            {"P1 Up-Left 1", {0, 0x001}}, {"P1 Up-Right 1", {0, 0x002}},
+            {"P1 Up-Left 2", {1, 0x1000}}, {"P1 Left 2", {1, 0x2000}}, {"P1 Down 2", {1, 0x4000}},
+            {"P1 Up 2", {1, 0x0010}}, {"P1 Right 2", {1, 0x0020}}, {"P1 Up-Right 2", {1, 0x0040}},
+            {"P1 Select L", {2, 0x200}}, {"P1 Select R", {2, 0x2000000}},
+        };
+        auto port = [&](int p) -> u32 & { return p == 0 ? st.m_stage : p == 1 ? st.m_in2_buttons : st.m_in3; };
+        if (auto s1 = solo.find(name + " 1"), s2 = solo.find(name + " 2"); s1 != solo.end() && s2 != solo.end()) {
+            bit(port(s1->second.first), s1->second.second);
+            return bit(port(s2->second.first), s2->second.second);
+        }
+        if (auto s = solo.find(name); s != solo.end()) return bit(port(s->second.first), s->second.second);
     }
     // the shell's cabinet names for MAME's (runtime/shell/cabinet.cpp)
     const char *service = g.cfg.family == "gtrf" ? "Service 1 (IN3)" : "Service 1";

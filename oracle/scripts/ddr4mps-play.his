@@ -1,0 +1,29 @@
+# Dance Dance Revolution 4th Mix Plus Solo (G*A34 VER. JBA): a game, from what
+# ddr4mps-install.his left (the flash and the PC Card installed; the game cassette in). The first
+# boot says the RTC RAM was cleared (NOTE 605): Test goes on; the title is at frame ~7,800. Two
+# coins at the title, Start twice; the selects time out to their defaults; the song played by
+# stepping on all six panels (both sensors of each, MAME's port names) every 8 frames. Hashes the
+# main RAM every frame, snapshots every 60 frames, to compare with MAME.
+game ddr4mps
+
+hash ram  0x80000000 0x80400000   # 4 MiB main RAM (KSEG0)
+
+at 900 press "Service Mode" 8
+at 7900 press "Coin 1" 8
+at 7940 press "Coin 1" 8
+at 8100 press "1 Player Start" 8
+at 8300 press "1 Player Start" 8
+from 10600 every 8 press "P1 Left 1" 4
+from 10600 every 8 press "P1 Left 2" 4
+from 10600 every 8 press "P1 Up-Left 1" 4
+from 10600 every 8 press "P1 Up-Left 2" 4
+from 10600 every 8 press "P1 Down 1" 4
+from 10600 every 8 press "P1 Down 2" 4
+from 10600 every 8 press "P1 Up 1" 4
+from 10600 every 8 press "P1 Up 2" 4
+from 10600 every 8 press "P1 Up-Right 1" 4
+from 10600 every 8 press "P1 Up-Right 2" 4
+from 10600 every 8 press "P1 Right 1" 4
+from 10600 every 8 press "P1 Right 2" 4
+from 0 every 60 snap
+at 19600 quit

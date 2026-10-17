@@ -1,0 +1,19 @@
+# Dance Dance Revolution 3rd Mix Plus (G*A22 VER. JAA): a game, from what ddr3mp-install.his left
+# (the flash and the PC Card installed; the game cassette in), as ddr3mj-play.his 1,200 frames
+# later: the title is at frame ~5400. Two coins at the title, Start twice; the selects time out to
+# their defaults; the song played by stepping on all four panels every 8 frames. Hashes the main
+# RAM every frame, snapshots every 60 frames, to compare with MAME.
+game ddr3mp
+
+hash ram  0x80000000 0x80400000   # 4 MiB main RAM (KSEG0)
+
+at 5500 press "Coin 1" 8
+at 5540 press "Coin 1" 8
+at 5700 press "1 Player Start" 8
+at 5900 press "1 Player Start" 8
+from 8200 every 8 press "P1 Left" 4
+from 8200 every 8 press "P1 Down" 4
+from 8200 every 8 press "P1 Up" 4
+from 8200 every 8 press "P1 Right" 4
+from 0 every 60 snap
+at 17200 quit
