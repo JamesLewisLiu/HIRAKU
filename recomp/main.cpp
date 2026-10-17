@@ -22,27 +22,21 @@
 
 #include "../src/ppc/cycles.h"
 #include "../src/ppc/decode.h"
+#include "../src/ppc/analyze.h"
+#include "../src/ppc/spec.h"
 
 using namespace hk;
 
 namespace {
 
-struct Func {
-    uint32_t entry = 0;
-    bool nopoll = false;
-    std::vector<std::pair<uint32_t, uint32_t>> ranges;
-    std::map<uint32_t, std::vector<uint32_t>> jumptables;  // bctr address -> targets
-    std::vector<uint32_t> entries;                         // secondary entries (mid-function)
-};
+using spec::Func;
 
-std::vector<uint8_t> g_image;
-uint32_t g_base = 0;
-std::map<uint32_t, Func> g_funcs;
-std::map<uint32_t, uint32_t> g_secondary;   // secondary entry -> owning function
-// Functions that return to their CALLER'S caller: GCC's out-of-line epilogue
-// helpers (_restgpr_*_x) restore the caller's registers and LR from r11 and
-// blr straight past it. A call to one ends the calling function.
-std::set<uint32_t> g_return_up;
+spec::Program g_p;   // the spec and its image (src/ppc/spec.h, shared with the executor)
+std::vector<uint8_t> &g_image = g_p.image;
+uint32_t &g_base = g_p.base;
+std::map<uint32_t, Func> &g_funcs = g_p.funcs;
+std::map<uint32_t, uint32_t> &g_secondary = g_p.secondary;
+std::set<uint32_t> &g_return_up = g_p.return_up;
 
 [[noreturn]] void die(const std::string &msg) {
     fprintf(stderr, "hiraku-recomp: %s\n", msg.c_str());
@@ -50,53 +44,12 @@ std::set<uint32_t> g_return_up;
 }
 
 uint32_t word_at(uint32_t addr) {
-    uint32_t off = addr - g_base;
-    if (off + 4 > g_image.size()) die("address outside image");
-    return (uint32_t)g_image[off] << 24 | (uint32_t)g_image[off + 1] << 16 | (uint32_t)g_image[off + 2] << 8 | g_image[off + 3];
+    if (!g_p.in_image(addr)) die("address outside image");
+    return g_p.word_at(addr);
 }
 
 void load_spec(const char *path) {
-    std::ifstream in(path);
-    if (!in) die(std::string("cannot open ") + path);
-    std::string line;
-    Func *cur = nullptr;
-    while (std::getline(in, line)) {
-        std::istringstream ss(line);
-        std::string kw;
-        ss >> kw;
-        if (kw == "image") {
-            std::string p;
-            ss >> p;
-            std::ifstream img(p, std::ios::binary);
-            if (!img) die("cannot open image " + p);
-            g_image.assign(std::istreambuf_iterator<char>(img), {});
-        } else if (kw == "base") {
-            ss >> std::hex >> g_base;
-        } else if (kw == "func") {
-            uint32_t e;
-            std::string flag;
-            ss >> std::hex >> e >> flag;
-            cur = &g_funcs[e];
-            cur->entry = e;
-            cur->nopoll = flag == "nopoll";
-        } else if (kw == "range") {
-            uint32_t lo, hi;
-            ss >> std::hex >> lo >> hi;
-            cur->ranges.emplace_back(lo, hi);
-        } else if (kw == "jt") {
-            uint32_t at, t;
-            ss >> std::hex >> at;
-            auto &v = cur->jumptables[at];
-            while (ss >> std::hex >> t) v.push_back(t);
-        } else if (kw == "entry") {
-            uint32_t a;
-            ss >> std::hex >> a;
-            cur->entries.push_back(a);
-            g_secondary[a] = cur->entry;
-        } else if (kw == "end") {
-            cur = nullptr;
-        }
-    }
+    if (std::string e = spec::load(g_p, path); !e.empty()) die(e);
 }
 
 std::string fn(uint32_t a) {
@@ -150,33 +103,7 @@ std::string cond(const Insn &i) {
     return b;
 }
 
-// A function "returns up" if, following its fall-through chain into the next
-// functions, it writes LR (mtlr) without ever having read it (mflr): the LR it
-// returns through is not the one it was called with.
-void find_return_up() {
-    for (auto &[e, f] : g_funcs) {
-        bool reads = false, writes = false;
-        std::set<uint32_t> seen;
-        for (const Func *cur = &f; cur && seen.insert(cur->entry).second;) {
-            const Func *next = nullptr;
-            for (auto [lo, hi] : cur->ranges)
-                for (uint32_t a = lo; a < hi; a += 4) {
-                    Insn i = decode(word_at(a), a);
-                    if (i.op == Op::mfspr && i.spr == 8) reads = true;
-                    if (i.op == Op::mtspr && i.spr == 8 && !reads) writes = true;
-                }
-            if (!cur->ranges.empty()) {
-                uint32_t end = cur->ranges.back().second;
-                Insn last = decode(word_at(end - 4), end - 4);
-                bool ft = !(last.op == Op::b && !last.lk) && !((last.op == Op::bclr || last.op == Op::bcctr) && last.always() && !last.lk);
-                auto it = g_funcs.find(end);
-                if (ft && it != g_funcs.end()) next = &it->second;
-            }
-            cur = next;
-        }
-        if (writes) g_return_up.insert(e);
-    }
-}
+void find_return_up() { spec::find_return_up(g_p); }
 
 struct Emitter {
     const Func &f;
@@ -371,9 +298,43 @@ struct Emitter {
 
 }  // namespace
 
+// hiraku-recomp --analyze PROGRAM [--base HEX] [--entry HEX] [--extra HEX,...] [--nopoll LO-HI,...]:
+// the recompile spec from HIRAKU's own analysis (src/ppc/analyze.h), on stdout
+int analyze_main(int argc, char **argv) {
+    std::ifstream f(argv[2], std::ios::binary);
+    if (!f) die(std::string("cannot open ") + argv[2]);
+    std::vector<uint8_t> img((std::istreambuf_iterator<char>(f)), {});
+    hk::analyze::Options o;
+    o.image_path = argv[2];
+    for (int k = 3; k + 1 < argc; k += 2) {
+        std::string a = argv[k], v = argv[k + 1];
+        if (a == "--base") o.base = std::stoul(v, nullptr, 16);
+        else if (a == "--entry") o.entry = std::stoul(v, nullptr, 16);
+        else if (a == "--image-path") o.image_path = v;
+        else if (a == "--extra" || a == "--nopoll") {
+            std::stringstream ss(v);
+            for (std::string item; std::getline(ss, item, ',');) {
+                if (item.empty()) continue;
+                if (a == "--extra") o.extra.push_back(std::stoul(item, nullptr, 16));
+                else {
+                    auto dash = item.find('-');
+                    o.nopoll.emplace_back(std::stoul(item.substr(0, dash), nullptr, 16), std::stoul(item.substr(dash + 1), nullptr, 16));
+                }
+            }
+        } else die("unknown option " + a);
+    }
+    hk::analyze::Result r = hk::analyze::run(img, o);
+    fputs(r.spec.c_str(), stdout);
+    for (const std::string &n : r.notes) fprintf(stderr, "note: %s\n", n.c_str());
+    fprintf(stderr, "%zu functions, %zu secondary entries, %zu jump tables\n", r.functions, r.secondary, r.tables);
+    return 0;
+}
+
 int main(int argc, char **argv) {
+    if (argc >= 3 && std::string(argv[1]) == "--analyze") return analyze_main(argc, argv);
     if (argc < 3) {
-        fprintf(stderr, "usage: hiraku-recomp <recomp.txt> <out dir> [--files N]\n");
+        fprintf(stderr, "usage: hiraku-recomp <recomp.txt> <out dir> [--files N]\n"
+                        "       hiraku-recomp --analyze <program.bin> [--base HEX] [--entry HEX] [--extra HEX,...] [--nopoll LO-HI,...]\n");
         return 2;
     }
     size_t nfiles = 32;

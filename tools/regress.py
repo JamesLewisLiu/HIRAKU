@@ -287,7 +287,8 @@ def partner_of(case):
 
 def game_binary(game):
     """(binary, its first arguments): the game's own hiraku-<id>, else its core's (a release's build,
-    HK_GAME_BINARIES off: hiraku-djmain, hiraku-sys573, hiraku-twinkle, told the game with --game)"""
+    HK_GAME_BINARIES off: hiraku-djmain, hiraku-sys573, hiraku-twinkle, hiraku-firebeat, told the
+    game with --game)"""
     own = os.path.join(BIN, "hiraku-" + game)
     if os.path.exists(own) or os.path.exists(own + ".exe"):
         return own, []
@@ -298,6 +299,8 @@ def game_binary(game):
         core = ""
     if core in ("djmain", "sys573", "twinkle"):
         return os.path.join(BIN, "hiraku-" + core), ["--game", game]
+    if core in ("", "firebeat"):   # hiraku-firebeat: the executor (runtime/core/exec.h)
+        return os.path.join(BIN, "hiraku-firebeat"), ["--game", game]
     return own, []
 
 
@@ -635,6 +638,11 @@ def compare(case, base, cur, took=""):
     if len(a) != len(b):
         print(f"{case}: DIFFERS: {len(a)} frames in the baseline, {len(b)} now{took}")
         return 1
+    # how a Firebeat game's functions ran (a game's own recompiled binary, or hiraku-firebeat's
+    # executor) and how many the analysis found (Ghidra's, or HIRAKU's own: dead code aside they
+    # agree) are not run statistics: the runs must be the same
+    how = re.compile(r"^(hiraku \S+:) \d+ (recompiled )?functions, (native|executed \(hiraku-firebeat\))$", re.M)
+    sa, sb = how.sub(r"\1 functions", sa), how.sub(r"\1 functions", sb)
     if sa != sb:
         print(f"{case}: frames and sound identical, run statistics DIFFER:{took}")
         for la, lb in zip(sa.splitlines(), sb.splitlines()):

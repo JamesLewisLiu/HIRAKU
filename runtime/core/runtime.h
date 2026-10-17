@@ -55,6 +55,10 @@ void mmio_set_handler(MmioHandler h);
 // Dispatch
 // ---------------------------------------------------------------------------
 hk_func lookup(uint32_t guest_addr);               // nullptr if not recompiled
+// A function at the address, recompiled or the executor's (core/exec.h: a release's
+// hiraku-firebeat): has_guest says whether there is one, call_guest runs it (false: none)
+bool has_guest(uint32_t guest_addr);
+bool call_guest(hk_ctx *c, uint32_t guest_addr);
 
 // ---------------------------------------------------------------------------
 // Interpreter

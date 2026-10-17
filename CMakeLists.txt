@@ -60,7 +60,7 @@ function(hk_pgo core)
 endfunction()
 
 # --- decoder (shared) --------------------------------------------------------
-add_library(hiraku_ppc STATIC src/ppc/decode.cpp)
+add_library(hiraku_ppc STATIC src/ppc/decode.cpp src/ppc/analyze.cpp)
 target_include_directories(hiraku_ppc PUBLIC src)
 
 # --- the recompiler ----------------------------------------------------------
@@ -233,6 +233,7 @@ add_library(hiraku_rt STATIC
   runtime/core/sched.cpp
   runtime/core/cpu403.cpp
   runtime/core/glue.cpp
+  runtime/core/exec.cpp
   runtime/dev/k057714.cpp
   runtime/dev/rtc65271.cpp
   runtime/dev/flash29f016a.cpp
@@ -601,6 +602,15 @@ foreach(toml ${HK_GAME_TOMLS})
     hiraku_twinkle_game(${id})
   endif()
 endforeach()
+
+# hiraku-firebeat: every Firebeat game, from its program and recomp.txt, run by the executor
+# (runtime/core/exec.h: no compiler, no game's code in the binary; PLAN.md section 27)
+add_executable(hiraku-firebeat runtime/main.cpp runtime/firebeat/core.cpp runtime/core/sampler.cpp runtime/core/no_table.c)
+target_compile_definitions(hiraku-firebeat PRIVATE HK_EXECUTOR=1 HK_ROOT="${CMAKE_SOURCE_DIR}")
+if(TARGET hiraku_host)
+  target_link_libraries(hiraku-firebeat PRIVATE hiraku_host)
+endif()
+target_link_libraries(hiraku-firebeat PRIVATE hiraku_shell hiraku_rt)
 
 hiraku_game(bm3final 0x80003000)
 hiraku_game(bm3 0x80003000)

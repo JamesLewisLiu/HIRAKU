@@ -436,6 +436,11 @@ def ingest_firebeat(args) -> int:
     board = (game or {}).get("board", {})
     spu = (game or {}).get("spu", {})
     machine["family"] = (game or {}).get("family", machine.get("family", "bm3"))
+    # pop'n music's second disc is a DVD on the sound board, never a hard disk: older MAME sets
+    # (0.243's) keep it as a hard disk CHD, the same sectors
+    if machine["family"] == "popn" and args.hdd and not args.dvd:
+        args.dvd, args.hdd = args.hdd, None
+        machine.pop("spu_hdd", None)
     if board.get("dongle"):
         machine["dongle"] = board["dongle"]
     if "cabinet" in board:

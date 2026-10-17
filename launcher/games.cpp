@@ -67,11 +67,8 @@ QString Game::howTo() const {
                            "it comes with HIRAKU built from source for now (docs/PLAY.md, Konami Python).")
                 .arg(title);
         if (core.isEmpty() || core == "firebeat")
-            return QString("%1 is a Firebeat game. Firebeat games (beatmania III, pop'n music 4-8, "
-                           "ParaParaParadise, Keyboardmania) can't run from a HIRAKU package yet: each is built "
-                           "from its own program, which needs HIRAKU's source and tools (docs/PLAY.md). "
-                           "Running them from a package is being worked on.")
-                .arg(title);
+            return QString("This HIRAKU package has no hiraku-firebeat, which runs the Firebeat games. Is the "
+                           "binaries folder right (Settings)?");
         return QString("This HIRAKU package has no binary for %1 (hiraku-%2 or hiraku-%3). Is the binaries "
                        "folder right (Settings)?")
             .arg(title, id, core);
@@ -126,10 +123,13 @@ QString Game::howTo() const {
     QString build = QString("analyze/ghidra.sh %1 && analyze/prep.py %1\n"
                             "cmake -S . -B build/cmake -G Ninja && ninja -C build/cmake hiraku-%1")
                         .arg(id);
-    if (!source && status != Ready)   // Firebeat from a release: PLAN.md section 27
-        return QString("Firebeat games (beatmania III, pop'n music 4-8, ParaParaParadise, Keyboardmania) can't "
-                       "run from a HIRAKU package yet: each is built from its own program, which needs HIRAKU's "
-                       "source and tools (docs/PLAY.md). Running them from a package is being worked on.");
+    if (status == NotInstalled && exe.endsWith(cfg::exeName("hiraku-firebeat")))   // a package's: the executor
+        return QString("HIRAKU has no data for %1 yet. You need your own dumps: the MAME ROM set \"%2\" "
+                       "(.zip, .7z or a folder) and its discs (CHDs: the program CD, and the second disc, DVD "
+                       "or hard disk where the game has one), or your own disc images (.cue/.iso).\n\n"
+                       "Drop them on this window (or File > Add game files), all at once. HIRAKU finds the "
+                       "game by its program, and finds its way around the program itself when it starts.")
+            .arg(title, mame);
     if (status == NotInstalled)
         return QString("HIRAKU has no data for %1 yet. You need your own dumps: the program disc, "
                        "its second disc or HDD, and the MAME ROM set \"%2\" (docs/PLAY.md lists them per game).\n\n"
@@ -163,6 +163,7 @@ QList<Game> scanGames() {
         bool built = false;
         QStringList names = {"hiraku-" + g.id};
         if (g.core == "djmain" || g.core == "sys573" || g.core == "twinkle") names << "hiraku-" + g.core;
+        if (g.core.isEmpty() || g.core == "firebeat") names << "hiraku-firebeat";   // the executor (PLAN.md section 27)
         for (const QString &name : names) {
             for (const QString &d : {bin, QCoreApplication::applicationDirPath(), root + "/bin", root + "/build/cmake"}) {
                 QFileInfo exe(d + "/" + cfg::exeName(name));

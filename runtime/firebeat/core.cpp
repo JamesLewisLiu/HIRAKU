@@ -3,12 +3,21 @@
 // the SPU sound board or the board's YMZ280B, and Keyboardmania's synth card.
 //
 // Compiled into each hiraku-<game> binary (not a library), because the entry
-// point and load address are per game: HK_ENTRY, HK_LOAD, HK_GAME_ID.
+// point and load address are per game: HK_ENTRY, HK_LOAD, HK_GAME_ID. Or, with HK_EXECUTOR,
+// into hiraku-firebeat, a release's one binary for every Firebeat game (PLAN.md section 27):
+// the game from --game, its entry and load address from games/<game>/game.toml ([program]),
+// its functions run by the executor (core/exec.h) from dumps/<game>/recomp.txt.
 #include <cstdio>
 #include <cstring>
 #include <fstream>
+#include <iterator>
 #include <map>
+#include <vector>
 
+#include "../core/exec.h"
+#ifdef HK_EXECUTOR
+#include "ppc/analyze.h"
+#endif
 #include "../core/runtime.h"
 #include "../core/sched.h"
 #include "../shell/core.h"
@@ -23,10 +32,48 @@
 #ifndef HK_ENTRY
 #define HK_ENTRY 0x80003000u
 #endif
+#ifdef HK_EXECUTOR
+#define HK_FB_LOAD load_
+#define HK_FB_ENTRY entry_
+#else
+#define HK_FB_LOAD HK_LOAD
+#define HK_FB_ENTRY HK_ENTRY
+#endif
 
 namespace hk {
 
 namespace {
+
+// `key = 0x...` in a game.toml's [section] (the executor build's entry and load address)
+uint32_t toml_hex(const std::string &path, const std::string &section, const std::string &key, uint32_t dflt) {
+    std::ifstream in(path);
+    bool in_section = false;
+    for (std::string line; std::getline(in, line);) {
+        if (!line.empty() && line.back() == '\r') line.pop_back();
+        if (!line.empty() && line[0] == '[') { in_section = line == "[" + section + "]"; continue; }
+        if (!in_section || line.compare(0, key.size(), key) != 0) continue;
+        auto eq = line.find('=', key.size());
+        if (eq == std::string::npos || line.find_first_not_of(" \t", key.size()) != eq) continue;
+        return (uint32_t)std::stoul(line.substr(eq + 1), nullptr, 0);
+    }
+    return dflt;
+}
+
+// `key = [0x..., 0x...]` in a game.toml's [section]: the numbers (the executor build's extra entries)
+std::vector<uint32_t> toml_hex_list(const std::string &path, const std::string &section, const std::string &key) {
+    std::ifstream in(path);
+    bool in_section = false;
+    std::vector<uint32_t> out;
+    for (std::string line; std::getline(in, line);) {
+        if (!line.empty() && line[0] == '[') { in_section = line.compare(0, section.size() + 2, "[" + section + "]") == 0; continue; }
+        if (!in_section || line.compare(0, key.size(), key) != 0) continue;
+        auto open = line.find('['), close = line.find(']');
+        if (open == std::string::npos || close == std::string::npos) continue;
+        std::string list = line.substr(open + 1, close - open - 1);
+        for (size_t at = 0; (at = list.find("0x", at)) != std::string::npos; at += 2) out.push_back((uint32_t)std::stoul(list.substr(at), nullptr, 16));
+    }
+    return out;
+}
 
 std::map<std::string, std::string> read_kv(const std::string &path) {
     std::map<std::string, std::string> kv;
@@ -43,6 +90,7 @@ class FirebeatCore final : public Core {
 public:
     bool option(const std::string &a, const std::function<std::string()> &val) override {
         if (a == "--image") image_ = val();
+        else if (a == "--spec") spec_ = val();
         else if (a == "--interp-only") { g_interp.call_native = false; g_interp.lle = true; }
         else if (a == "--shadow") g_interp.shadow_checks = std::stoul(val());
         else if (a == "--itrace") g_interp.trace = true;
@@ -54,6 +102,9 @@ public:
     }
     std::string options_help() const override {
         return "  --image FILE      program image (default dumps/<game>/program.bin)\n"
+#ifdef HK_EXECUTOR
+               "  --spec FILE       its functions (default dumps/<game>/recomp.txt, else build/<game>/recomp.txt)\n"
+#endif
                "  --interp-only     run everything in the interpreter (a plain emulator; no fibers)\n"
                "  --shadow K        compare native vs interpreted for the first K calls of each function\n"
                "  --itrace          print every interpreted instruction\n"
@@ -70,8 +121,35 @@ public:
             fprintf(stderr, "no dumps/%s/machine.txt - run tools/ingest.py on your program disc first\n", o.game.c_str());
             return false;
         }
+#ifdef HK_EXECUTOR
+        const std::string toml = o.root + "/games/" + o.game + "/game.toml";
+        load_ = toml_hex(toml, "program", "load", HK_LOAD);
+        entry_ = toml_hex(toml, "program", "entry", HK_ENTRY);
+        // its functions: --spec, else a dumps/<game>/recomp.txt (an override), else HIRAKU's own
+        // analysis of the program, now (src/ppc/analyze.h: a fifth of a second)
+        if (spec_.empty() && std::ifstream(o.root + "/dumps/" + o.game + "/recomp.txt")) spec_ = o.root + "/dumps/" + o.game + "/recomp.txt";
+        std::string err;
+        if (!spec_.empty()) {
+            err = exec::load(spec_, image_);
+        } else {
+            std::ifstream f(image_, std::ios::binary);
+            std::vector<uint8_t> img((std::istreambuf_iterator<char>(f)), {});
+            if (img.empty()) err = "cannot read " + image_;
+            else {
+                analyze::Options ao;
+                ao.base = load_, ao.entry = entry_, ao.image_path = image_;
+                ao.extra = toml_hex_list(toml, "recomp", "extra_entries");
+                analyze::Result r = analyze::run(img, ao);
+                err = exec::load_text(r.spec, image_);
+            }
+        }
+        if (!err.empty()) {
+            fprintf(stderr, "%s's functions: %s\n", o.game.c_str(), err.c_str());
+            return false;
+        }
+#endif
         ram_init();
-        if (!ram_load(image_, HK_PHYS(HK_LOAD))) { fprintf(stderr, "cannot load %s\n", image_.c_str()); return false; }
+        if (!ram_load(image_, HK_PHYS(HK_FB_LOAD))) { fprintf(stderr, "cannot load %s\n", image_.c_str()); return false; }
 
         fb::Config cfg;
         cfg.game = o.game;
@@ -114,11 +192,16 @@ public:
         }
 
         memset(&ctx_, 0, sizeof ctx_);
-        ctx_.pc = HK_ENTRY;
+        ctx_.pc = HK_FB_ENTRY;
         glue_init(&ctx_);
         fb::set_trace_ctx(&ctx_);
+#ifdef HK_EXECUTOR
+        printf("hiraku %s: %zu functions, %s\n", o.game.c_str(), exec::count(),
+               g_interp.lle ? "interpreter only" : "executed (hiraku-firebeat)");
+#else
         printf("hiraku %s: %u recompiled functions, %s\n", o.game.c_str(), hk_func_count,
                g_interp.lle ? "interpreter only" : "native");
+#endif
         return true;
     }
 
@@ -133,7 +216,7 @@ public:
         // Boot as the BIOS leaves the CPU: supervisor state at the image's entry.
         // The boot code is a recompiled function like any other (it never returns);
         // --interp-only runs it, and everything else, in the interpreter.
-        if (hk_func boot = g_interp.lle ? nullptr : lookup(HK_ENTRY)) boot(&ctx_);
+        if (!g_interp.lle && has_guest(HK_FB_ENTRY)) call_guest(&ctx_, HK_FB_ENTRY);
         else interp_run(&ctx_, 0xffffffff, 0, UINT64_MAX);
         fatal(&ctx_, "the guest stopped running");
     }
@@ -189,7 +272,8 @@ public:
     uint64_t lamp_changes() const override { return fb::lamp_changes(); }
 
 private:
-    std::string image_, soundfont_;
+    std::string image_, soundfont_, spec_;
+    uint32_t load_ = HK_LOAD, entry_ = HK_ENTRY;   // the executor build's, from game.toml
     bool synth_stand_in_ = false;
     double bios_seconds_ = 21.65;
     AudioSink sink_;

@@ -171,8 +171,8 @@ void free_fiber(Fiber *f) {
 void thread_main() {
     hk_ctx *c = g_c;
     for (;;) {
-        if (hk_func fn = lookup(c->pc)) {
-            fn(c);                 // returns with c->pc = LR (HK_RET)
+        if (call_guest(c, c->pc)) {
+            // returned with c->pc = LR (HK_RET)
         } else {
             interp_run(c, 0xffffffffu, 0, UINT64_MAX);
             fatal(c, "guest thread interpreter loop ended");
@@ -286,9 +286,9 @@ void switch_threads(hk_ctx *c, uint32_t my_frame, uint32_t my_resume, uint32_t t
 // by the caller's loop.
 void run_vector(hk_ctx *c) {
     if (g_interp.lle) return;
-    if (hk_func fn = lookup(c->pc)) {
+    if (has_guest(c->pc)) {
         g_stats.native_vectors++;
-        fn(c);
+        call_guest(c, c->pc);
         // its rfi returned here: as the interpreter's rfi does, an interrupt already pending is
         // taken at once, not at the next poll that finds the budget spent (up to the next event)
         if (cpu403::irq_pending()) sched_kick();

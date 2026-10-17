@@ -5,6 +5,7 @@
 #include <cstdio>
 #include <set>
 
+#include "exec.h"
 #include "runtime.h"
 
 namespace hk {
@@ -13,6 +14,16 @@ hk_func lookup(uint32_t a) {
     const hk_func_entry *b = hk_func_table, *e = hk_func_table + hk_func_count;
     auto it = std::lower_bound(b, e, a, [](const hk_func_entry &x, uint32_t v) { return x.addr < v; });
     return (it != e && it->addr == a) ? it->fn : nullptr;
+}
+
+bool has_guest(uint32_t a) { return lookup(a) != nullptr || exec::has(a); }
+
+bool call_guest(hk_ctx *c, uint32_t a) {
+    if (hk_func fn = lookup(a)) {
+        fn(c);
+        return true;
+    }
+    return exec::call(c, a);
 }
 
 namespace {
@@ -34,13 +45,11 @@ using namespace hk;
 extern "C" {
 
 void hk_call_dyn(hk_ctx *c, uint32_t target) {
-    if (hk_func fn = lookup(target)) fn(c);
-    else run_fallback(c, target, "call");
+    if (!call_guest(c, target)) run_fallback(c, target, "call");
 }
 
 void hk_jump(hk_ctx *c, uint32_t target) {
-    if (hk_func fn = lookup(target)) fn(c);
-    else run_fallback(c, target, "jump");
+    if (!call_guest(c, target)) run_fallback(c, target, "jump");
 }
 
 void hk_bad_return(hk_ctx *c, uint32_t expected) {

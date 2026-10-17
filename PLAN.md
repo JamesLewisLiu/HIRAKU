@@ -2062,6 +2062,21 @@ The goal: someone with a HIRAKU release and a MAME romset (or their own Firebeat
 
 Not in scope: the Konami Python games in releases (PCSX2 Reliquary, PLAN §23) and IIDX's three Twinkle sets with no core yet.
 
+**Done (2026-10-17): FB-1 to FB-5.** A release's `hiraku-firebeat` runs every Firebeat game from its program alone: no Ghidra, no compiler, no game's code in the binary.
+- **FB-1, HIRAKU's own analysis** (`src/ppc/analyze.{h,cpp}`, `hiraku-recomp --analyze PROGRAM [--entry --base --extra]`), in Ghidra's order:
+  1. its function start patterns on the raw image: `stwu r1, -N(r1)` or `mflr r0` right after the end of other code (a return, a branch, data);
+  2. flow from the program's entry and game.toml's extra entries (`bl` targets become functions; bodies follow fall-through, branches and jump tables up to another function's entry);
+  3. the same patterns again where nothing reached, then `stwu`+`mflr` pairs anywhere, one at a time in address order;
+  4. as a last resort, addresses the code builds (`lis`/`addi` pairs) and aligned data words, when they point at code nothing reached that starts right after other code's end (not text: four printable bytes are a string; branches must land inside the program);
+  5. the exception vectors last, in order, each unless covered, a vector's `b handler` making the handler a function.
+  Jump tables: GCC's switch dispatch (`cmplwi` bound, `slwi 2`, `addis`/`lwz` or `lis`/`addi`/`lwzx`, `mtctr`, `bctr`), each target once. Then prep.py's secondary entries. A fifth of a second for Keyboardmania 3rd's program.
+  Against Ghidra's manifests for the 21 games (`out/fb1/cmp.py`, scratch): pop'n 7 and Animelo identical; the rest differ in dead code only (906 entries/ranges in all, Keyboardmania 3rd the most: Ghidra decoded far more unreferenced code there). **What counts:** all 21 games run 6,000 frames identical from either analysis, with no interpreter fallback from HIRAKU's own (pop'n music Mickey Tunes! has one from Ghidra's).
+- **FB-2:** no step at all: `hiraku-firebeat` analyses the program when it starts (`--spec FILE`, or a `dumps/<game>/recomp.txt`, override it).
+- **FB-3a, the executor** (`runtime/core/exec.{h,cpp}`; `src/ppc/spec.h` shared with `hiraku-recomp`, whose output stays byte-identical): each function as steps built by a mirror of the recompiler's emitter (the same `op_*` calls, cycle charges, polls, calls, returns, jump tables and fall-throughs), run by a threaded dispatcher with every `op_*` inline and the cycle charges folded into the steps they precede where nothing jumps between. The runtime calls guest functions through `call_guest`/`has_guest` (core/dispatch.cpp), recompiled or executed. pop'n 7's attract: 2.9 ms a frame (native 1.1 ms). (b), the build kit, is not needed.
+- **FB-4:** `hiraku-firebeat` (CMake, always built): the game from `--game`, its entry and load address from game.toml's `[program]`; the launcher and `tools/regress.py` use it for Firebeat games with no binary of their own.
+- **FB-5, checks:** all 9 Firebeat regress cases through `hiraku-firebeat` from HIRAKU's own analysis give their baselines (frames and sound; the statistics' function count and how the functions ran are left out of the comparison). From the release package in a bare Debian 12 container: beatmania III and ParaParaParadise added from MAME archive sets (the package's own Python and CHD reader) give their baselines; pop'n 7 runs, but the archive's program CD is MAME's dump, not the redump the baseline was recorded from. The Windows zip under Wine: beatmania III added from the MAME set and run by `hiraku-firebeat.exe` gives the Linux baseline. Ingest now gives pop'n music's second disc to the sound board as its DVD even when an older MAME set keeps it as a hard disk CHD.
+- Not yet: FB-6 (frame times on the N100-class target).
+
 ## 28. A public release: games working from dropped-in data alone (written 2026-10-17)
 
 The goal: a GitHub release (Linux `.tar.xz`, Windows `.zip`) that someone downloads, starts, and adds games to by dropping their MAME sets (or their own dumps) on the launcher, with nothing else to install. State on 2026-10-17: the repo is public, but there is no release workflow and no release; the packages are made by hand on the owner's PC (`tools/package.sh`, `tools/package-win.sh`).
@@ -2090,6 +2105,8 @@ The goal: a GitHub release (Linux `.tar.xz`, Windows `.zip`) that someone downlo
    - A clean-PC test: unpack the package on a PC with nothing installed, add a few games from MAME sets (a DJ Main, a 573 with its install CD, a Twinkle), and compare their regress cases' digests.
 
 R-1 and R-2 give a first release that runs DJ Main, System 573 and Twinkle (less the three sets). R-3 adds Firebeat, R-4 and R-5 Konami Python.
+
+**R-3 done (2026-10-17):** §27's FB-1 to FB-5; Firebeat games run from both packages.
 
 **R-1 and R-2 done (2026-10-17), not yet run on GitHub:**
 - One binary per core: `hiraku-djmain`, `hiraku-sys573`, `hiraku-twinkle` take the game with `--game ID` (or their name as `hiraku-ID`, a link). `HK_GAME_BINARIES` off (a release) builds only those: no Firebeat binaries, no recorded 573/Twinkle blocks (interpreted), no XT446 MEG recording, whatever `build/` holds. The launcher and `tools/regress.py` (`HK_REGRESS_BIN`, and `HK_REGRESS_OUT` for another output folder) use a core's binary when a game has none of its own. Checked: 13 DJ Main, 573 and Twinkle cases through the core binaries give their baselines.

@@ -185,14 +185,15 @@ bool interp_step(hk_ctx *c) {
         if (i.lk) {
             c->lr = next;
             if (g_shadow_depth == 0 && i.target != next) {
-                if (hk_func fn = lookup(i.target)) {
-                    if (g_interp.shadow_checks && shadow_call(c, fn, i.target, next)) {
+                if (has_guest(i.target)) {   // recompiled, or the executor's (call_guest)
+                    hk_func fn = lookup(i.target);
+                    if (fn && g_interp.shadow_checks && shadow_call(c, fn, i.target, next)) {
                         c->pc = next;       // checked; the interpreted result stands
                         return true;
                     }
                     if (g_interp.call_native) {
                         g_stats.native_calls++;
-                        fn(c);
+                        call_guest(c, i.target);
                         if (c->pc != next) fatal(c, "native %08x returned to %08x, expected %08x", i.target, c->pc, next);
                         c->pc = next;
                         return true;
