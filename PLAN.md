@@ -2137,7 +2137,8 @@ What such a user meets, step by step, and where each stands (✓ done and checke
 - ✓ IIDX reset by its watchdog every 29.5 s: a CHD's track length read through stdio, which a CHD stream doesn't answer on Windows (e5d4008).
 - ✓ The launcher on a small screen: every window fits the screen it opens on (`launcher/fit.h`: shrunk and moved, a 640x480 screen included); Settings scrolls with OK and Cancel kept below. Checked in a 640x480 nested KWin, Linux and Wine. `hiraku --show settings|controls|lights|picture|unlocks|about|main --shot FILE` opens one and saves its picture.
 - ✓ A choice of output device on Windows (Settings > Audio > Output: the devices by the names Windows shows; `--audio-device NAME`, shared).
-- ✓ WASAPI exclusive mode (`--audio-exclusive`, Settings > Audio > Exclusive; `runtime/host/wasapi.cpp`): the device alone, event-driven, MMCSS "Pro Audio", float/32/24/16 bits, falls back to shared with the reason. ✗ Not tried on real Windows: Wine's audio refuses exclusive mode (the shared fallback and its message checked there). ASIO: not offered (its SDK's licence and the GPL).
+- ✓ WASAPI exclusive mode (`--audio-exclusive`, Settings > Audio > Exclusive; `runtime/host/wasapi.cpp`): the device alone, event-driven, MMCSS "Pro Audio", float/32/24/16 bits, falls back to shared with the reason. ✗ Not tried on real Windows: Wine's audio refuses exclusive mode (the shared fallback and its message checked there).
+- ✓ ASIO (`--audio-asio NAME`, Settings > Audio > Output's `ASIO:` entries; `runtime/host/asio.cpp`): the driver interface declared from the specification, as Wine's pwasio does (Steinberg's SDK is GPLv3 since 2025-10-29, but not needed); drivers from the registry, the driver's own buffer unless `--audio-buffer`, its sample form written on its thread. Checked under Wine with pwasio: float, 48 kHz, 64 frames, 99.97 % of the rate. ✗ A real card's driver on real Windows.
 
 ## M0 steps (all done)
 

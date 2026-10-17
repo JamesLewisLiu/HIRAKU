@@ -107,6 +107,11 @@ static QStringList windowsPlaybackDevices() {
     if (!was) SDL_QuitSubSystem(SDL_INIT_AUDIO);
     return out;
 }
+
+// the installed ASIO drivers by name (runtime/host/asio.h: what `--audio-asio` opens)
+static QStringList asioDrivers() {
+    return QSettings("HKEY_LOCAL_MACHINE\\SOFTWARE\\ASIO", QSettings::Registry64Format).childGroups();
+}
 #else
 // The sound cards' playback devices, as ALSA names ("hw:CARD=Generic,DEV=0") and labels, from
 // /proc/asound: what `--audio-device` opens alone, with no sound server in between.
@@ -193,8 +198,12 @@ SettingsDialog::SettingsDialog(QWidget *parent) : QDialog(parent) {
 #ifdef _WIN32
     m_audioDevice->addItem("Windows' default output", QString());
     for (const QString &name : windowsPlaybackDevices()) m_audioDevice->addItem(name, name);
+    for (const QString &name : asioDrivers()) m_audioDevice->addItem("ASIO: " + name, "asio:" + name);
     if (!device.isEmpty() && m_audioDevice->findData(device) < 0) m_audioDevice->addItem(device + " (not found now)", device);
-    m_audioDevice->setToolTip("The sound device the game plays on.");
+    m_audioDevice->setToolTip("The sound device the game plays on. ASIO: the card through its own ASIO driver, with "
+                              "no Windows audio in between; its buffer is the one set in the driver's control panel "
+                              "unless Device buffer below says otherwise. If the driver won't start, the game uses "
+                              "Windows' default output.");
     fa->addRow("Output:", m_audioDevice);
     m_audioExclusive = new QCheckBox("Exclusive (WASAPI): the device alone, lowest latency");
     m_audioExclusive->setChecked(s.value("audio/exclusive", false).toBool());
@@ -203,6 +212,8 @@ SettingsDialog::SettingsDialog(QWidget *parent) : QDialog(parent) {
                                  "programs are silent on it meanwhile. If the device refuses (another program has it "
                                  "alone, or Windows' sound settings don't allow exclusive mode), the game plays shared.");
     fa->addRow("", m_audioExclusive);
+    auto exclusiveFor = [this] { m_audioExclusive->setEnabled(!m_audioDevice->currentData().toString().startsWith("asio:")); };
+    connect(m_audioDevice, &QComboBox::currentIndexChanged, this, exclusiveFor);
 #else
     m_audioDevice->addItem("The system's default (the sound server)", QString());
     for (const auto &[name, label] : alsaPlaybackDevices()) m_audioDevice->addItem("Alone: " + label, name);
@@ -213,10 +224,17 @@ SettingsDialog::SettingsDialog(QWidget *parent) : QDialog(parent) {
     fa->addRow("Output:", m_audioDevice);
 #endif
     m_audioDevice->setCurrentIndex(std::max(0, m_audioDevice->findData(device)));
+#ifdef _WIN32
+    exclusiveFor();
+#endif
     m_audioBuffer = new QComboBox;
     for (int f : {0, 32, 48, 64, 96, 128, 192, 256, 512})
         m_audioBuffer->addItem(f ? QString("%1 frames (%2 ms)").arg(f).arg(f * 1000.0 / 48000, 0, 'f', 1)
+#ifdef _WIN32
+                                 : QString("Default (128 frames, 2.7 ms; ASIO: the driver's own)"), f);
+#else
                                  : QString("Default (128 frames, 2.7 ms)"), f);
+#endif
     m_audioBuffer->setCurrentIndex(std::max(0, m_audioBuffer->findData(s.value("audio/buffer", 0).toInt())));
     m_audioBuffer->setToolTip("The sound device's buffer (the sound server's quantum; on Windows in exclusive mode the device's own; with a Linux card alone, its "
                               "period: HIRAKU keeps four of them queued on the card, which USB cards need). Smaller is "

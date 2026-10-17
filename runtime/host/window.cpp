@@ -16,6 +16,7 @@
 #include "../shell/core.h"
 #include "macro.h"
 #include "pacing.h"
+#include "asio.h"
 #include "wasapi.h"
 #include "picture.h"
 #include "input.h"
@@ -54,6 +55,7 @@ int g_rate = 44100;               // the core's audio rate (Core::audio_rate)
 std::string g_audio_device;       // window_set_audio_output: an ALSA device to have alone ("": the default);
                                   // Windows: an output device by name
 bool g_audio_exclusive = false;   // Windows: WASAPI exclusive mode (wasapi.h)
+std::string g_audio_asio;         // Windows: an ASIO driver (asio.h)
 int g_audio_buffer = 0;           // ... and the device buffer in frames (0: 128)
 std::string g_audio_output;       // what it got, for the report
 int g_target_frames = 0;          // audio queued ahead, when audio paces
@@ -180,6 +182,8 @@ void window_set_audio_output(const std::string &device, int frames, bool exclusi
     g_audio_exclusive = exclusive;
 }
 
+void window_set_audio_asio(const std::string &driver) { g_audio_asio = driver; }
+
 namespace {
 // A sound card of our own (--audio-device): HIRAKU writes to it through ALSA itself, as aplay does,
 // a period at a time into a ring of four kept full. SDL's own ALSA output keeps a ring of two
@@ -272,7 +276,7 @@ void run(SDL_AudioStream *stream) {
 
 // `device` alone at `src`'s rate (or the nearest it has), periods of `period` frames: a stream
 // converting `src` to it, which a thread of ours plays. "" or why not
-std::string open(const std::string &device, const SDL_AudioSpec &src, int period, SDL_AudioStream *&stream, std::string &what) {
+[[maybe_unused]] std::string open(const std::string &device, const SDL_AudioSpec &src, int period, SDL_AudioStream *&stream, std::string &what) {
     std::string why;
     if (!load(why)) return why;
     int e = api.open(&g_pcm, device.c_str(), 0 /* playback */, 0);
@@ -341,7 +345,16 @@ bool window_open(const char *title, int scale, const std::string &bindings, int 
     input_init(bindings);
     SDL_AudioSpec spec{SDL_AUDIO_F32, 2, g_rate};
 #ifdef _WIN32
-    if (g_audio_exclusive) {   // the device alone, in WASAPI exclusive mode: no system mixer in between
+    if (!g_audio_asio.empty()) {   // the card through its own ASIO driver: no Windows audio in between
+        std::string what, why = asio::open(g_audio_asio, spec, g_audio_buffer, g_audio, what);
+        if (why.empty()) {
+            g_audio_output = "ASIO: " + what;
+            g_device_frames = asio::period_frames();
+        } else {
+            fprintf(stderr, "audio: ASIO driver \"%s\": %s; Windows' audio instead\n", g_audio_asio.c_str(), why.c_str());
+        }
+    }
+    if (!g_audio && g_audio_exclusive) {   // the device alone, in WASAPI exclusive mode: no system mixer in between
         std::string what, why = wasapi::open(g_audio_device, spec, g_audio_buffer > 0 ? g_audio_buffer : 128, g_audio, what);
         if (why.empty()) {
             g_audio_output = (g_audio_device.empty() ? std::string("the default output") : g_audio_device) +
@@ -718,6 +731,7 @@ std::string audio_describe() {
         n += snprintf(b + n, sizeof b - n, " %s %.0f ms", prof::NAMES[c], g_ast.low_ns[c] / 1e6);
 #ifdef _WIN32
     if (wasapi::active()) n += snprintf(b + n, sizeof b - n, "\n%s", wasapi::describe().c_str());
+    if (asio::active()) n += snprintf(b + n, sizeof b - n, "\n%s", asio::describe().c_str());
 #endif
     if (alsa::g_pcm && alsa::g_t0) {   // the card's own pace: a starving card takes fewer frames than its rate
         const double secs = (prof::now_ns() - alsa::g_t0) / 1e9;
@@ -760,6 +774,7 @@ void window_close() {
     alsa::close();
 #ifdef _WIN32
     wasapi::close();
+    asio::close();
 #endif
     if (g_audio) SDL_DestroyAudioStream(g_audio);
     if (g_tex) SDL_DestroyTexture(g_tex);

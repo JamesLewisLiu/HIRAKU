@@ -46,9 +46,12 @@
 //                       mixer), or with --audio-exclusive alone
 //     --audio-exclusive Windows: the output (--audio-device's, else the default one) in WASAPI exclusive
 //                       mode: no system mixer in between, other programs silent meanwhile
+//     --audio-asio NAME Windows: the sound card through its ASIO driver (the name its control panel and
+//                       the launcher show; the error lists the installed ones). Else Windows' audio
 //     --audio-buffer N  the device buffer in frames (default 128): the sound server's quantum, or with
-//                       --audio-device the ALSA period (a ring of four), or the WASAPI exclusive buffer.
-//                       Smaller is sooner, until it crackles
+//                       --audio-device the ALSA period (a ring of four), or the WASAPI exclusive buffer,
+//                       or the ASIO buffer (default there: the driver's own). Smaller is sooner, until
+//                       it crackles
 //     --nvram DIR       keep the machine's NVRAM in DIR: loaded at start, saved on exit.
 //                       Default with --window: ~/.local/share/hiraku/<game> (a portable install's
 //                       user/data/<game>: shell/userdir.h); otherwise none (every run starts from
@@ -231,6 +234,7 @@ int main(int argc, char **argv) {
     int audio_ms = 8, audio_buffer = 0;
     std::string audio_device;
     bool audio_exclusive = false;
+    std::string audio_asio;
     for (int k = 1; k < argc; k++) {
         std::string a = argv[k];
         // one dash is two, as spice2x writes its options (-url, -p, -card0: shell/eaoptions.h)
@@ -262,6 +266,7 @@ int main(int argc, char **argv) {
         else if (a == "--audio-ms") audio_ms = std::stoi(val());
         else if (a == "--audio-device") audio_device = val();
         else if (a == "--audio-exclusive") audio_exclusive = true;
+        else if (a == "--audio-asio") audio_asio = val();
         else if (a == "--audio-buffer") audio_buffer = std::stoi(val());
         else if (a == "--window") window_scale = (k + 1 < argc && argv[k + 1][0] != '-') ? std::stoi(val()) : 2;
         else if (a == "--help" || a == "-h") {
@@ -358,6 +363,7 @@ int main(int argc, char **argv) {
     host::window_set_picture(picture_mode, opt.root + "/shaders", picture_config);
     host::window_set_display_sync(display_sync);
     host::window_set_audio_output(audio_device, audio_buffer, audio_exclusive);
+    host::window_set_audio_asio(audio_asio);
     if (window_scale && !host::window_open(("HIRAKU - " + game).c_str(), window_scale, bindings, audio_ms, fullscreen, machine.audio_rate())) {
         fprintf(stderr, "cannot open a window\n");
         return 1;

@@ -212,8 +212,18 @@ on it meanwhile. HIRAKU tries float, 32, 24 and 16 bits at the game's rate, then
 96 kHz. If the device refuses (another program has it alone, or "Allow applications to take
 exclusive control of this device" is off in its Advanced properties), the game says why and plays
 shared. The exit report then has an `audio: the device took ...` line with the share of the device's
-rate it took and the periods the game's sound came short. ASIO isn't offered: its SDK's licence
-doesn't allow it in a GPL program.
+rate it took and the periods the game's sound came short.
+
+**ASIO** (Windows; launcher: Settings > Audio > Output, the `ASIO:` entries). `--audio-asio NAME`
+plays through the card's own ASIO driver (the name in its control panel; a wrong name lists the
+installed ones): no Windows audio in between. The buffer is the one set in the driver's control
+panel, unless `--audio-buffer` asks for another the driver allows. The game's rate if the card
+takes it, else 48, 44.1 or 96 kHz; 16, 24 or 32-bit or float samples, as the driver asks. If the
+driver won't start, the game says why and plays on Windows' default output. The exit report's
+`audio: the ASIO driver took ...` line says whether it kept pace and how often the sound came
+short. HIRAKU declares the ASIO driver interface itself, from the specification (Steinberg's SDK
+is GPLv3 since October 2025 too, but isn't needed). Checked under Wine with pwasio (PipeWire's
+ASIO driver for Wine): float, 48 kHz, 64-frame buffers, 99.97 % of the rate.
 
 **System 573 and Twinkle: `--fine-sound`** (launcher: Settings > Audio > "Sound every millisecond"). These cores run MAME's devices, and MAME hands their sound on 50 times a second. So by default the sound reaches the PC in 20 ms pieces, which adds up to 20 ms of latency, uneven from moment to moment, and the controls are read once per piece. `--fine-sound` hands it on every millisecond instead:
 - The machine runs the same (the regress cases show the same pictures).

@@ -21,6 +21,8 @@ void window_set_display_sync(bool on);
 // output device by the name Windows shows. exclusive (Windows): that device, or the default one,
 // in WASAPI exclusive mode (host/wasapi.h). frames: the device buffer (0: 128)
 void window_set_audio_output(const std::string &device, int frames, bool exclusive = false);
+// Windows: a card through its ASIO driver by name (host/asio.h; "": none), before the others
+void window_set_audio_asio(const std::string &driver);
 bool window_open(const char *title, int scale, const std::string &bindings, int audio_target_ms, bool fullscreen = false,
                  int audio_rate = 44100);
 // Present one frame; then sleep so that `virtual_seconds` does not run ahead
