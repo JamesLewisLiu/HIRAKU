@@ -25,7 +25,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Build tools
-        run: sudo tools/release-setup-ubuntu.sh linux
+        run: sudo tools/release-setup-ubuntu.sh python
       - name: Cache the libraries
         uses: actions/cache@v4
         with:
@@ -33,8 +33,15 @@ jobs:
           key: linux-deps-${{ hashFiles('tools/release-deps-linux.sh', 'tools/ffmpeg-min.sh') }}
       - name: Libraries (SDL3, zstd, FFmpeg, Qt, Python, 7-Zip)
         run: tools/release-deps-linux.sh ~/hiraku-deps
+      - name: Cache PCSX2 Reliquary's libraries
+        uses: actions/cache@v4
+        with:
+          path: ~/hiraku-python/deps
+          key: python-deps-${{ hashFiles('tools/release-python-linux.sh') }}
+      - name: The Konami Python core (PCSX2 Reliquary 1.9.4, hiraku-python)
+        run: tools/release-python-linux.sh ~/hiraku-python ~/hiraku-deps
       - name: Build and package
-        run: tools/release.sh linux dist ~/hiraku-deps
+        run: HK_PYTHON_WORK=~/hiraku-python tools/release.sh linux dist ~/hiraku-deps
       - name: The LGPL libraries' sources
         run: cp ~/hiraku-deps/src/ffmpeg-*.tar.xz ~/hiraku-deps/src/SDL3-*.tar.gz dist/
       - uses: actions/upload-artifact@v4
@@ -90,8 +97,10 @@ jobs:
 
           **Games that run from this release:** DJ Main (beatmania 1st MIX to THE FINAL, beatmania CORE REMIX, pop'n music 1-3, pop'n stage, hiphopmania), System 573 (Dance Dance Revolution 1st MIX to EXTREME and Dancing Stage, GuitarFreaks and DrumMania 1st to 10th/11th Mix, Percussion Freaks) and Twinkle (beatmania IIDX 1st to 8th style and Substream, with the background video). Some versions still need a dump nobody has made; each game's page in the launcher says what it needs.
 
-          **Not yet:** Firebeat games (beatmania III, pop'n music 4-8, ParaParaParadise, Keyboardmania) and the Konami Python games (pop'n music 9-14, GuitarFreaks and DrumMania V) need HIRAKU built from source for now (docs/PLAY.md).
+          **Firebeat** (beatmania III, pop'n music 4-8, ParaParaParadise, Keyboardmania) too: HIRAKU finds its way around each game's program by itself.
 
-          The packages are portable: settings and saves stay in their `user` folder. The FFmpeg and SDL3 source archives are here for their LGPL/zlib licences.
+          **Konami Python** (pop'n music 9-14, DrumMania V/V2) in the Linux package: add the game's folder together with the folders `bios` (the arcade BIOS) and `keys` (the MagicGate key files), which HIRAKU can't ship. They need Vulkan or OpenGL drivers. Not yet in the Windows package.
+
+          The packages are portable: settings and saves stay in their `user` folder. The FFmpeg and SDL3 source archives are here for their LGPL/zlib licences; the Linux package's Python core is built from PCSX2 Reliquary 1.9.4 (GPL-3.0), whose source is the reliquary-1.9.4 release's zip, with HIRAKU's oracle/pcsx2/reliquary-oracle.patch.
           EOF
           gh release create "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" --draft --title "HIRAKU $GITHUB_REF_NAME" --notes-file notes.md

@@ -5,11 +5,12 @@
 #
 #   tools/release-setup-ubuntu.sh linux     (tools/release-deps-linux.sh, tools/release.sh linux)
 #   tools/release-setup-ubuntu.sh windows   (tools/win-deps.sh, tools/release.sh windows)
+#   tools/release-setup-ubuntu.sh python    (linux's, and tools/release-python-linux.sh's)
 #
 # 22.04 for Linux: the package then runs on glibc 2.35 and later. Its own clang and CMake are too
 # old for HIRAKU, so clang comes from apt.llvm.org and CMake from PyPI.
 set -euo pipefail
-target=${1:?linux or windows}
+target=${1:?linux, python or windows}
 sudo=""
 [ "$(id -u)" = 0 ] || sudo=sudo
 export DEBIAN_FRONTEND=noninteractive
@@ -43,12 +44,21 @@ linux)
     libxcb-render-util0 libxcb-shape0 libxcb-xinerama0 libxcb-xkb1 libxcb-randr0 libxcb-util1 libxcb-ewmh2 \
     libssl3 libglib2.0-0
   ;;
+python)
+  # PCSX2 Reliquary's build (tools/release-python-linux.sh), on top of linux's: what PCSX2's own
+  # Linux CI installs (.github/workflows/linux_build_qt.yml in its source), less Qt's
+  "$0" linux
+  $sudo apt-get install -y -q --no-install-recommends \
+    autoconf automake libtool extra-cmake-modules libaio-dev libcurl4-openssl-dev libevdev-dev libfontconfig-dev \
+    libfreetype-dev libgtk-3-dev libgudev-1.0-dev libharfbuzz-dev libinput-dev libopengl-dev libpcap-dev libssl-dev \
+    libva-dev libx11-xcb-dev libxcb1-dev libxcb-cursor-dev libxkbcommon-x11-dev unzip patch libpcsclite-dev
+  ;;
 windows)
   # mingw-w64's headers, CRT and winpthreads for clang (cmake/x86_64-w64-mingw32.cmake), its gcc
   # for FFmpeg (tools/ffmpeg-min.sh); Wine for the build's own generators; the host's Qt tools of
   # the same version as the static Windows Qt (moc, rcc, uic: tools/win-deps.sh)
   $sudo apt-get install -y -q --no-install-recommends mingw-w64 wine64 zip
   ;;
-*) echo "linux or windows" >&2; exit 2 ;;
+*) echo "linux, python or windows" >&2; exit 2 ;;
 esac
 echo "release-setup-ubuntu: ready for $target"

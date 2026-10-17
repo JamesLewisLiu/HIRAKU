@@ -43,7 +43,9 @@ for f in "$build"/hiraku "$build"/hiraku-*; do
   real=$(readlink -f "$f")
   if [ -d "$(dirname "$real")/resources" ]; then
     [ -d "$d/bin/resources" ] || cp -r "$(dirname "$real")/resources" "$d/bin/resources"
-    ldd "$real" | awk '$3 ~ /^\// && $3 !~ /^\/(usr\/)?lib(64)?\// {print $3}' | while read -r lib; do
+    # (HK_PYTHON_LIBS: where a release's Reliquary libraries are, which the binary finds in bin/lib)
+    LD_LIBRARY_PATH=${HK_PYTHON_LIBS:-}${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH} ldd "$real" |
+      awk '$3 ~ /^\// && $3 !~ /^\/(usr\/)?lib(64)?\// {print $3}' | while read -r lib; do
       cp -L "$lib" "$d/bin/lib/"
     done
   fi
@@ -139,7 +141,9 @@ cp -r "$root/tools/data" "$d/tools/"
 mkdir -p "$d/tools/eamuse" && cp "$root"/tools/eamuse/{check.py,corpus.json} "$d/tools/eamuse/"
 mkdir -p "$d/tools/eamuse/bemaniutils" && cp "$root"/tools/eamuse/bemaniutils/{README.md,popn9-python.patch} "$d/tools/eamuse/bemaniutils/"
 # Konami Python ingest reads disks in place through libchdr (tools/chdread.py)
-[ -f "$root/build/libchdr_mini.so" ] && mkdir -p "$d/build" && cp "$root/build/libchdr_mini.so" "$d/build/"
+for f in "$build/libchdr_mini.so" "$root/build/libchdr_mini.so"; do   # the build's (CMake), else tools/build-libchdr.sh's
+  if [ -f "$f" ]; then mkdir -p "$d/build" && cp -L "$f" "$d/build/libchdr_mini.so" && break; fi
+done
 cp "$root/LICENSE" "$d/" 2>/dev/null || true
 # the licences of the code taken from other projects, where Help > About HIRAKU reads them
 for f in $(grep -o '"third_party/[^"]*"' "$root/launcher/aboutdialog.cpp" | tr -d '"'); do
@@ -184,10 +188,13 @@ Game data from a PC that has it already: tools/pack-data.py there (docs/PLAY.md)
 EOF
 if [ -d "$d/bin/resources" ]; then cat >> "$d/README.txt" <<'EOF'
 
-Konami Python games (bin/hiraku-popn9 … hiraku-popn14): Vulkan or OpenGL drivers from the system;
---renderer vk (or gl) draws on the GPU, the default software renderer on the CPU. Their
-e-AMUSEMENT runs offline inside the game by default; bin/hiraku-eamuse --port 8080 is the same
-server for several PCs, which then run with --eamuse http://that-pc:8080/ (docs/EAMUSE3.md).
+Konami Python games (pop'n music 9-14; bin/hiraku-python --game popn9 on the command line):
+add a game's folder (with or without its .py1) together with the folders bios (the arcade BIOS,
+COH-H31000) and keys (the MagicGate key files), which HIRAKU can't ship; later games find them.
+The default software renderer draws on the CPU; --renderer vk (or gl) on the GPU, with the
+system's Vulkan or OpenGL drivers. Their e-AMUSEMENT runs offline inside the game by default;
+bin/hiraku-eamuse --port 8080 is the same server for several PCs, which then run with
+--eamuse http://that-pc:8080/ (docs/EAMUSE3.md).
 EOF
 fi
 # xz with a window wider than one binary: the binaries share most of their code,

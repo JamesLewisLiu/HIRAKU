@@ -215,6 +215,18 @@ target_include_directories(hk_libchdr PUBLIC third_party/libchdr/include PRIVATE
 target_compile_definitions(hk_libchdr PRIVATE _7ZIP_ST Z7_ST)
 target_compile_options(hk_libchdr PRIVATE -O2 -w)
 target_link_libraries(hk_libchdr PUBLIC ${HK_ZSTD} ZLIB::ZLIB)
+# libchdr_mini.so: libchdr as a shared library for tools/chdread.py (Python ingest reads a Python
+# game's disk through it); a package carries it in build/, where chdread.py looks
+if(NOT WIN32)
+  add_library(chdr_mini SHARED
+    third_party/libchdr/src/libchdr_bitstream.c third_party/libchdr/src/libchdr_cdrom.c
+    third_party/libchdr/src/libchdr_chd.c third_party/libchdr/src/libchdr_flac.c
+    third_party/libchdr/src/libchdr_huffman.c third_party/libchdr/lzma/LzmaDec.c)
+  target_include_directories(chdr_mini PRIVATE third_party/libchdr/include third_party/libchdr/lzma)
+  target_compile_definitions(chdr_mini PRIVATE _7ZIP_ST Z7_ST)
+  target_compile_options(chdr_mini PRIVATE -O2 -w)
+  target_link_libraries(chdr_mini PRIVATE ${HK_ZSTD} ZLIB::ZLIB)
+endif()
 add_library(hiraku_image STATIC runtime/dev/image.cpp)
 target_include_directories(hiraku_image PUBLIC runtime)
 target_link_libraries(hiraku_image PUBLIC hk_libchdr hiraku_sys)
