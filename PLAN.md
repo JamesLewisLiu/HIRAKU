@@ -2120,6 +2120,19 @@ R-1 and R-2 give a first release that runs DJ Main, System 573 and Twinkle (less
 - **Checked** (R-6's clean-PC test): in a bare Debian 12 container (plus `libwayland-client0`, which every desktop has), the package's own Python adds beatmania, DDR 2ndMIX and IIDX from the MAME archive's sets (zip, folder, `.7z`), and `bm1stmix-play`, `ddr2m-boot` (with MAME 0.289's cassette EEPROM; the archive's is the older dump) and `bmiidx-clear` give their baselines; the launcher runs under Xvfb, and `--add` (what a drop does) adds a game. The Windows zip under Wine: `bm1stmix-play` added and run from the zip gives its baseline; IIDX 1st style with video (`bmiidx-clear` → `bmiidx-video`) gives the Linux baselines.
 - Found on the way: `strcasestr` (no such function on Windows) in `cdromimg.cpp` since da578d6; the Twinkle cases need `--mame-cd` by hand as `tools/regress.py` gives it.
 
+### §28 checklist: someone with a GitHub build and their game data (2026-10-17)
+
+What such a user meets, step by step, and where each stands (✓ done and checked; ✗ not yet, why):
+1. ✓ **Find and download a build:** the README's Download section; `.github/workflows/release.yml` makes the packages (both jobs run end to end in fresh containers here). ✗ Not on GitHub yet: needs the owner to push and tag.
+2. ✓ **Unpack and start, nothing installed:** Linux (glibc 2.35+, `bin/hiraku`, its own Qt, SDL3, Python, 7-Zip) and Windows (`bin\hiraku.exe`, its own Python, 7-Zip). Checked: bare Debian 12 container (with a desktop's libraries) and Wine. ✗ Real Windows not tried (a VM would need a Windows download: owner's call).
+3. ✓ **See what can be played:** every game listed; Konami Python ones say "Not in this package" and why; each game's page says which files it needs.
+4. ✓ **Add a game by dropping files:** MAME sets as zip, 7z or folder, CHDs read in place (copied in, so the files can go), disc images; Python 1 folders without their .py1, with the BIOS and keys dropped along. Checked from the MAME archive's sets: DJ Main, 573, Twinkle, Firebeat, on both systems. Older MAME sets' pop'n DVDs as hard disk CHDs: handled.
+5. ✓ **Play, exactly as the source build does:** one binary per core; Firebeat through `hiraku-firebeat` (own analysis, executor): the regress baselines come out identical from the packages. Twinkle's background video on both systems.
+6. ✓ **Saves and settings stay with the folder** (portable `user/`), as the README says.
+7. ✗ **Konami Python games (pop'n music 9-14, DrumMania V/V2) from a package:** `hiraku-python` is ready, but Reliquary 1.9.4's source isn't public (owner: host it, or ask its authors). DrumMania V from MAME's set also needs MAME's own disk image to check against.
+8. ✗ **Konami Python on Windows** (§26 phase 4: clang-cl): after 7.
+9. ✗ **Frame times on an N100-class PC** (FB-6): needs the hardware. On this PC the executor runs pop'n 7 at 2.9 ms a frame (native 1.1).
+
 ## M0 steps (all done)
 
 1. ~~`git init` HIRAKU and add `.gitignore` for `dumps/` and `build/`~~ Done.
