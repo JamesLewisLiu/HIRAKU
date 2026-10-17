@@ -64,6 +64,7 @@ export HIRAKU_HASH_EVERY="${HIRAKU_HASH_EVERY:-10}"
 # MAME's run is deterministic: the same script, start NVRAM, build and options give the same result
 key="$( { cat "$script"; [[ -n "${LOCKSTEP_NVRAM:-}" ]] && find "$LOCKSTEP_NVRAM" -type f -print0 | sort -z | xargs -0 cat;
           echo "$bin $(stat -c %Y "$bin" 2>/dev/null) ${MAME_ARGS:-} $HIRAKU_ROMS every=$HIRAKU_HASH_EVERY";
+          [[ -n "${HIRAKU_LUA:-}" ]] && cat "$HIRAKU_LUA";   # a probe that changes the machine (oracle/lua/boot-cd.lua)
           # the files the rompath holds for the set, its parents and its BIOS (a relinked zip is a new run)
           python3 - "$toml" "$HIRAKU_ROMS" <<'PY' || true
 import os, sys, tomllib

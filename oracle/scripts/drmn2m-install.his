@@ -1,0 +1,10 @@
+# DrumMania 2nd Mix (GE912 VER. JAB): the first boot, from blank NVRAM, with the install cassette in
+# the slot (MAME: -cassette install; HIRAKU: --cassette install). No inputs: the CD installs to the
+# onboard flash, INFO 506 by frame ~7,500. Hashes the main RAM every frame and snapshots every 60
+# frames, to compare with MAME.
+game drmn2m
+
+hash ram  0x80000000 0x80400000   # 4 MiB main RAM (KSEG0)
+
+from 0 every 60 snap
+at 18000 quit

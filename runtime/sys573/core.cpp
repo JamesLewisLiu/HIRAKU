@@ -39,6 +39,7 @@ public:
         if (name == "--session-join") { session_join_ = value(); return true; }
         if (name == "--session-quantum") { session_quantum_ = std::stoi(value()); return true; }
         if (name == "--cd") { cd_ = value(); return true; }
+        if (name == "--boot-cd") { boot_cd_ = true; return true; }
         if (name == "--eamuse") { eamuse_ = value(); return true; }
         return false;
     }
@@ -61,9 +62,12 @@ public:
                "                    ddr2mla, ddrbocd, the club versions): when it says the install is done,\n"
                "                    power off and boot again without (install2: MAME's second install disc)\n"
                "  --session-host SOCKET  session play: this cabinet (the one with the multi-session unit,\n"
-               "                    DrumMania) waits at SOCKET (a path, or host:port) for the other\n"
+               "                    DrumMania; before the unit, either) waits at SOCKET (a path, or\n"
+               "                    host:port) for the other\n"
                "  --session-join SOCKET  session play: this cabinet (GuitarFreaks) joins the host's unit\n"
-               "  --session-quantum US   the lockstep quantum in microseconds (default 500; both sides alike)\n";
+               "  --session-quantum US   the lockstep quantum in microseconds (default 500; both sides alike)\n"
+               "  --boot-cd         DIP switch 4 (\"Start Up Device\") on the CD-ROM drive, not the flash: an\n"
+               "                    install over an installed game (DrumMania 2nd's Session Power Up Kit)\n";
     }
 
     bool init(const Options &o) override {
@@ -139,6 +143,7 @@ public:
         cfg.session_host = session_host_;
         cfg.session_join = session_join_;
         cfg.session_quantum_us = session_quantum_;
+        cfg.boot_cd = boot_cd_;
         cfg.rtc_time = rtc_ >= 0 ? rtc_ : (int64_t)time(nullptr);
         if (mame_mix_) cfg.mix_gain = 1.0f;
         cfg.fine_sound = fine_sound_;
@@ -194,6 +199,7 @@ private:
     std::string cd_;
     std::string session_host_, session_join_;
     int session_quantum_ = 500;
+    bool boot_cd_ = false;
 };
 
 }  // namespace

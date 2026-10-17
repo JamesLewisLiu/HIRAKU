@@ -140,6 +140,15 @@ CASES = {
                                          "--session-host", "out/regress/work/session-gf5dm4.sock"], "drmn4m-install", "gtrfrk5m-session"),
     "gtrfrk5m-session": ("gtrfrk5m", 16200, ["--rtc", "1792224530", "--script", "oracle/scripts/gtrfrk5m-session.his",
                                              "--session-join", "out/regress/work/session-gf5dm4.sock"], "gtrfrk5m-install", "drmn4m-session"),
+    # Before the multi-session unit: DrumMania 3rd and GuitarFreaks 4th, each installed with its install
+    # cassette (NOTE 604: Test), then in session SIO1 to SIO1 from what the installs left (the session
+    # entry, the caution screen and the music select, the first stage played on both cabinets)
+    "drmn3m-install": ("drmn3m", 24000, ["--rtc", "1792218444", "--cassette", "install", "--script", "oracle/scripts/drmn3m-install.his"]),
+    "gtrfrk4m-install": ("gtrfrk4m", 24000, ["--rtc", "1792218276", "--cassette", "install", "--script", "oracle/scripts/gtrfrk4m-install.his"]),
+    "drmn3m-session": ("drmn3m", 12000, ["--rtc", "1792200000", "--script", "oracle/scripts/drmn3m-session.his",
+                                         "--session-host", "out/regress/work/session-gf4dm3.sock"], "drmn3m-install", "gtrfrk4m-session"),
+    "gtrfrk4m-session": ("gtrfrk4m", 12000, ["--rtc", "1792200000", "--script", "oracle/scripts/gtrfrk4m-session.his",
+                                             "--session-join", "out/regress/work/session-gf4dm3.sock"], "gtrfrk4m-install", "drmn3m-session"),
     # the analog board: first boot, the flash install (two Test presses), attract with CD audio
     "ddr2m-boot": ("ddr2m", 24000, ["--rtc", "1791828936", "--script", "oracle/scripts/ddr2m-boot.his"]),
     # ... and a game: coins, mode and song select, a song stepped through to CLEARED, stage 2

@@ -1,0 +1,13 @@
+# DrumMania 2nd Mix Session Power Up Kit (GE912 VER. JAB): the kit's install, from what
+# drmn2m-install.his left (DrumMania 2nd installed to the flash). As MAME's notes say: DIP switch 4
+# on the CD-ROM drive (HIRAKU: --boot-cd; MAME: HIRAKU_LUA=oracle/lua/boot-cd.lua), the game
+# cassette in, and the kit's disc (MAME's "install" disc, 912za01: its rompath names it as the
+# runtime disc for this step; HIRAKU: --cd install). The kit installs itself, no inputs: "Session
+# power-up done; turn the power off, put the drummania 2ndMIX CD back and restart" by frame ~6,000.
+# Hashes the main RAM every frame and snapshots every 60 frames, to compare with MAME.
+game drmn2mpu
+
+hash ram  0x80000000 0x80400000   # 4 MiB main RAM (KSEG0)
+
+from 0 every 60 snap
+at 7200 quit

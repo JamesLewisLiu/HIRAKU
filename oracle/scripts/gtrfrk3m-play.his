@@ -1,0 +1,24 @@
+# Guitar Freaks 3rd Mix (GE949 VER. JAB): a game, from what gtrfrk3m-install.his left (the flash and
+# the PC Card installed; the game cassette and the runtime CD in). The boot loads its data from the
+# CD for a while (NOW LOADING ... 67/67); the title is at frame ~14,400. Two coins, Start through
+# the screens to the music select's default; the stage played with the guitar: every 12 frames a
+# neck button held and picked (R, G, B in turn), a wail every 240. Hashes the main RAM every frame,
+# snapshots every 60 frames, to compare with MAME.
+game gtrfrk3m
+
+hash ram  0x80000000 0x80400000   # 4 MiB main RAM (KSEG0)
+
+at 14500 press "Coin 1" 8
+at 14540 press "Coin 1" 8
+at 14700 press "1 Player Start" 8
+at 15000 press "1 Player Start" 8
+at 15300 press "1 Player Start" 8
+at 15600 press "1 Player Start" 8
+at 15900 press "1 Player Start" 8
+from 16200 every 36 press "P1 Button R" 8
+from 16212 every 36 press "P1 Button G" 8
+from 16224 every 36 press "P1 Button B" 8
+from 16202 every 12 press "P1 Pick" 3
+from 16206 every 240 press "P1 Wailing" 4
+from 0 every 60 snap
+at 24000 quit

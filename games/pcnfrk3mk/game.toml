@@ -1,0 +1,24 @@
+# Percussion Freaks 3rd Mix (G*A23 VER. KAA), Konami 2000: generated from MAME's ksys573.cpp (tools/gen573.py)
+id = "pcnfrk3mk"
+title = "Percussion Freaks 3rd Mix"
+family = "drmn"         # DrumMania cabinet: five pads, the bass pedal, select buttons
+mame = "pcnfrk3mk"      # MAME set name, used by the oracle
+core = "sys573"         # System 573 (runtime/sys573/, PLAN.md section 19); digital I/O board
+install_cassette = "yes"   # the launcher's first boot uses the install cassette (--cassette install)
+
+[roms]
+bios = "700a01.22g"             # 573 BIOS
+h8 = "h8a01.bin"                # the H8's start-up response (JVS check)
+cassette_eeprom = "gca23ka.u1"  # the game cassette's ZS01
+cassette_id = "gca23ka.u6"      # ... and its DS2401 serial number
+install_eeprom = "a23kaa.u1"    # the install cassette's X76F041 (first boot: --cassette install)
+install_id = "a23kaa.u6"        # ... and its DS2401
+digital_id = "digital-id.bin"   # the digital I/O board's DS2401
+
+[board]
+io_board = "digital"            # GX894-PWB(B): FPGA + MAS3507D MP3
+cassette = "zi"                 # MAME's cassette variant: ZS01 + DS2401 (casszi)
+install_kind = "xi"             # the install cassette's variant: X76F041 + DS2401
+
+[cd]
+chd = "a23kaa02"        # the runtime CD

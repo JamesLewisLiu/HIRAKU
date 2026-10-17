@@ -1,0 +1,9 @@
+# Percussion Freaks (GQ881 VER. KAB), Konami 1999: the first power-on, from blank NVRAM, with
+# the game cassette in; no inputs. Hashes the main RAM every frame and snapshots every 60 frames,
+# to compare with MAME.
+game pcnfrkk
+
+hash ram  0x80000000 0x80400000   # 4 MiB main RAM (KSEG0)
+
+from 0 every 60 snap
+at 6000 quit

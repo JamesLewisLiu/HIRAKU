@@ -17,11 +17,12 @@ namespace hk::k573 {
 namespace {
 
 constexpr uint32_t MAGIC = 0x48'4b'35'37;   // "HK57"
-constexpr uint32_t VERSION = 2;   // 2: sound with the steps
+constexpr uint32_t VERSION = 3;   // 2: sound with the steps; 3: whether a side sends sound
 
 struct Hello {
     uint32_t magic, version;
     int64_t quantum_attos;
+    uint32_t audio, pad;   // this side sends sound with its steps
 };
 
 struct StepHeader {
@@ -79,7 +80,7 @@ int unix_socket(const std::string &path, bool host) {
 
 }  // namespace
 
-bool SessionLink::open(const std::string &where, bool host, attotime quantum) {
+bool SessionLink::open(const std::string &where, bool host, attotime quantum, bool audio) {
     m_host = host;
     m_quantum = quantum;
     const bool tcp = is_tcp(where);
@@ -104,7 +105,7 @@ bool SessionLink::open(const std::string &where, bool host, attotime quantum) {
         fprintf(stderr, "session: no other cabinet at %s\n", where.c_str());
         return false;
     }
-    Hello mine{MAGIC, VERSION, (int64_t)quantum.as_attoseconds()}, theirs{};
+    Hello mine{MAGIC, VERSION, (int64_t)quantum.as_attoseconds(), audio ? 1u : 0u, 0}, theirs{};
     if (!send_all(&mine, sizeof mine) || !recv_all(&theirs, sizeof theirs) || theirs.magic != MAGIC ||
         theirs.version != VERSION || theirs.quantum_attos != mine.quantum_attos) {
         fprintf(stderr, "session: the other side isn't a matching HIRAKU 573 (version or quantum)\n");
@@ -112,6 +113,7 @@ bool SessionLink::open(const std::string &where, bool host, attotime quantum) {
         m_fd = -1;
         return false;
     }
+    m_far_audio = theirs.audio != 0;
     fprintf(stderr, "session: connected (%s, %.3f ms quantum)\n", host ? "host" : "guest", quantum.as_double() * 1e3);
     return true;
 }

@@ -35,7 +35,9 @@ public:
 
     // host: listen at `where` and wait for the other cabinet; else connect to it (trying for up
     // to ten minutes). false: a message was printed.
-    bool open(const std::string &where, bool host, attotime quantum);
+    // audio: this side sends its unit's music with its steps (a host with the multi-session unit);
+    // the two DrumMania and GuitarFreaks mixes before the unit join SIO1 to SIO1, each with its own
+    bool open(const std::string &where, bool host, attotime quantum, bool audio);
     bool is_open() const { return m_fd >= 0; }
 
     // once the machine exists: the quantum's timer and the delivery timer
@@ -55,6 +57,8 @@ public:
     // this cabinet's own for the same moment (the host always sends: its sound output is set
     // before the machine starts)
     size_t audio_available() const { return (m_audio_in.size() - m_audio_next) / 2; }
+    // whether the far side sends sound at all (a mixer waits for it only then)
+    bool far_audio() const { return m_far_audio; }
 
 private:
     struct Event {
@@ -69,7 +73,7 @@ private:
     void lost(const char *why);
 
     int m_fd = -1;
-    bool m_host = false;
+    bool m_host = false, m_far_audio = false;
     attotime m_quantum;
     running_machine *m_machine = nullptr;
     emu_timer *m_sync_timer = nullptr, *m_deliver_timer = nullptr;

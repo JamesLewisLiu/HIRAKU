@@ -1,0 +1,25 @@
+# DrumMania 3rd Mix and GuitarFreaks 4th Mix in session (with gtrfrk4m-session, run alongside: two
+# processes on one session cable, runtime/sys573/link.h). Before the multi-session unit the two
+# cabinets join SIO1 to SIO1; this side waits for the other (--session-host). From what
+# drmn3m-install left: attract; two coins and Start at the title, and the GuitarFreaks cabinet joins
+# (its WANTED screen); both pass the caution screen and the music select (Start every 300 frames)
+# and play the first stage together ("Session"), on the pads: the snare every 8 frames, the hi-hat
+# every 16, the bass drum every 12, a tom or the cymbal now and then. MAME can't run a session: this
+# checks that two runs agree.
+game drmn3m
+
+at 4900 press "Coin 1" 8
+at 4940 press "Coin 1" 8
+at 5100 press "1 Player Start" 8
+at 5400 press "1 Player Start" 8
+at 5700 press "1 Player Start" 8
+at 6000 press "1 Player Start" 8
+at 6300 press "1 Player Start" 8
+from 6500 every 8 press "Snare" 4
+from 6504 every 16 press "Hi-Hat" 4
+from 6502 every 12 press "Bass Drum" 4
+from 6510 every 48 press "High Tom" 4
+from 6534 every 48 press "Low Tom" 4
+from 6550 every 96 press "Cymbal" 4
+from 0 every 60 snap
+at 12000 quit

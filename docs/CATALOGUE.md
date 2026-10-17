@@ -452,6 +452,40 @@ The fork wasn't needed as the oracle: with current dumps, MAME at the pin runs e
 - **Stretch: Keyboardmania 3rd in the GF 6th × DM 5th session.** It needs a serial link from the Firebeat runtime to the 573 link, a cross-board session no emulator runs today.
 - **Exit:** every pair plays a session song.
 
+#### Phase 4 progress (2026-10-17)
+
+**The media:** the archive's cassette dumps for every set here were older than MAME's. The owner supplied current ones, and the CDs the archive lacked: DrumMania 9th's four, and the export discs of `gtrfrk5ma`, `pcnfrk9m` and `pcnfrk10m`.
+
+**Tooling:**
+- In current MAME the Japanese DrumMania sets are clones of Percussion Freaks (`drmn2m`'s parent is `pcnfrk2m`), so their CDs sit in the parent's folder.
+- Split across three sessions: GF 3rd/4th × DM 2nd/3rd here; GF 5th–7th × DM 4th–6th in a second (8d64281, 35254c9); GF 8th–10th × DM 7th–9th in a third (ef8832c).
+
+**In lockstep with MAME (main RAM and every snapshot):**
+
+| Sets | Runs | Notes |
+|---|---|---|
+| `gtrfrk3m`, `drmn2m`, `gtrfrk4m`, `drmn3m` | install, a song | GF 3rd installs from its install CD (INFO 507), DM 2nd on its own (INFO 506); GF 4th and DM 3rd first offer the CD-ROM drive update (NOTE 604: Test). GF 3rd and DM 2nd then load from the CD for 4–5 minutes before the title. |
+| `drmn2mpu` | the kit's install, a song | DrumMania 2nd's Session Power Up Kit, after MAME's notes: DM 2nd installed, then the kit's disc booted with DIP switch 4 on the CD-ROM drive (`--boot-cd`; MAME: `oracle/lua/boot-cd.lua`). |
+| `gtrfrk5m`, `gtrfrk6m`, `gtrfrk7m`, `gtrfrk8m`, `gtfrk10m` | install, a song | NOTE 604 or none, INFO 508; NOTE 605 on the next boot. |
+| `drmn4m`–`drmn9m`, `drmn7ma`, `drmn9ma` | install; a song until the boot checks reach the multi-session unit | MAME's unit is a stub ("Please call attendant"); HIRAKU's answers, and the game plays on (two runs agree), as with `drmn10m`. |
+| `gtfrk3ma`, `gtfrk3mb`, `drmn2mpu`, `pcnfrk`, `pcnfrka`, `pcnfrkk`, `pcnfrk2m`, `pcnfrk2mk`, `pcnfrk3m`, `pcnfrk3mk` | boot | |
+| `gtrfrk5ma`, `pcnfrk4m`, `gtrfrk8ma`, `gtfrk10ma` | boot, install | |
+
+**Session play (MAME can't run sessions; two runs agree on both cabinets, every frame):**
+- **Before the unit, SIO1 to SIO1:** GF 3rd × DM 2nd with its Power Up Kit ("SESSION MODE", CUTIE PIE together), and GF 4th × DM 3rd ("Extreme session").
+- **Through the unit:** GF 5th × DM 4th, GF 6th × DM 5th, GF 7th × DM 6th, GF 8th × DM 7th, GF 10th × DM 9th.
+- **Regress:** `drmn3m-install`, `gtrfrk4m-install`, `drmn3m-session` + `gtrfrk4m-session`; `gtrfrk5m-install`, `gtrfrk5m-play`, `drmn4m-install`, `drmn4m-session` + `gtrfrk5m-session`.
+
+**The 573 core:**
+- **The session cable joins SIO1 to SIO1:** either cabinet can host when neither has the unit. The link's hello (version 3) says whether a side sends its unit's music, so a guest waits for sound only from a host that sends it.
+- **`--boot-cd`:** DIP switch 4 on the CD-ROM drive, for an install over an installed game.
+
+**Open:**
+- **`gtrfrk9m`** halts at "DATA 7 : INITIALIZING", in MAME as in HIRAKU (lockstep to the halt). It's an assertion (mts.c line 120): the CD lookup of `/DATA4/BG_LIST.BIN` returns -1 although the file is on the disc, so a table loop runs over a thread id. Next step: trace that lookup to its ATAPI commands, beside one that works. GF 9th × DM 8th waits on it.
+- **The multi-session unit's CD isn't dumped** for `pcnfrk4mk`, `pcnfrk5m`, `pcnfrk5mk`, `pcnfrk6m`, `pcnfrk7m`, `pcnfrk8m`, `pcnfrk9m`, `pcnfrk10m`, though MAME fits them with the unit. Manifests only.
+- **The existing `drmn10m-session` + `gtfrk11m-session` regress pair** differs from its 2026-10-14 baseline from frame 11,717 (picture). That's a committed change since then, not this phase's.
+- **Keyboardmania 3rd in the GF 6th × DM 5th session** (the stretch) isn't started.
+
 ### Phase 5: the rest of the BEMANI 573 games (ask the owner per game)
 
 - Dance Maniax 1/2/J-Paradise: IR hand sensors mapped to keys or a controller.

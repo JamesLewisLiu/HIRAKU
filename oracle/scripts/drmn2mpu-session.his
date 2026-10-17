@@ -1,0 +1,25 @@
+# DrumMania 2nd Mix with its Session Power Up Kit and GuitarFreaks 3rd Mix in session (with
+# gtrfrk3m-session, run alongside: two processes on one session cable, runtime/sys573/link.h).
+# Before the multi-session unit the two cabinets join SIO1 to SIO1; this side waits for the other
+# (--session-host). From what drmn2mpu-install.his left: the boot loads (NOW LOADING (2) 19/19),
+# attract; two coins and Start at the title, the caution screen and the music select (Start every
+# 300 frames, its default, CUTIE PIE), and the first stage with the guitar cabinet ("SESSION"), on
+# the pads: the snare every 8 frames, the hi-hat every 16, the bass drum every 12, a tom or the
+# cymbal now and then. MAME can't run a session: this checks that two runs agree.
+game drmn2mpu
+
+at 16300 press "Coin 1" 8
+at 16340 press "Coin 1" 8
+at 16500 press "1 Player Start" 8
+at 16800 press "1 Player Start" 8
+at 17100 press "1 Player Start" 8
+at 17400 press "1 Player Start" 8
+at 17700 press "1 Player Start" 8
+from 17600 every 8 press "Snare" 4
+from 17604 every 16 press "Hi-Hat" 4
+from 17602 every 12 press "Bass Drum" 4
+from 17610 every 48 press "High Tom" 4
+from 17634 every 48 press "Low Tom" 4
+from 17650 every 96 press "Cymbal" 4
+from 0 every 60 snap
+at 24000 quit

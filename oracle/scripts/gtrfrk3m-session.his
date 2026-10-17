@@ -1,0 +1,23 @@
+# GuitarFreaks 3rd Mix and DrumMania 2nd Mix (with its Session Power Up Kit) in session (with
+# drmn2mpu-session, run alongside); this side joins the DrumMania cabinet (--session-join). From
+# what gtrfrk3m-install.his left: the boot loads (NOW LOADING ... 67/67), attract; two coins and
+# Start at the title, the caution screen and the music select in SESSION MODE (Start every 300
+# frames), then the first stage together, with the guitar: every 12 frames a neck button held and
+# picked (R, G, B in turn), a wail every 240. MAME can't run a session: this checks that two runs
+# agree.
+game gtrfrk3m
+
+at 16400 press "Coin 1" 8
+at 16440 press "Coin 1" 8
+at 16600 press "1 Player Start" 8
+at 16900 press "1 Player Start" 8
+at 17200 press "1 Player Start" 8
+at 17500 press "1 Player Start" 8
+at 17800 press "1 Player Start" 8
+from 17600 every 36 press "P1 Button R" 8
+from 17612 every 36 press "P1 Button G" 8
+from 17624 every 36 press "P1 Button B" 8
+from 17602 every 12 press "P1 Pick" 3
+from 17606 every 240 press "P1 Wailing" 4
+from 0 every 60 snap
+at 24000 quit

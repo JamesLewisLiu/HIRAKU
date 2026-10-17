@@ -1,0 +1,19 @@
+# Percussion Freaks (GQ881 VER. KAB), Konami 1999: generated from MAME's ksys573.cpp (tools/gen573.py)
+id = "pcnfrkk"
+title = "Percussion Freaks"
+family = "drmn"         # DrumMania cabinet: five pads, the bass pedal, select buttons
+mame = "pcnfrkk"        # MAME set name, used by the oracle
+core = "sys573"         # System 573 (runtime/sys573/, PLAN.md section 19); analog I/O board
+
+[roms]
+bios = "700a01.22g"             # 573 BIOS
+h8 = "h8a01.bin"                # the H8's start-up response (JVS check)
+cassette_eeprom = "gq881ka.u1"  # the game cassette's X76F041
+preload = ["29f016a.27h:gq881ka.27h", "29f016a.31h:gq881ka.31h", "m48t58:gq881ka.22h"]   # chips the set has filled: device:file (MAME's regions)
+
+[board]
+io_board = "analog"             # GX700-PWB(F): lamp and stage outputs; the music is CD audio
+cassette = "x"                  # MAME's cassette variant: X76F041, no DS2401 (cassx)
+
+[cd]
+chd = "881xxb02"        # the runtime CD

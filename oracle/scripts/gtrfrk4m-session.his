@@ -1,0 +1,22 @@
+# GuitarFreaks 4th Mix and DrumMania 3rd Mix in session (with drmn3m-session, run alongside); this
+# side joins the DrumMania cabinet (--session-join). From what gtrfrk4m-install left: NOTE 605 goes
+# on by itself, attract; two coins and Start at the title join the DrumMania cabinet's session
+# (WANTED); the caution screen and the music select (Start every 300 frames), then the first stage
+# together, with the guitar: every 12 frames a neck button held and picked (R, G, B in turn), a wail
+# every 240. MAME can't run a session: this checks that two runs agree.
+game gtrfrk4m
+
+at 5500 press "Coin 1" 8
+at 5540 press "Coin 1" 8
+at 5700 press "1 Player Start" 8
+at 6000 press "1 Player Start" 8
+at 6300 press "1 Player Start" 8
+at 6600 press "1 Player Start" 8
+at 6900 press "1 Player Start" 8
+from 6500 every 36 press "P1 Button R" 8
+from 6512 every 36 press "P1 Button G" 8
+from 6524 every 36 press "P1 Button B" 8
+from 6502 every 12 press "P1 Pick" 3
+from 6506 every 240 press "P1 Wailing" 4
+from 0 every 60 snap
+at 12000 quit

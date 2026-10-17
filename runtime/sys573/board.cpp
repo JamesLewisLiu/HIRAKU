@@ -297,10 +297,12 @@ void sys573_state::device_add_mconfig(machine_config &config) {
                 else port2.cts_w(s);
             };
         }
-    } else if (!c.session_join.empty()) {
+    } else if (!c.session_join.empty() || !c.session_host.empty()) {
         // a cabinet joining another's multi-session unit (the fork's msu_remote): SIO1 a UART on
         // the session cable; the unit's TXD and RTS come back, not its DTR (SIO1's DSR is the
-        // cassette's, as above)
+        // cassette's, as above). The mixes before the unit (DrumMania 2nd's Session Power Up Kit
+        // and 3rd, GuitarFreaks 3rd and 4th) join SIO1 to SIO1: either side is wired so, the host
+        // the one that waits for the other
         auto &sio1 = *m_maincpu->subdevice<psxsio1_uart_device>("sio1");
         m_cassette->dsr_handler().set(sio1, &psxsio1_uart_device::write_dsr);
         sio1.txd_handler().set([](int s) {
@@ -550,6 +552,7 @@ u32 sys573_state::in1_r() {
     // konami573 IN1: DIP switches (default: boot from flash), the H8 response, the
     // cassette's ADC and serial lines, the ADC0834, JVS sense (no devices: 1), coins
     u32 v = 0x00000007;                       // DIP 1-3 off; DIP 4 "Start Up Device" = Flash ROM
+    if (cfg.boot_cd) v |= 0x00000008;         // ... or the CD-ROM drive (--boot-cd)
     v |= (u32)h8_d(0) << 4 | (u32)h8_d(1) << 5 | (u32)h8_d(2) << 6 | (u32)h8_d(3) << 7;
     v |= (u32)(m_cassette->read_line_adc083x_do() & 1) << 8;
     v |= (u32)(m_cassette->read_line_adc083x_sars() & 1) << 9;
@@ -875,14 +878,11 @@ bool init(const Config &cfg) {
             return false;
     }
     g_cards.configure(cfg.card_readers, cfg.nvram_dir);
-    hk_psx_sio1_uart = cfg.msu || !cfg.session_join.empty() || cfg.card_readers > 0;
-    if (!cfg.session_host.empty() && !cfg.msu) {
-        fprintf(stderr, "--session-host: %s has no multi-session unit (start the DrumMania side as the host)\n", cfg.game.c_str());
-        return false;
-    }
+    hk_psx_sio1_uart = cfg.msu || !cfg.session_join.empty() || !cfg.session_host.empty() || cfg.card_readers > 0;
     if (!cfg.session_host.empty() || !cfg.session_join.empty()) {
         const bool host = !cfg.session_host.empty();
-        if (!g_link.open(host ? cfg.session_host : cfg.session_join, host, attotime::from_usec(cfg.session_quantum_us)))
+        if (!g_link.open(host ? cfg.session_host : cfg.session_join, host, attotime::from_usec(cfg.session_quantum_us),
+                         host && cfg.msu))
             return false;
     }
 
@@ -1066,7 +1066,7 @@ void set_audio_sink(AudioSink s) { g.audio_sink = std::move(s); }
                 if (cd) n = std::min({n, cd->m_out[0].size(), cd->m_out[1].size()});
                 for (const Board::Decoder &d : g.decoders) n = std::min(n, d.q[0].size());
                 // joined to another cabinet's unit: its music too (link.h), as the host waits for it
-                if (!g.cfg.session_join.empty() && g_link.is_open()) n = std::min(n, g_link.audio_available());
+                if (!g.cfg.session_join.empty() && g_link.is_open() && g_link.far_audio()) n = std::min(n, g_link.audio_available());
                 if (n) {
                     std::vector<float> lr(n * 2);
                     for (size_t i = 0; i < n; i++) { lr[2 * i] = l[i]; lr[2 * i + 1] = r[i]; }

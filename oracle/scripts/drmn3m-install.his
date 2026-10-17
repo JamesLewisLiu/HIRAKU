@@ -1,0 +1,12 @@
+# DrumMania 3rd Mix (G*A23 VER. JAA): the first boot, from blank NVRAM, with the install cassette in
+# the slot (MAME: -cassette install; HIRAKU: --cassette install). The CD first offers to update the
+# CD-ROM drive's firmware (NOTE 604, "Press test switch"): Test starts the update and the install to
+# the onboard flash. Hashes the main RAM every frame and snapshots every 60 frames, to compare with
+# MAME.
+game drmn3m
+
+hash ram  0x80000000 0x80400000   # 4 MiB main RAM (KSEG0)
+
+at 600 press "Service Mode" 8
+from 0 every 60 snap
+at 24000 quit

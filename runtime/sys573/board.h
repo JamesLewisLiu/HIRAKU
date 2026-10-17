@@ -47,6 +47,7 @@ struct Config {
     // the e-AMUSEMENT card units (cardunit.h) on SIO1, switched with the multi-session unit by the
     // cassette's d7: 1 (DrumMania) or 2 (GuitarFreaks); 0 = none
     int card_readers = 0;
+    bool boot_cd = false;                  // DIP 4 "Start Up Device": the CD-ROM drive (MAME's default: the flash)
     bool memory_card_reader = false;       // the JVS memory card reader (ddr3m)
     // The output's gain. MAME sums the SPU and the CD audio at 1.0 each and clips the sum at full
     // scale: DDR's mix peaks at 2.0 and crackles. The board mixes them in analog; 0.5 keeps MAME's
