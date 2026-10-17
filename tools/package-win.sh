@@ -33,6 +33,13 @@ done
 cp "$build"/SDL3.dll "$d/bin/"
 # HK_PACKAGE_BIN: more programs for bin\ (a release's 7-Zip, 7zr.exe: tools/mameset.py looks there first)
 for f in ${HK_PACKAGE_BIN:-}; do cp -L "$f" "$d/bin/"; done
+# HK_PYTHON_WIN: the Konami Python core's folder (the release workflow's python-windows job:
+# hiraku-python.exe, its DLLs, PCSX2's resources\), into bin\ beside the other cores
+if [ -n "${HK_PYTHON_WIN:-}" ]; then
+  cp -n "$HK_PYTHON_WIN"/*.dll "$d/bin/"   # (SDL3.dll is the same release as the one above)
+  cp "$HK_PYTHON_WIN"/hiraku-python.exe "$d/bin/"
+  cp -r "$HK_PYTHON_WIN"/resources "$d/bin/resources"
+fi
 # Python for tools/ingest.py and unlock.py: python.org's embeddable one (tools/win-deps.sh), so
 # adding a game needs nothing installed (the launcher looks for hiraku\python\python.exe first)
 py=$root/out/win-deps/python
@@ -40,7 +47,10 @@ if [ -f "$py/python.exe" ]; then cp -r "$py" "$d/python"; else echo "no $py: the
 cp -r "$root/games" "$root/docs" "$root/shaders" "$d/"
 cp -r "$root/oracle/scripts" "$d/scripts"
 mkdir -p "$d/tools"
-cp "$root"/tools/{ingest.py,chd.py,fbexe.py,pack-data.py,unlock.py,chdread.py,mameset.py,catalogue.py} "$d/tools/"
+cp "$root"/tools/{ingest.py,chd.py,fbexe.py,pack-data.py,unlock.py,pythonfs.py,chdread.py,mameset.py,catalogue.py} "$d/tools/"
+mkdir -p "$d/tools/eamuse" && cp "$root"/tools/eamuse/{check.py,corpus.json} "$d/tools/eamuse/"
+# libchdr for tools/chdread.py (a Python game's disk is read through it), where it looks: build\
+if [ -f "$build/libchdr_mini.dll" ]; then mkdir -p "$d/build" && cp "$build/libchdr_mini.dll" "$d/build/"; else echo "no $build/libchdr_mini.dll: Python games can't be added" >&2; fi
 cp -r "$root/tools/data" "$d/tools/"
 cp "$root/LICENSE" "$d/" 2>/dev/null || true
 for f in $(grep -o '"third_party/[^"]*"' "$root/launcher/aboutdialog.cpp" | tr -d '"'); do
@@ -65,8 +75,9 @@ Your saves and the launcher's settings: in user\ beside this file when there is 
 install: the folder runs as itself wherever it is moved, a USB stick included), else in
 %LOCALAPPDATA%\hiraku. Copy user\ along to keep them when updating.
 
-Not yet in the Windows build: the Konami Python games (pop'n music 9-14, GuitarFreaks and
-DrumMania V) and cardio card readers.
+Konami Python games (pop'n music 9-14, DrumMania V/V2): add the game's folder together with the
+folders bios (the arcade BIOS) and keys (the MagicGate key files), which HIRAKU can't ship. They
+need a graphics driver with Vulkan (any current one).
 
 Command line, from a command prompt in this folder (the launcher shows each game's under its
 right-click menu):

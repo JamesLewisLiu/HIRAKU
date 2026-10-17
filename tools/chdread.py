@@ -11,9 +11,12 @@ Only reads hunks on demand (LRU cache), so huge images are never extracted.
 import ctypes, os, functools
 
 def _find_lib():
-    """$HK_LIBCHDR, else build/libchdr_mini.so in this checkout (tools/build-libchdr.sh makes it)."""
+    """$HK_LIBCHDR, else build/libchdr_mini.so (Windows: .dll) in this checkout or package
+    (tools/build-libchdr.sh or CMake's chdr_mini makes it), else a Windows build's own folder."""
     here = os.path.dirname(os.path.abspath(__file__))
-    for p in (os.environ.get("HK_LIBCHDR", ""), os.path.join(here, "..", "build", "libchdr_mini.so")):
+    name = "libchdr_mini.dll" if os.name == "nt" else "libchdr_mini.so"
+    for p in (os.environ.get("HK_LIBCHDR", ""), os.path.join(here, "..", "build", name),
+              os.path.join(here, "..", "build", "release-windows", name)):
         if p and os.path.exists(p):
             return p
     raise OSError("libchdr_mini.so not found: run tools/build-libchdr.sh, or set HK_LIBCHDR")
