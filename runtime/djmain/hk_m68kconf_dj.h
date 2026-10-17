@@ -249,9 +249,10 @@ int hk_dj_int_ack(int level);   /* runtime/djmain/board.cpp: clears a held line,
    runtime/djmain/board.cpp); off, it costs one predicted branch an instruction */
 #define M68K_INSTRUCTION_HOOK       M68K_OPT_SPECIFY_HANDLER
 #ifdef __cplusplus
-extern "C"
-#endif
+extern "C" int hk_dj_itrace_on;   /* a declaration: one declaration in extern "C" is extern */
+#else
 extern int hk_dj_itrace_on;
+#endif
 #ifdef __cplusplus
 extern "C"
 #endif

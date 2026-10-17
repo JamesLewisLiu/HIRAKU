@@ -171,8 +171,21 @@ endif()
 # ATA/ATAPI bus and disc/disk images (both cores)
 # Disc and disk images, CHDs read in place (runtime/dev/image.h): libchdr (BSD-3), its FLAC
 # decoder (dr_flac, public domain) and the LZMA SDK's decoder (public domain), in third_party/libchdr
-find_package(PkgConfig REQUIRED)
-pkg_check_modules(ZSTD REQUIRED IMPORTED_TARGET libzstd)
+# zstd through pkg-config where there is one; a portable build (tools/package.sh) turns
+# pkg-config off, and finds the library and its header itself
+if(PkgConfig_FOUND)
+  pkg_check_modules(ZSTD QUIET IMPORTED_TARGET libzstd)
+endif()
+if(TARGET PkgConfig::ZSTD)
+  set(HK_ZSTD PkgConfig::ZSTD)
+else()
+  find_path(HK_ZSTD_INCLUDE zstd.h REQUIRED)
+  find_library(HK_ZSTD_LIBRARY zstd REQUIRED)
+  add_library(hk_zstd INTERFACE)
+  target_include_directories(hk_zstd INTERFACE ${HK_ZSTD_INCLUDE})
+  target_link_libraries(hk_zstd INTERFACE ${HK_ZSTD_LIBRARY})
+  set(HK_ZSTD hk_zstd)
+endif()
 find_package(ZLIB REQUIRED)
 add_library(hk_libchdr STATIC
   third_party/libchdr/src/libchdr_bitstream.c third_party/libchdr/src/libchdr_cdrom.c
@@ -181,7 +194,7 @@ add_library(hk_libchdr STATIC
 target_include_directories(hk_libchdr PUBLIC third_party/libchdr/include PRIVATE third_party/libchdr/lzma)
 target_compile_definitions(hk_libchdr PRIVATE _7ZIP_ST Z7_ST)
 target_compile_options(hk_libchdr PRIVATE -O2 -w)
-target_link_libraries(hk_libchdr PUBLIC PkgConfig::ZSTD ZLIB::ZLIB)
+target_link_libraries(hk_libchdr PUBLIC ${HK_ZSTD} ZLIB::ZLIB)
 add_library(hiraku_image STATIC runtime/dev/image.cpp)
 target_include_directories(hiraku_image PUBLIC runtime)
 target_link_libraries(hiraku_image PUBLIC hk_libchdr hiraku_sys)

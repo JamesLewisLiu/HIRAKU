@@ -9,10 +9,13 @@
 # ~/.local/share, so it moves (or goes on a USB stick) as one.
 #
 # BUILD_DIR should be configured for it:
-#   cmake -S . -B BUILD_DIR -G Ninja -DCMAKE_DISABLE_FIND_PACKAGE_PkgConfig=ON \
+#   cmake -S . -B BUILD_DIR -G Ninja -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ \
+#     -DCMAKE_DISABLE_FIND_PACKAGE_PkgConfig=ON \
 #     '-DCMAKE_EXE_LINKER_FLAGS=-static-libstdc++ -static-libgcc' '-DCMAKE_BUILD_RPATH=$ORIGIN/lib'
 # (CMAKE_BUILD_RPATH, not -Wl,-rpath: ninja hands the flags to a shell, which eats $ORIGIN)
-# (no FluidSynth, the C++ runtime linked in, SDL3 looked for beside the binaries).
+# (no FluidSynth, the C++ runtime linked in, SDL3 looked for beside the binaries; clang, as the
+# main build: GCC takes about five times as long, and far more memory, on the generated recompiler
+# blocks).
 # Faster with profile-guided optimisation: add -DHK_PGO_DIR=<this PC's build/pgo> (tools/pgo.py)
 #
 # The archive holds hiraku/bin (the binaries, stripped, with libSDL3 in bin/lib),

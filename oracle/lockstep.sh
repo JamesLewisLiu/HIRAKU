@@ -47,8 +47,9 @@ h="out/oracle-h/$game-$run"
 # HIRAKU's binary as it is now: a rebuild during MAME's half can't change what the run compares
 exe="out/oracle-h/.bin-$game-$run-$$"
 mkdir -p out/oracle-h
-cp "build/cmake/hiraku-$game" "$exe"
-trap 'rm -f "$exe"' EXIT
+# (no binary yet, e.g. a new game while the build lock is busy: MAME's half alone, kept for reuse)
+if [[ -x "build/cmake/hiraku-$game" ]]; then cp "build/cmake/hiraku-$game" "$exe"; else exe=""; fi
+trap '[[ -z "$exe" ]] || rm -f "$exe"' EXIT
 nv="out/oracle-h/$game-$run-nvram"
 rm -rf "$h" "$nv"
 mkdir -p "$h" "$nv"
@@ -83,6 +84,7 @@ else
     HIRAKU_NVRAM="${mame_nv:+$root/$mame_nv}" MAME_BIN="$bin" HIRAKU_TAPS="${HIRAKU_TAPS:-none}" nice oracle/mame.sh "$game" "$script" "$run" > "$h.mame.txt" 2>&1 || true
     echo "$key" > "$m/lockstep.key"
 fi
+if [[ -z "$exe" ]]; then echo "=== $game $run: MAME's half only (no build/cmake/hiraku-$game yet)"; exit 0; fi
 rtc="$(grep -o 'power-on time [0-9]*' "$m/log.txt" 2>/dev/null | head -1 | awk '{print $NF}' || true)"
 args=(--frames $((quit + 1)) --out "$h" --script "$script" --nvram "$nv" "${extra[@]}")
 [[ -n "$rtc" ]] && args+=(--rtc "$rtc")
