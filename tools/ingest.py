@@ -471,7 +471,9 @@ def ingest_firebeat(args) -> int:
         romdir = os.path.join(outdir, "rom")
         lacking = [f for f in need if not os.path.exists(os.path.join(romdir, f))]
         if lacking:
-            print(f"NEXT     add the MAME set ({game.get('mame', gid)}.zip or .7z): it holds {', '.join(lacking)}")
+            what = "the security dongle" + (" and the XT446 synth's ROMs (the keyboard's sounds)" if game.get("family") == "kbm" else "")
+            print(f"NEXT     add the MAME set too ({game.get('mame', gid)}.zip or .7z), on its own is fine: it holds {what} "
+                  f"({', '.join(lacking)})")
     return 0
 
 
@@ -1049,6 +1051,25 @@ def ingest_auto(args, inputs: list[str]) -> int:
             next((c for c in chds if chd.info(c).kind == "hd" and stem(c) != want.get("video_chd")), None)
         args.hdd_chs = chd.geometry(hd_chd) if hd_chd else None
         return ingest_twinkle(args)
+    # its set alone, for a game added already from its CDs (which said NEXT: add the MAME set): the
+    # set's ROMs (the dongle, the SPU program) go in beside them
+    outdir = os.path.join(args.out, hint["id"])
+    machine_txt = os.path.join(outdir, "machine.txt")
+    if romsets and os.path.exists(machine_txt) and os.path.exists(os.path.join(outdir, "program.bin")):
+        set_name = set_name_of(romset_for or romsets[0])
+        for n in copy_set_with_parents(romset_for or romsets[0], os.path.join(outdir, "rom"), set_name):
+            print(f"rom      {n}")
+        board, spu = hint.get("board", {}), hint.get("spu", {})
+        lacking = [f for f in (board.get("dongle"), spu.get("rom")) if f and not os.path.exists(os.path.join(outdir, "rom", f))]
+        if lacking:
+            print(f"ERROR    the set has no {', '.join(lacking)}")
+            return 1
+        with open(machine_txt) as fh:   # (as it was: the set adds files, not settings)
+            text = fh.read()
+        with open(machine_txt, "w") as fh:
+            fh.write(text)
+        print(f"wrote    {os.path.relpath(machine_txt, ROOT) if machine_txt.startswith(ROOT) else machine_txt}")
+        return 0
     print(f"ERROR    {hint['id']} is a Firebeat game: its program CD is needed (none of the images holds one)")
     return 1
 
