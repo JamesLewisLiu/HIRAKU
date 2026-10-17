@@ -103,7 +103,18 @@
 extern "C" int __llvm_profile_write_file(void) __attribute__((weak));
 #endif
 
+#ifdef _WIN32
+#include <objbase.h>
+#endif
+
 namespace {
+
+#ifdef _WIN32
+// PCSX2's CPU thread (here the main thread) needs COM multithreaded (VMManager's
+// CPUThreadInitialize), and the game window's SDL would set the thread single-threaded first:
+// multithreaded from the start, before main (SDL takes COM as it finds it)
+[[maybe_unused]] const bool g_com_mta = SUCCEEDED(CoInitializeEx(nullptr, COINIT_MULTITHREADED));
+#endif
 
 std::map<std::string, std::string> read_kv(const std::string &path) {
     std::map<std::string, std::string> kv;
