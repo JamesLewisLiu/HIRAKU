@@ -23,18 +23,18 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 120
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Build tools
         run: sudo tools/release-setup-ubuntu.sh python
       - name: Cache the libraries
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/hiraku-deps
           key: linux-deps-${{ hashFiles('tools/release-deps-linux.sh', 'tools/ffmpeg-min.sh') }}
       - name: Libraries (SDL3, zstd, FFmpeg, Qt, Python, 7-Zip)
         run: tools/release-deps-linux.sh ~/hiraku-deps
       - name: Cache PCSX2 Reliquary's libraries
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/hiraku-python/deps
           key: python-deps-${{ hashFiles('tools/release-python-linux.sh') }}
@@ -44,7 +44,7 @@ jobs:
         run: HK_PYTHON_WORK=~/hiraku-python tools/release.sh linux dist ~/hiraku-deps
       - name: The LGPL libraries' sources
         run: cp ~/hiraku-deps/src/ffmpeg-*.tar.xz ~/hiraku-deps/src/SDL3-*.tar.gz dist/
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: hiraku-linux
           path: dist/*
@@ -61,12 +61,12 @@ jobs:
         run: |
           pacman -Syu --noconfirm --needed base-devel git clang lld llvm mingw-w64-gcc qt6-base cmake ninja \
             nasm python p7zip zip curl
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Qt's version
         id: qt
         run: echo "version=$(qmake6 -query QT_VERSION)" >> "$GITHUB_OUTPUT"
       - name: Cache the libraries
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: out/win-deps
           key: windows-deps-qt${{ steps.qt.outputs.version }}-${{ hashFiles('tools/release-deps-windows.sh', 'tools/win-deps.sh', 'tools/ffmpeg-min.sh', 'cmake/x86_64-w64-mingw32.cmake') }}
@@ -74,7 +74,7 @@ jobs:
         run: HK_QT_BUILD=$RUNNER_TEMP/qt tools/release-deps-windows.sh
       - name: Build and package
         run: tools/release.sh windows dist
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: hiraku-windows
           path: dist/*
@@ -84,7 +84,7 @@ jobs:
     needs: [linux, windows]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: dist
           merge-multiple: true
