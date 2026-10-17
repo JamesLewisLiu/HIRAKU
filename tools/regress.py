@@ -127,6 +127,19 @@ CASES = {
                                            "--session-host", "out/regress/work/session.sock"], "drmn10m-boot", "gtfrk11m-session"),
     "gtfrk11m-session": ("gtfrk11m", 16800, ["--rtc", "1791884700", "--script", "oracle/scripts/gtfrk11m-session.his",
                                              "--session-join", "out/regress/work/session.sock"], "gtfrk11m-boot", "drmn10m-session"),
+    # GuitarFreaks 5th Mix (digital board, 32 MiB PC Card): NOTE 604 (Test), the install to INFO 508; then a
+    # game from what it left, the first stage with neck chords and picks (out/oracle/gtrfrk5m/gtrfrk5m-*)
+    "gtrfrk5m-install": ("gtrfrk5m", 18000, ["--rtc", "1792220193", "--script", "oracle/scripts/gtrfrk5m-install.his"]),
+    "gtrfrk5m-play": ("gtrfrk5m", 16200, ["--rtc", "1792223558", "--script", "oracle/scripts/gtrfrk5m-play.his"],
+                      "gtrfrk5m-install"),
+    # DrumMania 4th Mix (the first with the multi-session unit): NOTE 604 (Test), the install to INFO 508
+    "drmn4m-install": ("drmn4m", 10200, ["--rtc", "1792220906", "--script", "oracle/scripts/drmn4m-install.his"]),
+    # ... and the two in session from what their installs left: GuitarFreaks 5th joins DrumMania 4th's
+    # session and both play the first stage (their own cable, so this pair can run beside 10th x 11th)
+    "drmn4m-session": ("drmn4m", 16200, ["--rtc", "1792224530", "--script", "oracle/scripts/drmn4m-session.his",
+                                         "--session-host", "out/regress/work/session-gf5dm4.sock"], "drmn4m-install", "gtrfrk5m-session"),
+    "gtrfrk5m-session": ("gtrfrk5m", 16200, ["--rtc", "1792224530", "--script", "oracle/scripts/gtrfrk5m-session.his",
+                                             "--session-join", "out/regress/work/session-gf5dm4.sock"], "gtrfrk5m-install", "drmn4m-session"),
     # the analog board: first boot, the flash install (two Test presses), attract with CD audio
     "ddr2m-boot": ("ddr2m", 24000, ["--rtc", "1791828936", "--script", "oracle/scripts/ddr2m-boot.his"]),
     # ... and a game: coins, mode and song select, a song stepped through to CLEARED, stage 2
