@@ -2133,6 +2133,12 @@ What such a user meets, step by step, and where each stands (✓ done and checke
 8. ✗ **Konami Python on Windows** (§26 phase 4: clang-cl): after 7.
 9. ✗ **Frame times on an N100-class PC** (FB-6): needs the hardware. On this PC the executor runs pop'n 7 at 2.9 ms a frame (native 1.1).
 
+**The first Windows user's feedback** (v0.1.2, 2026-10-17):
+- ✓ IIDX reset by its watchdog every 29.5 s: a CHD's track length read through stdio, which a CHD stream doesn't answer on Windows (e5d4008).
+- ✓ The launcher on a small screen: every window fits the screen it opens on (`launcher/fit.h`: shrunk and moved, a 640x480 screen included); Settings scrolls with OK and Cancel kept below. Checked in a 640x480 nested KWin, Linux and Wine. `hiraku --show settings|controls|lights|picture|unlocks|about|main --shot FILE` opens one and saves its picture.
+- ✓ A choice of output device on Windows (Settings > Audio > Output: the devices by the names Windows shows; `--audio-device NAME`, shared).
+- ✓ WASAPI exclusive mode (`--audio-exclusive`, Settings > Audio > Exclusive; `runtime/host/wasapi.cpp`): the device alone, event-driven, MMCSS "Pro Audio", float/32/24/16 bits, falls back to shared with the reason. ✗ Not tried on real Windows: Wine's audio refuses exclusive mode (the shared fallback and its message checked there). ASIO: not offered (its SDK's licence and the GPL).
+
 ## M0 steps (all done)
 
 1. ~~`git init` HIRAKU and add `.gitignore` for `dumps/` and `build/`~~ Done.

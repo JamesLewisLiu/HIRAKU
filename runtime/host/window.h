@@ -17,7 +17,10 @@ void window_set_display_sync(bool on);
 // Before window_open: the sound's way out. `device` "" is the system's default (the sound server);
 // an ALSA device name (hw:CARD=Generic,DEV=0) is that card alone, with no sound server in between
 // (if it's busy, the default instead). `frames` is the device buffer (0: 128 frames).
-void window_set_audio_output(const std::string &device, int frames);
+// device: Linux, an ALSA device to have alone ("": the system's default output); Windows, an
+// output device by the name Windows shows. exclusive (Windows): that device, or the default one,
+// in WASAPI exclusive mode (host/wasapi.h). frames: the device buffer (0: 128)
+void window_set_audio_output(const std::string &device, int frames, bool exclusive = false);
 bool window_open(const char *title, int scale, const std::string &bindings, int audio_target_ms, bool fullscreen = false,
                  int audio_rate = 44100);
 // Present one frame; then sleep so that `virtual_seconds` does not run ahead

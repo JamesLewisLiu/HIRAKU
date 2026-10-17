@@ -500,6 +500,9 @@ QStringList MainWindow::arguments(const Game &g) const {
       << picture::configDir(g.id);
     a << "--audio-ms" << QString::number(s.value("audio/ms", 8).toInt());
     if (QString d = s.value("audio/device").toString(); !d.isEmpty()) a << "--audio-device" << d;
+#ifdef _WIN32
+    if (s.value("audio/exclusive", false).toBool()) a << "--audio-exclusive";
+#endif
     if (int f = s.value("audio/buffer", 0).toInt(); f > 0) a << "--audio-buffer" << QString::number(f);
     if ((g.core == "sys573" || g.core == "twinkle") && s.value("audio/fineSound", false).toBool()) a << "--fine-sound";
     QString controls = cfg::controlsFile(g.family), lights = cfg::lightsFile(g.family);

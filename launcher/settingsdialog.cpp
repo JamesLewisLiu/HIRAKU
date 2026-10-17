@@ -22,7 +22,13 @@
 #include <QRegularExpressionValidator>
 #include <QSettings>
 #include <QSpinBox>
+#include <QScrollArea>
+#include <QScrollBar>
 #include <QVBoxLayout>
+
+#ifdef _WIN32
+#include <SDL3/SDL.h>
+#endif
 
 #include "config.h"
 
@@ -85,6 +91,23 @@ QWidget *withPick(QLineEdit *e, QWidget *parent) {
 
 }  // namespace
 
+#ifdef _WIN32
+// Windows' output devices by the names Windows shows (SDL's WASAPI list): what `--audio-device`
+// opens, shared or, with `--audio-exclusive`, alone.
+static QStringList windowsPlaybackDevices() {
+    QStringList out;
+    const bool was = SDL_WasInit(SDL_INIT_AUDIO);
+    if (!was && !SDL_InitSubSystem(SDL_INIT_AUDIO)) return out;
+    int n = 0;
+    if (SDL_AudioDeviceID *ids = SDL_GetAudioPlaybackDevices(&n)) {
+        for (int k = 0; k < n; k++)
+            if (const char *name = SDL_GetAudioDeviceName(ids[k])) out << QString::fromUtf8(name);
+        SDL_free(ids);
+    }
+    if (!was) SDL_QuitSubSystem(SDL_INIT_AUDIO);
+    return out;
+}
+#else
 // The sound cards' playback devices, as ALSA names ("hw:CARD=Generic,DEV=0") and labels, from
 // /proc/asound: what `--audio-device` opens alone, with no sound server in between.
 static QList<QPair<QString, QString>> alsaPlaybackDevices() {
@@ -110,12 +133,14 @@ static QList<QPair<QString, QString>> alsaPlaybackDevices() {
     }
     return out;
 }
+#endif
 
 SettingsDialog::SettingsDialog(QWidget *parent) : QDialog(parent) {
     setWindowTitle("Settings");
-    resize(560, 0);
     auto &s = cfg::settings();
-    auto *v = new QVBoxLayout(this);
+    // the groups scroll (a small screen: 640x480 too, launcher/fit.h), OK and Cancel stay below
+    auto *body = new QWidget;
+    auto *v = new QVBoxLayout(body);
 
     auto *video = new QGroupBox("Video");
     auto *fv = new QFormLayout(video);
@@ -164,21 +189,36 @@ SettingsDialog::SettingsDialog(QWidget *parent) : QDialog(parent) {
     m_audioMs->setToolTip("The audio queue the game starts with. It grows by itself after an underrun (docs/PLAY.md, Latency).");
     fa->addRow("Starting audio queue:", m_audioMs);
     m_audioDevice = new QComboBox;
-    m_audioDevice->addItem("The system's default (the sound server)", QString());
     const QString device = s.value("audio/device").toString();
+#ifdef _WIN32
+    m_audioDevice->addItem("Windows' default output", QString());
+    for (const QString &name : windowsPlaybackDevices()) m_audioDevice->addItem(name, name);
+    if (!device.isEmpty() && m_audioDevice->findData(device) < 0) m_audioDevice->addItem(device + " (not found now)", device);
+    m_audioDevice->setToolTip("The sound device the game plays on.");
+    fa->addRow("Output:", m_audioDevice);
+    m_audioExclusive = new QCheckBox("Exclusive (WASAPI): the device alone, lowest latency");
+    m_audioExclusive->setChecked(s.value("audio/exclusive", false).toBool());
+    m_audioExclusive->setToolTip("The game has the device to itself in WASAPI exclusive mode, with no Windows mixer in "
+                                 "between and its buffer as small as the device allows (Device buffer below); other "
+                                 "programs are silent on it meanwhile. If the device refuses (another program has it "
+                                 "alone, or Windows' sound settings don't allow exclusive mode), the game plays shared.");
+    fa->addRow("", m_audioExclusive);
+#else
+    m_audioDevice->addItem("The system's default (the sound server)", QString());
     for (const auto &[name, label] : alsaPlaybackDevices()) m_audioDevice->addItem("Alone: " + label, name);
     if (!device.isEmpty() && m_audioDevice->findData(device) < 0) m_audioDevice->addItem("Alone: " + device, device);
-    m_audioDevice->setCurrentIndex(std::max(0, m_audioDevice->findData(device)));
     m_audioDevice->setToolTip("A sound card alone: the game opens it through ALSA with no sound server in between, for "
                               "the lowest latency; nothing else plays on it meanwhile. If it's busy (the sound server lets "
                               "go of a card a few seconds after the last sound on it), the game uses the default instead.");
     fa->addRow("Output:", m_audioDevice);
+#endif
+    m_audioDevice->setCurrentIndex(std::max(0, m_audioDevice->findData(device)));
     m_audioBuffer = new QComboBox;
     for (int f : {0, 32, 48, 64, 96, 128, 192, 256, 512})
         m_audioBuffer->addItem(f ? QString("%1 frames (%2 ms)").arg(f).arg(f * 1000.0 / 48000, 0, 'f', 1)
                                  : QString("Default (128 frames, 2.7 ms)"), f);
     m_audioBuffer->setCurrentIndex(std::max(0, m_audioBuffer->findData(s.value("audio/buffer", 0).toInt())));
-    m_audioBuffer->setToolTip("The sound device's buffer (the sound server's quantum, or, with the card alone, its "
+    m_audioBuffer->setToolTip("The sound device's buffer (the sound server's quantum; on Windows in exclusive mode the device's own; with a Linux card alone, its "
                               "period: HIRAKU keeps four of them queued on the card, which USB cards need). Smaller is "
                               "sooner, until it crackles; the queue above grows by itself after a crackle. Times at 48 kHz.");
     fa->addRow("Device buffer:", m_audioBuffer);
@@ -332,7 +372,20 @@ SettingsDialog::SettingsDialog(QWidget *parent) : QDialog(parent) {
     auto *bb = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
     connect(bb, &QDialogButtonBox::accepted, this, &SettingsDialog::accept);
     connect(bb, &QDialogButtonBox::rejected, this, &QDialog::reject);
-    v->addWidget(bb);
+    auto *scroll = new QScrollArea;
+    scroll->setWidget(body);
+    scroll->setWidgetResizable(true);
+    scroll->setFrameShape(QFrame::NoFrame);
+    // long lists (sound devices, readers) shrink to the dialog instead of widening it
+    for (QComboBox *c : body->findChildren<QComboBox *>()) {
+        c->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
+        c->setMinimumContentsLength(16);
+    }
+    auto *outer = new QVBoxLayout(this);
+    outer->addWidget(scroll);
+    outer->addWidget(bb);
+    // as tall as the groups, as the screen allows (fit.h shrinks it), as wide as they are
+    resize(body->sizeHint().width() + scroll->verticalScrollBar()->sizeHint().width() + 24, body->sizeHint().height() + 60);
 }
 
 void SettingsDialog::accept() {
@@ -349,6 +402,7 @@ void SettingsDialog::accept() {
     s.setValue("audio/ms", m_audioMs->value());
     s.setValue("audio/fineSound", m_fineSound->isChecked());
     s.setValue("audio/device", m_audioDevice->currentData().toString());
+    if (m_audioExclusive) s.setValue("audio/exclusive", m_audioExclusive->isChecked());
     s.setValue("audio/buffer", m_audioBuffer->currentData().toInt());
     s.setValue("audio/soundfont", m_soundfont->text().trimmed());
     s.setValue("lights/socket", m_socket->isChecked());

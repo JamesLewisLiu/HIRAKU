@@ -5,14 +5,25 @@
 //   hiraku [GAME]            GAME (e.g. popn7) starts that game right away
 //   hiraku --add FILE...     add a game from its files (ROM set, CHDs, images, folders),
 //                            as dropping them on the window does; the log goes to stderr too
+//   hiraku --show WHAT [--shot FILE]   open a window (settings, controls, lights, picture, unlocks,
+//                            about, or main) over the launcher; --shot saves a picture of it and quits
+//                            (checking how the windows fit a small screen: launcher/fit.h)
 #include <QApplication>
 #include <QIcon>
 #include <QTimer>
+
+#include "aboutdialog.h"
+#include "controlsdialog.h"
+#include "lightsdialog.h"
+#include "picturedialog.h"
+#include "settingsdialog.h"
+#include "unlocksdialog.h"
 
 #include <cstdlib>
 #include <string>
 
 #include "config.h"
+#include "fit.h"
 #include "mainwindow.h"
 
 // A package with its own Qt (tools/package.sh) starts the launcher through bin/hiraku, a script
@@ -43,10 +54,28 @@ int main(int argc, char **argv) {
     QApplication::setDesktopFileName("hiraku");
     QApplication::setWindowIcon(QIcon(":/icon.png"));
     cfg::mergeControls();
+    app.installEventFilter(new ScreenFit(&app));   // every window inside a small screen too (fit.h)
     MainWindow w;
     w.show();
     QStringList args = app.arguments().mid(1);
-    if (!args.isEmpty() && args.first() == "--add") {
+    if (args.size() >= 2 && args.first() == "--show") {
+        QWidget *win = &w;
+        const QString what = args[1];
+        if (what == "settings") win = new SettingsDialog(&w);
+        else if (what == "controls") win = new ControlsDialog("iidx", &w);
+        else if (what == "lights") win = new LightsDialog("iidx", &w);
+        else if (what == "picture") win = new PictureDialog("bmiidx", "beatmania IIDX", true, &w);
+        else if (what == "unlocks") win = new UnlocksDialog("popn12", "pop'n music 12 Iroha", false, &w);
+        else if (what == "about") win = new AboutDialog(&w);
+        if (win != &w) win->show();
+        if (args.size() >= 4 && args[2] == "--shot")
+            QTimer::singleShot(2000, &w, [win, file = args[3]] {
+                const bool ok = win->grab().save(file);
+                fprintf(stderr, "--shot: %s %dx%d -> %s%s\n", win->metaObject()->className(), win->width(), win->height(),
+                        file.toLocal8Bit().constData(), ok ? "" : " (not saved)");
+                QApplication::quit();
+            });
+    } else if (!args.isEmpty() && args.first() == "--add") {
         w.setEcho(true);
         QTimer::singleShot(0, &w, [&w, files = args.mid(1)] { w.addGameFiles(files); });
     } else if (!args.isEmpty()) {

@@ -292,6 +292,10 @@ if(SDL3_FOUND)
   target_include_directories(hiraku_host PUBLIC runtime)
   target_link_libraries(hiraku_host PUBLIC SDL3::SDL3 hiraku_shell hiraku_hidout)
   target_compile_definitions(hiraku_host PUBLIC HK_WITH_SDL=1)
+  if(WIN32)   # WASAPI exclusive mode (--audio-exclusive: runtime/host/wasapi.h)
+    target_sources(hiraku_host PRIVATE runtime/host/wasapi.cpp)
+    target_link_libraries(hiraku_host PRIVATE ole32 avrt uuid)
+  endif()
   # Wayland: the compositor's presentation times and fifo, for display pacing (runtime/host/pacing.h).
   # Found without pkg-config (the laptop package turns it off); libwayland-client is on any system
   # with Mesa's EGL.
@@ -328,6 +332,7 @@ if(Qt6_FOUND AND TARGET hiraku_hidout)
     launcher/controlsdialog.cpp
     launcher/lightsdialog.cpp
     launcher/settingsdialog.cpp
+    launcher/fit.cpp
     launcher/picturedialog.cpp
     launcher/unlocksdialog.cpp)
   qt_add_resources(hiraku "launcher_res" PREFIX "/" BASE launcher/res

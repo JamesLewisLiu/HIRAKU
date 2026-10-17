@@ -16,6 +16,7 @@
 #include "../shell/core.h"
 #include "macro.h"
 #include "pacing.h"
+#include "wasapi.h"
 #include "picture.h"
 #include "input.h"
 #include "../core/prof.h"
@@ -50,7 +51,9 @@ std::chrono::steady_clock::time_point g_t0;
 bool g_started = false;
 
 int g_rate = 44100;               // the core's audio rate (Core::audio_rate)
-std::string g_audio_device;       // window_set_audio_output: an ALSA device to have alone ("": the default)
+std::string g_audio_device;       // window_set_audio_output: an ALSA device to have alone ("": the default);
+                                  // Windows: an output device by name
+bool g_audio_exclusive = false;   // Windows: WASAPI exclusive mode (wasapi.h)
 int g_audio_buffer = 0;           // ... and the device buffer in frames (0: 128)
 std::string g_audio_output;       // what it got, for the report
 int g_target_frames = 0;          // audio queued ahead, when audio paces
@@ -171,9 +174,10 @@ void window_set_picture(const std::string &mode, const std::string &shaders_dir,
 
 void window_set_display_sync(bool on) { g_display_sync = on; }
 
-void window_set_audio_output(const std::string &device, int frames) {
+void window_set_audio_output(const std::string &device, int frames, bool exclusive) {
     g_audio_device = device;
     g_audio_buffer = frames;
+    g_audio_exclusive = exclusive;
 }
 
 namespace {
@@ -336,6 +340,30 @@ bool window_open(const char *title, int scale, const std::string &bindings, int 
     if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO)) return false;
     input_init(bindings);
     SDL_AudioSpec spec{SDL_AUDIO_F32, 2, g_rate};
+#ifdef _WIN32
+    if (g_audio_exclusive) {   // the device alone, in WASAPI exclusive mode: no system mixer in between
+        std::string what, why = wasapi::open(g_audio_device, spec, g_audio_buffer > 0 ? g_audio_buffer : 128, g_audio, what);
+        if (why.empty()) {
+            g_audio_output = (g_audio_device.empty() ? std::string("the default output") : g_audio_device) +
+                             " (alone, WASAPI exclusive: " + what + ")";
+            g_device_frames = wasapi::period_frames();
+        } else {
+            fprintf(stderr, "audio: exclusive mode on %s: %s; shared mode instead\n",
+                    g_audio_device.empty() ? "the default output" : g_audio_device.c_str(), why.c_str());
+        }
+    }
+    if (!g_audio && !g_audio_device.empty()) {   // that device, shared: SDL's WASAPI output, by its name
+        int n = 0;
+        SDL_AudioDeviceID *ids = SDL_GetAudioPlaybackDevices(&n);
+        for (int k = 0; ids && k < n && !g_audio; k++)
+            if (const char *name = SDL_GetAudioDeviceName(ids[k]); name && g_audio_device == name) {
+                g_audio = SDL_OpenAudioDeviceStream(ids[k], &spec, nullptr, nullptr);
+                if (g_audio) g_audio_output = g_audio_device + std::string(" (shared, ") + SDL_GetCurrentAudioDriver() + ")";
+            }
+        SDL_free(ids);
+        if (!g_audio) fprintf(stderr, "audio: no output device named \"%s\"; the system's default output instead\n", g_audio_device.c_str());
+    }
+#else
     if (!g_audio_device.empty()) {   // the card itself, through ALSA: no sound server in between
         std::string what, why = alsa::open(g_audio_device, spec, g_audio_buffer > 0 ? g_audio_buffer : 128, g_audio, what);
         if (why.empty()) {
@@ -346,6 +374,7 @@ bool window_open(const char *title, int scale, const std::string &bindings, int 
                             "a few seconds after the last sound on it stops)\n", g_audio_device.c_str(), why.c_str());
         }
     }
+#endif
     if (!g_audio) g_audio = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &spec, nullptr, nullptr);
     if (g_audio_output.empty() && g_audio) g_audio_output = std::string("the system's default (") + SDL_GetCurrentAudioDriver() + ")";
     if (g_audio) {
@@ -687,6 +716,9 @@ std::string audio_describe() {
                      (unsigned long long)g_ast.gap_hist[6], (unsigned long long)g_ast.gap_hist[7]);
     for (int c = 0; c < prof::NCAT; c++)
         n += snprintf(b + n, sizeof b - n, " %s %.0f ms", prof::NAMES[c], g_ast.low_ns[c] / 1e6);
+#ifdef _WIN32
+    if (wasapi::active()) n += snprintf(b + n, sizeof b - n, "\n%s", wasapi::describe().c_str());
+#endif
     if (alsa::g_pcm && alsa::g_t0) {   // the card's own pace: a starving card takes fewer frames than its rate
         const double secs = (prof::now_ns() - alsa::g_t0) / 1e9;
         n += snprintf(b + n, sizeof b - n,
@@ -726,6 +758,9 @@ std::string audio_describe() {
 void window_close() {
     pacing::shutdown();
     alsa::close();
+#ifdef _WIN32
+    wasapi::close();
+#endif
     if (g_audio) SDL_DestroyAudioStream(g_audio);
     if (g_tex) SDL_DestroyTexture(g_tex);
     if (g_ren) SDL_DestroyRenderer(g_ren);

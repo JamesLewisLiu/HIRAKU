@@ -203,6 +203,18 @@ crackles; the queue above still grows by itself after an underrun. The exit repo
 `audio:` line says what was opened, and with a card alone, an `audio: the card took ...` line
 says whether it kept pace (100 %) and how often it ran dry.
 
+**On Windows** (launcher: Settings > Audio > Output, Exclusive). Output lists the devices by the
+names Windows shows; `--audio-device "Speakers (Realtek(R) Audio)"` plays on that one, shared
+through the Windows mixer. `--audio-exclusive` (the Exclusive box) takes that device, or the
+default one, alone in WASAPI exclusive mode: no mixer in between, its buffer as small as the
+device allows (`--audio-buffer`, or the device's minimum if that's larger), other programs silent
+on it meanwhile. HIRAKU tries float, 32, 24 and 16 bits at the game's rate, then 48, 44.1 and
+96 kHz. If the device refuses (another program has it alone, or "Allow applications to take
+exclusive control of this device" is off in its Advanced properties), the game says why and plays
+shared. The exit report then has an `audio: the device took ...` line with the share of the device's
+rate it took and the periods the game's sound came short. ASIO isn't offered: its SDK's licence
+doesn't allow it in a GPL program.
+
 **System 573 and Twinkle: `--fine-sound`** (launcher: Settings > Audio > "Sound every millisecond"). These cores run MAME's devices, and MAME hands their sound on 50 times a second. So by default the sound reaches the PC in 20 ms pieces, which adds up to 20 ms of latency, uneven from moment to moment, and the controls are read once per piece. `--fine-sound` hands it on every millisecond instead:
 - The machine runs the same (the regress cases show the same pictures).
 - On beatmania IIDX the keysounds then start when the game triggers them. MAME's RF5C400 starts them at its previous update, up to 20 ms early, so the sound no longer matches MAME's recordings.

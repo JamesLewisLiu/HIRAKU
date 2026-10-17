@@ -53,9 +53,9 @@ QString link(const char *url, const char *text) { return QString("<a href=\"%1\"
 
 QString aboutHtml() {
     return QString(
-               "<p>Konami arcade games as native Linux programs. Firebeat games are statically "
-               "recompiled from their PowerPC code; DJ Main, System 573, Twinkle and Python run on "
-               "the same shell, behind this launcher.</p>"
+               "<p>Konami arcade games as native programs, on Linux and Windows. Firebeat games run "
+               "their PowerPC code recompiled (or, in a package, through HIRAKU's own analysis of it); "
+               "DJ Main, System 573, Twinkle and Python run on the same shell, behind this launcher.</p>"
                "<p>HIRAKU ships no game data. It runs your own dumps.</p>"
                "<p>Copyright © 2026 Roganis</p>"
                "<p>HIRAKU is free software: you can redistribute it and/or modify it under the terms of the "
