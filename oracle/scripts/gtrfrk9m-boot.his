@@ -1,0 +1,11 @@
+# GuitarFreaks 9th Mix: power-on after the install (start from gtrfrk9m-install's NVRAM). NOTE 605
+# (RTC-RAM cleared): Test goes on. The boot checks: the CD drive, the RTC data, the devices, then
+# the data loaded from the CD and initialised. Hashes the main RAM every frame and snapshots every
+# 60 frames.
+game gtrfrk9m
+
+hash ram  0x80000000 0x80400000   # 4 MiB main RAM (KSEG0)
+
+at 900 press "Service Mode" 8
+from 0 every 60 snap
+at 24000 quit

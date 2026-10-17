@@ -1,0 +1,16 @@
+# DrumMania 9th Mix and GuitarFreaks 10th Mix in session (with gtfrk10m-session, run alongside:
+# two processes on one session cable, runtime/sys573/link.h). This side hosts the multi-session
+# unit. From what drmn9m-install left: NOTE 605 (Test), the boot checks and the unit's link, two coins
+# and Start at the title; the WELCOME screen opens the joining period, the GuitarFreaks cabinet
+# joins, then both pass CAUTION, the mode and the music select and play the first stage together.
+# MAME has no session (its unit is a stub): this is HIRAKU's own, checked for repeatability.
+game drmn9m
+
+hash ram  0x80000000 0x80400000   # 4 MiB main RAM (KSEG0)
+
+at 900 press "Service Mode" 8
+at 13000 press "Coin 1" 8
+at 13040 press "Coin 1" 8
+from 13200 every 300 press "1 Player Start" 8
+from 12000 every 300 snap
+at 21000 quit

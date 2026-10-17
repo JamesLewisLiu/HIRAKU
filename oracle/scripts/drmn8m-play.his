@@ -1,0 +1,16 @@
+# DrumMania 8th Mix: a game, from what drmn8m-install.his left (its NVRAM). NOTE 605 (RTC-RAM cleared): Test
+# goes on; the boot checks, the warning and the title. Two coins, then Start every 300 frames
+# through the mode and music select (their defaults), the first stage played with no input to
+# GAME OVER, and attract again.
+# MAME's multi-session unit is an empty stub: MAME stops at "Please call attendant" once the game
+# talks to the unit (SIO1); HIRAKU's unit goes on. The two agree up to there. Hashes the main RAM every frame, snapshots every 60 frames.
+game drmn8m
+
+hash ram  0x80000000 0x80400000   # 4 MiB main RAM (KSEG0)
+
+at 900 press "Service Mode" 8
+at 13000 press "Coin 1" 8
+at 13060 press "Coin 1" 8
+from 13300 every 300 press "1 Player Start" 8
+from 0 every 60 snap
+at 22000 quit

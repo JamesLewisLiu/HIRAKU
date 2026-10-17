@@ -1,0 +1,15 @@
+# GuitarFreaks 10th Mix joining DrumMania 9th Mix's session (with drmn9m-session, which hosts the
+# multi-session unit). From what gtfrk10m-install left: NOTE 605 (Test), then two coins and Start during
+# the DrumMania cabinet's WELCOME (its joining period), Start every 300 frames through the shared
+# mode and music select; the first stage, SESSION on the guitar's screen.
+game gtfrk10m
+
+hash ram  0x80000000 0x80400000   # 4 MiB main RAM (KSEG0)
+
+at 900 press "Service Mode" 8
+at 13400 press "Coin 1" 8
+at 13450 press "Coin 1" 8
+at 13550 press "1 Player Start" 8
+from 13700 every 300 press "1 Player Start" 8
+from 12000 every 300 snap
+at 21000 quit

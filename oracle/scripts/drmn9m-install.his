@@ -1,0 +1,10 @@
+# DrumMania 9th Mix (System 573, digital I/O board): the first power-on from blank NVRAM, with no inputs.
+# The 573 BIOS boots the runtime CD, which installs itself to the onboard flash,
+# then shows INFO 508 (install done, power-cycle). Hashes the main RAM every frame and
+# snapshots every 60 frames, to compare with MAME.
+game drmn9m
+
+hash ram  0x80000000 0x80400000   # 4 MiB main RAM (KSEG0)
+
+from 0 every 60 snap
+at 12000 quit

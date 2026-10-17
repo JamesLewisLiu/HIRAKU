@@ -1,0 +1,25 @@
+# Percussion Freaks 8th Mix (G*C38 VER. AAA), Konami 2003: generated from MAME's ksys573.cpp (tools/gen573.py)
+id = "pcnfrk8m"
+title = "Percussion Freaks 8th Mix"
+family = "drmn"         # DrumMania cabinet: five pads, the bass pedal, select buttons
+mame = "pcnfrk8m"       # MAME set name, used by the oracle
+core = "sys573"         # System 573 (runtime/sys573/, PLAN.md section 19); digital I/O board
+
+[roms]
+bios = "700a01.22g"             # 573 BIOS
+h8 = "h8a01.bin"                # the H8's start-up response (JVS check)
+cassette_eeprom = "gcc38aaa.u1" # the game cassette's ZS01
+cassette_id = "gcc38aaa.u6"     # ... and its DS2401 serial number
+digital_id = "digital-id.bin"   # the digital I/O board's DS2401
+msu_flash = "flash.20t"         # the multi-session unit's TX3927 firmware (29F400)
+msu_rtc = "m48t58y.6t"          # ... and its M48T58Y
+
+[board]
+io_board = "digital"            # GX894-PWB(B): FPGA + MAS3507D MP3
+cassette = "zi"                 # MAME's cassette variant: ZS01 + DS2401 (casszi)
+# Not playable yet: no dump of the multi-session unit's CD exists (MAME's set lists none), and
+# HIRAKU fits the unit only with its CD; kept as MAME configures it (PLAN.md section 24, CATALOGUE.md).
+msu = true                      # the multi-session unit (GXA25)
+
+[cd]
+chd = "c38aaa02"        # the runtime CD

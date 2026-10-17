@@ -1,0 +1,14 @@
+# Guitar Freaks 10th Mix: a game, from what gtfrk10m-install.his left (its NVRAM). NOTE 605 (RTC-RAM cleared): Test
+# goes on; the boot checks, the warning and the title. Two coins, then Start every 300 frames
+# through the mode and music select (their defaults), the first stage played with no input to
+# GAME OVER, and attract again. Hashes the main RAM every frame, snapshots every 60 frames.
+game gtfrk10m
+
+hash ram  0x80000000 0x80400000   # 4 MiB main RAM (KSEG0)
+
+at 900 press "Service Mode" 8
+at 9000 press "Coin 1" 8
+at 9060 press "Coin 1" 8
+from 9300 every 300 press "1 Player Start" 8
+from 0 every 60 snap
+at 18000 quit
