@@ -344,8 +344,7 @@ public:
         if (name == "--lan-join") { lan_where_ = value(); lan_host_ = false; return true; }
         if (name == "--lan-cabinets") { lan_cabinets_ = std::stoi(value()); return true; }
         if (name == "--autoplay") {
-            autoplay_ = true;
-            if (!has_autoplay(HK_GAME_ID)) fprintf(stderr, "autoplay: not available for %s yet (pop'n music 9 only)\n", HK_GAME_ID);
+            autoplay_ = true;   // (whether the game has it: init, once the game is known)
             return true;
         }
         if (name == "--eamuse") {   // the older name: local (the server in the core) or -url's URL
@@ -401,6 +400,8 @@ public:
     }
 
     bool init(const Options &o) override {
+        if (autoplay_ && !has_autoplay(o.game.c_str()))
+            fprintf(stderr, "autoplay: not available for %s yet (pop'n music 9 only)\n", o.game.c_str());
         opt_ = o;
         auto m = read_kv(o.root + "/dumps/" + o.game + "/machine.txt");
         if (m.empty() || m["core"] != "python") {

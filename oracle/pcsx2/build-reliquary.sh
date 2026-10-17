@@ -124,7 +124,7 @@ configure_dir() {
 }
 
 python_games() {
-	sed -n 's/^hiraku_python_game(\(.*\))$/hiraku-\1/p' "$HIRAKU/runtime/python/CMakeLists.txt"
+	sed -n 's/^hiraku_python_game(\([a-z0-9]*\).*$/hiraku-\1/p' "$HIRAKU/runtime/python/CMakeLists.txt"
 }
 
 pgo() {

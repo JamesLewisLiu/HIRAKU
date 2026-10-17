@@ -297,7 +297,7 @@ def game_binary(game):
             core = next((ln.split('"')[1] for ln in f if ln.startswith("core")), "")
     except OSError:
         core = ""
-    if core in ("djmain", "sys573", "twinkle"):
+    if core in ("djmain", "sys573", "twinkle", "python"):
         return os.path.join(BIN, "hiraku-" + core), ["--game", game]
     if core in ("", "firebeat"):   # hiraku-firebeat: the executor (runtime/core/exec.h)
         return os.path.join(BIN, "hiraku-firebeat"), ["--game", game]

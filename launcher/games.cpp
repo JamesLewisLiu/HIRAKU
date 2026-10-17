@@ -162,7 +162,7 @@ QList<Game> scanGames() {
         // and Twinkle games run from one binary per core, told the game with --game)
         bool built = false;
         QStringList names = {"hiraku-" + g.id};
-        if (g.core == "djmain" || g.core == "sys573" || g.core == "twinkle") names << "hiraku-" + g.core;
+        if (g.core == "djmain" || g.core == "sys573" || g.core == "twinkle" || g.core == "python") names << "hiraku-" + g.core;
         if (g.core.isEmpty() || g.core == "firebeat") names << "hiraku-firebeat";   // the executor (PLAN.md section 27)
         for (const QString &name : names) {
             for (const QString &d : {bin, QCoreApplication::applicationDirPath(), root + "/bin", root + "/build/cmake"}) {

@@ -4,12 +4,12 @@
 
 <p align="center"><b>“HIRAKU” is all about giggles and fun. Enjoy!!</b></p>
 
-HIRAKU runs Konami's BEMANI arcade games as native Linux programs. It covers five arcade boards, from DJ Main (1997) to Konami Python (2002–2006), all behind one launcher.
+HIRAKU runs Konami's BEMANI arcade games as native programs on Linux and Windows. It covers five arcade boards, from DJ Main (1997) to Konami Python (2002–2006), all behind one launcher.
 
-- **Firebeat** games are statically recompiled: each game's PowerPC program is translated to C and linked against a runtime that stands in for the board.
+- **Firebeat** games are statically recompiled: HIRAKU analyses each game's PowerPC program and translates it to C, linked against a runtime that stands in for the board. The packages, which carry no game's code, run the same analysis through an executor (`hiraku-firebeat`) instead, with identical results.
 - **DJ Main, System 573, Twinkle and Python** run as cores behind the same shell (`runtime/shell/core.h`). Each core is an interpreter, a recompiler fed by recordings, or a hosted emulator.
 
-HIRAKU ships no game data. You provide your own dumps. The tools take the program from your discs and ROM sets, and the build turns it into a game you can start from the launcher.
+HIRAKU ships no game data. You provide your own dumps: drop your MAME ROM sets and CHDs (or disc images) on the launcher, and it does the rest.
 
 ## What it runs
 
@@ -39,7 +39,18 @@ The per-game guides are in [docs/PLAY.md](docs/PLAY.md): which files each game n
 - **Checked against MAME.** Every change is held to bit-identical per-frame picture and sound hashes (`tools/regress.py`). New boards are brought up in lockstep against a scripted MAME oracle.
 - **Portable.** `tools/package.sh` builds a package for other Linux PCs that brings its own Qt. In a portable install, your saves and settings live in the HIRAKU folder, so the folder can go on a USB stick. The cores also build and pass the regression cases on 64-bit ARM Linux.
 
-## Getting started
+## Download
+
+Get the latest package from the [Releases](../../releases) page and unpack it anywhere:
+
+- **Windows** (10 or later): `hiraku-windows-x86_64.zip`, then start `bin\hiraku.exe`. Windows may warn about an unknown publisher (the build isn't signed): *More info*, then *Run anyway*.
+- **Linux** (glibc 2.35 or later: Ubuntu 22.04, Debian 12, Fedora 36 and newer): `hiraku-linux-x86_64.tar.xz`, then start `bin/hiraku`.
+
+Then drop a game's files on the launcher's window, all at once: the MAME ROM set (`.zip`, `.7z` or a folder) and its CHDs. HIRAKU recognises the game, copies what it needs into its own folder, and the game is ready to play. Nothing else needs installing: the packages carry their own Python, 7-Zip, CHD reader and libraries.
+
+The packages run the DJ Main, System 573, Twinkle and Firebeat games. The Konami Python games (pop'n music 9–14, GuitarFreaks and DrumMania V) still need HIRAKU built from source. The packages are portable: your saves and settings stay in their `user` folder.
+
+## Building from source
 
 You need CMake, Ninja, clang, SDL3, zlib and zstd (to read MAME's CHDs) and, for the launcher, Qt 6. Optional: FFmpeg's libraries (IIDX background videos) and FluidSynth (Keyboardmania's stand-in synth). The Python core is built inside PCSX2 Reliquary's own source tree (see [docs/PLAY.md](docs/PLAY.md#konami-python-1-popn-music-914-in-progress-m16)).
 
@@ -49,10 +60,11 @@ ninja -C build/cmake
 build/cmake/hiraku                          # the launcher
 ```
 
-To add a game, drop its files on the launcher's window: the MAME ROM set (`.zip`/`.7z`), its CHDs, or disc images (`.cue`/`.bin`, `.iso`, `.img`). You can also use **File > Add game files**, or `tools/ingest.py FILE...` from a terminal. The ingester recognises the game and what each image is. Firebeat games then need their program recompiled once:
+To add a game, drop its files on the launcher's window: the MAME ROM set (`.zip`/`.7z`), its CHDs, or disc images (`.cue`/`.bin`, `.iso`, `.img`). You can also use **File > Add game files**, or `tools/ingest.py FILE...` from a terminal. The ingester recognises the game and what each image is. Firebeat games then run in `hiraku-firebeat`, which finds its way around the program by itself when it starts. For about twice the speed, a game's program can be recompiled into its own binary:
 
 ```bash
-analyze/ghidra.sh bm3final && analyze/prep.py bm3final && ninja -C build/cmake hiraku-bm3final
+mkdir -p build/bm3final && build/cmake/hiraku-recomp --analyze dumps/bm3final/program.bin --entry 80003000 > build/bm3final/recomp.txt
+cmake build/cmake && ninja -C build/cmake hiraku-bm3final
 ```
 
 The launcher shows which games are ready, and what a game that isn't ready still needs. `hiraku popn7` starts a game straight away, and `build/cmake/hiraku-<game> --window` runs one without the launcher. Settings live in `~/.config/hiraku/`, and saves in `~/.local/share/hiraku/<game>/`. In a portable install, both live in the HIRAKU folder's `user/` instead.
