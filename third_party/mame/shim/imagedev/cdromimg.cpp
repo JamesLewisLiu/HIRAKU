@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // HIRAKU: see cdromimg.h.
+#include <algorithm>
 #include "imagedev/cdromimg.h"
 
 #include "dev/image.h"   // HIRAKU's image reader: a CHD reads as chdman's extract
@@ -117,8 +118,8 @@ bool cdrom_file::open(const std::string &path) {
         if (k + 1 < cdtoc.numtrks && ct[k + 1].f == c.f) {
             t.frames = file_start(k + 1) - file_start(k);
         } else {
-            fseeko(c.f, 0, SEEK_END);
-            t.frames = (u32)(((u64)ftello(c.f) - start) / t.datasize);
+            // (image::size, not stdio: on Windows a CHD's stream answers only image.h's calls)
+            t.frames = (u32)(((u64)std::max<int64_t>(hk::image::size(c.f), 0) - start) / t.datasize);
         }
         byte += (u64)t.frames * t.datasize;
         t.logframeofs = 0;
