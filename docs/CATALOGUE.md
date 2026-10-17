@@ -511,6 +511,85 @@ Each needs an input design before code. The owner decides which are worth it.
   - As the fork notes, the IIDX cabinet plays both cabinets' music; HIRAKU can forward it.
   - This needs the IIDX club sets (B) too.
 
+#### Phase 6 progress (2026-10-17): step 1, the IIDX club kits as games
+
+**The three IIDX club sets run, alone, in lockstep with MAME.**
+
+| Set | MAME's name for it | Board (MAME config) | Program CD | Shares with | Link port |
+|---|---|---|---|---|---|
+| `bmiidxc` | with DDR 2nd Club Version (896 JAB) | 1st style (`twinklex`) | `896jabbm` | `bmiidx`: Video CD, hard disk, dongle `863a02` | the super I/O's second 16550 (COM2) |
+| `bmiidxca` | the same (896 JAA) | 1st style (`twinklex`) | `896jaabm` | the same | the same |
+| `bmiidxc2` | Substream with DDR 2nd Club Version 2 (984 A01 BM) | Substream (`twinklex2`) | `ge984a01,bm` | `bmiidxs`: Video CD, hard disk; own dongle `984a02` | the PS1's SIO1 |
+
+- New manifests `games/bmiidxc`, `bmiidxca`, `bmiidxc2`. All three verify in MAME at the pin ("best available": the X76F041 dongles are MAME's `BAD_DUMP`s).
+- Ingested from the archive's CHDs. Only the program CDs were extracted (24–29 MB each); the Video CDs and hard disks are hard links to the parent's.
+
+**What was checked.** Each script runs in MAME and in HIRAKU with MAME's power-on clock (`oracle/lockstep.sh`). Club Version 1 runs against the SIO1-patched MAME (`oracle/mame-patches/twinkle-sio1-cts.patch`): it has the 1st style's wiring, and stock MAME stops it at E600 like the 1st style. Club Version 2 runs against stock MAME.
+
+| Script | Frames | Result |
+|---|---|---|
+| `bmiidxc-boot` | 9,000 | main RAM identical on every hashed frame (900/900), 150/150 snapshots |
+| `bmiidxc-clear`, `bmiidxca-clear` | 10,800 | 1,080/1,080, 180/180; the NVRAM left is MAME's byte for byte |
+| `bmiidxc-play`, `bmiidxca-play` | 14,000 | 1,400/1,400, 233/233 |
+| `bmiidxc2-boot` | 10,000 | 1,000/1,000, 166/166; NVRAM identical |
+| `bmiidxc2-play` | 11,300 | 1,130/1,130, 188/188 |
+
+**What the games do alone:**
+- **Club Version 1** shows the 1st style's device check (DVD OK through the CTS departure), E150 and, unlike the 1st style, "1P START = BACKUP CLEAR". Pressing it makes the watchdog reset the machine, and the device check shows E150 again. MAME does the same, so `bmiidxc-boot` records it. The clear that works is test mode's BACKUP CLEAR, as on the 1st style.
+- Test mode has a new last item, **NETWORK OPTIONS**:
+  - GAME JOINING PERIOD 10;
+  - MAX STAGE (CLUB PLAY) 3;
+  - NETWORK CHECK: PROTOCOL VERSION 1.0, CABLE STATUS "--------" ("CONNECT" with a cable), RECEIVE STATUS DNC, ERROR 0.
+  - Before the backup is cleared, it gives E160 BACKUP RAM ERROR.
+- After the clear, the game is the 1st style's: the same title (BATTLE DOUBLE HIDDEN), three coins a credit, 4KEYS/5KEYS/7KEYS/EXPERT. `bmiidxc-play` is `bmiidxa-play.his` unchanged: a stage, STAGE FAILED, game over, attract. No club mode shows without a DDR cabinet.
+- **Club Version 2** shows "GE984JA DEVICE CHECK". Its 1P Start clear works, as on Substream. The game is Substream's; `bmiidxc2-play` is `bmiidxsa-play.his` (5.1.1., STAGE FAILED, CONTINUE?).
+
+**The second program CD (PLAN.md TW-5's question)** belongs to the DDR cabinet.
+- MAME's driver lists the kit as two discs: "896 JA ABM/BBM + 896 JA A01" for Club Version 1, "GE984 A01(BM) + GE984 A01(DDR)" for Club Version 2.
+- The `BM` disc is the IIDX program CD.
+- `896jaa01` (volume GE896) holds a 114 KB `PSX.EXE`, "DDR CLUB KIT INSTALLER", and `GE896JAA.DAT`, a 16 MiB flash image. It is MAME's install disc for `ddr2mc`, which writes DDR 2nd Club Version into the System 573's flash. `ge984a01,ddr` (`GE984JAA.DAT`) is the same for `ddr2mc2`. Both are already ingested and installed (Phase 2).
+- The archive's `bmiidxc/` folder holds two IIDX CDs, `896jaabm` and `896jabbm`. They are the JAA and JAB revisions (`bmiidxca`, `bmiidxc`), not a pair.
+- The IIDX discs carry the 1st style's (or Substream's) data files unchanged. What differs is the program:
+  - Club Version 1's `FIREBALL.EXE` is 22 KB larger than the 1st style's, with "Comm2 init", "club mode:%d", NETWORK ERROR, PROTOCOL VERSION ERROR, PLEASE CALL ATTENDANT and a session result's ratings ("in Sessions", "Dancer"...). `TEST.EXE` adds NETWORK OPTIONS.
+  - Club Version 2 adds CLUB PLAY START!!, EXPERT DANCE COURSE CLEAR, PLEASE CALL ATTENDANT(DDR) and pictures for a club mode (`SBCLUB.MGP`, `CLBMOD.MGP`).
+
+**The DDR link, as far as the IIDX side shows it (the starting point for step 2):**
+- **Club Version 1: the super I/O's second 16550**, at the PC's COM2 (0x2f8, mapped at 0x1f2105f0–fe). MAME's `twinklex` calls it `rs232_network`; nothing is plugged in by default, in MAME or HIRAKU.
+  - Set up as follows (seen in the traces, and in the test program's code from a RAM dump):
+    - divisor 6 of 115,200: **19,200 baud**, which matches the rar's notes;
+    - LCR 0x03: **8N1**;
+    - the FIFO enabled and cleared, then off (FCR 7, then 0);
+    - then DTR, then RTS.
+    - A routine sets the divisor as 115,200 / rate, so other rates are possible.
+  - **Cable detect is CTS** (MSR bit 4). The game reads MSR every frame. A null modem gives it the DDR side's RTS.
+  - **Frames are 8 bytes:** `5A 5A`, three bytes of message, a sequence number (one counter for every frame sent), then a 16-bit big-endian checksum: 5 plus the sum of the four bytes before it.
+  - **With no partner, the game sends without waiting:**
+    - at power-on, and again as attract starts: a few frames `00 00 00`;
+    - in attract, every 128 frames (about 2.1 s): `08 0A 00`, `09 0A 00` and `0C 01 0A`;
+    - at 1P Start: `0C 00 0A`.
+    - The 0x0A may be the 10 s joining period; that is not confirmed.
+  - On receive, the game sorts what it gets by the low nibble of its first byte (5, 6, 9, 0xA), and uses the high nibble as an index into 16 slots. That is read from code, not seen on a wire.
+- **Club Version 2: the PS1's SIO1** (`rs232_network` on `twinklex2`; the player is on the 16550).
+  - MODE 0x4E is 8N1 with a ×16 clock. Reload 0x36 gives 33.8688 MHz / (54 × 16) = 39,200 baud: the PS1's usual 38,400, as the rar's notes say.
+  - CTRL is 0x0837: TX and RX on, DTR, RTS, the RX interrupt.
+  - The game sends one byte, 0x01, at power-on. After that it reads SIO1's status about once a frame. With nothing plugged in, the status is 0x0005: no DSR, no CTS.
+  - So Club Version 2's protocol is not Club Version 1's 16550 framing.
+- **The DDR side.** The rar's notes join `ddr2mc2` and `bmiidxc2` with `-rs232_network null_modem` on both. In the fork, a 573's `rs232_network` is its SIO1, as the GuitarFreaks cabinet's is in the GF×DM session (`runtime/sys573/link.h`). MAME at the pin has no such port on the 573, so the session's oracle is only the fork's Windows `mame.exe`.
+- The fork's notes also say the IIDX cabinet plays both cabinets' music.
+- **Step 2 needs:**
+  - a cable between `hiraku-ddr2mc` (SIO1) and `hiraku-bmiidxc` (16550 COM2) at 19,200 8N1, and between SIO1 and SIO1 for Club Version 2;
+  - TXD, plus DTR and RTS crossed to DSR and CTS. SIO1 on the Twinkle side wires only RXD and DSR, as MAME does, so its CTS may need the 1st style's UART;
+  - `runtime/sys573/link`'s time-stamped line levels are the pattern to follow.
+
+**Regress:**
+- New cases: `bmiidxc-clear`, `bmiidxc-play`, `bmiidxca-clear`, `bmiidxca-play`, `bmiidxc2-boot` and `bmiidxc2-play`, each `--mame-cd`, plus the three `-play-drive` twins on the 4x drive.
+- `bmiidxc-boot.his` stays an oracle script only (the 1P Start reset).
+
+**Open:**
+- A hands-on test.
+- The session itself (step 2).
+- Whether a real cabinet's 1P Start clear on Club Version 1 also resets: MAME and HIRAKU agree that it does.
+
 ### Phase 7: new boards
 
 - **`ddrkids` on Konami GS:** a small new core, and MAME runs it. Low priority.

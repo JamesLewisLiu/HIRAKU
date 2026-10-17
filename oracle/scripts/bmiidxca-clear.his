@@ -1,0 +1,39 @@
+# beatmania IIDX with DDR 2nd Club Version (896 VER. JAA), Konami 1999: as bmiidxc-clear.his.
+# beatmania IIDX with DDR 2nd Club Version (896 VER. JAB), Konami 1999: the club kit's IIDX cabinet
+# (1st style board, Twinkle). First power-on from blank NVRAM, as bmiidxc-boot.his, but the backup
+# is cleared in test mode (the 1P Start clear of the device check resets the machine through the
+# watchdog and leaves E150, in MAME too). Test mode: BACKUP CLEAR (the eighth item), yes; NETWORK
+# OPTIONS (the DDR club link: GAME JOINING PERIOD 10, MAX STAGE (CLUB PLAY) 3) and its NETWORK
+# CHECK with no DDR cabinet on the cable (PROTOCOL VERSION 1.0, CABLE STATUS --------, RECEIVE
+# STATUS DNC); exits, TEST EXIT, yes; the game resets itself (the watchdog) and boots to attract.
+# SW1/SW2 move the cursor down/up, SW6 does, SW7 exits; SW2 answers yes. Hashes the main RAM every
+# frame and snapshots every 60 frames, against MAME with the DVD player's CTS on SIO1 (the
+# oracle's patch, PLAN.md section 21, TW-5).
+game bmiidxca
+
+hash ram  0x80000000 0x80400000   # 4 MiB main RAM (KSEG0)
+
+at 2400 press "Test" 8
+from 0 every 60 snap
+# BACKUP CLEAR: seven down, do, yes
+at 2900 press "P1-1 (SW1)" 8
+at 2930 press "P1-1 (SW1)" 8
+at 2960 press "P1-1 (SW1)" 8
+at 2990 press "P1-1 (SW1)" 8
+at 3020 press "P1-1 (SW1)" 8
+at 3050 press "P1-1 (SW1)" 8
+at 3080 press "P1-1 (SW1)" 8
+at 3150 press "P1-6 (SW6)" 8
+at 3210 press "P1-2 (SW2)" 8
+# NETWORK OPTIONS: one down, do; NETWORK CHECK: two down, do; exit both
+at 3810 press "P1-1 (SW1)" 8
+at 3870 press "P1-6 (SW6)" 8
+at 3950 press "P1-1 (SW1)" 8
+at 3980 press "P1-1 (SW1)" 8
+at 4010 press "P1-6 (SW6)" 8
+at 4400 press "P1-7 (SW7)" 8
+at 4500 press "P1-7 (SW7)" 8
+# TEST EXIT, yes: the reset, then the boot to attract
+at 4700 press "P1-7 (SW7)" 8
+at 4760 press "P1-2 (SW2)" 8
+at 10800 quit

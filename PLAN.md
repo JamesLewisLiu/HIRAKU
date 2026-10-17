@@ -1409,7 +1409,7 @@ The game already tells the player what to play. HIRAKU adds the picture. The mac
 - **Substream, Club Version 2 (`twinklex2`):** X76F041, player on the super I/O UART.
 - **2nd, 4th, 5th style:** `twinklei`, Video CD, like 3rd.
 - **6th, 7th, 8th style: DVD.** An MPEG-2 decoder (libmpeg2, GPL-2+, or FFmpeg's libavcodec, LGPL) and DVD-Video chapter navigation (the IFO tables). 8th style may use a different player (XV-S1100; MAME's code only mentions it).
-- **Club kits (`bmiidxc`, `bmiidxca`):** two program CDs; find out what the second one does.
+- **Club kits (`bmiidxc`, `bmiidxca`):** two program CDs; find out what the second one does. *(2026-10-17: the second disc is the DDR cabinet's, 896 JA A01, "DDR CLUB KIT INSTALLER" with a 16 MiB flash image, MAME's `ddr2mc` install disc; the archive's two IIDX discs are the JAA and JAB revisions. All three club sets, `bmiidxc2` too, run alone in lockstep with MAME, Club Version 1 against the SIO1-patched MAME. The link: Club Version 1 on the super I/O's COM2 at 19,200 8N1, Club Version 2 on SIO1 at 38,400. docs/CATALOGUE.md, Phase 6 progress.)*
 - *Ugoke! Purimucho* (touch panel, camera, printer) is out of scope.
 - **Media needed:** every set except `bmiidx3` and `bmiidx`. Recommended next: `bmiidx2` or `bmiidx4` (Video CD, MAME working), then `bmiidx6` for the DVD path. *(2026-10-14: all of these on hand except the club kits and the other revisions; see the progress below.)*
 
@@ -1527,7 +1527,7 @@ beatmania IIDX 1st style (`bmiidx`) boots, plays and shows its videos; MAME stop
 - **Differences from 3rd style:** no 1P Start backup clear (test mode's BACKUP CLEAR); a credit is 3 coins; mode select (4KEYS/5KEYS/7KEYS/EXPERT) by the turntable. The stage videos are masked to the play field's shape on the disc, and the game draws its own graffiti layer (the song's letters, spray-painted) over them, in white: the full-frame scaling lines up with the play field exactly, which supports TW-3's placement.
 - **Speed:** with its R3000 blocks recorded (6,907, from `bmiidx-clear` and `bmiidx-play`; exact against MAME), the scripted game takes 1.55 ms a frame on the desktop with the video, a stage 1.78 ms (p99 2.3).
 - **The Video CD from a cold disk:** the emulation waits for the frame it needs, and the decoder thread read the disc a sector at a time; on a busy disk (another session's runs, swap) single frames took 0.9 to 3 s, and TW-3's "host contention" stall was this. Each chapter is now asked of the kernel whole when it starts (`POSIX_FADV_WILLNEED`): from a cold cache the worst frame is 47 ms, as with the disc cached.
-- **Open:** a hands-on test. The other sets on the same SIO1 wiring (`bmiidxa`, the club kit's `bmiidxc` and `bmiidxca`) aren't on hand.
+- **Open:** a hands-on test. The other sets on the same SIO1 wiring (`bmiidxa`, the club kit's `bmiidxc` and `bmiidxca`) aren't on hand. *(All three on hand since 2026-10-16/17 and in lockstep with the patched MAME: docs/CATALOGUE.md, Phases 1 and 6.)*
 
 ### Progress (2026-10-15): TW-5, the rest of the catalogue on hand
 

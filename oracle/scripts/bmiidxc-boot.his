@@ -1,0 +1,13 @@
+# beatmania IIDX with DDR 2nd Club Version (896 VER. JAB), Konami 1999: the club kit's IIDX cabinet
+# (1st style board, Twinkle). First power-on from blank NVRAM: the device check passes all but the
+# backup RAM (the DVD check needs the player's CTS on SIO1, as the 1st style: PLAN.md section 21,
+# TW-5; stock MAME stops at E600), E150 BACKUP DATA ERROR, and unlike the 1st style the
+# "1P START = BACKUP CLEAR" prompt (by ~2040). 1P Start at 2400. Hashes the main RAM every frame
+# and snapshots every 60 frames, against MAME with the same SIO1 (the oracle's patch).
+game bmiidxc
+
+hash ram  0x80000000 0x80400000   # 4 MiB main RAM (KSEG0)
+
+at 2400 press "1 Player Start" 8
+from 0 every 60 snap
+at 9000 quit

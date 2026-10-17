@@ -214,6 +214,18 @@ CASES = {
     "bmiidx8-boot": ("bmiidx8", 10000, ["--rtc", "1792053239", "--video", "off", "--script", "oracle/scripts/bmiidx8-boot.his"]),
     "bmiidx8-play": ("bmiidx8", 11300, ["--rtc", "1792054162", "--video", "off", "--script", "oracle/scripts/bmiidx8-play.his"],
                      "bmiidx8-boot"),
+    # the club kits' IIDX cabinets, no DDR cabinet on the link (docs/CATALOGUE.md, Phase 6): Club
+    # Version 1 on the 1st style's board (test mode's backup clear and NETWORK CHECK, then the 1st
+    # style's scripted game; against the SIO1-patched MAME), Club Version 2 on Substream's (stock MAME)
+    "bmiidxc-clear": ("bmiidxc", 10800, ["--rtc", "1792260779", "--video", "off", "--script", "oracle/scripts/bmiidxc-clear.his"]),
+    "bmiidxc-play": ("bmiidxc", 14000, ["--rtc", "1792263397", "--video", "off", "--script", "oracle/scripts/bmiidxc-play.his"],
+                     "bmiidxc-clear"),
+    "bmiidxca-clear": ("bmiidxca", 10800, ["--rtc", "1792263801", "--video", "off", "--script", "oracle/scripts/bmiidxca-clear.his"]),
+    "bmiidxca-play": ("bmiidxca", 14000, ["--rtc", "1792264865", "--video", "off", "--script", "oracle/scripts/bmiidxca-play.his"],
+                      "bmiidxca-clear"),
+    "bmiidxc2-boot": ("bmiidxc2", 10000, ["--rtc", "1792265698", "--video", "off", "--script", "oracle/scripts/bmiidxc2-boot.his"]),
+    "bmiidxc2-play": ("bmiidxc2", 11300, ["--rtc", "1792265990", "--video", "off", "--script", "oracle/scripts/bmiidxc2-play.his"],
+                      "bmiidxc2-boot"),
     # Konami Python 1 (PLAN.md section 23): Reliquary hosted; BIOS, card boot, disk boot,
     # attract, coins, NORMAL mode, a song played through to CLEARED. Software GS. --interlaced: the
     # games' own field drawing, as recorded (the default draws every line; only pictures differ)
