@@ -46,7 +46,7 @@ Get the latest package from the [Releases](../../releases) page and unpack it an
 - **Windows** (10 or later): `hiraku-windows-x86_64.zip`, then start `bin\hiraku.exe`. Windows may warn about an unknown publisher (the build isn't signed): *More info*, then *Run anyway*.
 - **Linux** (glibc 2.35 or later: Ubuntu 22.04, Debian 12, Fedora 36 and newer): `hiraku-linux-x86_64.tar.xz`, then start `bin/hiraku`.
 
-Then drop a game's files on the launcher's window, all at once: the MAME ROM set (`.zip`, `.7z` or a folder) and its CHDs. HIRAKU recognises the game, copies what it needs into its own folder, and the game is ready to play. Nothing else needs installing: the packages carry their own Python, 7-Zip, CHD reader and libraries.
+Then drop a game's files on the launcher's window, all at once: the MAME ROM set (`.zip`, `.7z` or a folder) and its CHDs (several games' files at once work too). HIRAKU recognises the game, copies what it needs into its own folder, and the game is ready to play. Nothing else needs installing: the packages carry their own Python, 7-Zip, CHD reader and libraries.
 
 The packages run the DJ Main, System 573, Twinkle and Firebeat games, and the Linux package the Konami Python games too (pop'n music 9–14, DrumMania V/V2): add a Python game's folder together with the folders `bios` (the arcade BIOS) and `keys` (the MagicGate key files), which HIRAKU can't ship. The packages are portable: your saves and settings stay in their `user` folder.
 

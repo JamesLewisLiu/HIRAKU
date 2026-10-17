@@ -28,6 +28,7 @@ extracted images, and machine.txt, which tells the runtime what the machine is.
 from __future__ import annotations
 
 import argparse
+import copy
 import glob
 import hashlib
 import os
@@ -831,7 +832,7 @@ def gather(paths: list[str], set_names: set[str]) -> list[str]:
                 files.append(os.path.normpath(p))   # loose ROM files: the set itself
             files += [os.path.join(p, n) for n in names if n.lower().endswith(IMAGES)]
         elif os.path.isdir(p):
-            for base, _, names in os.walk(p):
+            for base, _, names in os.walk(p, followlinks=True):
                 files += [os.path.join(base, n) for n in sorted(names)]
         else:
             files.append(p)
@@ -841,6 +842,61 @@ def gather(paths: list[str], set_names: set[str]) -> list[str]:
         if f.lower().endswith(".cue"):
             named |= {os.path.abspath(os.path.join(os.path.dirname(f), n)) for n in fbexe_cue_files(f)}
     return [f for f in files if os.path.abspath(f) not in named]
+
+
+def split_by_game(inputs: list[str]) -> list[list[str]]:
+    """Several games' files given at once (a drop of many sets, or a whole rompath), one list per
+    game: a set's archive or folder by its name, a CHD by its folder or by the sets MAME has its
+    disk in. Sets that are no game of HIRAKU's (a BIOS, a parent) go with every game; what names no
+    game (a renamed image, a disc) makes a list of its own, told by its contents. One game (or
+    none named): the inputs as they are."""
+    known = {g["mame"] for g in all_games() if g.get("mame")}
+    files = gather(inputs, known)
+    keyed, support, loose, chds = {}, [], [], []
+    for f in files:
+        if f.lower().endswith(ARCHIVES) or os.path.isdir(f):
+            base = os.path.basename(os.path.normpath(f))
+            name = base if os.path.isdir(f) else base.rsplit(".", 1)[0]
+            if name not in known:
+                try:
+                    name = mameset.current_name(name, f) or name
+                except (OSError, ValueError, zipfile.BadZipFile):
+                    pass
+            if name in known:
+                keyed.setdefault(name, []).append(f)
+            else:
+                support.append(f)
+        elif f.lower().endswith(".chd"):
+            chds.append(f)
+        else:
+            loose.append(f)
+    for c in chds:
+        folder = os.path.basename(os.path.dirname(os.path.abspath(c)))
+        if folder in known:
+            keyed.setdefault(folder, []).append(c)
+            continue
+        try:
+            sha1 = mameset.chd_sha1(c)
+        except OSError:
+            sha1 = None
+        owners = [s for s, _ in mameset.disk_owner(sha1)] if sha1 else []
+        given = [s for s in owners if s in keyed]
+        mine = given or [s for s in owners if s in known]
+        if len(set(mine)) == 1 or given:
+            keyed.setdefault(mine[0], []).append(c)
+        else:
+            loose.append(c)
+    if len(keyed) + (1 if loose else 0) <= 1:
+        return [inputs]
+    # a clone reads its parent's disks (MAME looks in the parent's folder): given with the parent,
+    # they go with the clone too (its parent's ROMs are found beside its set: copy_set_with_parents)
+    sets = mameset.load()
+    groups = []
+    for name, fs in keyed.items():
+        disks = [c for p in (mameset.chain(name)[1:] if name in sets else []) for c in keyed.get(p, [])
+                 if c.lower().endswith(IMAGES)]
+        groups.append(fs + [c for c in disks if c not in fs] + support)
+    return groups + ([loose + support] if loose else [])
 
 
 def has_program(path: str) -> bool:
@@ -1063,6 +1119,16 @@ def main() -> int:
             py2 += sorted(glob.glob(os.path.join(f, "*.py2"))) + ([near] if os.path.exists(near) else [])
     if py2:
         return ingest_python2(args, py2[0])
+    # several games at once: each on its own (a set given or forced by hand: all of it is one game)
+    if not (args.romset or args.game or args.hdd or args.dvd or args.cd2):
+        groups = split_by_game(args.inputs)
+        if len(groups) > 1:
+            print(f"games    {len(groups)} given: each added in turn")
+            rc = 0
+            for g in groups:
+                print()
+                rc |= ingest_auto(copy.copy(args), g)
+            return rc
     return ingest_auto(args, args.inputs)
 
 

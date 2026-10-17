@@ -16,6 +16,11 @@ Give them all at once, in any order. The ingester recognises the game from:
 - for Firebeat, the program on the CD;
 - otherwise, the set's name or a CHD's name.
 
+Several games' files can go at once too (a few sets, or a whole MAME `roms` folder): they're told
+apart by set name, a CHD by its folder or by the sets MAME has its disk in, and each game is added
+in turn. A clone given with its parent also gets the parent's disks; a BIOS set (`sys573.zip`)
+goes with every game.
+
 It also tells each image's role from what it holds: a hard disk, a DVD, or a second CD. The
 sections below give each game's files, and the manual form with the roles spelled out
 (`--romset`, `--hdd`, `--dvd`, `--cd2`).

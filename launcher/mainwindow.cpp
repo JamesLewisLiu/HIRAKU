@@ -271,10 +271,12 @@ MainWindow::MainWindow() {
         refresh();
         QStringList added, errors;
         for (const QString &l : m_ingestOutput.split('\n')) {
-            if (l.startsWith("wrote") && l.contains("machine.txt")) added << l.section('/', -2, -2);
+            // dumps/<id>/machine.txt (Windows: dumps\<id>\machine.txt)
+            if (l.startsWith("wrote") && l.contains("machine.txt")) added << QString(l).replace('\\', '/').section('/', -2, -2);
             if (l.startsWith("ERROR") || l.startsWith("NEXT")) errors << l.mid(9).trimmed();
         }
-        bool ok = st == QProcess::NormalExit && code == 0;
+        // several games at once: those added are, even when another failed (its error below)
+        bool ok = st == QProcess::NormalExit && (code == 0 || !added.isEmpty());
         QStringList titles;   // the games by name, and the first one added selected
         for (const QString &id : added) titles << (find(id) ? find(id)->title : id);
         for (int k = 0; ok && !added.isEmpty() && k < m_list->topLevelItemCount(); k++)
