@@ -32,6 +32,10 @@ endif()
 # - sys573: MAME's code (-28 %);
 # - DJ Main: none (5 % slower with its profile).
 # The profiles stay out of the repo: they come from running the games.
+# HK_GAME_BINARIES off: a release's build, with nothing in it that comes from a game (PLAN.md
+# section 28): no Firebeat game binaries, no recorded 573/Twinkle blocks or XT446 MEG programs,
+# only the cores' own binaries (hiraku-djmain, hiraku-sys573, hiraku-twinkle: --game ID)
+option(HK_GAME_BINARIES "a binary per game (hiraku-<id>), with what build/ recorded for it" ON)
 set(HK_PGO_DIR "" CACHE PATH "directory of per-core llvm-profdata profiles (tools/pgo.py)")
 option(HK_PGO_GENERATE "build instrumented, to train the profiles (tools/pgo.py)" OFF)
 set(HK_PGO_OK OFF)
@@ -124,8 +128,12 @@ target_link_libraries(hiraku_xt446 PUBLIC hiraku_sys)
 # never committed: it holds the firmware's programs). Every build: meggen.py does nothing unless
 # the output would change; with no recording the table is empty and the MEG is interpreted.
 set(HK_MEG_GEN ${CMAKE_BINARY_DIR}/genmeg)
+set(HK_MEG_RECORD ${CMAKE_SOURCE_DIR}/build/xt446/meg.txt)
+if(NOT HK_GAME_BINARIES)
+  set(HK_MEG_RECORD ${CMAKE_BINARY_DIR}/genmeg/no-recording.txt)   # never there: the MEG interpreted
+endif()
 add_custom_target(hiraku_meggen
-  COMMAND python3 ${CMAKE_SOURCE_DIR}/tools/meggen.py ${CMAKE_SOURCE_DIR}/build/xt446/meg.txt ${HK_MEG_GEN}
+  COMMAND python3 ${CMAKE_SOURCE_DIR}/tools/meggen.py ${HK_MEG_RECORD} ${HK_MEG_GEN}
   BYPRODUCTS ${HK_MEG_GEN}/hk_meg_programs.inc)
 add_dependencies(hiraku_xt446 hiraku_meggen)
 target_include_directories(hiraku_xt446 PRIVATE ${HK_MEG_GEN})
@@ -159,9 +167,21 @@ find_package(PkgConfig QUIET)
 if(PkgConfig_FOUND)
   pkg_check_modules(PCSC QUIET IMPORTED_TARGET libpcsclite)
 endif()
+# HK_PCSC_DLOPEN (Linux; a release's): libpcsclite loaded when first used, not linked
+# (runtime/host/pcsc_load.cpp), so the binaries start without it; only its headers are needed
+option(HK_PCSC_DLOPEN "Linux: load libpcsclite at run time instead of linking it" OFF)
+if(NOT WIN32 AND HK_PCSC_DLOPEN)
+  find_path(HK_PCSC_INCLUDE PCSC/winscard.h)
+endif()
 if(WIN32)
   target_link_libraries(hiraku_shell PRIVATE winscard)   # Windows' own PC/SC
   target_compile_definitions(hiraku_shell PRIVATE HK_WITH_PCSC=1)
+elseif(HK_PCSC_DLOPEN AND HK_PCSC_INCLUDE)
+  target_sources(hiraku_shell PRIVATE runtime/host/pcsc_load.cpp)
+  target_include_directories(hiraku_shell PRIVATE ${HK_PCSC_INCLUDE} ${HK_PCSC_INCLUDE}/PCSC)
+  target_link_libraries(hiraku_shell PRIVATE ${CMAKE_DL_LIBS})
+  target_compile_definitions(hiraku_shell PRIVATE HK_WITH_PCSC=1)
+  message(STATUS "hiraku: PC/SC loaded at run time: NFC card readers where libpcsclite is installed")
 elseif(PCSC_FOUND)
   target_link_libraries(hiraku_shell PRIVATE PkgConfig::PCSC)
   target_compile_definitions(hiraku_shell PRIVATE HK_WITH_PCSC=1)
@@ -306,8 +326,12 @@ if(Qt6_FOUND AND TARGET hiraku_hidout)
 endif()
 
 # --- tests -------------------------------------------------------------------
-enable_testing()
-add_subdirectory(tests)
+# HK_TESTS off for a release (tools/release.sh): the PowerPC reference cases need qemu-ppc
+option(HK_TESTS "the unit tests (tests/)" ON)
+if(HK_TESTS)
+  enable_testing()
+  add_subdirectory(tests)
+endif()
 
 # --- games -------------------------------------------------------------------
 # A game is built when analyze/prep.py has produced build/<id>/recomp.txt
@@ -320,6 +344,9 @@ function(hiraku_game id entry)
     set(load ${ARGV2})
   endif()
   set(spec ${CMAKE_SOURCE_DIR}/build/${id}/recomp.txt)
+  if(NOT HK_GAME_BINARIES)   # a release: no game's code in it (PLAN.md section 27)
+    return()
+  endif()
   if(NOT EXISTS ${spec})
     message(STATUS "hiraku: ${id}: no ${spec}, skipped (run tools/ingest.py, analyze/ghidra.sh, analyze/prep.py)")
     return()
@@ -444,7 +471,11 @@ function(hiraku_sys573_game id)
   # generated code: unused variables and labels are normal; wrapping arithmetic is the guest's
   target_compile_options(hiraku_${id}_blocks PRIVATE -w -O2 -fwrapv)
   add_executable(hiraku-${id} runtime/main.cpp runtime/core/sampler.cpp)
-  target_compile_definitions(hiraku-${id} PRIVATE HK_GAME_ID="${id}" HK_ROOT="${CMAKE_SOURCE_DIR}")
+  if(ARGV1 STREQUAL "CORE")
+    target_compile_definitions(hiraku-${id} PRIVATE HK_ROOT="${CMAKE_SOURCE_DIR}")
+  else()
+    target_compile_definitions(hiraku-${id} PRIVATE HK_GAME_ID="${id}" HK_ROOT="${CMAKE_SOURCE_DIR}")
+  endif()
   if(TARGET hiraku_host)
     target_link_libraries(hiraku-${id} PRIVATE hiraku_host)
   endif()
@@ -510,7 +541,11 @@ function(hiraku_twinkle_game id)
   target_include_directories(hiraku_${id}_blocks PRIVATE ${CMAKE_SOURCE_DIR}/runtime)
   target_compile_options(hiraku_${id}_blocks PRIVATE -w -O2 -fwrapv)
   add_executable(hiraku-${id} runtime/main.cpp runtime/core/sampler.cpp)
-  target_compile_definitions(hiraku-${id} PRIVATE HK_GAME_ID="${id}" HK_ROOT="${CMAKE_SOURCE_DIR}")
+  if(ARGV1 STREQUAL "CORE")
+    target_compile_definitions(hiraku-${id} PRIVATE HK_ROOT="${CMAKE_SOURCE_DIR}")
+  else()
+    target_compile_definitions(hiraku-${id} PRIVATE HK_GAME_ID="${id}" HK_ROOT="${CMAKE_SOURCE_DIR}")
+  endif()
   if(TARGET hiraku_host)
     target_link_libraries(hiraku-${id} PRIVATE hiraku_host)
   endif()
@@ -522,15 +557,30 @@ endfunction()
 # dumps/<id>/ at run time, written by tools/ingest.py).
 function(hiraku_djmain_game id)
   add_executable(hiraku-${id} runtime/main.cpp runtime/core/sampler.cpp)
-  target_compile_definitions(hiraku-${id} PRIVATE HK_GAME_ID="${id}" HK_ROOT="${CMAKE_SOURCE_DIR}")
+  if(ARGV1 STREQUAL "CORE")
+    target_compile_definitions(hiraku-${id} PRIVATE HK_ROOT="${CMAKE_SOURCE_DIR}")
+  else()
+    target_compile_definitions(hiraku-${id} PRIVATE HK_GAME_ID="${id}" HK_ROOT="${CMAKE_SOURCE_DIR}")
+  endif()
   if(TARGET hiraku_host)
     target_link_libraries(hiraku-${id} PRIVATE hiraku_host)
   endif()
   target_link_libraries(hiraku-${id} PRIVATE hiraku_shell hiraku_djmain)
 endfunction()
 
-# every games/<id>/game.toml with core = "djmain" (MAME's DJ Main sets)
+# The cores' own binaries, hiraku-djmain, hiraku-sys573 and hiraku-twinkle: any of the core's games,
+# told with --game ID (runtime/main.cpp), with no recorded blocks (the CPU interpreted). A release has
+# only these (HK_GAME_BINARIES off): nothing in them comes from a game.
+hiraku_djmain_game(djmain CORE)
+hiraku_sys573_game(sys573 CORE)
+hiraku_twinkle_game(twinkle CORE)
+
+# every games/<id>/game.toml with core = "djmain" (MAME's DJ Main sets), "sys573", "twinkle": a
+# binary per game (hiraku-<id>), with the game's recorded blocks when build/<id>/ has them
 file(GLOB HK_GAME_TOMLS CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/games/*/game.toml)
+if(NOT HK_GAME_BINARIES)
+  set(HK_GAME_TOMLS "")
+endif()
 foreach(toml ${HK_GAME_TOMLS})
   file(STRINGS ${toml} djmain_core REGEX "^core *= *\"djmain\"")
   if(djmain_core)

@@ -2062,6 +2062,45 @@ The goal: someone with a HIRAKU release and a MAME romset (or their own Firebeat
 
 Not in scope: the Konami Python games in releases (PCSX2 Reliquary, PLAN §23) and IIDX's three Twinkle sets with no core yet.
 
+## 28. A public release: games working from dropped-in data alone (written 2026-10-17)
+
+The goal: a GitHub release (Linux `.tar.xz`, Windows `.zip`) that someone downloads, starts, and adds games to by dropping their MAME sets (or their own dumps) on the launcher, with nothing else to install. State on 2026-10-17: the repo is public, but there is no release workflow and no release; the packages are made by hand on the owner's PC (`tools/package.sh`, `tools/package-win.sh`).
+
+**What already works from a package** (the launcher's drop-in, `tools/ingest.py --copy-chd`):
+- DJ Main, System 573 and Twinkle: a MAME set (zip, or a folder of its files) and its CHDs. The set is told by its contents (`tools/mameset.py`), the CHDs are linked or copied into `dumps/<id>/` and read in place, and `hiraku-chdcat` stands in for chdman.
+- The Windows zip carries python.org's embeddable Python for ingest; Linux uses the system's `python3`.
+- Konami Python 1 (pop'n 9-14), on a PC with the Reliquary build: a set's folder, with or without its `.py1` (c9a115b), with the PS2 BIOS and MagicGate keys dropped with it or found from a Python game already added.
+
+**What's needed, in order:**
+1. **R-1, the release workflow** (GitHub Actions; the cores need no game data to build):
+   - Linux: clang, Qt 6.12 to bundle (`tools/package.sh` bundles the host's), on an older distribution than Arch so the package runs on older glibc; SDL3 from source if the runner's is too old.
+   - Windows: the clang + mingw-w64 cross build (§26) on Linux; `tools/win-deps.sh`'s SDL3, zlib, zstd and static Qt 6.12. Qt takes long to build: cache it.
+   - **No game data on the build machine:** there is no `build/` or `dumps/`, so nothing derived from a game can be in a release. System 573 and Twinkle then have no recorded R3000 blocks (`build/<id>/mips573.txt`) and run interpreted: about 1.85 ms a frame for DDR 2ndMIX instead of 0.36. To check on the N100-class target (§14). The Firebeat targets aren't built at all (no `build/<id>/recomp.txt`).
+   - Release notes list which games a release can run.
+2. **R-2, nothing else to install for adding games:**
+   - `.7z` sets need 7-Zip (`tools/mameset.py`). Bundle 7-Zip's stand-alone `7za` (LGPL) in both packages and look for it there first.
+   - Twinkle's background video uses FFmpeg, which the Windows build has none of yet.
+   - The three IIDX Twinkle sets with no core stay out until they have one.
+3. **R-3, Firebeat (21 games): §27, FB-1 to FB-5.** A Firebeat binary is the game's program recompiled (Konami's code), so a release can't carry one, and today adding a Firebeat game needs Ghidra, Java and the source build. FB-1 to FB-5 replace that with HIRAKU's own analysis, run by ingest, and one `hiraku-firebeat` that runs the game from it without a compiler. Keyboardmania's XT446 MEG programs compiled from a recording (§14, `tools/meggen.py`) stay out too: interpreted in a release. None of FB-1 to FB-5 is started.
+4. **R-4, Konami Python on Linux:** the release workflow builds PCSX2 Reliquary with `oracle/pcsx2/reliquary-oracle.patch` (`oracle/pcsx2/build-reliquary.sh`) and the Python games against it; `tools/package.sh` already bundles Reliquary's `resources/` and libraries. The BIOS and keys can't ship: users drop them in with the games. Python 2 (DrumMania V/V2) still needs its `.py2`: ingest from MAME's set (`drmnvj.zip` and its CHD) and building its NVRAM (Reliquary's, with the OSD blocks of a console NVRAM the user gives) aren't done.
+5. **R-5, Konami Python on Windows:** §26 phase 4 (Reliquary builds on Windows only with clang-cl).
+6. **R-6, checks before each release:**
+   - Real Windows (§26 phase 3): window, sound, frame pacing, card readers, BIO2, HID lights. So far only Wine.
+   - Firebeat ingest on Windows (untested).
+   - A clean-PC test: unpack the package on a PC with nothing installed, add a few games from MAME sets (a DJ Main, a 573 with its install CD, a Twinkle), and compare their regress cases' digests.
+
+R-1 and R-2 give a first release that runs DJ Main, System 573 and Twinkle (less the three sets). R-3 adds Firebeat, R-4 and R-5 Konami Python.
+
+**R-1 and R-2 done (2026-10-17), not yet run on GitHub:**
+- One binary per core: `hiraku-djmain`, `hiraku-sys573`, `hiraku-twinkle` take the game with `--game ID` (or their name as `hiraku-ID`, a link). `HK_GAME_BINARIES` off (a release) builds only those: no Firebeat binaries, no recorded 573/Twinkle blocks (interpreted), no XT446 MEG recording, whatever `build/` holds. The launcher and `tools/regress.py` (`HK_REGRESS_BIN`, and `HK_REGRESS_OUT` for another output folder) use a core's binary when a game has none of its own. Checked: 13 DJ Main, 573 and Twinkle cases through the core binaries give their baselines.
+- The launcher in a package: Firebeat and Konami Python games show "Not in this package", with why; the how-to texts say what dropping files does (no chdman, nothing unpacked); an added game is named by its title and selected.
+- `tools/release.sh linux|windows OUT` builds and packages from a checkout (`HK_TESTS` off, `--as-needed`); `tools/release-setup-ubuntu.sh` installs the build tools (Ubuntu 22.04: glibc 2.35, LLVM 21 from apt.llvm.org, CMake from PyPI); `tools/release-deps-linux.sh` builds SDL3 (shared), zstd (static) and the FFmpeg below, and fetches Qt 6.12 (aqtinstall), python-build-standalone's Python 3.14 and 7-Zip's `7zz`; `tools/release-deps-windows.sh` runs `tools/win-deps.sh` on fetched sources (the static qtbase of the host's Qt version) and adds FFmpeg and `7zr.exe`. `.github/workflows/release.yml`: both packages on a `v*` tag (a draft release, with FFmpeg's and SDL3's sources) or by hand (artifacts); Windows in an Arch container.
+- `tools/ffmpeg-min.sh`: FFmpeg 9.0.2 static with only the MPEG program stream and raw MPEG video demuxers, MPEG-1/2 video and the Video CD/DVD audio parsers and decoders (stream detection needs them: without the raw demuxer the video stream had no codec, a black background), with nasm. The Windows build has Twinkle's video now (`runtime/twinkle/video.cpp` reads the disc through `image::pread`, not stdio).
+- PC/SC loaded at run time on Linux (`HK_PCSC_DLOPEN`, `runtime/host/pcsc_load.cpp`): the games start without libpcsclite.
+- The packages: Linux 42 MB (`.tar.xz`: the three cores, the launcher with the Qt Company's Qt (its own libraries and the xcb extensions only: the rest is the system's), SDL3, Python, 7-Zip; glibc 2.35), Windows 32 MB (`.zip`; it was 213 MB with a binary per game). Both portable (`user/`).
+- **Checked** (R-6's clean-PC test): in a bare Debian 12 container (plus `libwayland-client0`, which every desktop has), the package's own Python adds beatmania, DDR 2ndMIX and IIDX from the MAME archive's sets (zip, folder, `.7z`), and `bm1stmix-play`, `ddr2m-boot` (with MAME 0.289's cassette EEPROM; the archive's is the older dump) and `bmiidx-clear` give their baselines; the launcher runs under Xvfb, and `--add` (what a drop does) adds a game. The Windows zip under Wine: `bm1stmix-play` added and run from the zip gives its baseline; IIDX 1st style with video (`bmiidx-clear` → `bmiidx-video`) gives the Linux baselines.
+- Found on the way: `strcasestr` (no such function on Windows) in `cdromimg.cpp` since da578d6; the Twinkle cases need `--mame-cd` by hand as `tools/regress.py` gives it.
+
 ## M0 steps (all done)
 
 1. ~~`git init` HIRAKU and add `.gitignore` for `dumps/` and `build/`~~ Done.

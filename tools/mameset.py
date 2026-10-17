@@ -286,8 +286,13 @@ def archive_crcs(path: str) -> dict[str, tuple[int, str]]:
 
 
 def seven_zip() -> str | None:
-    """The 7z program: on the PATH, else where 7-Zip installs itself on Windows."""
+    """The 7z program: a package's own (bin/7zz on Linux, bin/7zr.exe on Windows: tools/package.sh,
+    tools/package-win.sh), on the PATH, else where 7-Zip installs itself on Windows."""
     import shutil
+    here = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "bin")
+    for name in ("7zz", "7zr.exe", "7za.exe", "7z.exe"):
+        if os.path.isfile(os.path.join(here, name)):
+            return os.path.join(here, name)
     for name in ("7z", "7za", "7zz"):
         if p := shutil.which(name):
             return p

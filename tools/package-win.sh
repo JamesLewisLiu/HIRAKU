@@ -31,6 +31,8 @@ for f in "$build"/hiraku*.exe; do
   "$strip" -o "$d/bin/$(basename "$f")" "$f"
 done
 cp "$build"/SDL3.dll "$d/bin/"
+# HK_PACKAGE_BIN: more programs for bin\ (a release's 7-Zip, 7zr.exe: tools/mameset.py looks there first)
+for f in ${HK_PACKAGE_BIN:-}; do cp -L "$f" "$d/bin/"; done
 # Python for tools/ingest.py and unlock.py: python.org's embeddable one (tools/win-deps.sh), so
 # adding a game needs nothing installed (the launcher looks for hiraku\python\python.exe first)
 py=$root/out/win-deps/python
@@ -45,28 +47,33 @@ for f in $(grep -o '"third_party/[^"]*"' "$root/launcher/aboutdialog.cpp" | tr -
   mkdir -p "$d/$(dirname "$f")" && cp "$root/$f" "$d/$f"
 done
 sed 's/$/\r/' > "$d/README.txt" <<'EOF'
-HIRAKU for Windows (64-bit Windows 10 or later).
+HIRAKU for Windows (64-bit Windows 10 or later): BEMANI arcade machines, for your own game data.
 
-The games are bin\hiraku-<game>.exe; bin\hiraku.exe is the launcher, when this package has one.
-SDL3 (and the launcher's Qt) are included. Not yet in the Windows build: the Konami Python
-games (pop'n music 9-14, GuitarFreaks and DrumMania V), cardio card readers, and Twinkle's
-background video.
+Start the launcher: bin\hiraku.exe
 
-Game data, either way:
-- drop the MAME ROM set (.zip, or .7z with 7-Zip installed) and its CHDs on the launcher's
-  window, or use File > Add game files. Everything needed comes in this package (its own
-  Python in python\, bin\hiraku-chdcat.exe for the CHDs);
-- or copy it from a PC that has it ingested: tools/pack-data.py there.
+Add a game: drop its files on the launcher's window, or File > Add game files, all at once:
+the MAME ROM set (.zip, .7z, or a folder of its files) and its CHDs. HIRAKU tells the game from
+the set's contents, copies what it needs into dumps\, and the files you dropped can go
+afterwards. Nothing else to install: the Python that does the adding is in python\, and 7-Zip
+and the CHD reader in bin\. A game whose page says it needs a first boot (an install, a clock
+or a test-mode setting) says what to do there.
 
-Saves and settings go in %LOCALAPPDATA%\hiraku. A portable install: with a folder named user in
-this folder (tools/package-win.sh ... portable makes one), they go in user\data and user\config
-instead, and this folder runs as itself wherever it is moved.
+Windows may warn that the program is from an unknown publisher (it isn't signed): More info,
+then Run anyway.
 
-Run a game from a command prompt in this folder:
-    bin\hiraku-popn8 --window          (--window 3 for 3x, --fullscreen)
-    bin\hiraku-popn8 --help            (all options)
-A repeatable test, no window:
-    bin\hiraku-bm1stmix --frames 12600 --script scripts/bm1stmix-play.his
+Your saves and the launcher's settings: in user\ beside this file when there is one (a portable
+install: the folder runs as itself wherever it is moved, a USB stick included), else in
+%LOCALAPPDATA%\hiraku. Copy user\ along to keep them when updating.
+
+Not yet in the Windows build: the Konami Python games (pop'n music 9-14, GuitarFreaks and
+DrumMania V) and cardio card readers.
+
+Command line, from a command prompt in this folder (the launcher shows each game's under its
+right-click menu):
+    bin\hiraku-sys573 --game ddr3mj --window      (DJ Main games: bin\hiraku-djmain, Twinkle:
+                                                  bin\hiraku-twinkle; a build with one binary per
+                                                  game has bin\hiraku-<game>)
+    bin\hiraku-sys573 --help                      (all options)
 EOF
 rm -f "$out"
 (cd "$stage" && 7z a -tzip -mx=9 -bd -bso0 "$out" hiraku)

@@ -67,7 +67,9 @@ bool cdrom_file::open(const std::string &path) {
             const char *rest = q;
             if (*q == '"') { char *e = strchr(q + 1, '"'); name.assign(q + 1, e ? e : q + 1); rest = e ? e + 1 : q + 1; }
             else { char *e = strpbrk(q, " \t\r\n"); name.assign(q, e ? e : q + strlen(q)); rest = e ? e : q + strlen(q); }
-            cur_le = strcasestr(rest, "MOTOROLA") == nullptr;
+            cur_le = true;   // "MOTOROLA" anywhere after the name, any case (no strcasestr on Windows)
+            for (const char *s = rest; *s; s++)
+                if (!strncasecmp(s, "MOTOROLA", 8)) { cur_le = false; break; }
             cur = hk::image::fopen_image(name.size() && name[0] == '/' ? name : dir + name);
             if (!cur) { fclose(cue); return false; }
             m_files.push_back(cur);

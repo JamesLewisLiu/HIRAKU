@@ -275,7 +275,15 @@ MainWindow::MainWindow() {
             if (l.startsWith("ERROR") || l.startsWith("NEXT")) errors << l.mid(9).trimmed();
         }
         bool ok = st == QProcess::NormalExit && code == 0;
-        QString msg = ok ? "Added: " + added.join(", ") : "The files could not be added.";
+        QStringList titles;   // the games by name, and the first one added selected
+        for (const QString &id : added) titles << (find(id) ? find(id)->title : id);
+        for (int k = 0; ok && !added.isEmpty() && k < m_list->topLevelItemCount(); k++)
+            if (m_list->topLevelItem(k)->data(Title, Qt::UserRole).toString() == added.first()) {
+                m_list->setCurrentItem(m_list->topLevelItem(k));
+                break;
+            }
+        QString msg = ok ? "Added: " + titles.join(", ") + (titles.size() == 1 ? ". It is ready to play." : ".")
+                         : "The files could not be added.";
         if (!errors.isEmpty()) msg += "\n\n" + errors.join("\n");
         log("\n--- " + (ok ? QString("added ") + added.join(", ") : QString("ingest failed")) + " ---\n");
         if (ok) QMessageBox::information(this, "HIRAKU", msg);
@@ -374,7 +382,7 @@ void MainWindow::applyFilter() {
     for (int k = 0; k < m_list->topLevelItemCount(); k++) {
         auto *it = m_list->topLevelItem(k);
         const Game *g = find(it->data(Title, Qt::UserRole).toString());
-        bool show = g && (m_showAll->isChecked() || g->status != Game::NotInstalled);
+        bool show = g && (m_showAll->isChecked() || (g->status != Game::NotInstalled && g->status != Game::Unavailable));
         if (show && !f.isEmpty())
             show = g->title.contains(f, Qt::CaseInsensitive) || g->id.contains(f, Qt::CaseInsensitive) ||
                    cfg::familyName(g->family).contains(f, Qt::CaseInsensitive) || g->year.contains(f);
@@ -484,6 +492,7 @@ static bool installCd(const Game &g) {
 QStringList MainWindow::arguments(const Game &g) const {
     auto &s = cfg::settings();
     QStringList a = {"--window", QString::number(s.value("video/scale", 2).toInt())};
+    if (g.coreBinary) a = QStringList{"--game", g.id} + a;   // the core's own binary (games.h)
     if (s.value("video/fullscreen", false).toBool()) a << "--fullscreen";
     if (!s.value("video/displaySync", true).toBool()) a << "--display-sync" << "off";   // runtime/host/pacing.h
     // the picture mode, and its settings: all games', then the game's (picturedialog.h)

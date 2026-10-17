@@ -140,6 +140,9 @@ QStringList python() {
     if (QString p = QStandardPaths::findExecutable("python"); !p.isEmpty()) return {p};
     return {};
 #else
+    // a release's own (tools/package.sh, HK_PYTHON_DIR: hiraku/python), else the system's
+    for (const QString &d : {QCoreApplication::applicationDirPath() + "/../python", QCoreApplication::applicationDirPath() + "/python"})
+        if (QFileInfo::exists(d + "/bin/python3")) return {QDir::cleanPath(d + "/bin/python3")};
     return {"python3"};
 #endif
 }

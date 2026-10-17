@@ -5,6 +5,7 @@
 // (Firebeat, DJ Main, ...) is whichever this binary was linked with.
 //
 //   hiraku-<game> [options]
+//   hiraku-<core> --game ID [options]   (a release's djmain, sys573, twinkle: one binary per core)
 //     --frames N        stop after N video frames (default: run until killed)
 //     --snap-every N    write every Nth frame as PPM into --out (default off)
 //     --out DIR         output directory for snapshots/trace (default out/run/<game>)
@@ -76,7 +77,9 @@
 #include "host/window.h"
 #endif
 
-#ifndef HK_GAME_ID
+#ifdef HK_GAME_ID
+#define HK_GAME_ID_BUILT 1
+#else
 #define HK_GAME_ID "unknown"
 #endif
 #ifndef HK_ROOT
@@ -197,6 +200,18 @@ int main(int argc, char **argv) {
     Core::Options opt;
     opt.root = find_root();
     opt.game = HK_GAME_ID;
+    // a core's own binary (hiraku-djmain, hiraku-sys573, hiraku-twinkle: a release's, with no
+    // game built in) runs any of the core's games: --game ID, or its name hiraku-ID (a link to it)
+    for (int k = 1; k + 1 < argc; k++)
+        if (std::string a = argv[k]; a == "--game" || a == "-game") opt.game = argv[k + 1];
+#ifndef HK_GAME_ID_BUILT
+    if (opt.game == HK_GAME_ID) {
+        std::string self = argv[0];
+        self = self.substr(self.find_last_of("/\\") + 1);
+        if (self.size() > 4 && self.compare(self.size() - 4, 4, ".exe") == 0) self.resize(self.size() - 4);
+        if (self.rfind("hiraku-", 0) == 0) opt.game = self.substr(7);
+    }
+#endif
     const std::string &game = opt.game;
     std::string out = opt.root + "/out/run/" + game;
     uint64_t frames = 0, snap_every = 0, debug_every = 0;
@@ -218,7 +233,8 @@ int main(int argc, char **argv) {
             if (k + 1 >= argc) { fprintf(stderr, "%s needs a value\n", a.c_str()); exit(2); }
             return argv[++k];
         };
-        if (a == "--frames") frames = std::stoull(val());
+        if (a == "--game") val();   // read above
+        else if (a == "--frames") frames = std::stoull(val());
         else if (a == "--snap-every") snap_every = std::stoull(val());
         else if (a == "--out") out = val();
         else if (a == "--trace") opt.trace = true;

@@ -55,7 +55,9 @@ done
 # script that sets LD_LIBRARY_PATH for bin/hiraku.bin, which puts the user's own back once Qt is
 # up (launcher/main.cpp): the games and tools it starts never see the bundled Qt.
 bundle_qt() {
-  local qtplugins=/usr/lib/qt6/plugins
+  # HK_QT_DIR: a Qt not the system's (the Qt Company's, tools/release-deps-linux.sh), its plugins in plugins/
+  local qtplugins=${HK_QT_DIR:+$HK_QT_DIR/plugins}
+  [ -n "$qtplugins" ] || qtplugins=/usr/lib/qt6/plugins
   [ -d "$qtplugins" ] || qtplugins=$(dirname "$(ldd "$d/bin/hiraku.bin" | awk '/libQt6Core/ {print $3}')")/qt6/plugins
   mkdir -p "$d/bin/qt/lib" "$d/bin/qt/plugins"
   local p
@@ -69,11 +71,27 @@ bundle_qt() {
     mkdir -p "$d/bin/qt/plugins/$(dirname "$p")"
     cp -L "$qtplugins/$p" "$d/bin/qt/plugins/$p"
   done
-  { ldd "$d/bin/hiraku.bin"; find "$d/bin/qt/plugins" -name '*.so' -exec ldd {} \; ; } |
+  # (with HK_QT_DIR's libraries findable: a plugin finds its Qt libraries by its own run path,
+  # which points at bin/qt/lib, still empty here)
+  { LD_LIBRARY_PATH=${HK_QT_DIR:+$HK_QT_DIR/lib}${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH} ldd "$d/bin/hiraku.bin"
+    find "$d/bin/qt/plugins" -name '*.so' -exec env LD_LIBRARY_PATH=${HK_QT_DIR:+$HK_QT_DIR/lib} ldd {} \; ; } |
     awk '$2 == "=>" && $3 ~ /^\// {print $3}' | sort -u | while read -r lib; do
       local n; n=$(basename "$lib")
+      # HK_QT_DIR (the Qt Company's Qt, which carries its own ICU): its libraries and the xcb
+      # extensions below only; the rest is the system's, whose newer libstdc++, crypto and
+      # compression libraries the graphics drivers may need
+      if [ -n "${HK_QT_DIR:-}" ]; then
+        case $lib in
+          "$HK_QT_DIR"/*) ;;
+          *) case $n in libxcb-*|libxkbcommon-x11*) ;; *) continue ;; esac ;;
+        esac
+      fi
       case $n in
+        # the xcb extensions Qt's xcb plugin needs and a desktop may lack (Qt's list); libxcb itself and
+        # the graphics stack's (dri, glx, present, sync) stay the system's
         libxcb-icccm*|libxcb-image*|libxcb-keysyms*|libxcb-render-util*|libxcb-util*|libxcb-cursor*|libxcb-ewmh*) ;;
+        libxcb-shape*|libxcb-xinerama*|libxcb-xkb*|libxcb-xinput*|libxcb-randr*|libxcb-render.so*|libxcb-xfixes*|libxcb-shm*) ;;
+        libxkbcommon-x11*) ;;
         ld-linux*|libc.so*|libm.so*|libdl.so*|libpthread.so*|librt.so*|libresolv.so*|libutil.so*|libanl.so*|libmvec.so*) continue ;;
         libGL*|libGLX*|libOpenGL*|libEGL*|libGLES*|libdrm*|libgbm*|libvulkan*) continue ;;
         libwayland-*|libX*|libxcb*|libxkbcommon*|libxshmfence*) continue ;;
@@ -107,6 +125,10 @@ for f in "$build"/hiraku "$build"/hiraku-*; do   # the first binary that has SDL
   [ -n "$sdl" ] || sdl=$(ldd "$f" 2>/dev/null | awk '/libSDL3/ {print $3}')
 done
 [ -n "$sdl" ] && cp -L "$sdl" "$d/bin/lib/"
+# HK_PACKAGE_BIN: more programs for bin/ (a release's 7-Zip, bin/7zz: tools/mameset.py looks there first)
+for f in ${HK_PACKAGE_BIN:-}; do cp -L "$f" "$d/bin/"; done
+# HK_PYTHON_DIR: a Python for adding games, in python/ (the launcher looks there first)
+[ -n "${HK_PYTHON_DIR:-}" ] && cp -r "$HK_PYTHON_DIR" "$d/python"
 cp -r "$root/games" "$root/docs" "$root/shaders" "$d/"
 cp -r "$root/oracle/scripts" "$d/scripts"
 mkdir -p "$d/tools"
@@ -123,52 +145,51 @@ cp "$root/LICENSE" "$d/" 2>/dev/null || true
 for f in $(grep -o '"third_party/[^"]*"' "$root/launcher/aboutdialog.cpp" | tr -d '"'); do
 	mkdir -p "$d/$(dirname "$f")" && cp "$root/$f" "$d/$f"
 done
-cat > "$d/README.txt" <<'EOF'
-HIRAKU, a build for another Linux PC.
+# the oldest glibc the binaries and their libraries run with, from their symbol versions
+glibc=$(find "$d/bin" -type f \( -perm -u+x -o -name '*.so*' \) -exec objdump -T {} + 2>/dev/null |
+  grep -o 'GLIBC_[0-9.]*' | sed 's/GLIBC_//' | sort -uV | tail -1 || true)   # (bin/hiraku is a script)
+cat > "$d/README.txt" <<EOF
+HIRAKU for Linux (x86-64): BEMANI arcade machines, for your own game data.
 
-Needs glibc 2.38 or later (Ubuntu 24.04, Fedora 39, Debian 13, Arch and newer).
-SDL3 is included, and the launcher's Qt (bin/qt: bin/hiraku is a script that starts
-bin/hiraku.bin with it). From the system: the graphics drivers, X11 or Wayland, fontconfig,
-D-Bus, glib and OpenSSL, which every desktop has.
+Start the launcher:  bin/hiraku
+(a script: it starts bin/hiraku.bin with the Qt in bin/qt)
 
-Game data, either way:
-- ingest here, as on the main PC (Python 3.11+, 7z, and chdman for CHDs):
-      tools/ingest.py --help
-- or copy it from a PC that has it ingested:
-      tools/pack-data.py /path/to/this/hiraku GAME...
-  (dumps/GAME/ and its disc images, with relative paths in machine.txt). Saved settings and NVRAM live in
-~/.local/share/hiraku/GAME (copy them over for games that need a first-boot setup), and the
-launcher's settings in ~/.config/hiraku.
+Add a game: drop its files on the launcher's window, or File > Add game files, all at once:
+the MAME ROM set (.zip, .7z, or a folder of its files) and its CHDs. HIRAKU tells the game from
+the set's contents, copies what it needs into dumps/, and the files you dropped can go
+afterwards. Nothing else to install: the Python that does the adding is in python/, and
+7-Zip and the CHD reader in bin/. A game whose page says it needs a first boot (an
+install, a clock or a test-mode setting) says what to do there.
 
-A portable install: with a folder named user in this folder (tools/package.sh ... portable makes
-one; or create it), the saves go in user/data/GAME and the launcher's settings in user/config, and
-this folder always runs as itself wherever it is moved: copy it to another PC or a USB stick and
-everything comes along. To bring an existing setup in, copy ~/.local/share/hiraku/* to user/data/
-and ~/.config/hiraku/* to user/config/.
+Needs glibc $glibc or later. From the system: the graphics drivers, X11 and Wayland's client
+libraries (libwayland-client: an X11 desktop has it too), fontconfig, D-Bus, glib and OpenSSL,
+which every desktop has. SDL3 is in bin/lib. NFC card readers (PC/SC):
+when the system has pcsc-lite and its daemon.
+
+Your saves and the launcher's settings: in user/ beside this file when there is one (a portable
+install: the folder runs as itself wherever it is moved, a USB stick included), else in
+~/.local/share/hiraku and ~/.config/hiraku. Copy user/ along to keep them when updating.
+
+Command line (the launcher shows each game's under its right-click menu):
+    bin/hiraku-sys573 --game ddr3mj --window      (DJ Main games: bin/hiraku-djmain, Twinkle:
+                                                  bin/hiraku-twinkle; a build with one binary per
+                                                  game has bin/hiraku-<game>)
+    bin/hiraku-sys573 --game ddr3mj --window 3 --fullscreen --picture light   (F10: the CRT look)
+    bin/hiraku-sys573 --help                      (all options)
+Each run prints its frame times when it ends. Smooth frames (display sync, on by default): every
+frame stays up the same number of refreshes on a 60, 120 or 240 Hz display (docs/PLAY.md,
+"Frame pacing"); --display-sync off for a variable-refresh display.
+
+Game data from a PC that has it already: tools/pack-data.py there (docs/PLAY.md).
+EOF
+if [ -d "$d/bin/resources" ]; then cat >> "$d/README.txt" <<'EOF'
 
 Konami Python games (bin/hiraku-popn9 … hiraku-popn14): Vulkan or OpenGL drivers from the system;
---renderer vk (or gl) draws on the GPU, the default software renderer on the CPU.
-Their e-AMUSEMENT (pop'n music 9: cards, players, rankings) runs offline inside the game
-by default; bin/hiraku-eamuse --port 8080 is the same server for several PCs, which then run
-with --eamuse http://that-pc:8080/ (docs/EAMUSE3.md; tools/eamuse/check.py checks a server).
-
-Run a game:
-    bin/hiraku-popn8 --window          (--window 3 for 3x, --fullscreen)
-    bin/hiraku-popn8 --window --picture light   (a CRT: light or full; F10 cycles off/light/full)
-    bin/hiraku-popn8 --help            (all options)
-Each run prints its frame times when it ends ("frametime:": host work per frame,
-mean, percentiles and the worst frame). A repeatable test, no window:
-    bin/hiraku-bm1stmix --frames 12600 --script scripts/bm1stmix-play.his
-    bin/hiraku-popn8 --frames 7200
-A run without a window starts from blank NVRAM unless given --nvram DIR (kbm, ppp
-and pop'n 6 need theirs: --nvram ~/.local/share/hiraku/kbm, or user/data/kbm when portable).
-
-Smooth frames (display sync, on by default): on a 60, 120 or 240 Hz display every frame
-stays up the same number of refreshes, and pop'n runs 2.6 % faster to match (docs/PLAY.md,
-"Frame pacing"). The console says what it chose ("display sync: on: 60.00 Hz display, ...");
-the exit report's "video: display sync" line says how it went ("held their N refreshes",
-"irregular"). --display-sync off: the exact speed, for a variable-refresh display.
+--renderer vk (or gl) draws on the GPU, the default software renderer on the CPU. Their
+e-AMUSEMENT runs offline inside the game by default; bin/hiraku-eamuse --port 8080 is the same
+server for several PCs, which then run with --eamuse http://that-pc:8080/ (docs/EAMUSE3.md).
 EOF
+fi
 # xz with a window wider than one binary: the binaries share most of their code,
 # so the archive is a quarter of a .tar.gz (about 14 MB)
 tar -C "$stage" -cf - hiraku | xz -9e -T1 --lzma2=preset=9e,dict=192MiB > "$out"

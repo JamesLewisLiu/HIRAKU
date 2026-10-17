@@ -26,7 +26,7 @@ constexpr int IO_SIZE = 32768;
 
 PlayerVideo::~PlayerVideo() {
     stop_worker();
-    if (m_bin) fclose(m_bin);
+    if (m_bin) hk::image::close(m_bin);
 }
 
 bool PlayerVideo::open(const std::string &path) {
@@ -38,11 +38,11 @@ bool PlayerVideo::open(const std::string &path) {
         m_bin = hk::image::fopen_image(path);
         if (!m_bin) { fprintf(stderr, "video: cannot read %s\n", path.c_str()); return false; }
         if (!open_dvd()) {
-            fclose(m_bin);
+            hk::image::close(m_bin);
             m_bin = nullptr;
             return false;
         }
-        av_log_set_level(AV_LOG_QUIET);
+        av_log_set_level(getenv("HK_AV_LOG") ? AV_LOG_VERBOSE : AV_LOG_QUIET);   // HK_AV_LOG: FFmpeg's messages
         return true;
     }
     // the .cue's one FILE, MODE2/2352 throughout (chdman's extractcd of a Video CD)
@@ -66,16 +66,14 @@ bool PlayerVideo::open(const std::string &path) {
     }
     m_bin = hk::image::fopen_image(bin);
     if (!m_bin) { fprintf(stderr, "video: cannot read %s\n", bin.c_str()); return false; }
-    fseek(m_bin, 0, SEEK_END);
-    m_sectors = (uint32_t)(ftell(m_bin) / RAW);
+    m_sectors = (uint32_t)(std::max<int64_t>(hk::image::size(m_bin), 0) / RAW);
 
     // ENTRIES.VCD (Mode 2 Form 1: 2048 bytes after the 24-byte header): "ENTRYVCD", the version,
     // the count, then each entry's track and start as BCD minutes, seconds, frames
     uint8_t s[RAW];
-    fseek(m_bin, (long)ENTRIES_LBA * RAW, SEEK_SET);
-    if (fread(s, 1, RAW, m_bin) != RAW || memcmp(s + 24, "ENTRYVCD", 8) != 0) {
+    if (hk::image::pread(m_bin, s, RAW, (uint64_t)ENTRIES_LBA * RAW) != (ssize_t)RAW || memcmp(s + 24, "ENTRYVCD", 8) != 0) {
         fprintf(stderr, "video: %s has no ENTRIES.VCD (not a Video CD?)\n", bin.c_str());
-        fclose(m_bin);
+        hk::image::close(m_bin);
         m_bin = nullptr;
         return false;
     }
@@ -86,7 +84,7 @@ bool PlayerVideo::open(const std::string &path) {
         const uint8_t *r = e + 12 + 4 * i;
         m_entries.push_back((uint32_t)((bcd(r[1]) * 60 + bcd(r[2])) * 75 + bcd(r[3]) - 150));
     }
-    av_log_set_level(AV_LOG_QUIET);
+    av_log_set_level(getenv("HK_AV_LOG") ? AV_LOG_VERBOSE : AV_LOG_QUIET);   // HK_AV_LOG: FFmpeg's messages
     return !m_entries.empty();
 }
 
@@ -100,13 +98,11 @@ bool PlayerVideo::open_dvd() {
     m_raw = 2048;
     m_skip = 0;
     m_payload = 2048;
-    fseek(m_bin, 0, SEEK_END);
-    const uint64_t bytes = (uint64_t)ftell(m_bin);
+    const uint64_t bytes = (uint64_t)std::max<int64_t>(hk::image::size(m_bin), 0);
     auto sectors = [&](uint32_t lba, uint32_t n) {
         std::vector<uint8_t> b((size_t)n * 2048);
         if ((uint64_t)(lba + n) * 2048 > bytes) return std::vector<uint8_t>();
-        fseek(m_bin, (long)lba * 2048, SEEK_SET);
-        if (fread(b.data(), 1, b.size(), m_bin) != b.size()) return std::vector<uint8_t>();
+        if (hk::image::pread(m_bin, b.data(), b.size(), (uint64_t)lba * 2048) != (ssize_t)b.size()) return std::vector<uint8_t>();
         return b;
     };
     auto le32 = [](const uint8_t *p) { return (uint32_t)p[0] | p[1] << 8 | p[2] << 16 | (uint32_t)p[3] << 24; };
@@ -191,8 +187,7 @@ int PlayerVideo::read(void *user, uint8_t *buf, int size) {
         if (self->m_part_pos >= self->m_part.size()) {
             if (self->m_next_sector >= self->m_sectors) break;
             uint8_t raw[RAW];
-            fseek(self->m_bin, (long)self->m_next_sector * self->m_raw, SEEK_SET);
-            if (fread(raw, 1, self->m_raw, self->m_bin) != self->m_raw) break;
+            if (hk::image::pread(self->m_bin, raw, self->m_raw, (uint64_t)self->m_next_sector * self->m_raw) != (ssize_t)self->m_raw) break;
             self->m_next_sector++;
             self->m_part.assign(raw + self->m_skip, raw + self->m_skip + self->m_payload);
             self->m_part_pos = 0;
@@ -302,7 +297,9 @@ void PlayerVideo::start_chapter(int chapter) {
     // for seconds)
     const uint32_t from = m_entries[chapter - 1];
     const uint32_t to = chapter < (int)m_entries.size() ? m_entries[chapter] : m_sectors;
+#ifndef _WIN32   // Windows: no hint (its cache reads ahead on its own)
     if (to > from) posix_fadvise(fileno(m_bin), (off_t)from * m_raw, (off_t)(to - from) * m_raw, POSIX_FADV_WILLNEED);
+#endif
     m_thread = std::thread(&PlayerVideo::worker, this, from);
 }
 

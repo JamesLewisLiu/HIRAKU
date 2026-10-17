@@ -12,8 +12,11 @@ struct Game {
     QString year, maker;                 // from the manifest's first comment line
     QString firstBoot;                   // what a new cabinet needs in test mode
     bool installCassette = false;        // System 573: first boots with an install cassette (ddr3mj)
-    enum Status { Ready, NotBuilt, NotInstalled } status = NotInstalled;
-    QString exe;                         // hiraku-<id>: in binDir, or build/cmake
+    // Unavailable: a package (no source beside it) without a binary for the game: Firebeat and
+    // Konami Python games in a release (PLAN.md section 28)
+    enum Status { Ready, NotBuilt, NotInstalled, Unavailable } status = NotInstalled;
+    QString exe;                         // hiraku-<id>: in binDir, or build/cmake; else the core's
+    bool coreBinary = false;             // exe is the core's own (hiraku-sys573, ...): it takes --game <id>
     QString statusText() const;
     QString howTo() const;               // what to do to make it Ready
 };

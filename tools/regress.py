@@ -35,7 +35,9 @@ import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 BIN = os.environ.get("HK_REGRESS_BIN") or os.path.join(ROOT, "build", "cmake")   # HK_REGRESS_BIN: another build
-OUT = os.path.join(ROOT, "out", "regress")
+# HK_REGRESS_OUT: another output folder (its baseline/ can be a link to out/regress/baseline: a
+# check of another build, out of the way of runs in out/regress)
+OUT = os.environ.get("HK_REGRESS_OUT") or os.path.join(ROOT, "out", "regress")
 
 # name: (game, frames, extra arguments[, after]). A case with an `after` starts from the NVRAM
 # that case left (a power cycle between them: ddr3mj's install, then the game); the two run in
@@ -283,6 +285,22 @@ def partner_of(case):
     return CASES[case][4] if len(CASES[case]) > 4 else None
 
 
+def game_binary(game):
+    """(binary, its first arguments): the game's own hiraku-<id>, else its core's (a release's build,
+    HK_GAME_BINARIES off: hiraku-djmain, hiraku-sys573, hiraku-twinkle, told the game with --game)"""
+    own = os.path.join(BIN, "hiraku-" + game)
+    if os.path.exists(own) or os.path.exists(own + ".exe"):
+        return own, []
+    try:
+        with open(os.path.join(ROOT, "games", game, "game.toml")) as f:
+            core = next((ln.split('"')[1] for ln in f if ln.startswith("core")), "")
+    except OSError:
+        core = ""
+    if core in ("djmain", "sys573", "twinkle"):
+        return os.path.join(BIN, "hiraku-" + core), ["--game", game]
+    return own, []
+
+
 def chain(case):
     """the cases to run, in order, for this one: the ones it starts after, then itself"""
     c = [case]
@@ -297,10 +315,12 @@ def run(case, digest_path, take=False, nice=0, src=None):
     that lower priority (what it computes is the same; only how soon). src: start from this NVRAM
     directory (the cached one the case it comes after left last time) instead of that case's"""
     game, frames, extra = CASES[case][:3]
-    exe = os.path.join(BIN, "hiraku-" + game)
+    # paths in out/regress (the session pairs' sockets) go to HK_REGRESS_OUT's folder instead
+    extra = [os.path.join(OUT, a[len("out/regress/"):]) if a.startswith("out/regress/") else a for a in extra]
+    exe, pre = game_binary(game)
     work = os.path.join(OUT, "work", case)
     os.makedirs(work, exist_ok=True)
-    cmd = [exe, "--frames", str(frames), "--out", work] + extra
+    cmd = [exe] + pre + ["--frames", str(frames), "--out", work] + extra
     if after_of(case) or any(after_of(c) == case for c in CASES):
         # its own NVRAM directory: fresh, or what the case it comes after left
         nv = os.path.join(work, "nvram")
