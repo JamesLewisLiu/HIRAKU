@@ -1,0 +1,45 @@
+--- a/src/mame/konami/ksys573.cpp
++++ b/src/mame/konami/ksys573.cpp
+@@ -759,6 +759,7 @@
+ 	void gunmania_w(offs_t offset, uint16_t data, uint16_t mem_mask = ~0);
+ 	uint16_t gunmania_r(offs_t offset, uint16_t mem_mask = ~0);
+ 	void ata_interrupt(int state);
++	bool m_hk_in_xfer = false, m_hk_block_raised = false; // HIRAKU: atapi_xfer_end's departure
+ 
+ 	TIMER_CALLBACK_MEMBER( atapi_xfer_end );
+ 	void ddrsolo_output_callback(offs_t offset, uint8_t data);
+@@ -1154,6 +1155,8 @@
+ 
+ 	m_atapi_timer->adjust( attotime::never );
+ 
++	m_hk_in_xfer = true;
++	m_hk_block_raised = false;
+ 	for( int i = 0; i < m_atapi_xfersize; i++ )
+ 	{
+ 		uint32_t d = m_ata->cs0_r(0) << 0;
+@@ -1162,9 +1165,15 @@
+ 		m_p_n_psxram[ m_atapi_xferbase / 4 ] = d;
+ 		m_atapi_xferbase += 4;
+ 	}
++	m_hk_in_xfer = false;
+ 
+ 	/// HACK: konami80s only works if you dma more data than requested
+-	if( ( m_ata->cs1_r(6) & 8 ) != 0 )
++	// HIRAKU: re-armed only when the DMA stopped inside a block. DRQ is always up after a whole
++	// block (the drive raised the next one), and when the game's interrupt for it came later than
++	// this timer (GuitarFreaks 9th's /DATA4 read), the timer moved the block itself and the game
++	// came up a block short ("DATA 7 : INITIALIZING" halted). For that game only: others rely on
++	// the re-arm after a whole block. runtime/sys573/board.cpp does the same.
++	if( ( m_ata->cs1_r(6) & 8 ) != 0 && !( !strcmp( machine().system().name, "gtrfrk9m" ) && m_hk_block_raised ) )
+ 	{
+ 		m_atapi_timer->adjust( m_maincpu->cycles_to_attotime( ( ATAPI_CYCLES_PER_SECTOR * ( m_atapi_xfersize / 64 ) ) ) );
+ 	}
+@@ -1172,6 +1181,8 @@
+ 
+ void ksys573_state::ata_interrupt(int state)
+ {
++	if( state && m_hk_in_xfer )
++		m_hk_block_raised = true; // a fresh block, raised while the DMA read the last one
+ 	m_psxirq->intin10( state );
+ }
+ 

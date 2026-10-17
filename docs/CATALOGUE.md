@@ -481,9 +481,18 @@ The fork wasn't needed as the oracle: with current dumps, MAME at the pin runs e
 - **`--boot-cd`:** DIP switch 4 on the CD-ROM drive, for an install over an installed game.
 
 **Open:**
-- **`gtrfrk9m`** halts at "DATA 7 : INITIALIZING", in MAME as in HIRAKU (lockstep to the halt). It's an assertion (mts.c line 120): the CD lookup of `/DATA4/BG_LIST.BIN` returns -1 although the file is on the disc, so a table loop runs over a thread id. Next step: trace that lookup to its ATAPI commands, beside one that works. GF 9th × DM 8th waits on it.
+- **`gtrfrk9m`** halted at "DATA 7 : INITIALIZING", in MAME as in HIRAKU (lockstep to the halt); it runs since 2026-10-17 (below). It's an assertion (mts.c line 120): the CD lookup of `/DATA4/BG_LIST.BIN` returns -1 although the file is on the disc, so a table loop runs over a thread id. GF 9th × DM 8th waits on it.
+  - **Cause (2026-10-17), MAME's "konami80s" DMA hack, which HIRAKU copies:**
+    - The lookup is `0x80021804` in the game's ATAPI library. On a cache miss it reads 64 sectors from the directory's LBA into a 128 KiB buffer with READ(12), in 2,048-byte DRQ blocks. Each block gets an IRQ; the handler at `0x8001f4f8` DMAs it on channel 5.
+    - BG_LIST's read (LBA 29, f9499) is the only one of its kind that fails: the poll returns -8, the lookup -8, the caller -1.
+    - The IRQ after block 1 is serviced 18.2 ms late (normally 1.85 ms). By then `atapi_xfer_end`'s "DMA more data than requested" re-arm (DRQ still set, 240,000 cycles ≈ 7.1 ms) has already moved block 2 by itself.
+    - The game then sees 63 data IRQs, and the last one has no DRQ with 2,048 bytes left: -8 at `0x8001f5b0`. The same packet, retried at f9508, works.
+    - Evidence: `out/oracle/gtrfrk9m/lookup/lookup.txt` and `irq/irq.txt`; probes in `out/gf9/probe/`.
+    - A real drive holds DRQ until the host reads, so this is an emulation bug shared with MAME (`ksys573.cpp:1165-1170`; HIRAKU `runtime/sys573/board.cpp:614-616`).
+  - **The departure, for `gtrfrk9m` only (2026-10-17):** `atapi_xfer_end` re-arms only when the DMA stopped inside a DRQ block, not when the drive raised a fresh block during it (a flag set by `ata_interrupt` within the read loop). For every game it changed DDR 3rd Mix's and Dancing Stage's install and play (they rely on the re-arm after a whole block), so it's that game's alone (`runtime/sys573/board.cpp`; MAME the same way: `oracle/mame-patches/ksys573-dma.patch`, not built yet).
+    - Checked: from a blank NVRAM the install (28,800 frames) and the boot reach the attract demo (frame 24,000: GAME OVER, DEMO). Every other 573 regress case is unchanged (the 40 of them run against the core binary). GF 9th × DM 8th's session is next.
 - **The multi-session unit's CD isn't dumped** for `pcnfrk4mk`, `pcnfrk5m`, `pcnfrk5mk`, `pcnfrk6m`, `pcnfrk7m`, `pcnfrk8m`, `pcnfrk9m`, `pcnfrk10m`, though MAME fits them with the unit. Manifests only.
-- **The existing `drmn10m-session` + `gtfrk11m-session` regress pair** differs from its 2026-10-14 baseline from frame 11,717 (picture). That's a committed change since then, not this phase's.
+- **The existing `drmn10m-session` + `gtfrk11m-session` regress pair** differs from its 2026-10-14 baseline from frame 11,717 (picture). Found 2026-10-17: da578d6's effect knobs at rest (3, MAME's PORT_REVERSE dials, where they were 0) make GuitarFreaks 11th play otherwise in the session (a MISS at frame ~12,000). Intended; with the knobs held at the old rest value the pair matches the old baseline over all 16,800 frames. The baseline needs re-recording (out/regress-session-drift/ has the runs).
 - **Keyboardmania 3rd in the GF 6th × DM 5th session** (the stretch) isn't started.
 
 ### Phase 5: the rest of the BEMANI 573 games (ask the owner per game)

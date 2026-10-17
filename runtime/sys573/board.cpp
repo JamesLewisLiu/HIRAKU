@@ -213,7 +213,12 @@ public:
     void security_w(offs_t, u16 data, u16 mem_mask);
 
     void port_write(u32 &port, std::vector<OutField> &fields, u32 data, u32 mem_mask);
-    void ata_interrupt(int state) { m_maincpu->subdevice<psxirq_device>("irq")->intin10(state); }
+    void ata_interrupt(int state) {
+        if (state && m_hk_in_xfer) m_hk_block_raised = true;   // a fresh block, raised while the DMA read the last one
+        m_maincpu->subdevice<psxirq_device>("irq")->intin10(state);
+    }
+    bool m_hk_in_xfer = false, m_hk_block_raised = false;   // atapi_xfer_end's departure from MAME
+    bool m_hk_exact_dma = false;                            // ... for the game that needs it (gtrfrk9m)
     void atapi_xfer_end(s32);
     void cdrom_dma_read(u32 *, u32 n_address, s32 n_size) { (void)n_address; (void)n_size; }
     void cdrom_dma_write(u32 *ram, u32 n_address, s32 n_size);
@@ -365,6 +370,8 @@ void sys573_state::device_add_mconfig(machine_config &config) {
         // game syncs its playback to it; without, it waits at READY with the counter at 0)
         if (c.game == "ddrsbm") m_k573dio->set_ddrsbm_fpga(true);
     }
+    // GuitarFreaks 9th: atapi_xfer_end's departure from MAME (the DMA hack misfires on its /DATA4 read)
+    m_hk_exact_dma = c.game == "gtrfrk9m";
     // k573a(): the analog board is the driver's own handlers (konami573a_map); init_ddr() sends
     // its outputs to ddr_output_callback (gx700pwbf_output)
     if (c.pccard1 == "32mb") {   // pccard1_32mb() (MAME also offers id245p01 there)
@@ -605,14 +612,24 @@ void sys573_state::security_w(offs_t, u16 data, u16 mem_mask) {
 
 void sys573_state::atapi_xfer_end(s32) {
     m_atapi_timer->adjust(attotime::never);
+    m_hk_in_xfer = true;
+    m_hk_block_raised = false;
     for (int i = 0; i < m_atapi_xfersize; i++) {
         u32 d = m_ata->cs0_r(0) << 0;
         d |= m_ata->cs0_r(0) << 16;
         m_p_n_psxram[m_atapi_xferbase / 4] = d;
         m_atapi_xferbase += 4;
     }
-    // MAME's HACK: konami80s only works if you dma more data than requested
-    if ((m_ata->cs1_r(6) & 8) != 0)
+    m_hk_in_xfer = false;
+    // MAME's HACK: konami80s only works if you dma more data than requested. MAME re-arms whenever
+    // DRQ is up after the DMA, which it always is when the drive has raised the next block: if the
+    // game's interrupt for that block comes later than the timer (GuitarFreaks 9th's /DATA4 read,
+    // an interrupt 18 ms late), the timer moves the block itself and the game's count is a block
+    // short (error -8: "DATA 7 : INITIALIZING" halts). A departure from MAME for that game only:
+    // re-arm only when the DMA stopped inside a block. Other games rely on the re-arm after a whole
+    // block (DDR 3rd Mix and Dancing Stage differ from MAME without it) (docs/CATALOGUE.md, Phase 4;
+    // oracle/mame-patches/ksys573-dma.patch)
+    if ((m_ata->cs1_r(6) & 8) != 0 && !(m_hk_exact_dma && m_hk_block_raised))
         m_atapi_timer->adjust(m_maincpu->cycles_to_attotime(ATAPI_CYCLES_PER_SECTOR * (m_atapi_xfersize / 64)));
 }
 
