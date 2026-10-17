@@ -95,6 +95,9 @@ public:
     }
 
     const std::string &family() const override { return twinkle::family(); }
+    // beatmania IIDX's cabinet has a widescreen CRT: the game's 4:3-sized frames fill a 16:9 tube,
+    // so its pixels are wider than tall
+    double display_aspect() const override { return 16.0 / 9.0; }
     void set_frame_hook(FrameHook h) override { twinkle::set_frame_hook(std::move(h)); }
     bool set_present_hook(PresentHook h) override { twinkle::set_present_hook(std::move(h)); return true; }
     void set_audio_sink(AudioSink s) override { twinkle::set_audio_sink(std::move(s)); }

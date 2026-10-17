@@ -104,8 +104,9 @@ public:
     // for machines without one. lamp_changes() moves when it changes.
     virtual std::string display_text() const { return {}; }
     // The monitor's shape, width over height, that every frame fills whatever its pixel count: a
-    // board can switch video modes (the PlayStation-based System 573 and Twinkle show 320x240,
-    // 512x480 and 640x480 on the same 4:3 tube), so its pixels aren't square. 0: square pixels.
+    // board can switch video modes (the PlayStation-based System 573 shows 320x240, 512x480 and
+    // 640x480 on the same 4:3 tube; Twinkle's on a 16:9 one), so its pixels aren't square.
+    // 0: square pixels.
     virtual double display_aspect() const { return 4.0 / 3.0; }
     // The part of that screen a w x h frame covers, width and height as fractions, centred: 1, 1
     // when it fills the screen. The Python core's frames are the GS's display area, which on a TV

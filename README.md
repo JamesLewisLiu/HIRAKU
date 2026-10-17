@@ -35,7 +35,7 @@ The per-game guides are in [docs/PLAY.md](docs/PLAY.md): which files each game n
 - **Low latency.** Audio is the clock, and the sound queue tunes itself to the smallest lead your PC can play without crackle. You can also send sound straight to an ALSA card with no sound server in between (`--audio-device`). On 573 and Twinkle, `--fine-sound` hands the sound on every millisecond. Pictures are shown at vblank end, and frame pacing is aware of Wayland.
 - **Efficient.** HIRAKU targets N100-class mini PCs and judges its changes by their worst frames, not their average. Profile-guided builds (`tools/pgo.py`) cut CPU use further: Keyboardmania −19 %, DDR −27 %.
 - **Controls and lights.** Map keyboards, IIDX/pop'n controllers and analog turntables to each cabinet's controls with click-then-press. You can drive controller LEDs from the cabinet's lamps and watch them live ([docs/LIGHTS.md](docs/LIGHTS.md)).
-- **The picture.** Every game is shown at 4:3, as on its monitor. Two CRT shaders are built in: crt-guest-advanced-fast and crt-royale. F10 cycles through them in-game.
+- **The picture.** Every game is shown at its monitor's shape: 4:3, or 16:9 for beatmania IIDX's widescreen CRT. Two CRT shaders are built in: crt-guest-advanced-fast and crt-royale. F10 cycles through them in-game.
 - **Checked against MAME.** Every change is held to bit-identical per-frame picture and sound hashes (`tools/regress.py`). New boards are brought up in lockstep against a scripted MAME oracle.
 - **Portable.** `tools/package.sh` builds a package for other Linux PCs that brings its own Qt. In a portable install, your saves and settings live in the HIRAKU folder, so the folder can go on a USB stick. The cores also build and pass the regression cases on 64-bit ARM Linux.
 

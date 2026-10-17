@@ -119,11 +119,12 @@ settings only hold what differs from all games', and **↺** puts a slider back.
 **Live changes:** the sliders change a running game at once, and **Cancel** puts everything
 back.
 
-**The shape:** every game is shown 4:3, as on its cabinet's monitor, whatever its frame's pixel
-count. The PlayStation-based boards (System 573, Twinkle) switch video modes as they go:
-GuitarFreaks and DrumMania show their menus at 512×480, attract and play at 320×240 and test
-mode at 640×480, and beatmania IIDX draws 640×240. On the tube each fills the same 4:3, so
-the pixels aren't square. Each frame keeps its own lines and pixels, stretched to that shape.
+**The shape:** every game is shown as on its cabinet's monitor, whatever its frame's pixel
+count: 4:3, except beatmania IIDX (Twinkle), whose cabinet has a widescreen 16:9 CRT. The
+PlayStation-based boards (System 573, Twinkle) switch video modes as they go: GuitarFreaks and
+DrumMania show their menus at 512×480, attract and play at 320×240 and test mode at 640×480,
+and beatmania IIDX draws 640×240. On the tube each fills the same shape, so the pixels aren't
+square. Each frame keeps its own lines and pixels, stretched to that shape.
 
 **480-line games:** HIRAKU draws Firebeat's 640×480 progressive, with a scanline on every
 line, like the cabinets' monitors. Both shaders would otherwise treat 480 lines as interlaced

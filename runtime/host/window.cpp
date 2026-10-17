@@ -28,6 +28,13 @@ std::atomic<uint64_t> g_device_pulls{0}, g_device_short{0};   // the device's pu
 std::atomic<uint64_t> g_device_short_late{0};                  // ... of those, after the game's boot (g_tune_from)
 uint64_t g_short_seen = 0;        // g_device_short when the target last grew for it
 uint64_t g_tune_from = 0;          // the queue target self-tunes from here on (window_open + 10 s)
+
+// A new window: 480 lines a scale step, as wide as the core's monitor shape makes them (640 for
+// 4:3; IIDX's 16:9 tube, 853)
+static int window_width(int scale) {
+    const double a = core().display_aspect();
+    return (int)std::lround(480.0 * scale * (a > 0 ? a : 4.0 / 3.0));
+}
 SDL_Window *g_win = nullptr;
 SDL_Renderer *g_ren = nullptr;
 SDL_Texture *g_tex = nullptr;
@@ -142,7 +149,7 @@ bool open_gl(const char *title, int scale) {
     SDL_GL_SetAttribute(SDL_GL_GREEN_SIZE, 8);
     SDL_GL_SetAttribute(SDL_GL_BLUE_SIZE, 8);
     SDL_GL_SetAttribute(SDL_GL_ALPHA_SIZE, 0);
-    g_win = SDL_CreateWindow(title, 640 * scale, 480 * scale, SDL_WINDOW_RESIZABLE | SDL_WINDOW_OPENGL);
+    g_win = SDL_CreateWindow(title, window_width(scale), 480 * scale, SDL_WINDOW_RESIZABLE | SDL_WINDOW_OPENGL);
     if (g_win) g_gl = SDL_GL_CreateContext(g_win);
     if (g_gl) SDL_GL_SetSwapInterval(0);   // as with the renderer: presenting never waits for the display
     if (g_gl && picture::init(g_shaders_dir, g_picture_config)) return true;
@@ -376,7 +383,7 @@ bool window_open(const char *title, int scale, const std::string &bindings, int 
         pacing::init(g_win, g_display_sync);
         return true;
     }
-    if (!SDL_CreateWindowAndRenderer(title, 640 * scale, 480 * scale, SDL_WINDOW_RESIZABLE, &g_win, &g_ren)) return false;
+    if (!SDL_CreateWindowAndRenderer(title, window_width(scale), 480 * scale, SDL_WINDOW_RESIZABLE, &g_win, &g_ren)) return false;
     SDL_SetRenderVSync(g_ren, 0);   // presenting must never block on the display: we choose when (pacing.h)
     SDL_SetRenderLogicalPresentation(g_ren, 640, 480, SDL_LOGICAL_PRESENTATION_LETTERBOX);
     if (fullscreen) SDL_SetWindowFullscreen(g_win, true);
