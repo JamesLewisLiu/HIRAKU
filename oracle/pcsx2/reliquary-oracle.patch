@@ -545,3 +545,16 @@
 +	extern u32 (*p2io_sci_read)(u8 port, u8* data, u32 capacity);
 +	extern u8 p2io_sci_ports;
 +} // namespace Hiraku
+--- a/common/FileSystem.cpp
++++ b/common/FileSystem.cpp
+@@ -239,6 +239,10 @@
+ 
+ 	// And use PathCchCanonicalizeEx() to fix up any non-direct elements.
+ 	wstr_buf[wlen] = '\0';
++	// HIRAKU: '/' as well as '\' (its paths use '/'): an extended-length path takes '/' literally
++	for (int i = 0; i < wlen; i++)
++		if (wstr_buf[i] == L'/')
++			wstr_buf[i] = L'\\';
+ 	dest->resize(std::max<size_t>(static_cast<size_t>(wlen) + (IsUNCPath(str) ? 9 : 5), 16));
+ 	for (;;)
+ 	{
