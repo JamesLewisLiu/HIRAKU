@@ -1,0 +1,210 @@
+# DrumMania 4th Mix (G*A25 VER. JAA), Konami 2001: a game, from what drmn4m-install left (its NVRAM). Power-on: the
+# flash checksums, NOTE 605 (RTC-RAM cleared): Test at 1500. The boot checks and loading, then
+# attract. Two coins (one credit) at frame 10800, then Start every 300 frames through the title,
+# the caution screen, the mode select (beginner) and the music select (its default). The first
+# stage, from frame ~12900, played on the pads: every 12 frames a hi-hat, snare, high tom, low tom, cymbal, or
+# hi-hat or snare with the bass pedal; the stage fails, GAME OVER, and attract again.
+# The multi-session unit plays the music and answers on SIO1. MAME's unit is an empty stub, so
+# main RAM is MAME's only until the game first touches SIO1; the rest checks HIRAKU against itself.
+# Hashes the main RAM every frame and snapshots every 60 frames, to compare with MAME.
+game drmn4m
+
+hash ram  0x80000000 0x80400000   # 4 MiB main RAM (KSEG0)
+
+at 1500 press "Service Mode" 8   # NOTE 605
+at 10800 press "Coin 1" 8
+at 10840 press "Coin 1" 8
+at 11100 press "1 Player Start" 8
+at 11400 press "1 Player Start" 8
+at 11700 press "1 Player Start" 8
+at 12000 press "1 Player Start" 8
+at 12300 press "1 Player Start" 8
+at 12600 press "1 Player Start" 8
+at 12900 press "1 Player Start" 8
+
+# the first stage
+at 13000 press "Hi-Hat" 3
+at 13012 press "Snare" 3
+at 13024 press "High Tom" 3
+at 13036 press "Low Tom" 3
+at 13048 press "Cymbal" 3
+at 13060 press "Hi-Hat" 3
+at 13060 press "Bass Drum" 3
+at 13072 press "Snare" 3
+at 13072 press "Bass Drum" 3
+at 13084 press "Hi-Hat" 3
+at 13096 press "Snare" 3
+at 13108 press "High Tom" 3
+at 13120 press "Low Tom" 3
+at 13132 press "Cymbal" 3
+at 13144 press "Hi-Hat" 3
+at 13144 press "Bass Drum" 3
+at 13156 press "Snare" 3
+at 13156 press "Bass Drum" 3
+at 13168 press "Hi-Hat" 3
+at 13180 press "Snare" 3
+at 13192 press "High Tom" 3
+at 13204 press "Low Tom" 3
+at 13216 press "Cymbal" 3
+at 13228 press "Hi-Hat" 3
+at 13228 press "Bass Drum" 3
+at 13240 press "Snare" 3
+at 13240 press "Bass Drum" 3
+at 13252 press "Hi-Hat" 3
+at 13264 press "Snare" 3
+at 13276 press "High Tom" 3
+at 13288 press "Low Tom" 3
+at 13300 press "Cymbal" 3
+at 13312 press "Hi-Hat" 3
+at 13312 press "Bass Drum" 3
+at 13324 press "Snare" 3
+at 13324 press "Bass Drum" 3
+at 13336 press "Hi-Hat" 3
+at 13348 press "Snare" 3
+at 13360 press "High Tom" 3
+at 13372 press "Low Tom" 3
+at 13384 press "Cymbal" 3
+at 13396 press "Hi-Hat" 3
+at 13396 press "Bass Drum" 3
+at 13408 press "Snare" 3
+at 13408 press "Bass Drum" 3
+at 13420 press "Hi-Hat" 3
+at 13432 press "Snare" 3
+at 13444 press "High Tom" 3
+at 13456 press "Low Tom" 3
+at 13468 press "Cymbal" 3
+at 13480 press "Hi-Hat" 3
+at 13480 press "Bass Drum" 3
+at 13492 press "Snare" 3
+at 13492 press "Bass Drum" 3
+at 13504 press "Hi-Hat" 3
+at 13516 press "Snare" 3
+at 13528 press "High Tom" 3
+at 13540 press "Low Tom" 3
+at 13552 press "Cymbal" 3
+at 13564 press "Hi-Hat" 3
+at 13564 press "Bass Drum" 3
+at 13576 press "Snare" 3
+at 13576 press "Bass Drum" 3
+at 13588 press "Hi-Hat" 3
+at 13600 press "Snare" 3
+at 13612 press "High Tom" 3
+at 13624 press "Low Tom" 3
+at 13636 press "Cymbal" 3
+at 13648 press "Hi-Hat" 3
+at 13648 press "Bass Drum" 3
+at 13660 press "Snare" 3
+at 13660 press "Bass Drum" 3
+at 13672 press "Hi-Hat" 3
+at 13684 press "Snare" 3
+at 13696 press "High Tom" 3
+at 13708 press "Low Tom" 3
+at 13720 press "Cymbal" 3
+at 13732 press "Hi-Hat" 3
+at 13732 press "Bass Drum" 3
+at 13744 press "Snare" 3
+at 13744 press "Bass Drum" 3
+at 13756 press "Hi-Hat" 3
+at 13768 press "Snare" 3
+at 13780 press "High Tom" 3
+at 13792 press "Low Tom" 3
+at 13804 press "Cymbal" 3
+at 13816 press "Hi-Hat" 3
+at 13816 press "Bass Drum" 3
+at 13828 press "Snare" 3
+at 13828 press "Bass Drum" 3
+at 13840 press "Hi-Hat" 3
+at 13852 press "Snare" 3
+at 13864 press "High Tom" 3
+at 13876 press "Low Tom" 3
+at 13888 press "Cymbal" 3
+at 13900 press "Hi-Hat" 3
+at 13900 press "Bass Drum" 3
+at 13912 press "Snare" 3
+at 13912 press "Bass Drum" 3
+at 13924 press "Hi-Hat" 3
+at 13936 press "Snare" 3
+at 13948 press "High Tom" 3
+at 13960 press "Low Tom" 3
+at 13972 press "Cymbal" 3
+at 13984 press "Hi-Hat" 3
+at 13984 press "Bass Drum" 3
+at 13996 press "Snare" 3
+at 13996 press "Bass Drum" 3
+at 14008 press "Hi-Hat" 3
+at 14020 press "Snare" 3
+at 14032 press "High Tom" 3
+at 14044 press "Low Tom" 3
+at 14056 press "Cymbal" 3
+at 14068 press "Hi-Hat" 3
+at 14068 press "Bass Drum" 3
+at 14080 press "Snare" 3
+at 14080 press "Bass Drum" 3
+at 14092 press "Hi-Hat" 3
+at 14104 press "Snare" 3
+at 14116 press "High Tom" 3
+at 14128 press "Low Tom" 3
+at 14140 press "Cymbal" 3
+at 14152 press "Hi-Hat" 3
+at 14152 press "Bass Drum" 3
+at 14164 press "Snare" 3
+at 14164 press "Bass Drum" 3
+at 14176 press "Hi-Hat" 3
+at 14188 press "Snare" 3
+at 14200 press "High Tom" 3
+at 14212 press "Low Tom" 3
+at 14224 press "Cymbal" 3
+at 14236 press "Hi-Hat" 3
+at 14236 press "Bass Drum" 3
+at 14248 press "Snare" 3
+at 14248 press "Bass Drum" 3
+at 14260 press "Hi-Hat" 3
+at 14272 press "Snare" 3
+at 14284 press "High Tom" 3
+at 14296 press "Low Tom" 3
+at 14308 press "Cymbal" 3
+at 14320 press "Hi-Hat" 3
+at 14320 press "Bass Drum" 3
+at 14332 press "Snare" 3
+at 14332 press "Bass Drum" 3
+at 14344 press "Hi-Hat" 3
+at 14356 press "Snare" 3
+at 14368 press "High Tom" 3
+at 14380 press "Low Tom" 3
+at 14392 press "Cymbal" 3
+at 14404 press "Hi-Hat" 3
+at 14404 press "Bass Drum" 3
+at 14416 press "Snare" 3
+at 14416 press "Bass Drum" 3
+at 14428 press "Hi-Hat" 3
+at 14440 press "Snare" 3
+at 14452 press "High Tom" 3
+at 14464 press "Low Tom" 3
+at 14476 press "Cymbal" 3
+at 14488 press "Hi-Hat" 3
+at 14488 press "Bass Drum" 3
+at 14500 press "Snare" 3
+at 14500 press "Bass Drum" 3
+at 14512 press "Hi-Hat" 3
+at 14524 press "Snare" 3
+at 14536 press "High Tom" 3
+at 14548 press "Low Tom" 3
+at 14560 press "Cymbal" 3
+at 14572 press "Hi-Hat" 3
+at 14572 press "Bass Drum" 3
+at 14584 press "Snare" 3
+at 14584 press "Bass Drum" 3
+at 14596 press "Hi-Hat" 3
+at 14608 press "Snare" 3
+at 14620 press "High Tom" 3
+at 14632 press "Low Tom" 3
+at 14644 press "Cymbal" 3
+at 14656 press "Hi-Hat" 3
+at 14656 press "Bass Drum" 3
+at 14668 press "Snare" 3
+at 14668 press "Bass Drum" 3
+at 14680 press "Hi-Hat" 3
+at 14692 press "Snare" 3
+
+from 0 every 60 snap
+at 16200 quit

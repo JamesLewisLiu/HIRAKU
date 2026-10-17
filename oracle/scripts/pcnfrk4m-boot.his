@@ -1,0 +1,9 @@
+# Percussion Freaks 4th Mix (G*A25 VER. AAA), Konami 2001: first power-on from blank NVRAM, no inputs. The 573 BIOS boots
+# the CD (the flash is blank). Hashes the main RAM every frame and snapshots every 60 frames, to
+# compare with MAME.
+game pcnfrk4m
+
+hash ram  0x80000000 0x80400000   # 4 MiB main RAM (KSEG0)
+
+from 0 every 60 snap
+at 3000 quit

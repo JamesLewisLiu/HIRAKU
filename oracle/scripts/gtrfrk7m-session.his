@@ -1,0 +1,352 @@
+# GuitarFreaks 7th Mix joining DrumMania 6th Mix's session (with drmn6m-session, which hosts the
+# multi-session unit). From what gtrfrk7m-install left: NOTE 605 (Test at 1500), then attract; two coins
+# and Start during the DrumMania cabinet's joining period, then Start every 300 frames through the
+# shared caution, mode and music select; the first stage with the guitar map: every 12 frames a
+# neck chord (R, G, B, R+G, G+B, R+B, open) held and picked, a wail every 240 frames.
+game gtrfrk7m
+
+at 1500 press "Service Mode" 8   # NOTE 605
+at 11300 press "Coin 1" 8
+at 11340 press "Coin 1" 8
+at 11450 press "1 Player Start" 8
+at 11700 press "1 Player Start" 8
+at 12000 press "1 Player Start" 8
+at 12300 press "1 Player Start" 8
+at 12600 press "1 Player Start" 8
+at 12900 press "1 Player Start" 8
+
+# the first stage
+at 13000 press "P1 Button R" 8
+at 13002 press "P1 Pick" 3
+at 13012 press "P1 Button G" 8
+at 13014 press "P1 Pick" 3
+at 13024 press "P1 Button B" 8
+at 13026 press "P1 Pick" 3
+at 13036 press "P1 Button R" 8
+at 13036 press "P1 Button G" 8
+at 13038 press "P1 Pick" 3
+at 13048 press "P1 Button G" 8
+at 13048 press "P1 Button B" 8
+at 13050 press "P1 Pick" 3
+at 13060 press "P1 Button R" 8
+at 13060 press "P1 Button B" 8
+at 13062 press "P1 Pick" 3
+at 13074 press "P1 Pick" 3
+at 13084 press "P1 Button R" 8
+at 13086 press "P1 Pick" 3
+at 13096 press "P1 Button G" 8
+at 13098 press "P1 Pick" 3
+at 13108 press "P1 Button B" 8
+at 13110 press "P1 Pick" 3
+at 13120 press "P1 Button R" 8
+at 13120 press "P1 Button G" 8
+at 13122 press "P1 Pick" 3
+at 13126 press "P1 Wailing" 4
+at 13132 press "P1 Button G" 8
+at 13132 press "P1 Button B" 8
+at 13134 press "P1 Pick" 3
+at 13144 press "P1 Button R" 8
+at 13144 press "P1 Button B" 8
+at 13146 press "P1 Pick" 3
+at 13158 press "P1 Pick" 3
+at 13168 press "P1 Button R" 8
+at 13170 press "P1 Pick" 3
+at 13180 press "P1 Button G" 8
+at 13182 press "P1 Pick" 3
+at 13192 press "P1 Button B" 8
+at 13194 press "P1 Pick" 3
+at 13204 press "P1 Button R" 8
+at 13204 press "P1 Button G" 8
+at 13206 press "P1 Pick" 3
+at 13216 press "P1 Button G" 8
+at 13216 press "P1 Button B" 8
+at 13218 press "P1 Pick" 3
+at 13228 press "P1 Button R" 8
+at 13228 press "P1 Button B" 8
+at 13230 press "P1 Pick" 3
+at 13242 press "P1 Pick" 3
+at 13252 press "P1 Button R" 8
+at 13254 press "P1 Pick" 3
+at 13264 press "P1 Button G" 8
+at 13266 press "P1 Pick" 3
+at 13276 press "P1 Button B" 8
+at 13278 press "P1 Pick" 3
+at 13288 press "P1 Button R" 8
+at 13288 press "P1 Button G" 8
+at 13290 press "P1 Pick" 3
+at 13300 press "P1 Button G" 8
+at 13300 press "P1 Button B" 8
+at 13302 press "P1 Pick" 3
+at 13312 press "P1 Button R" 8
+at 13312 press "P1 Button B" 8
+at 13314 press "P1 Pick" 3
+at 13326 press "P1 Pick" 3
+at 13336 press "P1 Button R" 8
+at 13338 press "P1 Pick" 3
+at 13348 press "P1 Button G" 8
+at 13350 press "P1 Pick" 3
+at 13360 press "P1 Button B" 8
+at 13362 press "P1 Pick" 3
+at 13366 press "P1 Wailing" 4
+at 13372 press "P1 Button R" 8
+at 13372 press "P1 Button G" 8
+at 13374 press "P1 Pick" 3
+at 13384 press "P1 Button G" 8
+at 13384 press "P1 Button B" 8
+at 13386 press "P1 Pick" 3
+at 13396 press "P1 Button R" 8
+at 13396 press "P1 Button B" 8
+at 13398 press "P1 Pick" 3
+at 13410 press "P1 Pick" 3
+at 13420 press "P1 Button R" 8
+at 13422 press "P1 Pick" 3
+at 13432 press "P1 Button G" 8
+at 13434 press "P1 Pick" 3
+at 13444 press "P1 Button B" 8
+at 13446 press "P1 Pick" 3
+at 13456 press "P1 Button R" 8
+at 13456 press "P1 Button G" 8
+at 13458 press "P1 Pick" 3
+at 13468 press "P1 Button G" 8
+at 13468 press "P1 Button B" 8
+at 13470 press "P1 Pick" 3
+at 13480 press "P1 Button R" 8
+at 13480 press "P1 Button B" 8
+at 13482 press "P1 Pick" 3
+at 13494 press "P1 Pick" 3
+at 13504 press "P1 Button R" 8
+at 13506 press "P1 Pick" 3
+at 13516 press "P1 Button G" 8
+at 13518 press "P1 Pick" 3
+at 13528 press "P1 Button B" 8
+at 13530 press "P1 Pick" 3
+at 13540 press "P1 Button R" 8
+at 13540 press "P1 Button G" 8
+at 13542 press "P1 Pick" 3
+at 13552 press "P1 Button G" 8
+at 13552 press "P1 Button B" 8
+at 13554 press "P1 Pick" 3
+at 13564 press "P1 Button R" 8
+at 13564 press "P1 Button B" 8
+at 13566 press "P1 Pick" 3
+at 13578 press "P1 Pick" 3
+at 13588 press "P1 Button R" 8
+at 13590 press "P1 Pick" 3
+at 13600 press "P1 Button G" 8
+at 13602 press "P1 Pick" 3
+at 13606 press "P1 Wailing" 4
+at 13612 press "P1 Button B" 8
+at 13614 press "P1 Pick" 3
+at 13624 press "P1 Button R" 8
+at 13624 press "P1 Button G" 8
+at 13626 press "P1 Pick" 3
+at 13636 press "P1 Button G" 8
+at 13636 press "P1 Button B" 8
+at 13638 press "P1 Pick" 3
+at 13648 press "P1 Button R" 8
+at 13648 press "P1 Button B" 8
+at 13650 press "P1 Pick" 3
+at 13662 press "P1 Pick" 3
+at 13672 press "P1 Button R" 8
+at 13674 press "P1 Pick" 3
+at 13684 press "P1 Button G" 8
+at 13686 press "P1 Pick" 3
+at 13696 press "P1 Button B" 8
+at 13698 press "P1 Pick" 3
+at 13708 press "P1 Button R" 8
+at 13708 press "P1 Button G" 8
+at 13710 press "P1 Pick" 3
+at 13720 press "P1 Button G" 8
+at 13720 press "P1 Button B" 8
+at 13722 press "P1 Pick" 3
+at 13732 press "P1 Button R" 8
+at 13732 press "P1 Button B" 8
+at 13734 press "P1 Pick" 3
+at 13746 press "P1 Pick" 3
+at 13756 press "P1 Button R" 8
+at 13758 press "P1 Pick" 3
+at 13768 press "P1 Button G" 8
+at 13770 press "P1 Pick" 3
+at 13780 press "P1 Button B" 8
+at 13782 press "P1 Pick" 3
+at 13792 press "P1 Button R" 8
+at 13792 press "P1 Button G" 8
+at 13794 press "P1 Pick" 3
+at 13804 press "P1 Button G" 8
+at 13804 press "P1 Button B" 8
+at 13806 press "P1 Pick" 3
+at 13816 press "P1 Button R" 8
+at 13816 press "P1 Button B" 8
+at 13818 press "P1 Pick" 3
+at 13830 press "P1 Pick" 3
+at 13840 press "P1 Button R" 8
+at 13842 press "P1 Pick" 3
+at 13846 press "P1 Wailing" 4
+at 13852 press "P1 Button G" 8
+at 13854 press "P1 Pick" 3
+at 13864 press "P1 Button B" 8
+at 13866 press "P1 Pick" 3
+at 13876 press "P1 Button R" 8
+at 13876 press "P1 Button G" 8
+at 13878 press "P1 Pick" 3
+at 13888 press "P1 Button G" 8
+at 13888 press "P1 Button B" 8
+at 13890 press "P1 Pick" 3
+at 13900 press "P1 Button R" 8
+at 13900 press "P1 Button B" 8
+at 13902 press "P1 Pick" 3
+at 13914 press "P1 Pick" 3
+at 13924 press "P1 Button R" 8
+at 13926 press "P1 Pick" 3
+at 13936 press "P1 Button G" 8
+at 13938 press "P1 Pick" 3
+at 13948 press "P1 Button B" 8
+at 13950 press "P1 Pick" 3
+at 13960 press "P1 Button R" 8
+at 13960 press "P1 Button G" 8
+at 13962 press "P1 Pick" 3
+at 13972 press "P1 Button G" 8
+at 13972 press "P1 Button B" 8
+at 13974 press "P1 Pick" 3
+at 13984 press "P1 Button R" 8
+at 13984 press "P1 Button B" 8
+at 13986 press "P1 Pick" 3
+at 13998 press "P1 Pick" 3
+at 14008 press "P1 Button R" 8
+at 14010 press "P1 Pick" 3
+at 14020 press "P1 Button G" 8
+at 14022 press "P1 Pick" 3
+at 14032 press "P1 Button B" 8
+at 14034 press "P1 Pick" 3
+at 14044 press "P1 Button R" 8
+at 14044 press "P1 Button G" 8
+at 14046 press "P1 Pick" 3
+at 14056 press "P1 Button G" 8
+at 14056 press "P1 Button B" 8
+at 14058 press "P1 Pick" 3
+at 14068 press "P1 Button R" 8
+at 14068 press "P1 Button B" 8
+at 14070 press "P1 Pick" 3
+at 14082 press "P1 Pick" 3
+at 14086 press "P1 Wailing" 4
+at 14092 press "P1 Button R" 8
+at 14094 press "P1 Pick" 3
+at 14104 press "P1 Button G" 8
+at 14106 press "P1 Pick" 3
+at 14116 press "P1 Button B" 8
+at 14118 press "P1 Pick" 3
+at 14128 press "P1 Button R" 8
+at 14128 press "P1 Button G" 8
+at 14130 press "P1 Pick" 3
+at 14140 press "P1 Button G" 8
+at 14140 press "P1 Button B" 8
+at 14142 press "P1 Pick" 3
+at 14152 press "P1 Button R" 8
+at 14152 press "P1 Button B" 8
+at 14154 press "P1 Pick" 3
+at 14166 press "P1 Pick" 3
+at 14176 press "P1 Button R" 8
+at 14178 press "P1 Pick" 3
+at 14188 press "P1 Button G" 8
+at 14190 press "P1 Pick" 3
+at 14200 press "P1 Button B" 8
+at 14202 press "P1 Pick" 3
+at 14212 press "P1 Button R" 8
+at 14212 press "P1 Button G" 8
+at 14214 press "P1 Pick" 3
+at 14224 press "P1 Button G" 8
+at 14224 press "P1 Button B" 8
+at 14226 press "P1 Pick" 3
+at 14236 press "P1 Button R" 8
+at 14236 press "P1 Button B" 8
+at 14238 press "P1 Pick" 3
+at 14250 press "P1 Pick" 3
+at 14260 press "P1 Button R" 8
+at 14262 press "P1 Pick" 3
+at 14272 press "P1 Button G" 8
+at 14274 press "P1 Pick" 3
+at 14284 press "P1 Button B" 8
+at 14286 press "P1 Pick" 3
+at 14296 press "P1 Button R" 8
+at 14296 press "P1 Button G" 8
+at 14298 press "P1 Pick" 3
+at 14308 press "P1 Button G" 8
+at 14308 press "P1 Button B" 8
+at 14310 press "P1 Pick" 3
+at 14320 press "P1 Button R" 8
+at 14320 press "P1 Button B" 8
+at 14322 press "P1 Pick" 3
+at 14326 press "P1 Wailing" 4
+at 14334 press "P1 Pick" 3
+at 14344 press "P1 Button R" 8
+at 14346 press "P1 Pick" 3
+at 14356 press "P1 Button G" 8
+at 14358 press "P1 Pick" 3
+at 14368 press "P1 Button B" 8
+at 14370 press "P1 Pick" 3
+at 14380 press "P1 Button R" 8
+at 14380 press "P1 Button G" 8
+at 14382 press "P1 Pick" 3
+at 14392 press "P1 Button G" 8
+at 14392 press "P1 Button B" 8
+at 14394 press "P1 Pick" 3
+at 14404 press "P1 Button R" 8
+at 14404 press "P1 Button B" 8
+at 14406 press "P1 Pick" 3
+at 14418 press "P1 Pick" 3
+at 14428 press "P1 Button R" 8
+at 14430 press "P1 Pick" 3
+at 14440 press "P1 Button G" 8
+at 14442 press "P1 Pick" 3
+at 14452 press "P1 Button B" 8
+at 14454 press "P1 Pick" 3
+at 14464 press "P1 Button R" 8
+at 14464 press "P1 Button G" 8
+at 14466 press "P1 Pick" 3
+at 14476 press "P1 Button G" 8
+at 14476 press "P1 Button B" 8
+at 14478 press "P1 Pick" 3
+at 14488 press "P1 Button R" 8
+at 14488 press "P1 Button B" 8
+at 14490 press "P1 Pick" 3
+at 14502 press "P1 Pick" 3
+at 14512 press "P1 Button R" 8
+at 14514 press "P1 Pick" 3
+at 14524 press "P1 Button G" 8
+at 14526 press "P1 Pick" 3
+at 14536 press "P1 Button B" 8
+at 14538 press "P1 Pick" 3
+at 14548 press "P1 Button R" 8
+at 14548 press "P1 Button G" 8
+at 14550 press "P1 Pick" 3
+at 14560 press "P1 Button G" 8
+at 14560 press "P1 Button B" 8
+at 14562 press "P1 Pick" 3
+at 14566 press "P1 Wailing" 4
+at 14572 press "P1 Button R" 8
+at 14572 press "P1 Button B" 8
+at 14574 press "P1 Pick" 3
+at 14586 press "P1 Pick" 3
+at 14596 press "P1 Button R" 8
+at 14598 press "P1 Pick" 3
+at 14608 press "P1 Button G" 8
+at 14610 press "P1 Pick" 3
+at 14620 press "P1 Button B" 8
+at 14622 press "P1 Pick" 3
+at 14632 press "P1 Button R" 8
+at 14632 press "P1 Button G" 8
+at 14634 press "P1 Pick" 3
+at 14644 press "P1 Button G" 8
+at 14644 press "P1 Button B" 8
+at 14646 press "P1 Pick" 3
+at 14656 press "P1 Button R" 8
+at 14656 press "P1 Button B" 8
+at 14658 press "P1 Pick" 3
+at 14670 press "P1 Pick" 3
+at 14680 press "P1 Button R" 8
+at 14682 press "P1 Pick" 3
+at 14692 press "P1 Button G" 8
+at 14694 press "P1 Pick" 3
+
+from 0 every 60 snap
+at 16200 quit

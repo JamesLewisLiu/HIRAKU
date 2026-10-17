@@ -1,0 +1,23 @@
+# Guitar Freaks 5th Mix (G*A26 VER. AAA), Konami 2001: generated from MAME's ksys573.cpp (tools/gen573.py)
+id = "gtrfrk5ma"
+title = "Guitar Freaks 5th Mix"
+family = "gtrf"         # GuitarFreaks cabinet: two guitars (neck R/G/B, pick, wailing, effect knob)
+mame = "gtrfrk5ma"      # MAME set name, used by the oracle
+core = "sys573"         # System 573 (runtime/sys573/, PLAN.md section 19); digital I/O board
+first_boot = "at NOTE 604 (the CD-ROM drive's version-up) press F2 (Test). The game then installs itself from CD to flash and the PC Card, about 5 minutes of game time (hold Tab to fast-forward); at INFO 508, stop it and play again. Then NOTE 605 (RTC-RAM cleared): press F2."   # shown by the launcher
+
+[roms]
+bios = "700a01.22g"             # 573 BIOS
+h8 = "h8a01.bin"                # the H8's start-up response (JVS check)
+cassette_eeprom = "gea26aaa.u1" # the game cassette's ZS01
+cassette_id = "gea26aaa.u6"     # ... and its DS2401 serial number
+digital_id = "digital-id.bin"   # the digital I/O board's DS2401
+preload = ["29f016a.27m:gea26aaa.27m", "29f016a.31m:gea26aaa.31m"]   # chips the set has filled: device:file (MAME's regions)
+
+[board]
+io_board = "digital"            # GX894-PWB(B): FPGA + MAS3507D MP3
+cassette = "zi"                 # MAME's cassette variant: ZS01 + DS2401 (casszi)
+pccard1 = "32mb"                # MAME's pccard1_32mb(): a Fujitsu 32 MiB flash card in slot 1
+
+[cd]
+chd = "a26aaa02"        # the runtime CD

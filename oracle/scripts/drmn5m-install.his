@@ -1,0 +1,13 @@
+# DrumMania 5th Mix (G*B05 VER. JAA), Konami 2001: the first boot's install, from blank NVRAM (the game cassette
+# in). The flash checksums fail (blank), then NOTE 604 asks for Test to update the CD-ROM drive's firmware (by frame 600): Test at
+# 1200, and the version-up passes at once. Then the CD installs itself to the onboard flash.
+# By frame ~9600 it shows INFO 508: install done, note the certificate number and power-cycle.
+# Hashes the main RAM every frame and snapshots every 60 frames, to compare HIRAKU's 573 core
+# with MAME through the install.
+game drmn5m
+
+hash ram  0x80000000 0x80400000   # 4 MiB main RAM (KSEG0)
+
+at 1200 press "Service Mode" 8   # NOTE 604: start the CD-ROM drive's version-up
+from 0 every 60 snap
+at 10200 quit
