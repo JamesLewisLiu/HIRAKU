@@ -587,8 +587,43 @@ Each needs an input design before code. The owner decides which are worth it.
 
 **Open:**
 - A hands-on test.
-- The session itself (step 2).
+- The session itself (step 2): done, below.
 - Whether a real cabinet's 1P Start clear on Club Version 1 also resets: MAME and HIRAKU agree that it does.
+
+#### Phase 6 progress (2026-10-17): step 2, the club sessions
+
+**Both club kits play a session: a DDR 2nd Club Version 573 process and its IIDX Twinkle process, joined by HIRAKU's session cable, play a club stage together.** Two runs agree on both cabinets, every frame (picture and sound). There is no oracle (below).
+
+**The cable** is `runtime/sys573/link`'s, now built into the Twinkle core too (`--session-host` / `--session-join` / `--session-quantum` on both cores; the same lockstep, 500 µs quantum, line levels stamped with emulated time):
+- **The DDR side** needed nothing new: without a multi-session unit, either option puts SIO1 on the cable (the GF×DM pre-unit wiring): TXD, DTR and RTS out; the far TXD to RXD and the far RTS to CTS.
+- **The Twinkle side** (`runtime/twinkle/board.cpp`): Club Version 1 (`dvd_port = "sio1"`) puts the super I/O's second 16550 on the cable; Club Version 2 puts SIO1 there, as the fork's UART (`hk_psx_sio1_uart`, as for the 1st style's player), so it has CTS. A null modem: TXD to the far RXD, RTS to the far CTS, DTR to the far DSR (and DCD on the 16550). Without a session nothing changes.
+- **The bits:** the 16550 samples the far TXD by its own bit clock; the fork's SIO1 takes a bit per call. Both send a call per bit, so the same per-bit stream serves both.
+- **The music:** the IIDX cabinet plays the club song; the DDR plays none of its own then (measured: DDR's own sound under 0.013 RMS during the club song, the IIDX's music 0.26). The Twinkle sends its mix (MAME's level) with its steps, and the 573 mixes it in when the far side sends sound and it has no unit (that was `--session-join` only; the same for GF×DM, where only a unit host sends).
+- `HK_SESSION_BYTES=1` prints the bytes each side sends; `HK_MSU_TRACE=1` on the 573 now prints SIO1's mode, control and baud writes too.
+
+**What the games do on the wire:**
+- **Club Version 1:** the DDR's SIO1 at mode 0xCE (8N2, ×16) and reload 0x6E: 19,244 baud (after a moment at 0xDC, half that). It sends four `09` at power-on, then single bytes answering each of the IIDX's 8-byte frames: `C5`, `8A`, `96`... (the low nibble a type, 5/6/9/0xA, as the IIDX side's receive code sorts them; the high nibble the slot). The IIDX side sends its `5A 5A` frames as found in step 1. Neither side checks the other's stop bits: 8N2 into 8N1 is fine.
+- **Club Version 2:** the DDR's SIO1 set up as the IIDX's: MODE 0x4E (8N1, ×16), reload 0x36 (39,200 baud), CTRL 0x0837 (it toggles RTS, bit 5, and the TX interrupt, bit 10, all the time). Each side first sends a single `01`, then `5A 5A` frames (the DDR's `5A 5A 02 14 00 00 00 00 1B`, the IIDX's `5A 5A 0F 00 00 00 nn 00 cs`...), so Club Version 2's IIDX side frames as Club Version 1's does, but both ways.
+
+**What a session looks like:**
+- **Club Version 1** (`ddr2mc` × `bmiidxc`, and `bmiidxca` the same): with the cable, the IIDX title shows the "2nd MIX DDR CLUB VERSION" logo and How to Play "DDRとの通信" banners (alone, step 1 saw neither). IIDX: three coins, Start: "Let's play with DanceDanceRevolution, Please wait" with a countdown; DDR: two coins, Start: "beatmaniaIIDXとの通信を受け付けています" (accepting the link), then "beatmania IIDX 側で 現在モード選択中です" while the IIDX player picks the mode (4KEYS) and song (The Theme from "Flo-jack"; the DDR shows it as "collaborating music"). Both play it, the IIDX with "WITH DANCER"; the DDR's DANCE LEVEL, the IIDX's STAGE CLEAR, and the second stage's song (YOU MAKE ME) on both.
+- **Club Version 2** (`ddr2mc2` × `bmiidxc2`): the DDR leads. Its title says LINK VERSION and the IIDX's attract "DDRとの通信受付中". DDR: coins, Start, SELECT PLAY MODE, then "beatmaniaIIDX substream からのDJを募集しますか?" (recruit a DJ?): Yes (通信プレイモード). IIDX: coins and Start then: MODE SELECT, PlayMode Select "通信プレイモード, DDR DANCERを受付けます"; the DDR shows "Here Comes A New DJ!", then both play 5.1.1. (DDR with arrows, "DANGER!" with the scripted steps).
+  - If the DDR answers Yes but no DJ joins before its timer, it plays alone (BOYS).
+
+**Regress** (recorded in out/regress-club6/baseline; checked twice, once with 8 jobs and another pair running: all identical):
+- `ddr2mc-install`, `ddr2mc2-install` (13,200 frames, `--cd install`, the Phase 2 scripts);
+- `ddr2mc-club` + `bmiidxc-club` (18,000 frames, after `ddr2mc-install` and `bmiidxc-clear`): Club Version 1's first stage and the second's song select;
+- `ddr2mc2-club` + `bmiidxc2-club` (16,000 frames, after `ddr2mc2-install` and `bmiidxc2-boot`): Club Version 2's first stage.
+- The IIDX club cases run the 4x drive (no `--mame-cd`; their parents keep it). Scripts: `oracle/scripts/{ddr2mc,bmiidxc,ddr2mc2,bmiidxc2}-club.his`.
+- Unchanged: `drmn3m-session` + `gtrfrk4m-session`, `drmn4m-session` + `gtrfrk5m-session` (with their installs), `bmiidx3-play`, `bmiidx3-play-drive`, `ddr2m-play`: identical to out/regress/baseline.
+
+**The oracle:** none. The rar's `mame.exe` runs under Wine (a prefix in `~/.wine-hkfork`; `out/club6/fork/` has the exe and `mame_compile_bemani.bat`), and its `bmiidxc`/`bmiidxc2` have `rs232_network`, but its `ddr2mc` and `ddr2mc2` have no such slot (only the GuitarFreaks sets do: `-listslots`), so that build can't run the session its notes describe. A later fork build might; MAME's null_modem with flow control off also holds CTS on, where HIRAKU's cable gives the far RTS.
+
+**Open:**
+- A hands-on session (keyboard and pads), and two machines over TCP.
+- The launcher has no session support (for GF×DM either): it would need a second game process with the other option and a socket path. Not trivial; left.
+- The IIDX side's mix peaks at 1.6 of full scale in club play (0.03–0.07 % of samples clip at the default 0.8 gain); alone its stages peak at 0.9–1.05. Louder club songs, or something to check.
+- `bmiidxca` × `ddr2mc` checked by hand (the same session as `bmiidxc`); no regress case.
 
 ### Phase 7: new boards
 

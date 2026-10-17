@@ -65,6 +65,8 @@ public:
                "                    DrumMania; before the unit, either) waits at SOCKET (a path, or\n"
                "                    host:port) for the other\n"
                "  --session-join SOCKET  session play: this cabinet (GuitarFreaks) joins the host's unit\n"
+               "                    (DDR 2nd Club Version, ddr2mc/ddr2mc2: either option joins the club kit's IIDX\n"
+               "                    cabinet, a Twinkle process with the other, whose music this one plays too)\n"
                "  --session-quantum US   the lockstep quantum in microseconds (default 500; both sides alike)\n"
                "  --boot-cd         DIP switch 4 (\"Start Up Device\") on the CD-ROM drive, not the flash: an\n"
                "                    install over an installed game (DrumMania 2nd's Session Power Up Kit)\n";

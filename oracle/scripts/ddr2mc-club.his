@@ -1,0 +1,19 @@
+# DDR 2ndMIX with beatmania IIDX CLUB VERSiON and beatmania IIDX with DDR 2nd Club Version in a club
+# session (with bmiidxc-club, run alongside: two processes on one serial cable, runtime/sys573/link.h;
+# the DDR's SIO1 at 19,200 8N2 to the IIDX's super I/O COM2). From what ddr2mc-install left: the
+# flash check and attract, where the cable is seen (the title's CLUB VERSION logo on the IIDX side);
+# the IIDX player starts first, then two coins and Start here: "accepting the link with beatmania
+# IIDX" and its countdown, then "beatmania IIDX side is choosing its mode" while the IIDX player
+# chooses mode and song. Both cabinets play the IIDX's song together ("collaborating music": The
+# Theme from "Flo-jack"), here on all four panels every 8 frames; DANCE LEVEL, and the second
+# stage's song (YOU MAKE ME) comes from the IIDX side. This cabinet plays the IIDX's music (the
+# fork's notes), which the cable carries. MAME can't run a session: this checks that two runs agree.
+game ddr2mc
+
+at 8000 press "Coin 1" 8
+at 8040 press "Coin 1" 8
+at 8400 press "1 Player Start" 8
+from 10000 every 8 press "P1 Left" 4
+from 10000 every 8 press "P1 Down" 4
+from 10000 every 8 press "P1 Up" 4
+from 10000 every 8 press "P1 Right" 4

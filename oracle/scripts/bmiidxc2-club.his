@@ -1,0 +1,23 @@
+# beatmania IIDX Substream with DDR 2nd Club Version 2 and DDR 2ndMIX with beatmania IIDX CLUB
+# VERSiON 2 in a club session (with ddr2mc2-club, run alongside: two processes on one serial cable,
+# runtime/sys573/link.h; this side's SIO1 at 38,400, the fork's UART with CTS; it waits for the
+# other, --session-host). From what bmiidxc2-boot left: attract with "DDRとの通信受付中" (accepting the
+# link with DDR) and the CLUB 2 logo; three coins; Start while the DDR cabinet recruits a DJ: MODE
+# SELECT, PlayMode Select (通信プレイモード, "DDR DANCER受付けます"), SOUND SELECT (5.1.1.), and the stage
+# with the DDR dancer, every key every 8 frames. Its sound goes to the DDR cabinet too. MAME can't
+# run a session: this checks that two runs agree.
+game bmiidxc2
+
+at 9200 press "Coin 1" 8
+at 9230 press "Coin 1" 8
+at 9260 press "Coin 1" 8
+at 10500 press "1 Player Start" 8
+at 10700 press "1 Player Start" 8
+at 11000 press "P1-1 (SW1)" 8
+from 12000 every 8 press "P1-1 (SW1)" 4
+from 12000 every 8 press "P1-2 (SW2)" 4
+from 12000 every 8 press "P1-3 (SW3)" 4
+from 12000 every 8 press "P1-4 (SW4)" 4
+from 12000 every 8 press "P1-5 (SW5)" 4
+from 12000 every 8 press "P1-6 (SW6)" 4
+from 12000 every 8 press "P1-7 (SW7)" 4

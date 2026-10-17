@@ -4,6 +4,12 @@
 // null modem: msu_port2 to the GuitarFreaks' rs232_network). Each process is one cabinet, with
 // its own game and recompiled code.
 //
+// The same cable joins a club kit's two cabinets (docs/CATALOGUE.md, Phase 6): a DDR 2nd Club
+// Version 573's SIO1 to a Twinkle's network port (runtime/twinkle/board.cpp: Club Version 1's
+// super I/O 16550, Club Version 2's SIO1). Either side's UART is on the far side's line levels as
+// it would be on a wire: a 16550 samples TXD by its own bit clock, the fork's SIO1 takes a bit per
+// call, and both send a call per bit.
+//
 // The cable carries line levels (TXD, DTR, RTS each way), stamped with the sender's emulated
 // time, so the far UART gets the bits as it would on a wire: TXD as the sending UART's bit clock
 // drives it, once a bit (the fork's SIO1 counts calls, not time), DTR and RTS when they change.
@@ -14,7 +20,8 @@
 //
 // It also carries sound: the host's multi-session unit plays the session's music, and a real
 // unit sends it to each cabinet's amplifier (a sub board per port, with its own DAC), so the
-// host sends the unit's mix along with its steps and the other cabinet plays it too.
+// host sends the unit's mix along with its steps and the other cabinet plays it too. In a club
+// session the IIDX cabinet plays the music (the fork's notes), so the Twinkle sends its mix.
 //
 // Transport: a Unix socket (a path) or TCP (host:port). The host (the side with the unit)
 // listens and waits; the other connects. If the far side quits, the cable goes idle.
@@ -36,7 +43,8 @@ public:
     // host: listen at `where` and wait for the other cabinet; else connect to it (trying for up
     // to ten minutes). false: a message was printed.
     // audio: this side sends its unit's music with its steps (a host with the multi-session unit);
-    // the two DrumMania and GuitarFreaks mixes before the unit join SIO1 to SIO1, each with its own
+    // the two DrumMania and GuitarFreaks mixes before the unit join SIO1 to SIO1, each with its own;
+    // a club kit's Twinkle sends its mix to the DDR cabinet
     bool open(const std::string &where, bool host, attotime quantum, bool audio);
     bool is_open() const { return m_fd >= 0; }
 
@@ -79,6 +87,7 @@ private:
     emu_timer *m_sync_timer = nullptr, *m_deliver_timer = nullptr;
     uint64_t m_step = 0;
     int m_last[LINES] = {-1, -1, -1};
+    int m_tx_bits = -1, m_tx_byte = 0;   // HK_SESSION_BYTES: the byte being sent
     std::vector<Event> m_out;   // ours, not sent yet
     std::vector<Event> m_in;    // theirs, to deliver (in time order)
     size_t m_in_next = 0;

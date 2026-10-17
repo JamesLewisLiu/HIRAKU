@@ -1,0 +1,25 @@
+# beatmania IIDX with DDR 2nd Club Version and DDR 2ndMIX with beatmania IIDX CLUB VERSiON in a club
+# session (with ddr2mc-club, run alongside: two processes on one serial cable, runtime/sys573/link.h;
+# this side's super I/O COM2, 19,200 8N1, the cable seen on CTS; it waits for the other,
+# --session-host). From what bmiidxc-clear left: attract with "DDRとの通信" (the link with DDR)
+# banners and the CLUB VERSION logo; three coins and Start: "Let's play with DanceDanceRevolution /
+# Please wait" while the DDR player joins; MODE SELECT (its timer runs out: 4KEYS), SOUND SELECT
+# (Start, then the keys: The Theme from "Flo-jack"), and the stage with the DDR dancer ("WITH
+# DANCER"), every key every 8 frames; STAGE CLEAR, the second stage's SOUND SELECT. Its sound goes
+# to the DDR cabinet too. MAME can't run a session: this checks that two runs agree.
+game bmiidxc
+
+at 8000 press "Coin 1" 8
+at 8040 press "Coin 1" 8
+at 8080 press "Coin 1" 8
+at 8200 press "1 Player Start" 8
+at 9000 press "1 Player Start" 8
+at 9600 press "1 Player Start" 8
+at 10200 press "1 Player Start" 8
+from 10400 every 8 press "P1-1 (SW1)" 4
+from 10400 every 8 press "P1-2 (SW2)" 4
+from 10400 every 8 press "P1-3 (SW3)" 4
+from 10400 every 8 press "P1-4 (SW4)" 4
+from 10400 every 8 press "P1-5 (SW5)" 4
+from 10400 every 8 press "P1-6 (SW6)" 4
+from 10400 every 8 press "P1-7 (SW7)" 4

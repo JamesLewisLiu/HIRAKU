@@ -1,0 +1,19 @@
+# DDR 2ndMIX with beatmania IIDX CLUB VERSiON 2 and beatmania IIDX Substream with DDR 2nd Club
+# Version 2 in a club session (with bmiidxc2-club, run alongside: two processes on one serial cable,
+# runtime/sys573/link.h; SIO1 to SIO1 at 38,400). From what ddr2mc2-install left: the flash check and
+# the LINK VERSION title; two coins, Start, SELECT PLAY MODE (Start), then "recruit a DJ from
+# beatmania IIDX substream?": Yes (通信プレイモード, the link mode), and the IIDX player joins ("Here
+# Comes A New DJ!"); How To Play and the music select run out while the IIDX player chooses; both
+# cabinets play the IIDX's song (5.1.1.), here on all four panels every 8 frames. This cabinet plays
+# the IIDX's music, which the cable carries. MAME can't run a session: this checks that two runs agree.
+game ddr2mc2
+
+at 9200 press "Coin 1" 8
+at 9240 press "Coin 1" 8
+at 9500 press "1 Player Start" 8
+at 9700 press "1 Player Start" 8
+at 10560 press "1 Player Start" 8
+from 12000 every 8 press "P1 Left" 4
+from 12000 every 8 press "P1 Down" 4
+from 12000 every 8 press "P1 Up" 4
+from 12000 every 8 press "P1 Right" 4

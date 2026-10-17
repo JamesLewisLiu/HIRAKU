@@ -282,6 +282,22 @@ for _c, (_game, _frames, _args, *_rest) in list(CASES.items()):
         if _c.endswith("-play"):
             CASES[_c + "-drive"] = (_game, _frames, _args, *_rest)
 
+# The club kits (docs/CATALOGUE.md, Phase 6): a DDR 2nd Club Version 573 and its IIDX cabinet in a
+# club session, two processes on one serial cable (runtime/sys573/link.h), each pair at once. The
+# DDR sides from their install CD's install; the IIDX sides on the 4x drive, as a cabinet plays
+CASES.update({
+    "ddr2mc-install": ("ddr2mc", 13200, ["--rtc", "1792290000", "--cd", "install", "--script", "oracle/scripts/ddr2mc-install.his"]),
+    "ddr2mc2-install": ("ddr2mc2", 13200, ["--rtc", "1792290000", "--cd", "install", "--script", "oracle/scripts/ddr2mc2-install.his"]),
+    "ddr2mc-club": ("ddr2mc", 18000, ["--rtc", "1792300000", "--script", "oracle/scripts/ddr2mc-club.his",
+                                      "--session-join", "out/regress/work/club1.sock"], "ddr2mc-install", "bmiidxc-club"),
+    "bmiidxc-club": ("bmiidxc", 18000, ["--rtc", "1792300000", "--video", "off", "--script", "oracle/scripts/bmiidxc-club.his",
+                                        "--session-host", "out/regress/work/club1.sock"], "bmiidxc-clear", "ddr2mc-club"),
+    "ddr2mc2-club": ("ddr2mc2", 16000, ["--rtc", "1792300000", "--script", "oracle/scripts/ddr2mc2-club.his",
+                                        "--session-join", "out/regress/work/club2.sock"], "ddr2mc2-install", "bmiidxc2-club"),
+    "bmiidxc2-club": ("bmiidxc2", 16000, ["--rtc", "1792300000", "--video", "off", "--script", "oracle/scripts/bmiidxc2-club.his",
+                                          "--session-host", "out/regress/work/club2.sock"], "bmiidxc2-boot", "ddr2mc2-club"),
+})
+
 # report lines that describe the host, not the machine
 HOST_LINES = ("profile:", "audio:", "nvram:")
 HOST_TIME = re.compile(r" in [0-9.]+ s of host time")   # kbm's synth line

@@ -34,6 +34,9 @@ public:
         if (name == "--mame-mix") { mame_mix_ = true; return true; }
         if (name == "--fine-sound") { fine_sound_ = true; return true; }
         if (name == "--mame-cd") { mame_cd_ = true; return true; }
+        if (name == "--session-host") { session_host_ = value(); return true; }
+        if (name == "--session-join") { session_join_ = value(); return true; }
+        if (name == "--session-quantum") { session_quantum_ = std::stoi(value()); return true; }
         if (name == "--video") {
             const std::string v = value();
             if (v != "on" && v != "off") { fprintf(stderr, "--video: on or off\n"); exit(2); }
@@ -50,7 +53,13 @@ public:
                "                    them (MAME's RF5C400 starts them at its previous update, up to 20 ms early)\n"
                "  --video on|off    the background video from the Video CD (default on; MAME shows none)\n"
                "  --mame-cd         MAME's program CD drive: no read time, every byte at the SCSI bus's pace\n"
-               "                    (default: the XM-5401's 4x, a sector at a time as the drive reads it)\n";
+               "                    (default: the XM-5401's 4x, a sector at a time as the drive reads it)\n"
+               "  --session-host SOCKET  the club kits (bmiidxc, bmiidxca, bmiidxc2): this IIDX cabinet waits at\n"
+               "                    SOCKET (a path, or host:port) for the DDR cabinet's process (ddr2mc, ddr2mc2,\n"
+               "                    with --session-join), joined by a serial cable; the DDR cabinet plays this\n"
+               "                    one's music too\n"
+               "  --session-join SOCKET  the same, joining a DDR cabinet that hosts (--session-host)\n"
+               "  --session-quantum US   the lockstep quantum in microseconds (default 500; both sides alike)\n";
     }
 
     bool init(const Options &o) override {
@@ -89,6 +98,9 @@ public:
         cfg.fine_sound = fine_sound_;
         if (mame_cd_) cfg.cd_rate = 0;
         cfg.video = video_;
+        cfg.session_host = session_host_;
+        cfg.session_join = session_join_;
+        cfg.session_quantum_us = session_quantum_;
         if (!twinkle::init(cfg)) return false;
         printf("hiraku %s: Twinkle, MAME's PS1 (its recompiled blocks) and 68000\n", o.game.c_str());
         return true;
@@ -133,6 +145,8 @@ private:
     bool fine_sound_ = false;
     bool mame_cd_ = false;
     bool video_ = true;
+    std::string session_host_, session_join_;
+    int session_quantum_ = 500;
 };
 
 }  // namespace

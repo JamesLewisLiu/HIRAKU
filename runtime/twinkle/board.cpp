@@ -9,6 +9,7 @@
 
 #include "shell/cabinet.h"
 #include "shell/sys.h"
+#include "sys573/link.h"
 #include "sys573/mips.h"
 
 #include "emu.h"
@@ -63,6 +64,10 @@ std::vector<u8> load_file(const std::string &path) {
 // The game's configuration while the board is built: the shim runs device_add_mconfig as each
 // device is constructed, before init() can hand the board its cfg.
 const Config *g_build = nullptr;
+
+// the club kits' session cable to a DDR cabinet's process (Config::session_host), when there is one
+k573::SessionLink g_link;
+bool session(const Config &c) { return !c.session_host.empty() || !c.session_join.empty(); }
 
 // MAME's ioport output field: the write callback runs when its bits change
 // (dynamic_field::write)
@@ -249,7 +254,46 @@ void twinkle_state::device_add_mconfig(machine_config &config) {
     rs232.set_default_option("xvd701");
     ns16550_device &uart = *subdevice<ns16550_device>("fdc37c665gt:uart2");
     rs232_port_device &rs232_network = RS232_PORT(config, "rs232_network", default_rs232_devices, nullptr);
-    if (c.dvd_port == "sio1") {
+    // The club kits' session (Config::session_host): the network port on the cable to the DDR
+    // cabinet's process (runtime/sys573/link.h), a null modem as the fork's notes join the two
+    // MAMEs: TXD to the far RXD, RTS to the far CTS (Club Version 1 sees the cable on CTS), DTR to
+    // the far DSR and DCD. The far side's lines start idle (high), as an empty port's
+    if (c.dvd_port == "sio1" && session(c)) {
+        auto &sio1 = *subdevice<psxsio1_uart_device>("maincpu:sio1");
+        rs232.rxd_handler().set(sio1, &psxsio1_uart_device::write_rxd);
+        rs232.dsr_handler().set(sio1, &psxsio1_uart_device::write_dsr);
+        rs232.cts_handler().set(sio1, &psxsio1_uart_device::write_cts);
+        sio1.txd_handler().set(rs232, &rs232_port_device::write_txd);
+        sio1.dtr_handler().set(rs232, &rs232_port_device::write_dtr);
+        sio1.rts_handler().set(rs232, &rs232_port_device::write_rts);
+        uart.out_tx_callback().set([](int s) { g_link.out(k573::SessionLink::TXD, s); });
+        uart.out_dtr_callback().set([](int s) { g_link.out(k573::SessionLink::DTR, s); });
+        uart.out_rts_callback().set([](int s) { g_link.out(k573::SessionLink::RTS, s); });
+        g_link.in = [&uart](k573::SessionLink::Line l, int s) {
+            if (l == k573::SessionLink::TXD) uart.rx_w(s);
+            else if (l == k573::SessionLink::RTS) uart.cts_w(s);
+            else { uart.dsr_w(s); uart.dcd_w(s); }
+        };
+    } else if (session(c)) {
+        // Club Version 2: SIO1 the fork's UART (hk_psx_sio1_uart), as the fork's SIO1 is
+        auto &sio1 = *subdevice<psxsio1_uart_device>("maincpu:sio1");
+        sio1.txd_handler().set([](int s) { g_link.out(k573::SessionLink::TXD, s); });
+        sio1.dtr_handler().set([](int s) { g_link.out(k573::SessionLink::DTR, s); });
+        sio1.rts_handler().set([](int s) { g_link.out(k573::SessionLink::RTS, s); });
+        g_link.in = [&sio1](k573::SessionLink::Line l, int s) {
+            if (l == k573::SessionLink::TXD) sio1.write_rxd(s);
+            else if (l == k573::SessionLink::RTS) sio1.write_cts(s);
+            else sio1.write_dsr(s);
+        };
+        uart.out_tx_callback().set(rs232, &rs232_port_device::write_txd);
+        uart.out_dtr_callback().set(rs232, &rs232_port_device::write_dtr);
+        uart.out_rts_callback().set(rs232, &rs232_port_device::write_rts);
+        rs232.rxd_handler().set(uart, &ns16550_device::rx_w);
+        rs232.dcd_handler().set(uart, &ns16550_device::dcd_w);
+        rs232.dsr_handler().set(uart, &ns16550_device::dsr_w);
+        rs232.ri_handler().set(uart, &ns16550_device::ri_w);
+        rs232.cts_handler().set(uart, &ns16550_device::cts_w);
+    } else if (c.dvd_port == "sio1") {
         // A departure from MAME (TW-5): the game sends the player a byte only while SIO1's CTS is
         // on (status bit 8), which MAME's SIO lacks, so it stops at E600 DVD INIT ERROR. SIO1 is
         // the fork's UART here (sio_uart.h, hk_psx_sio1_uart, as on the 573's multi-session
@@ -682,7 +726,14 @@ void picture(screen_device &screen, const bitmap_rgb32 &bm, std::vector<u32> &ou
 
 bool init(const Config &cfg) {
     g.cfg = cfg;
-    hk_psx_sio1_uart = cfg.dvd_port == "sio1";   // SIO1 with CTS for the player (TW-5)
+    // SIO1 with CTS for the player (TW-5), or for the session cable (Club Version 2)
+    hk_psx_sio1_uart = cfg.dvd_port == "sio1" || session(cfg);
+    if (session(cfg)) {
+        // the IIDX cabinet plays the session's music (the fork's notes): its sound goes with its steps
+        const bool host = !cfg.session_host.empty();
+        if (!g_link.open(host ? cfg.session_host : cfg.session_join, host, attotime::from_usec(cfg.session_quantum_us), true))
+            return false;
+    }
     auto rom = [&](const std::string &f) { return cfg.rom_dir + "/" + f; };
     g.machine = std::make_unique<running_machine>();
     running_machine &m = *g.machine;
@@ -721,6 +772,7 @@ bool init(const Config &cfg) {
     };
     m.start();
     m.reset();
+    g_link.attach(m);
 
     // the game's R3000 blocks, recompiled as on the 573 (HK_573_RECORD, HK_573_BLOCKS: sys573/mips.h)
     k573::mips::init(*st.m_maincpu);
@@ -812,7 +864,8 @@ void set_audio_sink(AudioSink s) { g.audio_sink = std::move(s); }
         m.timeslice();
         // sound: MAME's speaker, the SPU at 0.75, the RF5C400's two main outputs and the CD drive's
         // audio at 1.0 (twinkle.cpp's routes; the RF5C400's effect outputs 2 and 3 go nowhere)
-        if (!g.audio_sink || !spu || !rf) {
+        // (on the session cable, the mix is made for the DDR cabinet even with no sound here)
+        if ((!g.audio_sink && !g_link.is_open()) || !spu || !rf) {
             for (sound_stream *s : m.m_streams) for (auto &o : s->m_out) o.clear();
             continue;
         }
@@ -839,6 +892,9 @@ void set_audio_sink(AudioSink s) { g.audio_sink = std::move(s); }
                 c.erase(c.begin(), c.begin() + n);
             }
         }
+        // the session's music for the DDR cabinet too (link.h), at MAME's level: the far side
+        // scales it as it does its own sound
+        if (g_link.is_open()) g_link.send_audio(lr.data(), n);
         for (float &v : lr) {
             v *= g.cfg.mix_gain;
             const float a = std::fabs(v);
@@ -846,7 +902,7 @@ void set_audio_sink(AudioSink s) { g.audio_sink = std::move(s); }
             if (a > 1.0f) g.sound_over++;
         }
         g.sound_samples += lr.size();
-        g.audio_sink(lr.data(), (int)n);
+        if (g.audio_sink) g.audio_sink(lr.data(), (int)n);
     }
 }
 

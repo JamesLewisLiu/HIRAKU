@@ -50,6 +50,11 @@ struct Config {
     std::string nvram_dir;                 // RTC (backup RAM), dongle ("" = blank each run)
     int64_t rtc_time = 0;                  // the RTC's time at power-on (seconds since 1970)
     std::string trace_dir;                 // --trace: an oracle-format MMIO trace there (mmio.bin)
+    // the club kits' session cable to a DDR cabinet's process (runtime/sys573/link.h): the network
+    // port (the super I/O's second 16550 when the player is on SIO1, Club Version 1; else SIO1,
+    // Club Version 2) on the cable, which one side listens for (host) and the other joins
+    std::string session_host, session_join;
+    int session_quantum_us = 500;
 };
 
 bool init(const Config &cfg);              // false: a message was printed

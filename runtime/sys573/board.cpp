@@ -1082,8 +1082,10 @@ void set_audio_sink(AudioSink s) { g.audio_sink = std::move(s); }
                 size_t n = std::min(l.size(), r.size());
                 if (cd) n = std::min({n, cd->m_out[0].size(), cd->m_out[1].size()});
                 for (const Board::Decoder &d : g.decoders) n = std::min(n, d.q[0].size());
-                // joined to another cabinet's unit: its music too (link.h), as the host waits for it
-                if (!g.cfg.session_join.empty() && g_link.is_open() && g_link.far_audio()) n = std::min(n, g_link.audio_available());
+                // joined to another cabinet's unit, or to a club kit's IIDX cabinet: its music too
+                // (link.h), as the host waits for it
+                const bool far_music = !g.cfg.msu && g_link.is_open() && g_link.far_audio();
+                if (far_music) n = std::min(n, g_link.audio_available());
                 if (n) {
                     std::vector<float> lr(n * 2);
                     for (size_t i = 0; i < n; i++) { lr[2 * i] = l[i]; lr[2 * i + 1] = r[i]; }
@@ -1111,7 +1113,7 @@ void set_audio_sink(AudioSink s) { g.audio_sink = std::move(s); }
                             q.pop(n);
                         }
                     if (host) g_link.send_audio(unit.data(), n);
-                    else if (!g.cfg.session_join.empty()) g_link.mix_audio(lr.data(), n);
+                    else if (far_music) g_link.mix_audio(lr.data(), n);
                     for (float &v : lr) {
                         v *= g.cfg.mix_gain;
                         const float a = std::fabs(v);

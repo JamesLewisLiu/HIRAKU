@@ -520,7 +520,9 @@ target_link_libraries(hiraku_mametw PUBLIC hiraku_mame573)
 target_compile_options(hiraku_mametw PRIVATE -w -O2)
 
 # the PS1's R3000 recompiled as on the 573 (runtime/sys573/mips.h: the same code, built in here too)
-add_library(hiraku_twinkle STATIC runtime/twinkle/board.cpp runtime/twinkle/core.cpp runtime/sys573/mips.cpp)
+# and the 573's session cable (runtime/sys573/link.h), which joins a club kit's IIDX cabinet to its DDR one
+add_library(hiraku_twinkle STATIC runtime/twinkle/board.cpp runtime/twinkle/core.cpp runtime/sys573/mips.cpp
+  runtime/sys573/link.cpp)
 target_include_directories(hiraku_twinkle PUBLIC runtime)
 # the background video (runtime/twinkle/video.h): the Video CD decoded with FFmpeg's libraries,
 # when there are any (without them, Twinkle runs with MAME's picture)

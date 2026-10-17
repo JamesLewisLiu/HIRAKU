@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// The session cable between two System 573 processes (link.h).
+// The session cable between two System 573 processes, or a 573 and a Twinkle (link.h).
 #include "sys573/link.h"
 
 #include <algorithm>
@@ -108,7 +108,7 @@ bool SessionLink::open(const std::string &where, bool host, attotime quantum, bo
     Hello mine{MAGIC, VERSION, (int64_t)quantum.as_attoseconds(), audio ? 1u : 0u, 0}, theirs{};
     if (!send_all(&mine, sizeof mine) || !recv_all(&theirs, sizeof theirs) || theirs.magic != MAGIC ||
         theirs.version != VERSION || theirs.quantum_attos != mine.quantum_attos) {
-        fprintf(stderr, "session: the other side isn't a matching HIRAKU 573 (version or quantum)\n");
+        fprintf(stderr, "session: the other side isn't a matching HIRAKU session cable (version or quantum)\n");
         net::close(m_fd);
         m_fd = -1;
         return false;
@@ -135,6 +135,19 @@ void SessionLink::out(Line line, int state) {
     const attotime t = m_machine ? m_machine->time() : attotime::zero;
     static const bool trace = getenv("HK_SESSION_LOG") != nullptr;
     if (trace) fprintf(stderr, "session out %d %d at %.9f\n", line, state, t.as_double());
+    // HK_SESSION_BYTES=1: the bytes sent, from TXD's bits (a call a bit: a start bit, eight data
+    // bits, then the next 1 ends it; parity, if any, is not told apart)
+    static const bool bytes = getenv("HK_SESSION_BYTES") != nullptr;
+    if (bytes && line == TXD) {
+        if (m_tx_bits < 0) {
+            if (!state) m_tx_bits = 0, m_tx_byte = 0;
+        } else if (m_tx_bits < 8) {
+            m_tx_byte |= state << m_tx_bits++;
+        } else if (state) {
+            fprintf(stderr, "session tx %02x at %.6f\n", m_tx_byte, t.as_double());
+            m_tx_bits = -1;
+        }
+    }
     m_out.push_back({t.seconds(), t.attoseconds(), (uint8_t)line, (uint8_t)state});
 }
 

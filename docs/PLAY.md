@@ -833,6 +833,34 @@ ninja -C build/cmake hiraku-bmiidx6
 
 **The background video:** from 6th style on, the player holds a DVD, and the stages play its chapters (MPEG-2, decoded with FFmpeg as the Video CD is). MAME shows none, and its player model reads the game's DVD chapter numbers as a Video CD's; the picture here follows the game's own numbers. Which clip goes with which song still needs checking against real cabinets: in 8th style the game asks for chapter 4 for 5.1.1., which is not that song's own clip.
 
+### The club kits: beatmania IIDX × DDR 2nd Club Version (further than MAME)
+
+A club kit turned a beatmania IIDX cabinet and a DDR cabinet into one session: a DJ on the IIDX and a dancer on the DDR play the same song. HIRAKU runs each cabinet in its own process, a Twinkle and a System 573, joined by a serial cable (MAME has no such cable on the 573; docs/CATALOGUE.md, Phase 6).
+
+| Kit | IIDX cabinet | DDR cabinet | Cable |
+|---|---|---|---|
+| Club Version 1 | `bmiidxc` or `bmiidxca` (1st style board) | `ddr2mc` | IIDX: the super I/O's COM2, 19,200 baud; DDR: SIO1 |
+| Club Version 2 | `bmiidxc2` (Substream board) | `ddr2mc2` | SIO1 to SIO1, 38,400 baud |
+
+Install the DDR side once from its install CD (`--cd install`; the launcher's first boot does it), and clear the IIDX side's backup on its first boot (Club Version 1 in test mode, as the 1st style; Club Version 2 with 1P Start). Then start the IIDX side, which waits, and the DDR side:
+
+```bash
+hiraku-bmiidxc --session-host /tmp/club.sock
+```
+
+```bash
+hiraku-ddr2mc --session-join /tmp/club.sock
+```
+
+- **Either side can host** (`--session-host` on one, `--session-join` on the other). A host:port works too (TCP), for two machines (not tried yet).
+- **The cable shows** in attract: the IIDX title gets the club version's logo, and its How to Play the "DDRとの通信" banners.
+- **Club Version 1:** credits and Start on the IIDX ("Let's play with DanceDanceRevolution / Please wait"), then credits and Start on the DDR within the joining period (10 s by default). The IIDX player chooses the mode and the song; the DDR shows "beatmania IIDX side is choosing". Both then play the IIDX's song, the DDR with its arrows.
+- **Club Version 2:** the DDR player starts first and, after the play mode, answers **Yes** to "recruit a DJ from beatmania IIDX substream?" (通信プレイモード); the IIDX player then presses Start ("Here Comes A New DJ!" on the DDR) and chooses as above.
+- **The music** comes from the IIDX cabinet; the DDR plays no music of its own in a club song. The IIDX process sends its sound over the cable, so the DDR window plays it too, in time.
+- **The launcher** doesn't start sessions yet (nor GuitarFreaks × DrumMania): run the two from a shell.
+
+The regress pairs `ddr2mc-club` + `bmiidxc-club` and `ddr2mc2-club` + `bmiidxc2-club` play a club stage each (after `ddr2mc-install`, `ddr2mc2-install`, `bmiidxc-clear`, `bmiidxc2-boot`).
+
 ## Konami Python 1: pop'n music 9–14 (in progress, M16)
 
 pop'n music 9 (`popn9`) runs on HIRAKU's Python core, and so do 10 (`popn10`), 11 (`popn11`), 12 Iroha (`popn12`), 13 Carnival (`popn13`) and 14 FEVER! (`popn14`): PCSX2 Reliquary's emulator hosted by HIRAKU's shell (PLAN.md §23, docs/PYTHON.md). It is built inside Reliquary's own build. You need:

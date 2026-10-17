@@ -528,6 +528,9 @@ void psxsio1_uart_device::write(offs_t offset, uint32_t data, uint32_t mem_mask)
 
 void psxsio1_uart_device::write_regs(offs_t offset, uint32_t data, uint32_t mem_mask)
 {
+	// HIRAKU: HK_MSU_TRACE=1 prints the mode, control and baud writes too
+	if (hk_trace && offset % 4 >= 2)
+		fprintf(stderr, "sio1 reg %u = %08x & %08x at %.6f\n", offset % 4, data, mem_mask, machine().time().as_double());
 	switch (offset % 4)
 	{
 	case 0:
