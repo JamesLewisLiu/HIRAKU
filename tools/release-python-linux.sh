@@ -70,6 +70,8 @@ fi
 cmake -S "$src" -B "$build" -G Ninja -DCMAKE_BUILD_TYPE=Release \
   -DCMAKE_C_COMPILER="${CC:-clang}" -DCMAKE_CXX_COMPILER="${CXX:-clang++}" \
   -DCMAKE_PREFIX_PATH="$deps;$linux_deps" -DCMAKE_BUILD_RPATH='$ORIGIN/lib' \
+  `# an RPATH, not a RUNPATH: it also finds the bundled libraries' own (libwebp's libsharpyuv)` \
+  -DCMAKE_EXE_LINKER_FLAGS=-Wl,--disable-new-dtags \
   -DENABLE_QT_UI=OFF -DENABLE_TESTS=OFF -DUSE_LINKED_FFMPEG=OFF -DWAYLAND_SCANNER=OFF -DHK_PCSC_DLOPEN=ON \
   -DHIRAKU_DIR="$root"
 cmake --build "$build" -j "$jobs" --target hiraku-python

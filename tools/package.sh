@@ -47,6 +47,11 @@ for f in "$build"/hiraku "$build"/hiraku-*; do
     LD_LIBRARY_PATH=${HK_PYTHON_LIBS:-}${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH} ldd "$real" |
       awk '$3 ~ /^\// && $3 !~ /^\/(usr\/)?lib(64)?\// {print $3}' | while read -r lib; do
       cp -L "$lib" "$d/bin/lib/"
+      # a library built elsewhere may name its build folder as its run path (PCSX2's libwebp,
+      # libjpeg): its own libraries are beside it in the package
+      if command -v patchelf > /dev/null && readelf -d "$d/bin/lib/$(basename "$lib")" | grep -q RUNPATH; then
+        patchelf --set-rpath '$ORIGIN' "$d/bin/lib/$(basename "$lib")"
+      fi
     done
   fi
 done
@@ -129,6 +134,14 @@ done
 [ -n "$sdl" ] && cp -L "$sdl" "$d/bin/lib/"
 # HK_PACKAGE_BIN: more programs for bin/ (a release's 7-Zip, bin/7zz: tools/mameset.py looks there first)
 for f in ${HK_PACKAGE_BIN:-}; do cp -L "$f" "$d/bin/"; done
+# HK_PACKAGE_LIBS: libraries for bin/lib that the binaries load themselves (dlopen: ldd doesn't
+# see them), a release's PCSX2 shader compiler (libshaderc_shared.so.1)
+for f in ${HK_PACKAGE_LIBS:-}; do
+  cp -L "$f" "$d/bin/lib/"
+  if command -v patchelf > /dev/null && readelf -d "$d/bin/lib/$(basename "$f")" | grep -q RUNPATH; then
+    patchelf --set-rpath '$ORIGIN' "$d/bin/lib/$(basename "$f")"
+  fi
+done
 # HK_PYTHON_DIR: a Python for adding games, in python/ (the launcher looks there first)
 [ -n "${HK_PYTHON_DIR:-}" ] && cp -r "$HK_PYTHON_DIR" "$d/python"
 cp -r "$root/games" "$root/docs" "$root/shaders" "$d/"

@@ -51,7 +51,7 @@ python)
   $sudo apt-get install -y -q --no-install-recommends \
     autoconf automake libtool extra-cmake-modules libaio-dev libcurl4-openssl-dev libevdev-dev libfontconfig-dev \
     libfreetype-dev libgtk-3-dev libgudev-1.0-dev libharfbuzz-dev libinput-dev libopengl-dev libpcap-dev libssl-dev \
-    libva-dev libx11-xcb-dev libxcb1-dev libxcb-cursor-dev libxkbcommon-x11-dev unzip patch libpcsclite-dev
+    libva-dev libx11-xcb-dev libxcb1-dev libxcb-cursor-dev libxkbcommon-x11-dev unzip patch libpcsclite-dev patchelf
   ;;
 windows)
   # mingw-w64's headers, CRT and winpthreads for clang (cmake/x86_64-w64-mingw32.cmake), its gcc
