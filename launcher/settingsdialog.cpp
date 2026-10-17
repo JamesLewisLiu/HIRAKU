@@ -339,8 +339,7 @@ SettingsDialog::SettingsDialog(QWidget *parent) : QDialog(parent) {
     m_cardio->setChecked(s.value("readers/cardio", false).toBool());
     m_cardio->setToolTip("Read through /dev/hidraw: a udev rule lets you open it (docs/PLAY.md, Card readers).");
 #ifdef Q_OS_WIN
-    m_cardio->setEnabled(false);
-    m_cardio->setToolTip("Not on Windows yet.");
+    m_cardio->setToolTip("Readers that show themselves as cardio's HID device (usage page FFCA): the first two found.");
 #endif
     fr->addRow("", m_cardio);
     v->addWidget(rd);

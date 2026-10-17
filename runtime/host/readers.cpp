@@ -26,6 +26,10 @@
 #include <thread>
 #include <vector>
 
+#if defined(_WIN32) && defined(HK_WITH_SDL)
+#include <SDL3/SDL.h>   // cardio readers through SDL's HID calls
+#endif
+
 #ifdef HK_WITH_PCSC
 #ifdef _WIN32
 #ifndef WIN32_LEAN_AND_MEAN
@@ -229,11 +233,10 @@ void scard_run() {
 }
 #endif
 
-// ---- cardio readers through hidraw ----
-#ifndef _WIN32
+// ---- cardio readers through hidraw (Linux) or SDL's HID calls (Windows) ----
 
 // A HID report descriptor's items: whether it has usage page 0xffca (cardio), and report ids
-bool cardio_descriptor(const std::vector<uint8_t> &d, bool &ids) {
+[[maybe_unused]] bool cardio_descriptor(const std::vector<uint8_t> &d, bool &ids) {
     bool cardio = false;
     ids = false;
     for (size_t i = 0; i < d.size();) {
@@ -254,6 +257,7 @@ bool cardio_descriptor(const std::vector<uint8_t> &d, bool &ids) {
     return cardio;
 }
 
+#ifndef _WIN32
 void cardio_run() {
     struct Device {
         std::string path;
@@ -322,9 +326,73 @@ void cardio_run() {
     }
     for (auto &d : devs) close(d.fd);
 }
+#elif defined(HK_WITH_SDL)
+// Windows: through SDL's HID calls (hidapi), which give the reports as hidraw does (the report id
+// first when the reader numbers its reports)
+void cardio_run() {
+    struct Device {
+        std::string path;
+        SDL_hid_device *dev;
+        int ids;   // 1 numbered reports, 0 not, -1 unknown (no descriptor: told by the report)
+    };
+    std::vector<Device> devs;
+    SDL_SetHint(SDL_HINT_HIDAPI_ENUMERATE_ONLY_CONTROLLERS, "0");   // card readers are not game controllers
+    if (SDL_hid_init() != 0) {
+        fprintf(stderr, "cardio: no HID access (%s)\n", SDL_GetError());
+        return;
+    }
+    bool told = false;
+    auto scan = [&] {
+        SDL_hid_device_info *list = SDL_hid_enumerate(0, 0);
+        for (auto *e = list; e && devs.size() < 2; e = e->next) {
+            if (e->usage_page != 0xffca || !e->path) continue;
+            const std::string path = e->path;
+            if (std::any_of(devs.begin(), devs.end(), [&](const Device &d) { return d.path == path; })) continue;
+            SDL_hid_device *dev = SDL_hid_open_path(e->path);
+            if (!dev) {
+                if (!told) fprintf(stderr, "cardio: a cardio reader cannot be opened (%s)\n", SDL_GetError());
+                told = true;
+                continue;
+            }
+            unsigned char d[4096];
+            const int n = SDL_hid_get_report_descriptor(dev, d, sizeof d);
+            bool ids = false;
+            const int known = n > 0 && cardio_descriptor(std::vector<uint8_t>(d, d + n), ids) ? (ids ? 1 : 0) : -1;
+            fprintf(stderr, "cardio: %04x:%04x, player %zu's\n", e->vendor_id, e->product_id, devs.size() + 1);
+            devs.push_back({path, dev, known});
+        }
+        SDL_hid_free_enumeration(list);
+    };
+    auto last_scan = Clock::now() - std::chrono::seconds(10);
+    while (g_running) {
+        if (devs.size() < 2 && Clock::now() - last_scan > std::chrono::seconds(5)) {
+            scan();
+            last_scan = Clock::now();
+        }
+        if (devs.empty()) {
+            sleep_ms(500);
+            continue;
+        }
+        for (size_t i = 0; i < devs.size(); i++) {
+            uint8_t r[64];
+            const int n = SDL_hid_read_timeout(devs[i].dev, r, sizeof r, devs.size() == 1 ? 200 : 100);
+            if (n < 0) {   // unplugged
+                SDL_hid_close(devs[i].dev);
+                devs[i].dev = nullptr;
+                continue;
+            }
+            // a report id (1 ISO 15693, 2 FeliCa) and the card's 8 bytes
+            const bool numbered = devs[i].ids == 1 || (devs[i].ids < 0 && n == 9 && (r[0] == 1 || r[0] == 2));
+            const int at = numbered ? 1 : 0;
+            if (n >= at + 8) card_read((int)i, r + at);
+        }
+        devs.erase(std::remove_if(devs.begin(), devs.end(), [](const Device &d) { return !d.dev; }), devs.end());
+    }
+    for (auto &d : devs) SDL_hid_close(d.dev);
+}
 #else
-void cardio_run() {   // Windows' HID calls: not yet (PLAN.md section 26)
-    fprintf(stderr, "cardio: not on Windows yet\n");
+void cardio_run() {
+    fprintf(stderr, "cardio: this build has no HID access (built without SDL)\n");
 }
 #endif
 
