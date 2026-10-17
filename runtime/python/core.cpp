@@ -104,6 +104,9 @@ extern "C" int __llvm_profile_write_file(void) __attribute__((weak));
 #endif
 
 #ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX   // (windows.h's min and max macros: std::max below)
+#endif
 #include <objbase.h>
 #endif
 
