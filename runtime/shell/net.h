@@ -19,6 +19,10 @@
 #include <winsock2.h>
 #include <ws2tcpip.h>
 #include <afunix.h>
+#if defined(_MSC_VER) && !defined(__MINGW32__)
+#include <cstdint>
+typedef intptr_t ssize_t;   // MSVC's C library has none (the Python core builds with clang-cl)
+#endif
 #else
 #include <arpa/inet.h>
 #include <netdb.h>
@@ -51,6 +55,7 @@ ssize_t send_now(int fd, const void *p, size_t n);   // ... and never waits (a n
 ssize_t recv(int fd, void *p, size_t n);
 bool interrupted();   // the last call failed only because a signal came (try again)
 std::string error();  // what the last call's failure was
+std::string resolve_error(int code);   // what getaddrinfo's failure (its result) was
 bool remove_path(const std::string &path);   // a Unix socket's file
 
 }  // namespace hk::net

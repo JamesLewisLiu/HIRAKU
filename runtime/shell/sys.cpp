@@ -2,6 +2,7 @@
 #include "shell/sys.h"
 
 #include <algorithm>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 
@@ -106,6 +107,10 @@ bool make_dir(const std::string &path) {
 bool is_dir(const std::string &path) {
     struct _stat64 st;
     return _stat64(path.c_str(), &st) == 0 && (st.st_mode & _S_IFDIR);
+}
+
+bool replace_file(const std::string &from, const std::string &to) {
+    return MoveFileExA(from.c_str(), to.c_str(), MOVEFILE_REPLACE_EXISTING) != 0;
 }
 
 std::string exe_path() {
@@ -219,6 +224,8 @@ bool is_dir(const std::string &path) {
     struct stat st;
     return stat(path.c_str(), &st) == 0 && S_ISDIR(st.st_mode);
 }
+
+bool replace_file(const std::string &from, const std::string &to) { return std::rename(from.c_str(), to.c_str()) == 0; }
 
 std::string exe_path() {
     char exe[4096];

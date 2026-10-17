@@ -397,7 +397,7 @@ void finish() {
         fputc('\n', f);
     }
     fclose(f);
-    rename(tmp.c_str(), g.rec_path.c_str());
+    sys::replace_file(tmp, g.rec_path);
     printf("mips: %zu blocks recorded in %s\n", all.size(), g.rec_path.c_str());
 }
 

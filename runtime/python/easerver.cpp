@@ -16,6 +16,10 @@
 #include <iterator>
 #include <set>
 
+#ifdef _MSC_VER
+#define strncasecmp _strnicmp   // MSVC's name for it
+#endif
+
 namespace hk::py {
 
 namespace {
@@ -264,7 +268,7 @@ void EamuseServer::write_file(const std::string &name, const std::string &data) 
         f << data;
         if (!f) return;
     }
-    std::rename(tmp.c_str(), path.c_str());
+    sys::replace_file(tmp, path);
 }
 
 namespace {

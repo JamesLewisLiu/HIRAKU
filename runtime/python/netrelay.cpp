@@ -80,7 +80,7 @@ bool RelayClient::open(const std::string &host, uint16_t port, int seconds, std:
     hints.ai_family = AF_UNSPEC;
     hints.ai_socktype = SOCK_STREAM;
     if (int e = getaddrinfo(host.c_str(), std::to_string(port).c_str(), &hints, &res); e != 0) {
-        *error = host + ": " + gai_strerror(e);
+        *error = host + ": " + net::resolve_error(e);
         return false;
     }
     int fd = -1;

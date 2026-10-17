@@ -103,6 +103,9 @@ std::string error() {
     return s;
 }
 
+// gai_strerrorA: gai_strerror is the wide one where UNICODE is defined (as PCSX2 defines it)
+std::string resolve_error(int code) { return gai_strerrorA(code); }
+
 bool remove_path(const std::string &path) { return DeleteFileA(path.c_str()) != 0; }
 
 #else
@@ -168,6 +171,8 @@ ssize_t recv(int fd, void *p, size_t n) { return ::recv(fd, p, n, 0); }
 bool interrupted() { return errno == EINTR; }
 
 std::string error() { return strerror(errno); }
+
+std::string resolve_error(int code) { return gai_strerror(code); }
 
 bool remove_path(const std::string &path) { return unlink(path.c_str()) == 0; }
 

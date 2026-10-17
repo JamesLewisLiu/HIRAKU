@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // The e-AMUSEMENT card reader/writer and 10-key of a Python 1 pop'n cabinet (cardunit.h).
 #include "python/cardunit.h"
+#include "shell/sys.h"
 
 #include <cstdio>
 #include <fstream>
@@ -102,7 +103,7 @@ void CardUnit::save() {
         f.write(reinterpret_cast<const char *>(card_.data()), (std::streamsize)card_.size());
         if (!f) { fprintf(stderr, "card: cannot write %s\n", tmp.c_str()); return; }
     }
-    std::rename(tmp.c_str(), file_.c_str());
+    sys::replace_file(tmp, file_);
 }
 
 uint8_t CardUnit::status() const {

@@ -15,6 +15,9 @@
 #ifndef O_BINARY
 #define O_BINARY 0   // Windows' open() translates line ends without it
 #endif
+#if defined(_MSC_VER) && !defined(__MINGW32__)
+typedef intptr_t ssize_t;   // MSVC's C library has none (the Python core builds with clang-cl)
+#endif
 
 namespace hk::sys {
 
@@ -35,6 +38,8 @@ void will_need(int fd, uint64_t off, uint64_t n);   // a hint: read that ahead
 
 bool make_dir(const std::string &path);   // true if it is there now
 bool is_dir(const std::string &path);
+// rename(), and the file at `to` replaced if there is one (Windows' rename() fails then)
+bool replace_file(const std::string &from, const std::string &to);
 std::string exe_path();   // this program's file, with / between folders; empty if unknown
 double thread_cpu_ms();   // the calling thread's CPU time
 long major_faults();      // the process's page faults that read the disk (0 where unknown)

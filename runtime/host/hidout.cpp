@@ -3,7 +3,9 @@
 
 #include <SDL3/SDL.h>
 
+#ifndef _WIN32
 #include <unistd.h>
+#endif
 
 #include <cstdio>
 #include <cstring>
@@ -73,7 +75,9 @@ std::vector<Device> enumerate() {
         d.name = man.empty() ? prod : prod.empty() ? man : (prod.rfind(man, 0) == 0 ? prod : man + " " + prod);
         if (d.name.empty()) d.name = "HID device " + d.id;
         if (read_layout_sysfs(d.path, d.layout)) {
+#ifndef _WIN32   // (sysfs: Linux's; MSVC has no unistd.h)
             if (access(d.path.c_str(), R_OK | W_OK) != 0) d.error = "no permission to open " + d.path;
+#endif
         } else if (SDL_hid_device *dev = SDL_hid_open_path(e->path)) {
             if (!read_layout(dev, d.layout)) d.error = "cannot read its report descriptor";
             SDL_hid_close(dev);

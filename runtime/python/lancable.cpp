@@ -2,15 +2,12 @@
 // The shop's LAN between Python cabinets in separate processes (lancable.h).
 #include "python/lancable.h"
 
-#include <cerrno>
+#include <chrono>
 #include <cstdio>
 #include <cstring>
-#include <netdb.h>
-#include <netinet/in.h>
-#include <netinet/tcp.h>
-#include <sys/socket.h>
-#include <sys/un.h>
-#include <unistd.h>
+#include <thread>
+
+#include "shell/net.h"
 
 namespace hk::py {
 
@@ -24,8 +21,8 @@ struct Hello {
     int32_t index, cabinets;   // from the host: the guest's number, and how many there are
 };
 
-// "host:port" (TCP) unless it looks like a path
-bool is_tcp(const std::string &w) { return w.find('/') == std::string::npos && w.rfind(':') != std::string::npos; }
+// "host:port" (TCP) unless it looks like a path (as sys573/link.cpp: C:\ is a path on Windows)
+bool is_tcp(const std::string &w) { return w.find_first_of("/\\") == std::string::npos && w.rfind(':') != std::string::npos; }
 
 int tcp_socket(const std::string &w, bool host) {
     const size_t c = w.rfind(':');
@@ -34,19 +31,19 @@ int tcp_socket(const std::string &w, bool host) {
     hints.ai_family = AF_UNSPEC;
     hints.ai_socktype = SOCK_STREAM;
     hints.ai_flags = host ? AI_PASSIVE : 0;
+    net::start();
     if (getaddrinfo(name.empty() ? nullptr : name.c_str(), port.c_str(), &hints, &res) != 0) return -1;
     int fd = -1;
     for (addrinfo *a = res; a && fd < 0; a = a->ai_next) {
-        fd = socket(a->ai_family, a->ai_socktype, a->ai_protocol);
+        fd = net::socket(a->ai_family, a->ai_socktype, a->ai_protocol);
         if (fd < 0) continue;
-        int one = 1;
         if (host) {
-            setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &one, sizeof one);
-            if (bind(fd, a->ai_addr, a->ai_addrlen) == 0 && listen(fd, 4) == 0) break;
-        } else if (connect(fd, a->ai_addr, a->ai_addrlen) == 0) {
+            net::set_int(fd, SOL_SOCKET, SO_REUSEADDR, 1);
+            if (bind(fd, a->ai_addr, (int)a->ai_addrlen) == 0 && listen(fd, 4) == 0) break;
+        } else if (connect(fd, a->ai_addr, (int)a->ai_addrlen) == 0) {
             break;
         }
-        close(fd);
+        net::close(fd);
         fd = -1;
     }
     freeaddrinfo(res);
@@ -58,23 +55,23 @@ int unix_socket(const std::string &path, bool host) {
     a.sun_family = AF_UNIX;
     if (path.size() >= sizeof a.sun_path) return -1;
     memcpy(a.sun_path, path.c_str(), path.size() + 1);
-    int fd = socket(AF_UNIX, SOCK_STREAM, 0);
+    int fd = net::socket(AF_UNIX, SOCK_STREAM, 0);
     if (fd < 0) return -1;
     if (host) {
-        unlink(path.c_str());
+        net::remove_path(path);
         if (bind(fd, (sockaddr *)&a, sizeof a) == 0 && listen(fd, 4) == 0) return fd;
     } else if (connect(fd, (sockaddr *)&a, sizeof a) == 0) {
         return fd;
     }
-    close(fd);
+    net::close(fd);
     return -1;
 }
 
 bool send_all(int fd, const void *p, size_t n) {
     const char *c = (const char *)p;
     while (n) {
-        ssize_t k = send(fd, c, n, MSG_NOSIGNAL);
-        if (k < 0 && errno == EINTR) continue;
+        ssize_t k = net::send(fd, c, n);
+        if (k < 0 && net::interrupted()) continue;
         if (k <= 0) return false;
         c += k;
         n -= (size_t)k;
@@ -85,8 +82,8 @@ bool send_all(int fd, const void *p, size_t n) {
 bool recv_all(int fd, void *p, size_t n) {
     char *c = (char *)p;
     while (n) {
-        ssize_t k = recv(fd, c, n, 0);
-        if (k < 0 && errno == EINTR) continue;
+        ssize_t k = net::recv(fd, c, n);
+        if (k < 0 && net::interrupted()) continue;
         if (k <= 0) return false;
         c += k;
         n -= (size_t)k;
@@ -95,8 +92,7 @@ bool recv_all(int fd, void *p, size_t n) {
 }
 
 void no_delay(int fd) {
-    int one = 1;
-    setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof one);   // fails harmlessly on a Unix socket
+    net::set_int(fd, IPPROTO_TCP, TCP_NODELAY, 1);   // fails harmlessly on a Unix socket
 }
 
 struct BatchHeader {
@@ -113,7 +109,7 @@ struct PacketHeader {
 }  // namespace
 
 LanCable::~LanCable() {
-    for (int fd : fds_) close(fd);
+    for (int fd : fds_) net::close(fd);
 }
 
 bool LanCable::open(const std::string &where, bool host, int cabinets) {
@@ -126,26 +122,26 @@ bool LanCable::open(const std::string &where, bool host, int cabinets) {
         }
         int ls = tcp ? tcp_socket(where, true) : unix_socket(where, true);
         if (ls < 0) {
-            fprintf(stderr, "lan: can't listen at %s: %s\n", where.c_str(), strerror(errno));
+            fprintf(stderr, "lan: can't listen at %s: %s\n", where.c_str(), net::error().c_str());
             return false;
         }
         for (int i = 1; i < cabinets; i++) {
             fprintf(stderr, "lan: waiting for cabinet %d of %d at %s\n", i + 1, cabinets, where.c_str());
-            const int fd = accept(ls, nullptr, nullptr);
+            const int fd = net::accept(ls);
             if (fd < 0) break;
             no_delay(fd);
             Hello mine{MAGIC, VERSION, i, cabinets}, theirs{};
             if (!send_all(fd, &mine, sizeof mine) || !recv_all(fd, &theirs, sizeof theirs) || theirs.magic != MAGIC ||
                 theirs.version != VERSION) {
                 fprintf(stderr, "lan: cabinet %d isn't a matching HIRAKU Python core\n", i + 1);
-                close(fd);
+                net::close(fd);
                 i--;
                 continue;
             }
             fds_.push_back(fd);
         }
-        close(ls);
-        if (!tcp) unlink(where.c_str());
+        net::close(ls);
+        if (!tcp) net::remove_path(where);
         if ((int)fds_.size() != cabinets - 1) {
             fprintf(stderr, "lan: not all cabinets came\n");
             return false;
@@ -155,7 +151,7 @@ bool LanCable::open(const std::string &where, bool host, int cabinets) {
         int fd = -1;
         for (int tries = 0; tries < 6000 && fd < 0; tries++) {   // ten minutes (the host may still be starting)
             fd = tcp ? tcp_socket(where, false) : unix_socket(where, false);
-            if (fd < 0) usleep(100000);
+            if (fd < 0) std::this_thread::sleep_for(std::chrono::milliseconds(100));
         }
         if (fd < 0) {
             fprintf(stderr, "lan: no host cabinet at %s\n", where.c_str());
@@ -166,7 +162,7 @@ bool LanCable::open(const std::string &where, bool host, int cabinets) {
         if (!recv_all(fd, &theirs, sizeof theirs) || theirs.magic != MAGIC || theirs.version != VERSION ||
             !send_all(fd, &mine, sizeof mine)) {
             fprintf(stderr, "lan: the host isn't a matching HIRAKU Python core\n");
-            close(fd);
+            net::close(fd);
             return false;
         }
         fds_.push_back(fd);
@@ -224,7 +220,7 @@ void LanCable::exchange(std::vector<Packet> &out, std::vector<Packet> &in) {
 
 void LanCable::lost(const char *why) {
     fprintf(stderr, "lan: %s at step %llu; the cable is idle now\n", why, (unsigned long long)step_);
-    for (int fd : fds_) close(fd);
+    for (int fd : fds_) net::close(fd);
     fds_.clear();
 }
 

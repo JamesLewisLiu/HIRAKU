@@ -21,7 +21,11 @@ namespace hk {
 
 inline bool portable(const std::string &root) {
     struct stat st;
+#ifdef _MSC_VER   // no S_ISDIR in MSVC's C library
+    return !root.empty() && stat((root + "/user").c_str(), &st) == 0 && (st.st_mode & _S_IFMT) == _S_IFDIR;
+#else
     return !root.empty() && stat((root + "/user").c_str(), &st) == 0 && S_ISDIR(st.st_mode);
+#endif
 }
 
 // the saves' folder: <it>/<game> is a game's

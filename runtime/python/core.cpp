@@ -22,6 +22,7 @@
 // Linking Reliquary (GPL-3.0) makes the hiraku-<python game> binaries GPL-3.0 as a
 // whole; this file is GPL-3.0-or-later like the rest of HIRAKU. The Host:: glue below
 // follows pcsx2-gsrunner (GPL-3.0+).
+#ifndef _WIN32
 #include <cxxabi.h>
 #include <dlfcn.h>
 #include <signal.h>
@@ -31,6 +32,8 @@
 #include <ucontext.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#endif
+#include <cstdlib>
 
 #include <algorithm>
 #include <atomic>
@@ -95,8 +98,10 @@
 #include "shell/eaoptions.h"
 #include "shell/userdir.h"
 
+#ifndef _WIN32
 // clang's profile runtime, present only in an instrumented build (oracle/pcsx2/build-reliquary.sh pgo)
 extern "C" int __llvm_profile_write_file(void) __attribute__((weak));
+#endif
 
 namespace {
 
@@ -119,6 +124,19 @@ bool copy_file(const std::string &from, const std::string &to) {
     return (bool)out;
 }
 
+#ifdef _WIN32
+bool exists(const std::string &p) {
+    std::error_code ec;
+    return std::filesystem::exists(p, ec);
+}
+
+void mkdirs(const std::string &path) {
+    std::error_code ec;
+    std::filesystem::create_directories(path, ec);
+}
+
+std::string base_name(const std::string &p) { return p.substr(p.find_last_of("/\\") + 1); }   // either separator
+#else
 bool exists(const std::string &p) {
     struct stat st;
     return stat(p.c_str(), &st) == 0;
@@ -130,6 +148,7 @@ void mkdirs(const std::string &path) {
 }
 
 std::string base_name(const std::string &p) { return p.substr(p.rfind('/') + 1); }
+#endif
 
 // One game's e-AMUSEMENT folder moved into the folder all the pop'n games share (pop'n 9-14 in the
 // saves' default places: a player carried from one game to the next is found there). A file the
@@ -218,7 +237,13 @@ MemorySettingsInterface s_settings;
 // printed at exit with each sample attributed to one of PCSX2's code caches (EE, IOP,
 // VU0, VU1, VIF, the software GS's JIT) or to its function. HIRAKU's own sampler
 // (runtime/core/sampler.cpp) can't see into the caches, and dumps from atexit, which
-// this core's exit path skips.
+// this core's exit path skips. Linux only.
+#ifdef _WIN32
+namespace prof {
+void start() { fprintf(stderr, "HK_PY_PROFILE: the sampler is Linux only\n"); }
+void cpu_thread() {}
+}  // namespace prof
+#else
 namespace prof {
 constexpr int MAX = 1 << 20;
 uintptr_t g_rip[MAX];
@@ -232,6 +257,7 @@ void on_sig(int, siginfo_t *, void *uc) {
     g_rip[n] = (uintptr_t) static_cast<ucontext_t *>(uc)->uc_mcontext.gregs[REG_RIP];
     g_tid[n] = (pid_t)syscall(SYS_gettid);
 }
+void cpu_thread() { g_cpu_tid = (pid_t)syscall(SYS_gettid); }   // the calling thread is the CPU thread
 void start() {
     struct sigaction sa {};
     sa.sa_sigaction = on_sig;
@@ -323,6 +349,7 @@ void report() {
     print("other threads (GS, its workers)", other, n);
 }
 }  // namespace prof
+#endif
 
 
 class PythonCore final : public hk::Core {
@@ -413,10 +440,18 @@ public:
 
         // The run's own copy of what Reliquary writes back
         run_dir_ = o.nvram_dir.empty() ? o.out + "/python-run" : o.nvram_dir;
+#ifdef _WIN32
+        if (!std::filesystem::path(run_dir_).is_absolute()) {   // the descriptor's paths must not depend on the working directory
+            std::error_code ec;
+            const std::filesystem::path abs = std::filesystem::absolute(run_dir_, ec);
+            if (!ec) run_dir_ = abs.generic_string();
+        }
+#else
         if (run_dir_[0] != '/') {   // the descriptor's paths must not depend on the working directory
             char cwd[4096];
             if (getcwd(cwd, sizeof cwd)) run_dir_ = std::string(cwd) + "/" + run_dir_;
         }
+#endif
         if (o.nvram_dir.empty() && exists(run_dir_)) FileSystem::RecursiveDeleteDirectory(run_dir_.c_str());
         mkdirs(run_dir_);
         if (m["board"] == "python2") {
@@ -888,12 +923,21 @@ private:
         // The shell ends a run with exit() from inside a vsync. PCSX2's static destructors
         // then assert (the VM is still mapped), so leave before them with the same status;
         // the shell has already saved and reported everything by then.
+#ifdef _WIN32
+        // Windows has no on_exit, and atexit isn't told the status: the shell's exits once a run
+        // is going are exit(0) and an interrupted run's exit(130), which leaves with 0 here.
+        std::atexit([] {
+            fflush(nullptr);
+            _exit(0);
+        });
+#else
         on_exit([](int status, void *) {
             if (getenv("HK_PY_PROFILE")) prof::report();
             if (__llvm_profile_write_file) __llvm_profile_write_file();   // a PGO training build: _exit skips its atexit
             fflush(nullptr);
             _exit(status);
         }, nullptr);
+#endif
         if (getenv("HK_PY_PROFILE")) prof::start();
         if (!EmuFolders::EnsureFoldersExist()) { fprintf(stderr, "python: cannot create %s\n", EmuFolders::DataRoot.c_str()); return false; }
         self_ = this;
@@ -976,7 +1020,7 @@ private:
     // CPU thread, at each vsync: sound so far, the previous vsync's picture, the shell
     void on_vsync() {
         if (!frame_) {
-            prof::g_cpu_tid = (pid_t)syscall(SYS_gettid);
+            prof::cpu_thread();
             // HK_PY_WATCH=addr,addr,...: EE RAM words, printed when they change (for reading the game)
             if (const char *w = getenv("HK_PY_WATCH"))
                 for (const char *p = w; *p;) {

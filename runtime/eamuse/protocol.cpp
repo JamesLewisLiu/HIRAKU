@@ -265,7 +265,7 @@ void Store::write(const std::string &name, const std::string &data) const {
         f << data;
         if (!f) return;
     }
-    std::rename(tmp.c_str(), path.c_str());
+    sys::replace_file(tmp, path);   // (Windows' rename() doesn't replace a file)
 }
 
 }  // namespace hk::ea
