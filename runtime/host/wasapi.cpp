@@ -41,6 +41,11 @@ uint64_t g_t0 = 0;
 // libraries don't define)
 const GUID SUBTYPE_FLOAT = {0x00000003, 0x0000, 0x0010, {0x80, 0x00, 0x00, 0xaa, 0x00, 0x38, 0x9b, 0x71}};
 const GUID SUBTYPE_PCM = {0x00000001, 0x0000, 0x0010, {0x80, 0x00, 0x00, 0xaa, 0x00, 0x38, 0x9b, 0x71}};
+// the interfaces' ids, defined here too: MSVC's libraries don't (mingw's initguid.h route does)
+const GUID HK_CLSID_MMDeviceEnumerator = {0xbcde0395, 0xe52f, 0x467c, {0x8e, 0x3d, 0xc4, 0x57, 0x92, 0x91, 0x69, 0x2e}};
+const GUID HK_IID_IMMDeviceEnumerator = {0xa95664d2, 0x9614, 0x4f35, {0xa7, 0x46, 0xde, 0x8d, 0xb6, 0x36, 0x17, 0xe6}};
+const GUID HK_IID_IAudioClient = {0x1cb9ad4c, 0xdbfa, 0x4c32, {0xb1, 0x78, 0xc2, 0xf5, 0x68, 0xa7, 0x03, 0xb2}};
+const GUID HK_IID_IAudioRenderClient = {0xf294acfc, 0x3146, 0x4483, {0xa7, 0xbf, 0xad, 0xdc, 0xa7, 0xc2, 0x60, 0xe2}};
 
 std::string narrow(const wchar_t *w) {
     const int n = WideCharToMultiByte(CP_UTF8, 0, w, -1, nullptr, 0, nullptr, nullptr);
@@ -113,12 +118,12 @@ void run() {
 std::string open(const std::string &device, const SDL_AudioSpec &src, int frames, SDL_AudioStream *&stream, std::string &what) {
     CoInitializeEx(nullptr, COINIT_MULTITHREADED);   // (SDL may have it already, in another mode: fine)
     IMMDeviceEnumerator *e = nullptr;
-    HRESULT hr = CoCreateInstance(CLSID_MMDeviceEnumerator, nullptr, CLSCTX_ALL, IID_IMMDeviceEnumerator, (void **)&e);
+    HRESULT hr = CoCreateInstance(HK_CLSID_MMDeviceEnumerator, nullptr, CLSCTX_ALL, HK_IID_IMMDeviceEnumerator, (void **)&e);
     if (FAILED(hr)) return "no audio devices (" + hresult(hr) + ")";
     g_dev = find(e, device);
     e->Release();
     if (!g_dev) return device.empty() ? "no default output device" : "no output device named \"" + device + "\"";
-    hr = g_dev->Activate(IID_IAudioClient, CLSCTX_ALL, nullptr, (void **)&g_client);
+    hr = g_dev->Activate(HK_IID_IAudioClient, CLSCTX_ALL, nullptr, (void **)&g_client);
     if (FAILED(hr)) return close(), hresult(hr);
 
     // a format the device takes alone: the game's rate first, float first
@@ -216,7 +221,7 @@ std::string open(const std::string &device, const SDL_AudioSpec &src, int frames
         period = (REFERENCE_TIME)(1e7 * n / g_rate + 0.5);
         g_client->Release();
         g_client = nullptr;
-        hr = g_dev->Activate(IID_IAudioClient, CLSCTX_ALL, nullptr, (void **)&g_client);
+        hr = g_dev->Activate(HK_IID_IAudioClient, CLSCTX_ALL, nullptr, (void **)&g_client);
         if (SUCCEEDED(hr))
             hr = g_client->Initialize(AUDCLNT_SHAREMODE_EXCLUSIVE, AUDCLNT_STREAMFLAGS_EVENTCALLBACK, period, period,
                                       (WAVEFORMATEX *)&fmt, nullptr);
@@ -225,7 +230,7 @@ std::string open(const std::string &device, const SDL_AudioSpec &src, int frames
     g_event = CreateEventW(nullptr, FALSE, FALSE, nullptr);
     g_client->SetEventHandle(g_event);
     g_client->GetBufferSize(&g_buffer);
-    hr = g_client->GetService(IID_IAudioRenderClient, (void **)&g_render);
+    hr = g_client->GetService(HK_IID_IAudioRenderClient, (void **)&g_render);
     if (FAILED(hr)) return close(), hresult(hr);
     BYTE *p = nullptr;   // a buffer of silence before it starts
     if (SUCCEEDED(g_render->GetBuffer(g_buffer, &p))) g_render->ReleaseBuffer(g_buffer, AUDCLNT_BUFFERFLAGS_SILENT);
