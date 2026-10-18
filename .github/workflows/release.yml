@@ -162,10 +162,15 @@ jobs:
     needs: [linux, windows]
     runs-on: ubuntu-latest
     steps:
+      # the two packages and the sources beside them (not the Python core's folder, which is in the zip)
       - uses: actions/download-artifact@v8
         with:
+          name: hiraku-linux
           path: dist
-          merge-multiple: true
+      - uses: actions/download-artifact@v8
+        with:
+          name: hiraku-windows
+          path: dist
       - name: Draft release
         env:
           GH_TOKEN: ${{ github.token }}
