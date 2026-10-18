@@ -82,6 +82,7 @@
 #include "host/lights.h"
 #include "host/bio2.h"
 #include "host/readers.h"
+#include "host/notice.h"
 #include "host/window.h"
 #endif
 
@@ -376,6 +377,9 @@ int main(int argc, char **argv) {
     if (window_scale) { fprintf(stderr, "this build has no SDL3 front end\n"); return 1; }
 #endif
     if (window_scale) {   // a player's readers and cabinet; scripted runs keep to their inputs
+#ifdef HK_WITH_SDL
+        host::notice::start(opt.root);   // a new release, said on the window (not from the launcher)
+#endif
         host::readers_start();
         host::bio2_start();
     }

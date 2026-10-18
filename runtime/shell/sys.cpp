@@ -2,6 +2,7 @@
 #include "shell/sys.h"
 
 #include <algorithm>
+#include <cerrno>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -20,10 +21,14 @@
 #else
 #include <fcntl.h>
 #include <signal.h>
+#include <spawn.h>
 #include <sys/mman.h>
 #include <sys/resource.h>
 #include <sys/stat.h>
+#include <sys/wait.h>
 #include <unistd.h>
+
+extern char **environ;
 #endif
 
 namespace hk::sys {
@@ -123,6 +128,38 @@ std::string exe_path() {
     for (char &c : s)
         if (c == '\\') c = '/';
     return s;
+}
+
+int run_quiet(const std::vector<std::string> &argv) {
+    if (argv.empty()) return -1;
+    // one command line, each argument quoted as the C runtime reads it back
+    std::wstring cmd;
+    for (const std::string &a : argv) {
+        const int n = MultiByteToWideChar(CP_UTF8, 0, a.c_str(), (int)a.size(), nullptr, 0);
+        std::wstring w((size_t)n, L'\0');
+        MultiByteToWideChar(CP_UTF8, 0, a.c_str(), (int)a.size(), w.data(), n);
+        if (!cmd.empty()) cmd += L' ';
+        cmd += L'"';
+        size_t slashes = 0;
+        for (wchar_t c : w) {
+            if (c == L'\\') { slashes++; continue; }
+            cmd.append(c == L'"' ? 2 * slashes + 1 : slashes, L'\\');
+            slashes = 0;
+            cmd += c;
+        }
+        cmd.append(2 * slashes, L'\\');
+        cmd += L'"';
+    }
+    STARTUPINFOW si{};
+    si.cb = sizeof si;
+    PROCESS_INFORMATION pi{};
+    if (!CreateProcessW(nullptr, cmd.data(), nullptr, nullptr, FALSE, CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi)) return -1;
+    WaitForSingleObject(pi.hProcess, INFINITE);
+    DWORD code = 1;
+    GetExitCodeProcess(pi.hProcess, &code);
+    CloseHandle(pi.hThread);
+    CloseHandle(pi.hProcess);
+    return (int)code;
 }
 
 double thread_cpu_ms() {
@@ -231,6 +268,26 @@ std::string exe_path() {
     char exe[4096];
     const ssize_t n = readlink("/proc/self/exe", exe, sizeof exe - 1);
     return n > 0 ? std::string(exe, (size_t)n) : std::string();
+}
+
+int run_quiet(const std::vector<std::string> &argv) {
+    if (argv.empty()) return -1;
+    std::vector<char *> args;
+    for (const std::string &a : argv) args.push_back(const_cast<char *>(a.c_str()));
+    args.push_back(nullptr);
+    posix_spawn_file_actions_t fa;
+    posix_spawn_file_actions_init(&fa);
+    posix_spawn_file_actions_addopen(&fa, 0, "/dev/null", O_RDONLY, 0);
+    posix_spawn_file_actions_addopen(&fa, 1, "/dev/null", O_WRONLY, 0);
+    posix_spawn_file_actions_addopen(&fa, 2, "/dev/null", O_WRONLY, 0);
+    pid_t pid;
+    const int err = posix_spawn(&pid, args[0], &fa, nullptr, args.data(), environ);
+    posix_spawn_file_actions_destroy(&fa);
+    if (err) return -1;
+    int st = 0;
+    while (waitpid(pid, &st, 0) < 0)
+        if (errno != EINTR) return -1;
+    return WIFEXITED(st) ? WEXITSTATUS(st) : -1;
 }
 
 double thread_cpu_ms() {

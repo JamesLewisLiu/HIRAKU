@@ -2,7 +2,8 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Updates a HIRAKU package (tools/release.sh's) to the latest GitHub release.
 
-    tools/update.py check                  the latest release, as one line of JSON
+    tools/update.py check [--save FILE]    the latest release, as one line of JSON (--save: also
+                                           into FILE, with the time of the check, for the games)
     tools/update.py download DIR           its package for this system into DIR, checked against
                                            GitHub's SHA-256 and unpacked (DIR/new/hiraku);
                                            prints "progress DONE TOTAL" lines, then "ready VERSION"
@@ -87,8 +88,17 @@ def latest() -> dict:
     return out
 
 
-def cmd_check() -> int:
-    print(json.dumps(latest()), flush=True)
+def cmd_check(save: str = "") -> int:
+    rel = latest()
+    print(json.dumps(rel), flush=True)
+    if save:
+        # what the games read (runtime/host/notice.cpp): a new release, without asking GitHub again
+        os.makedirs(os.path.dirname(os.path.abspath(save)), exist_ok=True)
+        keep = {k: rel.get(k) for k in ("current", "latest", "name", "newer")}
+        keep["checked"] = int(time.time())
+        with open(save + ".tmp", "w", encoding="utf-8") as f:
+            json.dump(keep, f)
+        os.replace(save + ".tmp", save)
     return 0
 
 
@@ -246,7 +256,7 @@ def main() -> int:
     a = sys.argv[1:]
     try:
         if a[:1] == ["check"]:
-            return cmd_check()
+            return cmd_check(a[a.index("--save") + 1] if "--save" in a[:-1] else "")
         if a[:1] == ["download"] and len(a) == 2:
             return cmd_download(a[1])
         if a[:1] == ["apply"] and len(a) >= 3:

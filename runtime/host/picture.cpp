@@ -35,7 +35,7 @@ namespace {
     X(glGenVertexArrays) X(glBindVertexArray) X(glDeleteVertexArrays) X(glVertexAttribPointer)                \
     X(glEnableVertexAttribArray) X(glDrawArrays) X(glGenSamplers) X(glDeleteSamplers) X(glBindSampler)        \
     X(glSamplerParameteri) X(glReadPixels) X(glGenQueries) X(glDeleteQueries) X(glBeginQuery)   \
-    X(glEndQuery) X(glGetQueryObjectiv) X(glGetQueryObjectui64v)
+    X(glEndQuery) X(glGetQueryObjectiv) X(glGetQueryObjectui64v) X(glBlendFunc)
 
 struct Gl {
 #define X(f) decltype(&::f) f = nullptr;
@@ -217,7 +217,7 @@ struct Lut {
     Sampling sampling;
 };
 
-GLuint g_vao = 0, g_vbo = 0, g_plain = 0, g_frame = 0;
+GLuint g_vao = 0, g_vbo = 0, g_plain = 0, g_frame = 0, g_over = 0, g_over_tex = 0;
 int g_fw = 0, g_fh = 0;
 std::string g_shaders_dir;
 std::vector<std::string> g_config_dirs;
@@ -672,6 +672,19 @@ void main() {
 }
 )";
 
+// the overlay: its texels as they are (alpha included), times Alpha
+const char *const OVERLAY_FS = R"(#version 330
+in vec2 vTexCoord;
+out vec4 FragColor;
+uniform sampler2D Source;
+uniform float Alpha;
+void main() {
+    ivec2 sz = textureSize(Source, 0);
+    vec4 c = texelFetch(Source, clamp(ivec2(vTexCoord * vec2(sz)), ivec2(0), sz - 1), 0);
+    FragColor = vec4(c.rgb, c.a * Alpha);
+}
+)";
+
 void snap(int win_w, int win_h) {
     std::vector<uint8_t> px((size_t)win_w * win_h * 3);
     gl.glPixelStorei(GL_PACK_ALIGNMENT, 1);
@@ -796,6 +809,35 @@ Mode draw(const uint32_t *rgb, int w, int h, int x, int y, int vw, int vh, int w
     return m;
 }
 
+void overlay(const uint32_t *argb, int w, int h, int x, int y, int dw, int dh, float alpha, int win_w, int win_h) {
+    if (!g_ok || w <= 0 || h <= 0) return;
+    if (!g_over) {
+        g_over = link(PLAIN_VS, OVERLAY_FS, "overlay");
+        if (!g_over) return;
+        gl.glUseProgram(g_over);
+        gl.glUniform1i(gl.glGetUniformLocation(g_over, "Source"), 0);
+        gl.glGenTextures(1, &g_over_tex);
+        gl.glBindTexture(GL_TEXTURE_2D, g_over_tex);
+        gl.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
+    }
+    gl.glActiveTexture(GL_TEXTURE0);
+    gl.glBindTexture(GL_TEXTURE_2D, g_over_tex);
+    gl.glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+    gl.glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_BGRA, GL_UNSIGNED_INT_8_8_8_8_REV, argb);
+    gl.glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    gl.glDisable(GL_FRAMEBUFFER_SRGB);
+    gl.glViewport(x, win_h - y - dh, dw, dh);
+    gl.glUseProgram(g_over);
+    gl.glUniform1f(gl.glGetUniformLocation(g_over, "Alpha"), alpha);
+    gl.glBindSampler(0, 0);
+    gl.glBindVertexArray(g_vao);
+    gl.glEnable(GL_BLEND);
+    gl.glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    gl.glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+    gl.glDisable(GL_BLEND);
+    gl.glViewport(0, 0, win_w, win_h);
+}
+
 void shutdown() {
     if (!g_ok) return;
     gpu_collect(true);
@@ -806,6 +848,8 @@ void shutdown() {
     gl.glDeleteQueries(4, g_gpu.q);
     for (auto &c : g_chain) c.reset();
     if (g_plain) gl.glDeleteProgram(g_plain);
+    if (g_over) gl.glDeleteProgram(g_over);
+    if (g_over_tex) gl.glDeleteTextures(1, &g_over_tex);
     if (g_frame) gl.glDeleteTextures(1, &g_frame);
     if (g_vbo) gl.glDeleteBuffers(1, &g_vbo);
     if (g_vao) gl.glDeleteVertexArrays(1, &g_vao);

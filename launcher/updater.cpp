@@ -12,6 +12,7 @@
 #include <QMessageBox>
 #include <QProgressBar>
 #include <QPushButton>
+#include <QStandardPaths>
 #include <QTextBrowser>
 #include <QUrl>
 #include <QVBoxLayout>
@@ -66,7 +67,11 @@ void UpdateCheck::start() {
     if (m_proc.state() != QProcess::NotRunning) return;
     const QStringList py = cfg::python();
     m_proc.setWorkingDirectory(upd::packageRoot());
-    m_proc.start(py[0], py.mid(1) + QStringList{script(), "check"});
+    // --save: the answer where the games look (runtime/host/notice.h), so one started on its own
+    // doesn't ask GitHub again soon after
+    const QString data = cfg::portable() ? upd::packageRoot() + "/user/data"
+                                         : QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation) + "/hiraku";
+    m_proc.start(py[0], py.mid(1) + QStringList{script(), "check", "--save", data + "/update-check.json"});
 }
 
 UpdateDialog::UpdateDialog(const QJsonObject &rel, QWidget *parent) : QDialog(parent), m_rel(rel) {

@@ -18,6 +18,7 @@
 #include "pacing.h"
 #include "asio.h"
 #include "wasapi.h"
+#include "notice.h"
 #include "picture.h"
 #include "input.h"
 #include "../core/prof.h"
@@ -495,6 +496,17 @@ static double display_aspect(int w, int h) {
 
 bool g_sync = false;   // display pacing for the frame last presented
 
+// host/notice.h's banner: whole times its size (as large as a 360-line screen's), centred near
+// the window's bottom
+static void place_banner(const notice::Banner &b, int win_w, int win_h, int &x, int &y, int &dw, int &dh) {
+    int k = std::max(1, win_h / 360);
+    while (k > 1 && b.w * k > win_w - 16) k--;
+    dw = b.w * k;
+    dh = b.h * k;
+    x = (win_w - dw) / 2;
+    y = win_h - dh - 8 * k;
+}
+
 void window_present(const uint32_t *rgb, int w, int h, double vsec) {
     const double period = g_last_vsec < 0 || g_fast ? 0.0 : vsec - g_last_vsec;
     g_last_vsec = vsec;
@@ -514,6 +526,11 @@ void window_present(const uint32_t *rgb, int w, int h, double vsec) {
         core().display_cover(w, h, cw, ch);
         vw = std::max(1, (int)std::lround(vw * cw)), vh = std::max(1, (int)std::lround(vh * ch));
         picture::Mode shown = picture::draw(rgb, w, h, (ww - vw) / 2, (wh - vh) / 2, vw, vh, ww, wh, g_mode);
+        if (notice::Banner b; notice::banner(b)) {
+            int bx, by, bw, bh;
+            place_banner(b, ww, wh, bx, by, bw, bh);
+            picture::overlay(b.pixels->data(), b.w, b.h, bx, by, bw, bh, b.alpha, ww, wh);
+        }
         if (sync) {
             if (g_glFlush) g_glFlush();   // the GPU draws while we wait for the commit time
             pacing::wait_commit();
@@ -549,6 +566,27 @@ void window_present(const uint32_t *rgb, int w, int h, double vsec) {
         SDL_UpdateTexture(g_tex, nullptr, rgb, w * 4);
         SDL_RenderClear(g_ren);
         SDL_RenderTexture(g_ren, g_tex, nullptr, &g_dst);
+        if (notice::Banner b; notice::banner(b)) {
+            // in the window's own pixels, not the game's logical size
+            static SDL_Texture *bt = nullptr;
+            if (!bt && (bt = SDL_CreateTexture(g_ren, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STATIC, b.w, b.h))) {
+                SDL_UpdateTexture(bt, nullptr, b.pixels->data(), b.w * 4);
+                SDL_SetTextureBlendMode(bt, SDL_BLENDMODE_BLEND);
+                SDL_SetTextureScaleMode(bt, SDL_SCALEMODE_NEAREST);
+            }
+            int lw, lh, ow, oh;
+            SDL_RendererLogicalPresentation lm;
+            if (bt && SDL_GetRenderLogicalPresentation(g_ren, &lw, &lh, &lm)) {
+                SDL_SetRenderLogicalPresentation(g_ren, 0, 0, SDL_LOGICAL_PRESENTATION_DISABLED);
+                SDL_GetCurrentRenderOutputSize(g_ren, &ow, &oh);
+                int bx, by, bw, bh;
+                place_banner(b, ow, oh, bx, by, bw, bh);
+                const SDL_FRect r{(float)bx, (float)by, (float)bw, (float)bh};
+                SDL_SetTextureAlphaModFloat(bt, b.alpha);
+                SDL_RenderTexture(g_ren, bt, nullptr, &r);
+                SDL_SetRenderLogicalPresentation(g_ren, lw, lh, lm);
+            }
+        }
         if (sync) {
             SDL_FlushRenderer(g_ren);
             pacing::wait_commit();

@@ -43,6 +43,13 @@ leftovers on its next start. **Help > Check for updates** looks again at any tim
 `user/update.log` keeps a line per update. A checkout or a build by hand has no `VERSION` file
 and doesn't offer updates: use git.
 
+A game started without the launcher (from a shortcut or the command line) says so too: for six
+seconds after it starts, a banner at the bottom of its window names the new release
+(`runtime/host/notice.h`). It reuses the launcher's last check while it's under 6 hours old, or
+asks GitHub in the background; it shows only if the answer arrives within the game's first 15
+seconds, and the same setting turns it off (or `HK_UPDATE_NOTICE=0`). Games the launcher starts
+never show it, and it changes nothing the game computes.
+
 ## Once: build and ingest your dumps
 
 ```bash

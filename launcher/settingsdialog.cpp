@@ -382,7 +382,7 @@ SettingsDialog::SettingsDialog(QWidget *parent) : QDialog(parent) {
     m_hideLauncher = new QCheckBox("Hide the launcher while a game runs");
     m_hideLauncher->setChecked(s.value("ui/hideWhileRunning", false).toBool());
     fx->addRow("", m_hideLauncher);
-    m_checkUpdates = new QCheckBox("Look for a new version when the launcher starts (asks GitHub)");
+    m_checkUpdates = new QCheckBox("Look for a new version (asks GitHub): when the launcher starts, and in games started without it");
     m_checkUpdates->setChecked(s.value("updates/check", true).toBool());
     if (!upd::available()) {
         m_checkUpdates->setEnabled(false);

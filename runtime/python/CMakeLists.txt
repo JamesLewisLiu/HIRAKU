@@ -32,6 +32,7 @@ add_library(hk_python_shell STATIC
 	${HK}/runtime/host/bio2.cpp
 	${HK}/runtime/host/hidout.cpp
 	${HK}/runtime/host/window.cpp
+	${HK}/runtime/host/notice.cpp
 	${HK}/runtime/host/picture.cpp
 	${HK}/runtime/host/input.cpp
 	${HK}/runtime/host/lights.cpp

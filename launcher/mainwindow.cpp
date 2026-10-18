@@ -622,6 +622,7 @@ void MainWindow::play(const QString &id) {
     {
         QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
         env.insert("HIRAKU_ROOT", cfg::rootDir());   // the games use the launcher's root
+        env.insert("HK_LAUNCHER", "1");   // the launcher says when a new release is out, not the game (host/notice.h)
         m_proc.setProcessEnvironment(env);
     }
     m_proc.start(g->exe, args);

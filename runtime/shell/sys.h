@@ -11,6 +11,7 @@
 #include <cstdint>
 #include <ctime>
 #include <string>
+#include <vector>
 
 #ifndef O_BINARY
 #define O_BINARY 0   // Windows' open() translates line ends without it
@@ -41,6 +42,9 @@ bool is_dir(const std::string &path);
 // rename(), and the file at `to` replaced if there is one (Windows' rename() fails then)
 bool replace_file(const std::string &from, const std::string &to);
 std::string exe_path();   // this program's file, with / between folders; empty if unknown
+// Runs a program (argv[0]: its file) with no window of its own and its output thrown away, and
+// waits for it: its exit code, -1 if it couldn't be started
+int run_quiet(const std::vector<std::string> &argv);
 double thread_cpu_ms();   // the calling thread's CPU time
 long major_faults();      // the process's page faults that read the disk (0 where unknown)
 std::tm utc(std::time_t t);
