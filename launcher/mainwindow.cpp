@@ -17,6 +17,7 @@
 #include <QDockWidget>
 #include <QFile>
 #include <QFileInfo>
+#include <QFrame>
 #include <QHBoxLayout>
 #include <QHeaderView>
 #include <QLabel>
@@ -25,6 +26,7 @@
 #include <QMenuBar>
 #include <QMessageBox>
 #include <QPlainTextEdit>
+#include <QPushButton>
 #include <QScrollArea>
 #include <QSplitter>
 #include <QStatusBar>
@@ -42,6 +44,7 @@
 #include "picturedialog.h"
 #include "unlocksdialog.h"
 #include "settingsdialog.h"
+#include "updater.h"
 
 namespace {
 
@@ -71,7 +74,7 @@ bool lightsFileUsed(const QString &path) {
 }  // namespace
 
 MainWindow::MainWindow() {
-    setWindowTitle("HIRAKU");
+    setWindowTitle(upd::currentVersion().isEmpty() ? QString("HIRAKU") : "HIRAKU " + upd::currentVersion());
     resize(900, 600);
 
     // ---- actions ----
@@ -215,7 +218,30 @@ MainWindow::MainWindow() {
     split->setStretchFactor(0, 3);
     split->setStretchFactor(1, 1);
     split->setSizes({420, 180});
-    setCentralWidget(split);
+    // a new version is out (updater.h): a bar above the list, until it's taken or closed
+    m_updateBar = new QFrame;
+    static_cast<QFrame *>(m_updateBar)->setFrameShape(QFrame::StyledPanel);
+    auto *ub = new QHBoxLayout(m_updateBar);
+    ub->setContentsMargins(8, 4, 4, 4);
+    m_updateText = new QLabel;
+    ub->addWidget(m_updateText, 1);
+    auto *ubGo = new QPushButton("What's new…");
+    connect(ubGo, &QPushButton::clicked, this, &MainWindow::offerUpdate);
+    ub->addWidget(ubGo);
+    auto *ubClose = new QToolButton;
+    ubClose->setText("✕");
+    ubClose->setAutoRaise(true);
+    ubClose->setToolTip("Not now (Help > Check for updates finds it again)");
+    connect(ubClose, &QToolButton::clicked, m_updateBar, &QWidget::hide);
+    ub->addWidget(ubClose);
+    m_updateBar->hide();
+    auto *central = new QWidget;
+    auto *cv = new QVBoxLayout(central);
+    cv->setContentsMargins(0, 0, 0, 0);
+    cv->setSpacing(0);
+    cv->addWidget(m_updateBar);
+    cv->addWidget(split, 1);
+    setCentralWidget(central);
 
     // ---- log ----
     m_log = new QPlainTextEdit;
@@ -259,6 +285,19 @@ MainWindow::MainWindow() {
     help->addAction("Lights (docs/LIGHTS.md)", this, [] {
         QDesktopServices::openUrl(QUrl::fromLocalFile(cfg::rootDir() + "/docs/LIGHTS.md"));
     });
+    help->addSeparator();
+    auto *updAct = help->addAction("Check for updates…", this, [this] { checkForUpdate(true); });
+    if (!upd::available()) {
+        updAct->setEnabled(false);
+        updAct->setToolTip("A release package updates itself; this copy isn't one");
+    }
+    if (upd::available()) {
+        // the last update's download, once its script (which starts this launcher) is done; not
+        // once an update of this session has begun: update/ is then the new download
+        QTimer::singleShot(5000, this, [this] { if (!m_updateBegun) upd::cleanUp(); });
+        if (cfg::settings().value("updates/check", true).toBool())
+            QTimer::singleShot(2000, this, [this] { checkForUpdate(false); });
+    }
 
     // ---- the game process ----
     m_ingest.setProcessChannelMode(QProcess::MergedChannels);
@@ -717,6 +756,47 @@ void MainWindow::startIngest() {
     // --copy-chd: the CHDs of the games that read them in place go into dumps/<game>/ as they are
     // (a hard link where it can be), not extracted: no chdman needed, nothing doubled in size
     m_ingest.start(py[0], py.mid(1) + QStringList{script, "--copy-chd"} + paths);
+}
+
+void MainWindow::checkForUpdate(bool asked) {
+    m_checkAsked = asked;
+    if (!m_check) {
+        m_check = new UpdateCheck(this);
+        connect(m_check, &UpdateCheck::done, this, [this](bool ok, const QJsonObject &rel, const QString &error) {
+            if (!ok) {
+                if (m_checkAsked) QMessageBox::warning(this, "HIRAKU", "Could not look for a new version:\n" + error);
+                return;
+            }
+            if (!rel["newer"].toBool()) {
+                if (m_checkAsked)
+                    QMessageBox::information(this, "HIRAKU", "This is the latest version (" + upd::currentVersion() + ").");
+                return;
+            }
+            m_release = rel;
+            m_updateText->setText(QString("<b>%1</b> is out (this is %2).")
+                                      .arg(rel["name"].toString().toHtmlEscaped(), upd::currentVersion().toHtmlEscaped()));
+            m_updateBar->show();
+            if (m_checkAsked) offerUpdate();
+        });
+    }
+    m_check->start();
+}
+
+void MainWindow::offerUpdate() {
+    if (m_release.isEmpty()) return;
+    if (!m_running.isEmpty() || m_ingest.state() != QProcess::NotRunning) {
+        QMessageBox::information(this, "HIRAKU", "Close the game, or wait for the game being added, before updating.");
+        return;
+    }
+    m_updateBegun = true;
+    UpdateDialog d(m_release, this);
+    if (d.exec() != QDialog::Accepted) return;
+    QString err;
+    if (!d.startInstall(&err)) {
+        QMessageBox::warning(this, "HIRAKU", err);
+        return;
+    }
+    close();
 }
 
 void MainWindow::log(const QString &text) {

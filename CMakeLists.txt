@@ -337,7 +337,8 @@ if(Qt6_FOUND AND TARGET hiraku_hidout)
     launcher/settingsdialog.cpp
     launcher/fit.cpp
     launcher/picturedialog.cpp
-    launcher/unlocksdialog.cpp)
+    launcher/unlocksdialog.cpp
+    launcher/updater.cpp)
   qt_add_resources(hiraku "launcher_res" PREFIX "/" BASE launcher/res
     FILES launcher/res/icon.png launcher/res/logo.png)
   target_compile_definitions(hiraku PRIVATE HK_ROOT="${CMAKE_SOURCE_DIR}")

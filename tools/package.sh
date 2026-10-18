@@ -147,7 +147,7 @@ done
 cp -r "$root/games" "$root/docs" "$root/shaders" "$d/"
 cp -r "$root/oracle/scripts" "$d/scripts"
 mkdir -p "$d/tools"
-cp "$root"/tools/{ingest.py,chd.py,fbexe.py,pack-data.py,regress.py,unlock.py,pythonfs.py,chdread.py,mameset.py,catalogue.py} "$d/tools/"
+cp "$root"/tools/{ingest.py,chd.py,fbexe.py,pack-data.py,regress.py,unlock.py,pythonfs.py,chdread.py,mameset.py,catalogue.py,update.py} "$d/tools/"
 # MAME's BEMANI sets as data: ingest tells a set by its contents (tools/mameset.py)
 cp -r "$root/tools/data" "$d/tools/"
 # e-AMUSEMENT (Konami Python): the server checker and the game's calls (docs/EAMUSE3.md)
@@ -185,7 +185,8 @@ when the system has pcsc-lite and its daemon.
 
 Your saves and the launcher's settings: in user/ beside this file when there is one (a portable
 install: the folder runs as itself wherever it is moved, a USB stick included), else in
-~/.local/share/hiraku and ~/.config/hiraku. Copy user/ along to keep them when updating.
+~/.local/share/hiraku and ~/.config/hiraku. Updating: the launcher says when a new release is out (Help > Check for updates), and
+puts it in this folder itself; your games (dumps/), saves and settings stay as they are.
 
 Command line (the launcher shows each game's under its right-click menu):
     bin/hiraku-sys573 --game ddr3mj --window      (DJ Main games: bin/hiraku-djmain, Twinkle:
@@ -210,6 +211,11 @@ bin/hiraku-eamuse --port 8080 is the same server for several PCs, which then run
 --eamuse http://that-pc:8080/ (docs/EAMUSE3.md).
 EOF
 fi
+# What the updater needs (tools/update.py): the release this is (HK_VERSION, the tag; none for a
+# build by hand, which the launcher then doesn't offer to update) and the package's own files
+[ -n "${HK_VERSION:-}" ] && printf '%s\n' "${HK_VERSION#v}" > "$d/VERSION"
+(cd "$d" && { find . \( -type f -o -type l \) ! -path './user/*' ! -path './dumps/*' | sed 's|^\./||'; echo MANIFEST.txt; } |
+  LC_ALL=C sort -u > MANIFEST.txt)
 # xz with a window wider than one binary: the binaries share most of their code,
 # so the archive is a quarter of a .tar.gz (about 14 MB)
 tar -C "$stage" -cf - hiraku | xz -9e -T1 --lzma2=preset=9e,dict=192MiB > "$out"

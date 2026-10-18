@@ -31,6 +31,18 @@ CHDs need room once unpacked:
 - a pop'n music DVD: 4.6 GB;
 - a CD: under 700 MB.
 
+## Updating a release package
+
+A release package's launcher looks for a new release on GitHub when it starts (Options >
+Settings > Launcher turns that off), and says so above the game list. **What's new…** shows the
+release notes; **Update and restart** downloads the package for your system, checks it against
+GitHub's SHA-256, and closes the launcher. `tools/update.py`, run from the new package, then puts
+the new files in and starts the launcher again. It never touches `dumps/`, `user/` or `out/`.
+The files it replaces go to `update-old/`, and back if anything fails; the launcher removes the
+leftovers on its next start. **Help > Check for updates** looks again at any time.
+`user/update.log` keeps a line per update. A checkout or a build by hand has no `VERSION` file
+and doesn't offer updates: use git.
+
 ## Once: build and ingest your dumps
 
 ```bash

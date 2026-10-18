@@ -5,11 +5,13 @@
 //   hiraku [GAME]            GAME (e.g. popn7) starts that game right away
 //   hiraku --add FILE...     add a game from its files (ROM set, CHDs, images, folders),
 //                            as dropping them on the window does; the log goes to stderr too
+//   hiraku --updated VERSION | --update-failed WHY   (tools/update.py, restarting it after an update)
 //   hiraku --show WHAT [--shot FILE]   open a window (settings, controls, lights, picture, unlocks,
 //                            about, or main) over the launcher; --shot saves a picture of it and quits
 //                            (checking how the windows fit a small screen: launcher/fit.h)
 #include <QApplication>
 #include <QIcon>
+#include <QMessageBox>
 #include <QTimer>
 
 #include "aboutdialog.h"
@@ -78,6 +80,12 @@ int main(int argc, char **argv) {
     } else if (!args.isEmpty() && args.first() == "--add") {
         w.setEcho(true);
         QTimer::singleShot(0, &w, [&w, files = args.mid(1)] { w.addGameFiles(files); });
+    } else if (args.size() >= 2 && args.first() == "--updated") {   // tools/update.py, once the new files are in
+        QTimer::singleShot(0, &w, [&w, v = args[1]] { QMessageBox::information(&w, "HIRAKU", "HIRAKU is now " + v + "."); });
+    } else if (args.size() >= 2 && args.first() == "--update-failed") {
+        QTimer::singleShot(0, &w, [&w, why = args[1]] {
+            QMessageBox::warning(&w, "HIRAKU", "The update could not be put in; this is still the version you had.\n\n" + why);
+        });
     } else if (!args.isEmpty()) {
         QTimer::singleShot(0, &w, [&w, id = args.first()] { w.play(id); });
     }

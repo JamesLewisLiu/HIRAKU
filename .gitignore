@@ -1,6 +1,7 @@
 # Nothing derived from a game is ever committed: dumps, unpacked programs,
 # generated C, traces, snapshots.
-/dumps/
+# dumps: a folder, or a link to one on another disk
+/dumps
 /build/
 /out/
 *.bin

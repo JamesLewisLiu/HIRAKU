@@ -15,7 +15,7 @@ public:
     void accept() override;
 private:
     QSpinBox *m_scale, *m_audioMs;
-    QCheckBox *m_fullscreen, *m_displaySync, *m_fineSound, *m_audioExclusive = nullptr, *m_socket, *m_hideLauncher;
+    QCheckBox *m_fullscreen, *m_displaySync, *m_fineSound, *m_audioExclusive = nullptr, *m_socket, *m_hideLauncher, *m_checkUpdates;
     QComboBox *m_picture, *m_audioDevice, *m_audioBuffer;
     QLineEdit *m_soundfont, *m_root, *m_bin, *m_nvram, *m_extra;
     // e-AMUSEMENT, as spicecfg's Network page (runtime/shell/eaoptions.h)

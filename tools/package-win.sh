@@ -47,7 +47,7 @@ if [ -f "$py/python.exe" ]; then cp -r "$py" "$d/python"; else echo "no $py: the
 cp -r "$root/games" "$root/docs" "$root/shaders" "$d/"
 cp -r "$root/oracle/scripts" "$d/scripts"
 mkdir -p "$d/tools"
-cp "$root"/tools/{ingest.py,chd.py,fbexe.py,pack-data.py,unlock.py,pythonfs.py,chdread.py,mameset.py,catalogue.py} "$d/tools/"
+cp "$root"/tools/{ingest.py,chd.py,fbexe.py,pack-data.py,unlock.py,pythonfs.py,chdread.py,mameset.py,catalogue.py,update.py} "$d/tools/"
 mkdir -p "$d/tools/eamuse" && cp "$root"/tools/eamuse/{check.py,corpus.json} "$d/tools/eamuse/"
 # libchdr for tools/chdread.py (a Python game's disk is read through it), where it looks: build\
 if [ -f "$build/libchdr_mini.dll" ]; then mkdir -p "$d/build" && cp "$build/libchdr_mini.dll" "$d/build/"; else echo "no $build/libchdr_mini.dll: Python games can't be added" >&2; fi
@@ -73,7 +73,8 @@ then Run anyway.
 
 Your saves and the launcher's settings: in user\ beside this file when there is one (a portable
 install: the folder runs as itself wherever it is moved, a USB stick included), else in
-%LOCALAPPDATA%\hiraku. Copy user\ along to keep them when updating.
+%LOCALAPPDATA%\hiraku. Updating: the launcher says when a new release is out (Help > Check for updates), and
+puts it in this folder itself; your games (dumps\), saves and settings stay as they are.
 
 Konami Python games (pop'n music 9-14, DrumMania V/V2): add the game's folder together with the
 folders bios (the arcade BIOS) and keys (the MagicGate key files), which HIRAKU can't ship. They
@@ -86,6 +87,11 @@ right-click menu):
                                                   game has bin\hiraku-<game>)
     bin\hiraku-sys573 --help                      (all options)
 EOF
+# What the updater needs (tools/update.py): the release this is (HK_VERSION, the tag; none for a
+# build by hand, which the launcher then doesn't offer to update) and the package's own files
+[ -n "${HK_VERSION:-}" ] && printf '%s\n' "${HK_VERSION#v}" > "$d/VERSION"
+(cd "$d" && { find . \( -type f -o -type l \) ! -path './user/*' ! -path './dumps/*' | sed 's|^\./||'; echo MANIFEST.txt; } |
+  LC_ALL=C sort -u > MANIFEST.txt)
 rm -f "$out"
 (cd "$stage" && 7z a -tzip -mx=9 -bd -bso0 "$out" hiraku)
 ls -la "$out"

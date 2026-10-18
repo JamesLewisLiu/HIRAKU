@@ -42,6 +42,8 @@ jobs:
         run: tools/release-python-linux.sh ~/hiraku-python ~/hiraku-deps
       - name: Build and package
         run: HK_PYTHON_WORK=~/hiraku-python tools/release.sh linux dist ~/hiraku-deps
+        env:   # the release's number in the package (VERSION), for the updater; none for a run by hand
+          HK_VERSION: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || '' }}
       - name: The LGPL libraries' sources
         run: cp ~/hiraku-deps/src/ffmpeg-*.tar.xz ~/hiraku-deps/src/SDL3-*.tar.gz dist/
       - uses: actions/upload-artifact@v7
@@ -152,6 +154,8 @@ jobs:
           path: python-win
       - name: Build and package
         run: HK_PYTHON_WIN=$PWD/python-win tools/release.sh windows dist
+        env:   # the release's number in the package (VERSION), for the updater; none for a run by hand
+          HK_VERSION: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || '' }}
       - uses: actions/upload-artifact@v7
         with:
           name: hiraku-windows

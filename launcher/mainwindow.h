@@ -2,6 +2,7 @@
 // The game list: pick a game, play it; controls, lights and settings.
 #pragma once
 
+#include <QJsonObject>
 #include <QMainWindow>
 #include <QProcess>
 
@@ -13,6 +14,7 @@ class QLabel;
 class QLineEdit;
 class QPlainTextEdit;
 class QTreeWidget;
+class UpdateCheck;
 
 class MainWindow : public QMainWindow {
     Q_OBJECT
@@ -52,6 +54,15 @@ private:
     QString m_ingestOutput;
     void startIngest();
     QString m_running;          // game id, while one runs
+    // updates (updater.h): the bar that says a new version is out, the release it names
+    void checkForUpdate(bool asked);
+    void offerUpdate();
+    UpdateCheck *m_check = nullptr;
+    QWidget *m_updateBar = nullptr;
+    QLabel *m_updateText = nullptr;
+    QJsonObject m_release;
+    bool m_checkAsked = false;
+    bool m_updateBegun = false;
     bool m_stopping = false;
     bool m_echo = false;
 };

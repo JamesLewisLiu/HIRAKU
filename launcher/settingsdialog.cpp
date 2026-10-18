@@ -31,6 +31,7 @@
 #endif
 
 #include "config.h"
+#include "updater.h"
 
 #include <QFile>
 #include <QMap>
@@ -381,6 +382,13 @@ SettingsDialog::SettingsDialog(QWidget *parent) : QDialog(parent) {
     m_hideLauncher = new QCheckBox("Hide the launcher while a game runs");
     m_hideLauncher->setChecked(s.value("ui/hideWhileRunning", false).toBool());
     fx->addRow("", m_hideLauncher);
+    m_checkUpdates = new QCheckBox("Look for a new version when the launcher starts (asks GitHub)");
+    m_checkUpdates->setChecked(s.value("updates/check", true).toBool());
+    if (!upd::available()) {
+        m_checkUpdates->setEnabled(false);
+        m_checkUpdates->setToolTip("A release package updates itself; this copy isn't one");
+    }
+    fx->addRow("", m_checkUpdates);
     m_extra = new QLineEdit(s.value("game/extraArgs").toString());
     m_extra->setPlaceholderText("e.g. --bios-seconds 21.65");
     fx->addRow("Extra arguments:", m_extra);
@@ -427,6 +435,7 @@ void SettingsDialog::accept() {
     s.setValue("paths/bin", m_bin->text().trimmed());
     s.setValue("paths/nvram", m_nvram->text().trimmed());
     s.setValue("ui/hideWhileRunning", m_hideLauncher->isChecked());
+    s.setValue("updates/check", m_checkUpdates->isChecked());
     s.setValue("game/extraArgs", m_extra->text().trimmed());
     s.remove("eamuse/server");   // now eamuse/url
     s.setValue("eamuse/url", m_eaUrl->text().trimmed());
