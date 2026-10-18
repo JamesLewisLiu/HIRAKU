@@ -446,8 +446,38 @@ both cover the same ground, independently of it:
   scratch with a valid image (their `generate_mot`). That makes a bad in-band write recoverable,
   and a BI2A downgrade possible (docs/BIO2-BI2A.md). It's still the owner's job, never HIRAKU's.
 
-Reading the kernel's RX code (how it starts a module and what the module may call) needs an RX
-disassembler: Ghidra 12.1.2 has no RX module, binutils' `rx-elf` target does.
+## The kernel and its modules, read statically (1.2.3, 2026-10-18)
+
+Disassembled with binutils 2.45's `rx-elf-objdump` (built locally; Ghidra 12.1.2 has no RX module)
+from IIDX 28's image and the two modules libaio uploads, unpacked from the owner's DLLs into
+`out/bio2/mod/` (TDJ 0x2421 bytes, SCI 0x455, as expected). Nothing was run; no device opened. The
+working files (disassemblies, helper scripts, a partial RAM map) are in `out/bio2/`.
+
+| range | what |
+|---|---|
+| 0xFFFE0000-1F | FIRMINFO (what `00 02` sends), then `MC-KERNEL.HEAD` at 0xFFFE0020 |
+| 0xFFFE0030-244F | the BI2X layer: the ACIO2 links and command dispatcher, lamps and PWM, the TCA6416A glue, the USB descriptors (VID 1CCF PID 8050) |
+| 0xFFFE2450-2754 | a built-in module, in the uploaded modules' format: the TCA6416A I/O expander's driver, started at boot |
+| 0xFFFF0000-92AF | the OS ("MC"): scheduler, heap, handles, drivers (timers, DMA, serial, I2C, CRC), C library |
+| 0xFFFFDE00-DFDF | **the export table**: 120 entry points |
+| 0xFFFFDFF0 | `MC-KERNEL.TAIL`, then a CRC-16 (Kermit) that makes the 0x1E000-byte kernel image check to 0 |
+| 0xFFFFE000-FFFF | the boot block: reset, flash routines, bank handling, the fixed vectors; not part of the kernel image |
+
+**Modules are position-independent and reach the kernel only through the export table** (certain
+for the three modules at hand): every call loads a fixed slot address, 0xFFFFDE00 + 4n, and calls
+through it; everything else is relative to the module's own position. TDJ uses 11 slots (63, 64,
+80, 81, 83, 85, 86, 98-100, 117), SCI 6 (88, 89, 92, 94, 103, 104), the built-in TCA6416A module 2
+(63, 64). So whether IIDX 28's TDJ module runs on the owner's 1.3.3 board comes down to whether
+1.3.3 keeps those slots with the same meaning. That's what an export table is for, and the boot
+block is the same (below), but it can't be proven without a 1.3.3 image. Whether the kernel checks
+a module before starting it (a CRC, a version) wasn't settled.
+
+**FIRMINFO's last two bytes are the boot block's checksum, not a version key:** `8E E2` is the
+CRC-16/X-25 of 0xFFFFE000-0xFFFFFFFF, as stored in the image's header; asked without `81` the
+kernel computes it live instead and answers `F0 2E` (the low 16 bits of a CRC-32 of the same
+block, inverted). The 1.2.3 image's boot block gives exactly `8E E2` / `F0 2E`, the owner's 1.3.3
+board both of those: **its boot block is IIDX 28's**, and only the kernel above it differs. Bytes
+0x1C-0x1D (`27 7D` in 1.2.3, `EF 73` on the board) differ with the kernel. (`out/bio2/tools/firminfo_crc.py`.)
 
 ## Proposed read-only tests (for the owner's approval)
 
