@@ -20,8 +20,9 @@ public:
     Xt446();
     ~Xt446();
 
-    // The MAME ROM set's files (xu50710-m27c160.bin, the six wave ROMs, sin-table.bin)
-    // from dir. False (with a message in err) if any is missing.
+    // The MAME ROM set's files (xu50710-m27c160.bin, the six wave ROMs, and sin-table.bin,
+    // which is rebuilt when an older set lacks it) from dir. False (with a message in err)
+    // if any other is missing.
     bool load(const std::string &dir, std::string &err);
     void midi(uint8_t byte);                          // the next byte on the MIDI line, sent now
     void render(float *lr, int frames, float gain);   // add 44.1 kHz stereo (full scale = 1.0)

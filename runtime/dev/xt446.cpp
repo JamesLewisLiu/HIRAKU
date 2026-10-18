@@ -82,6 +82,23 @@ bool read_file(const std::string &path, size_t size, std::vector<u8> &out) {
     return (bool)f.read(reinterpret_cast<char *>(out.data()), (std::streamsize)size);
 }
 
+// The SWP30's sine table (a quarter wave, 0x8000..0xffff), which MAME's sets carry as
+// sin-table.bin only after 0.289: 32 points 1/256 apart, joined by straight lines and
+// capped at 0xffff, give back the dump byte for byte (CRC 4305f63c)
+std::vector<u8> swp30_sin_table() {
+    static const u16 point[33] = {
+        0, 13, 26, 38, 50, 62, 74, 86, 98, 109, 120, 131, 142, 152, 162, 172, 181,
+        190, 198, 206, 213, 220, 226, 232, 237, 241, 245, 248, 251, 253, 255, 256, 256};
+    std::vector<u8> out(0x10000);
+    for (u32 i = 0; i < 0x8000; i++) {
+        const u32 a = (0x100u + point[i >> 10]) << 7, b = (0x100u + point[(i >> 10) + 1]) << 7;
+        const u32 v = std::min<u32>(0xffff, a + (b - a) * (i & 0x3ff) / 0x400);
+        out[2 * i] = (u8)v;
+        out[2 * i + 1] = (u8)(v >> 8);
+    }
+    return out;
+}
+
 }  // namespace
 
 namespace hk {
@@ -141,7 +158,7 @@ bool Xt446::load(const std::string &dir, std::string &err) {
         }
     }
     std::vector<u8> sintab;
-    if (!read_file(path("sin-table.bin"), 0x10000, sintab)) { err = "sin-table.bin missing"; return false; }
+    if (!read_file(path("sin-table.bin"), 0x10000, sintab)) sintab = swp30_sin_table();
 
     Impl &s = *m;
     s.machine.add_region("maincpu", std::move(prg));

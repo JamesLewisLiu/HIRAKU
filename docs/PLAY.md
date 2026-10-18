@@ -503,7 +503,7 @@ Each asks three times. Answer "YES?" and "ARE YOU SURE?" with **1** (move to YES
 
 **Status:** all four boot to attract mode, fully native, with CD and YMZ280B sound.
 
-**Keyboard notes:** they come from the XT446 synth card, an embedded Yamaha MU100B. HIRAKU runs the card itself: the MU100 firmware on MAME's H8S/2655 and SWP30 emulation (`runtime/dev/xt446.cpp`, `third_party/mame`). It needs the card's ROMs from the MAME set in `dumps/<game>/rom/`, which `tools/ingest.py --romset` copies: `xu50710-m27c160.bin`, the six wave ROMs `sx518b0.ic34` … `xt463a0.ic38`, and `sin-table.bin`. It costs about a third of a CPU core.
+**Keyboard notes:** they come from the XT446 synth card, an embedded Yamaha MU100B. HIRAKU runs the card itself: the MU100 firmware on MAME's H8S/2655 and SWP30 emulation (`runtime/dev/xt446.cpp`, `third_party/mame`). It needs the card's ROMs from the MAME set in `dumps/<game>/rom/`, which `tools/ingest.py --romset` copies: `xu50710-m27c160.bin` and the six wave ROMs `sx518b0.ic34` … `xt463a0.ic38` (in a split or merged set they are in `xt446.zip`: keep it beside the game's set). Sets newer than MAME 0.289 also hold the SWP30's `sin-table.bin`; with an older set HIRAKU rebuilds that table itself, byte for byte. It costs about a third of a CPU core.
 
 - **No card ROMs, or `--synth-stand-in`:** the MIDI plays through FluidSynth with a General MIDI SoundFont instead. The notes and timing are the game's own, but the instruments are the SoundFont's.
   - Install a SoundFont with `sudo pacman -S soundfont-fluid`, or point at any `.sf2` with `--soundfont FILE` or `HK_SOUNDFONT`.

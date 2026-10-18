@@ -89,6 +89,12 @@ def check_dumps(set_name: str, romdir: str) -> None:
                   f"{want[f][1]}): an older MAME's set? The game may run, but not as MAME's does")
 
 
+# Keyboardmania's synth card: its program and wave ROMs (sin-table.bin, which sets after MAME 0.289
+# add, the core rebuilds when it is missing)
+XT446_ROMS = ["xu50710-m27c160.bin", "sx518b0.ic34", "sx743b0.ic35", "xt445a0-828.ic36",
+              "xt461a0-829.ic37", "xt462a0.ic39", "xt463a0.ic38"]
+
+
 def copy_romset(romset: str, romdir: str) -> list[str]:
     os.makedirs(romdir, exist_ok=True)
     names = []
@@ -468,9 +474,14 @@ def ingest_firebeat(args) -> int:
     # what is still missing for this game to run
     if game:
         need = [f for f in (board.get("dongle"), spu.get("rom")) if f]
+        if game.get("family") == "kbm":   # the XT446's (a split set keeps them in xt446.zip)
+            need += XT446_ROMS
         romdir = os.path.join(outdir, "rom")
         lacking = [f for f in need if not os.path.exists(os.path.join(romdir, f))]
-        if lacking:
+        if lacking and not set(lacking) - set(XT446_ROMS):
+            print(f"NEXT     the set has no XT446 synth ROMs (the keyboard's sounds): add MAME's xt446.zip or .7z "
+                  f"(a split or merged set keeps them there) ({', '.join(lacking)})")
+        elif lacking:
             what = "the security dongle" + (" and the XT446 synth's ROMs (the keyboard's sounds)" if game.get("family") == "kbm" else "")
             print(f"NEXT     add the MAME set too ({game.get('mame', gid)}.zip or .7z), on its own is fine: it holds {what} "
                   f"({', '.join(lacking)})")

@@ -180,7 +180,7 @@ The order is by what each step costs against what it opens. Every step keeps the
     - The ZS01 ones are 4116-byte files without the configuration registers. Master's are 140 bytes with them, and their data differs too. So no conversion is possible.
   - **The rar's DDR zips carry master's cassette dumps** (all but `ddr4ms`/`ddr4msj`). With `roms/` and the rar's `roms/` together, every DDR set is complete except `ddr4ms`, `ddr4msj`, `ddrs2k`/`ddrs2kj`, `ddrjb` and `ddr2ml`.
   - **GF, DM, Dance Maniax and Mambo exist only with the old cassette dumps.** Phase 2–4 must find out whether the games accept them, or source master's.
-  - Firebeat pop'n DVDs are other dumps of the same discs (0.243 kept DVDs as hard disk CHDs). Keyboardmania lacks master's newer `sin-table.bin`.
+  - Firebeat pop'n DVDs are other dumps of the same discs (0.243 kept DVDs as hard disk CHDs). Keyboardmania lacks master's newer `sin-table.bin` (the core rebuilds it: 32 points joined by lines, CRC 4305f63c).
 - **`chdman verify`:** all 191 of the archive's CHDs that match a disk MAME knows check out, none bad. The other 20 of the 211 aren't checked by the catalogue: they're other dumps of a disk (the 0.243 pop'n DVDs, for example) or disks MAME doesn't list.
 - **The rar's small files** (zips, NVRAM, cfg) are unpacked in `out/catalogue/rar/` (547 MB, mostly PC Card images).
 
