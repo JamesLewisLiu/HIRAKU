@@ -1,0 +1,20 @@
+# Mambo A Go-Go (GQA40 VER. JRB, Rental), Konami 2001: generated from MAME's ksys573.cpp (tools/gen573.py)
+id = "mamboagga"
+title = "Mambo A Go-Go (Rental)"
+family = "mambo"        # Mambo a GoGo cabinet: three congas (left, centre, right), three zones each
+mame = "mamboagga"      # MAME set name, used by the oracle
+core = "sys573"         # System 573 (runtime/sys573/, PLAN.md section 19); digital I/O board
+
+[roms]
+bios = "700b01.22g"             # 573 BIOS
+h8 = "h8b01.bin"                # the H8's start-up response (JVS check)
+cassette_eeprom = "gqa40jrb.u1" # the game cassette's ZS01
+cassette_id = "gqa40jrb.u6"     # ... and its DS2401 serial number
+digital_id = "digital-id.bin"   # the digital I/O board's DS2401
+
+[board]
+io_board = "digital"            # GX894-PWB(B): FPGA + MAS3507D MP3
+cassette = "zi"                 # MAME's cassette variant: ZS01 + DS2401 (casszi)
+
+[cd]
+chd = "a40jab02"        # the runtime CD

@@ -1,0 +1,20 @@
+# Dance Freaks (G*874 VER. KAA), Konami 2000: generated from MAME's ksys573.cpp (tools/gen573.py)
+id = "dncfrks"
+title = "Dance Freaks"
+family = "dmx"          # Dance Maniax cabinet: per player four hand sensors (up, two down rows; left and right), Select L/R
+mame = "dncfrks"        # MAME set name, used by the oracle
+core = "sys573"         # System 573 (runtime/sys573/, PLAN.md section 19); digital I/O board
+
+[roms]
+bios = "700a01.22g"             # 573 BIOS
+h8 = "h8a01.bin"                # the H8's start-up response (JVS check)
+cassette_eeprom = "gk874ka.u1"  # the game cassette's ZS01
+cassette_id = "gk874ka.u6"      # ... and its DS2401 serial number
+digital_id = "digital-id.bin"   # the digital I/O board's DS2401
+
+[board]
+io_board = "digital"            # GX894-PWB(B): FPGA + MAS3507D MP3
+cassette = "zi"                 # MAME's cassette variant: ZS01 + DS2401 (casszi)
+
+[cd]
+chd = "874kaa"          # the runtime CD

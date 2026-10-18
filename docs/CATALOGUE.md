@@ -108,8 +108,8 @@ What the games need:
 
 | Game | Sets | What it needs |
 |---|---|---|
-| Dance Maniax | `dncfrks`, `dmx`, `dmxa`, `dmx2m`, `dmx2majp` | hand IR sensors |
-| Mambo a GoGo | `mamboagg`, `mamboagga` | congas |
+| Dance Maniax | `dncfrks`, `dmx`, `dmxa`, `dmx2m`, `dmx2majp` | hand IR sensors. **Phase 5 (2026-10-18):** manifests, ingest, inputs, lamps and the launcher's controls are in; all but `dmxa` boot in lockstep with MAME to ERROR 121, the archive's cassette dumps being too old (below) |
+| Mambo a GoGo | `mamboagg`, `mamboagga` | congas. **Phase 5:** as Dance Maniax |
 | Martial Beat | `mrtlbeat`, `mrtlbeata` | motion sensors |
 | Punch Mania / Fighting Mania | `pnchmn`, `pnchmna`, `pnchmn2`, `fghtmn` and 4 clones | punch pads that move |
 
@@ -504,6 +504,54 @@ The fork wasn't needed as the oracle: with current dumps, MAME at the pin runs e
 - DDR Karaoke Mix 1/2 (`k573kara`, out of scope by default).
 
 Each needs an input design before code. The owner decides which are worth it.
+
+#### Phase 5 progress (2026-10-18): Dance Maniax and Mambo a GoGo, the owner's two
+
+**Blocked on the cassette dumps.** All six sets the archive has (`dncfrks`, `dmx`, `dmx2m`, `dmx2majp`, `mamboagg`, `mamboagga`) stop at **ERROR 121, cassette error (9)**, in MAME at the pin as in HIRAKU, about 5 s after power-on. Their ZS01 dumps are the 0.243 sets' 4,116-byte files; MAME's are 140 bytes, with the configuration registers, and other data (Phase 0). Neither the owner's MAME 0.289 zips nor the rar has these sets. Test at the error does nothing (tried on `dmx`). **Needed**, with the CRCs MAME 0.289 lists:
+
+| Set | File | CRC |
+|---|---|---|
+| `dncfrks` | `gk874ka.u1` | 43244ec6 |
+| `dmx` | `ge874ja.u1` | f27cfd58 |
+| `dmx2m` | `gca39ja.u1` | 7f1e7a66 |
+| `dmx2majp` | `gca38ja.u1` | 34d8db6f |
+| `mamboagg` | `gqa40jab.u1` | bbb6033d |
+| `mamboagga` | `gqa40jrb.u1` | 313b5685 |
+
+The rest of each set (the `.u6` serials, `dmx2majp`'s flash, the CDs) matches MAME's. `dmxa` (874 AAA, CD `874aaa02`) isn't in the archive. With the dumps, ingesting the set's zip again is all it takes, then the first boot, a song and regress cases. Making up a 140-byte image from the old file was not tried: comparing `ddr5m`'s two dumps, the data differs in more than the layout (a year field, a checksum, a block the old one lacks).
+
+**What is in:**
+- **Manifests** `games/{dncfrks,dmx,dmx2m,dmx2majp,mamboagg,mamboagga}/game.toml` from `tools/gen573.py`, which knows the two input families now (`dmx`, `mambo`). Digital board, ZS01 cassette (`casszi`), no PC Card; `dmx2majp` preloads its installed flash (31m, 27m); Mambo boots MAME's default BIOS for it, `700b01` with `h8b01`.
+- **Ingested** with `--keep-chd` from the archive (`dumps/<set>/`, the CDs read in place on the USB disk; `dmx` uses `dncfrks/874jaa.chd`, `mamboagga` `mamboagg/a40jab02.chd`). Ingest notes each `.u1` as another dump.
+- **Checked at boot against MAME at the pin** (`oracle/scripts/<set>-boot.his`, 1,800 frames from blank NVRAM, `oracle/lockstep.sh`): all six identical on every hashed frame (180/180) and every snapshot (30/30), through the BIOS, the program's load from CD and the cassette check to ERROR 121.
+- **The 573 core** (`runtime/sys573/board.cpp`):
+  - MAME's `dmx_output_callback` and `mamboagg_output_callback` on the digital board's outputs, and their LAMPS port bits (`dmx_lamps_b0..b5`, `mamboagg_lamps_b3..b5`) as lamps 32 and up (the outputs are now 64 bits);
+  - the two input maps, MAME's ports bit for bit (checked against `ksys573.cpp`'s INPUT_PORTS by a script): every sensor by MAME's name, Dance Maniax's as "P1 D-Sensor U L" since MAME names both players' alike;
+  - an older ZS01 dump is cut to the chip's 140 bytes, as MAME's ROM loader does with a too-long file (WRONG LENGTH), so the game sees MAME's chip. Only these six and Phase 3's blocked `dsem2` and `dsfdr` have such files.
+- **`oracle/lua/hiraku.lua`:** fields of one name on one port hide each other in MAME's `port.fields`, so every field is also "P<player> <name>" (found by its bit). A script can press player 2's Dance Maniax sensors in MAME (checked).
+- **Controls** (`runtime/shell/cabinet.cpp`, the launcher's family tables in `launcher/config.cpp` and the icon in `launcher/games.cpp`): the families "Dance Maniax (System 573)" and "Mambo a GoGo (System 573)", with defaults. How they play is in `docs/PLAY.md`.
+
+**The input mapping:**
+- **Dance Maniax:** per player four controls, the cabinet's four hand sensors: upper left, lower left, lower right, upper right. MAME's lower sensors are two beams each (D0, D1); "P1 Lower Left" breaks both, as a hand does. The single beams keep MAME's names, unbound. Keys: player 1 W/S (left hand) and O/L (right hand), Left/Right to select; player 2 on the keypad (7/4, 9/6, 1/3). Pads: buttons 0–3, select 4–5, Start 9.
+- **Mambo a GoGo:** nine controls, three per conga (left, centre, right): pad 1 the far half of the head, pads 2 and 3 the near left and near right quarters (MAME's "Top", "Middle/Bottom Left", "Middle/Bottom Right" sensors). "Left Pad 1" presses both its sensors, as MAME's one button per pad does. Keys: W over A S, Y over G H, O over K L; buttons 0–8. MAME puts one sensor on Coin 2 and one on P2 Start, so those names do nothing on this cabinet.
+
+**Hardware options for the owner (not built; pick one per game):**
+- **Dance Maniax's hand sensors.** The real sensors are IR beams read as plain switches (beam broken = pressed), so anything that gives HIRAKU a button per sensor works:
+  1. **IR beams or ToF sensors on a frame**, as the cabinet: break-beam pairs, or VL53L1X/GP2Y0D distance sensors with a threshold (steadier in daylight), at shoulder and waist height left and right, into a Pi Pico or Arduino Leonardo running as a USB gamepad (4 buttons a player, 8 for two). About 1 ms of latency, cheap; nothing new in HIRAKU.
+  2. **A camera:** a depth camera (Kinect v2, Orbbec, RealSense) or a webcam with MediaPipe pose tracking, four zones per player, through a small helper that presses buttons on a virtual gamepad (uinput). No frame to build, but 30–70 ms of camera and tracking latency (the timing windows suffer) and it depends on light (less so with depth). A built-in source in HIRAKU would be new work.
+  3. **Buttons instead:** four big arcade buttons a player on a stand at the two heights, or a dance pad's corners (up-left/up-right as the upper sensors, left/right as the lower). Playable at once with the bindings; not the same motion.
+  - A Leap Motion's field (about 60 cm) is too small for the cabinet's reach.
+- **Mambo a GoGo's congas** (three drums, three zones each):
+  1. **Three Taiko drum controllers** (the Switch or PS4 HORI/Bandai Namco drums; they are USB or Bluetooth gamepads). A Taiko drum has four zones (left and right face, left and right rim): face left and right as pads 2 and 3, either rim as pad 1 (the far half). Three controllers of one name are told apart by the bindings' `@2`, `@3`. Cheapest to try; the far pad on the rim is a stand-in.
+  2. **DIY congas**, the cabinet's layout: three drums (or conga-shaped practice pads) with piezo sensors under the far half and the near left and right quarters, nine inputs into a Pi Pico/Teensy as one USB gamepad. The most faithful; about 1 ms.
+  3. **Electronic drum pads** (head and rim zones) over MIDI: HIRAKU reads no MIDI, so a MIDI-to-gamepad bridge, or MIDI input in the shell (new work). Dual-zone pads give six of the nine zones.
+- **Real cabinet parts:** a cabinet's sensor or conga harness (active-low switches) into a keyboard encoder or a Pico works the same way.
+
+**Open:**
+- The cassette dumps above; then first boots, test mode's I/O check (to confirm which beams the game pairs), a scripted song in lockstep, regress cases (`<set>-boot`, `<set>-play`) and a hands-on test.
+- `mamboagga` is the rental version: MAME has a TODO for its rental serial device, so it may stop even with its dump.
+- No regress cases yet: a boot to ERROR 121 would have to be re-recorded once the dumps come.
+- Unchanged by this work (out/regress-p5-check, against out/regress/baseline): `ddr3mj-boot`, `-install`, `-attract`, `-play`, `dstage-install`, `-play`, `gtrfrk5m-install`, `-play`, `drmn4m-install` and the `drmn4m-session` + `gtrfrk5m-session` pair, all identical.
 
 ### Phase 6: cross-cabinet sessions
 

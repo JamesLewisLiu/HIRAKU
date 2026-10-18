@@ -257,6 +257,17 @@ local function find_field(name)
                 if fields[fname] == nil then fields[fname] = f else fields[fname] = false end
             end
         end
+        -- Fields of one name on one port (Dance Maniax's "D-Sensor U L" for both players) hide each
+        -- other in port.fields; each, found by its bit, is also "P<player> <name>"
+        for tag, port in pairs(mach.ioport.ports) do
+            for b = 0, 31 do
+                local f = port:field(1 << b)
+                if f ~= nil and f.mask == (1 << b) and not f.name:match("^P%d") then
+                    local alias = "P" .. (f.player + 1) .. " " .. f.name
+                    if fields[alias] == nil then fields[alias] = f end
+                end
+            end
+        end
     end
     local f = fields[name]
     if f == false then error("field '" .. name .. "' is ambiguous; use PORT/" .. name) end

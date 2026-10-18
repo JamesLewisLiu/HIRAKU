@@ -134,6 +134,64 @@ std::vector<Control> make_ddrsolo() {
     return c;
 }
 
+// Dance Maniax (System 573, MAME ksys573.cpp "dmx"): per player four hand sensors, the upper
+// pair above the head and the lower pair at the waist, left and right. Each lower sensor is two
+// beams (MAME's D0 and D1); a lower sensor here breaks both, and each beam has its own name too
+// ("P1 D-Sensor D0 L"). Select L/R and Start on the panel. On the keyboard player 1's left hand
+// takes W (upper) and S (lower), the right hand O and L; player 2 is on the keypad (7 4, 9 6).
+std::vector<Control> make_dmx() {
+    std::vector<Control> c;
+    for (int p = 1; p <= 2; p++) {
+        const std::string P = "P" + std::to_string(p), g = "Player " + std::to_string(p), j = p == 1 ? "joy0" : "joy1";
+        const bool one = p == 1;
+        c.push_back({P + " Upper Left", "Upper left sensor", g, false, (one ? "key:W, " : "key:Keypad 7, ") + j + ":button0"});
+        c.push_back({P + " Lower Left", "Lower left sensor", g, false, (one ? "key:S, " : "key:Keypad 4, ") + j + ":button1"});
+        c.push_back({P + " Lower Right", "Lower right sensor", g, false, (one ? "key:L, " : "key:Keypad 6, ") + j + ":button2"});
+        c.push_back({P + " Upper Right", "Upper right sensor", g, false, (one ? "key:O, " : "key:Keypad 9, ") + j + ":button3"});
+        c.push_back({P + " Select L", "Select left", g, false, (one ? "key:Left, " : "key:Keypad 1, ") + j + ":button4"});
+        c.push_back({P + " Select R", "Select right", g, false, (one ? "key:Right, " : "key:Keypad 3, ") + j + ":button5"});
+        c.push_back({one ? "1 Player Start" : "2 Players Start", "Start", g, false, (one ? "key:1, key:Return, " : "key:2, key:Keypad Enter, ") + j + ":button9"});
+        for (const char *beam : {"D0 L", "D1 L", "D0 R", "D1 R"})
+            c.push_back({P + " D-Sensor " + beam, std::string("Lower ") + (beam[3] == 'L' ? "left" : "right") + " sensor, beam " + beam[1] + " alone",
+                         g + " (single beams)", false, ""});
+    }
+    c.push_back({"Coin 1", "Coin", "Cabinet", false, "key:5, joy0:button8"});
+    c.push_back({"Test", "Test", "Cabinet", false, "key:F2"});
+    c.push_back({"Service", "Service", "Cabinet", false, "key:9"});
+    return c;
+}
+
+// Mambo a GoGo (System 573, MAME ksys573.cpp "mamboagg"): three congas, left, centre and right,
+// each with three pads: 1 the far half of the head, 2 and 3 the near left and near right quarters.
+// Each pad is two sensors, which MAME gives one button; a pad here presses both, and each sensor
+// has its own name too ("Left Pad 1 (Top Left)"). The game's menus are played on the congas; Start
+// is the panel's. On the keyboard each conga is a triangle, the far pad above the near two:
+// W over A S, Y over G H, O over K L. A Taiko-style drum sends its zones as buttons 0-8.
+std::vector<Control> make_mambo() {
+    std::vector<Control> c;
+    const char *conga[3] = {"Left", "Centre", "Right"};
+    const char *keys[3][3] = {{"key:W", "key:A", "key:S"}, {"key:Y", "key:G", "key:H"}, {"key:O", "key:K", "key:L"}};
+    const char *pad[3] = {"pad 1 (far half)", "pad 2 (near left)", "pad 3 (near right)"};
+    for (int k = 0; k < 3; k++)
+        for (int z = 0; z < 3; z++)
+            c.push_back({std::string(conga[k]) + " Pad " + std::to_string(z + 1), std::string(conga[k]) + " conga, " + pad[z],
+                         std::string(conga[k]) + " conga", false, std::string(keys[k][z]) + ", joy0:button" + std::to_string(k * 3 + z)});
+    c.push_back({"1 Player Start", "Start", "Panel", false, "key:1, key:Return, joy0:button9"});
+    c.push_back({"Coin 1", "Coin", "Cabinet", false, "key:5, joy0:button10"});
+    c.push_back({"Test", "Test", "Cabinet", false, "key:F2"});
+    c.push_back({"Service", "Service", "Cabinet", false, "key:9"});
+    static const char *sensors[9][2] = {
+        {"Top Left", "Top Right"}, {"Middle Left", "Bottom Left"}, {"Middle Right", "Bottom Right"},
+        {"Top Left", "Top Right"}, {"Middle Left", "Bottom Left"}, {"Middle Right", "Bottom Right"},
+        {"Top Left", "Top Right"}, {"Middle Left", "Bottom Left"}, {"Middle Right", "Bottom Right"}};
+    for (int k = 0; k < 9; k++)
+        for (const char *s : sensors[k])
+            c.push_back({std::string(conga[k / 3]) + " Pad " + std::to_string(k % 3 + 1) + " (" + s + ")",
+                         std::string(conga[k / 3]) + " conga, pad " + std::to_string(k % 3 + 1) + ", sensor " + s + " alone",
+                         "Single sensors", false, ""});
+    return c;
+}
+
 // The e-AMUSEMENT card unit's slot and 10-key (System 573 GuitarFreaks and DrumMania with the
 // network unit, runtime/sys573/cardunit.h; the names as pop'n's on Konami Python). `prefix`: ""
 // for the first reader, "P2 " for GuitarFreaks' second, whose 10-key has no keys by default.
@@ -435,6 +493,36 @@ std::vector<Lamp> make_gtrf_lamps() {
     };
 }
 
+// Dance Maniax: the outputs MAME's dmx_output_callback names (reg 0, bit = output number: each
+// sensor's blue and red lamps, the spotlights) and its LAMPS port (dmx_lamps_b0..b5, bit 32 + n)
+std::vector<Lamp> make_dmx_lamps() {
+    std::vector<Lamp> l;
+    static const int blue[12] = {16, 17, 20, 21, 8, 9, 4, 5, 0, 1, 12, 13}, red[12] = {19, 18, 23, 22, 11, 10, 7, 6, 3, 2, 15, 14};
+    for (int k = 0; k < 12; k++) l.push_back({"Blue IO Lamp " + std::to_string(k), "Sensors (blue)", 0, blue[k]});
+    for (int k = 0; k < 12; k++) l.push_back({"Red IO Lamp " + std::to_string(k), "Sensors (red)", 0, red[k]});
+    l.push_back({"Spot Light Yellow", "Cabinet", 0, 28});
+    l.push_back({"Spot Light Blue", "Cabinet", 0, 29});
+    l.push_back({"Spot Light Pink", "Cabinet", 0, 31});
+    l.push_back({"P1 Start Lamp", "Panel", 0, 33});
+    l.push_back({"P2 Start Lamp", "Panel", 0, 36});
+    l.push_back({"Left 1", "Cabinet", 0, 32});
+    l.push_back({"Right 1", "Cabinet", 0, 34});
+    l.push_back({"Left 0", "Cabinet", 0, 35});
+    l.push_back({"Right 0", "Cabinet", 0, 37});
+    return l;
+}
+
+// Mambo a GoGo: MAME's mamboagg_output_callback (reg 0, bit = output number) and its LAMPS port
+// (mamboagg_lamps_b3..b5, bit 32 + n)
+std::vector<Lamp> make_mambo_lamps() {
+    return {
+        {"Conga Left", "Congas", 0, 28}, {"Conga Centre", "Congas", 0, 31}, {"Conga Right", "Congas", 0, 29},
+        {"Fire Lamp Left", "Cabinet", 0, 4}, {"Fire Fan Left", "Cabinet", 0, 5},
+        {"Fire Fan Right", "Cabinet", 0, 6}, {"Fire Lamp Right", "Cabinet", 0, 7},
+        {"Start Lamp", "Panel", 0, 35}, {"Select Left", "Panel", 0, 37}, {"Select Right", "Panel", 0, 36},
+    };
+}
+
 // pop'n stage: not decoded yet (no dump to watch); listed by register and bit
 std::vector<Lamp> make_djpstage_lamps() {
     std::vector<Lamp> l;
@@ -457,7 +545,7 @@ const std::vector<Control> &controls(const std::string &family) {
     static const std::map<std::string, std::vector<Control>> all = {
         {"bm3", make_bm3()}, {"popn", make_popn()}, {"ppp", make_ppp()}, {"kbm", make_kbm()},
         {"djbm", make_djbm()}, {"djpopn", make_djpopn()}, {"djpstage", make_djpstage()}, {"ddr", make_ddr()}, {"ddrsolo", make_ddrsolo()},
-        {"drmn", make_drmn()}, {"gtrf", make_gtrf()}, {"iidx", make_iidx()}, {"pypopn", make_pypopn()}};
+        {"dmx", make_dmx()}, {"mambo", make_mambo()}, {"drmn", make_drmn()}, {"gtrf", make_gtrf()}, {"iidx", make_iidx()}, {"pypopn", make_pypopn()}};
     auto f = all.find(family);
     return f != all.end() ? f->second : all.at("bm3");
 }
@@ -466,7 +554,7 @@ const std::vector<Lamp> &lamps(const std::string &family) {
     static const std::map<std::string, std::vector<Lamp>> all = {
         {"bm3", make_bm3_lamps()}, {"popn", make_popn_lamps()}, {"ppp", make_ppp_lamps()}, {"kbm", make_kbm_lamps()},
         {"djbm", make_djbm_lamps()}, {"djpopn", make_djpopn_lamps()}, {"djpstage", make_djpstage_lamps()},
-        {"ddr", make_ddr_lamps()}, {"ddrsolo", make_ddrsolo_lamps()}, {"drmn", make_drmn_lamps()}, {"gtrf", make_gtrf_lamps()}, {"iidx", make_iidx_lamps()},
+        {"ddr", make_ddr_lamps()}, {"ddrsolo", make_ddrsolo_lamps()}, {"dmx", make_dmx_lamps()}, {"mambo", make_mambo_lamps()}, {"drmn", make_drmn_lamps()}, {"gtrf", make_gtrf_lamps()}, {"iidx", make_iidx_lamps()},
         {"pypopn", make_pypopn_lamps()}};
     auto f = all.find(family);
     return f != all.end() ? f->second : all.at("bm3");

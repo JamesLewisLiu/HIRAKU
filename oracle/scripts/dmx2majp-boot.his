@@ -1,0 +1,10 @@
+# Dance Maniax 2nd Mix Append J-Paradise: power-on from blank NVRAM with the archive's (MAME 0.243) cassette dump. The BIOS reads the
+# program from CD; the game then stops at ERROR 121 (cassette error 9), in MAME at the pin as here:
+# that older ZS01 dump isn't the chip MAME's current dump is (docs/CATALOGUE.md, Phase 5). Hashes
+# the main RAM every frame and snapshots every 60 frames, to compare HIRAKU's 573 core with MAME.
+game dmx2majp
+
+hash ram  0x80000000 0x80400000   # 4 MiB main RAM (KSEG0)
+
+from 0 every 60 snap
+at 1800 quit

@@ -177,7 +177,7 @@ public:
     u32 m_in1_coins = 0x13000000; // coins and service 1, active low
     u8 m_analog[4] = {0, 0, 0, 0};
 
-    u32 m_outputs = 0;              // the I/O board's outputs, lit = 1, by output number
+    u64 m_outputs = 0;              // the I/O board's outputs, lit = 1, by output number; 32 + k: LAMPS bit k
     std::vector<u8> m_lamps;        // in cab::lamps(family) order
     u64 m_lamp_changes = 0;
 
@@ -200,8 +200,15 @@ public:
     u16 control_r(offs_t, u16) { return m_control; }
     void control_w(offs_t, u16 data, u16 mem_mask);
     void atapi_reset_w(u16 data) { if (!(data & 1)) m_ata->reset(); }
-    // MAME's LAMPS port: GuitarFreaks' lamps (gtrfrks_lamps_b4..b7, active low); nothing else
+    // MAME's LAMPS port: GuitarFreaks' lamps (gtrfrks_lamps_b4..b7, active low); Dance Maniax's
+    // (dmx_lamps_b0..b5) and Mambo a GoGo's (mamboagg_lamps_b3..b5), active low, as lamps 32 + bit
     void lamps_w(offs_t, u32 data, u32 mem_mask) {
+        if (cfg.family == "dmx" || cfg.family == "mambo") {
+            const u32 used = cfg.family == "dmx" ? 0x3f : 0x38;
+            for (int k = 0; k < 8; k++)
+                if (used & mem_mask & (1u << k)) set_lamp(32 + k, !(data & (1u << k)));
+            return;
+        }
         if (cfg.family != "gtrf" || !(mem_mask & 0xf0)) return;
         for (int k = 0; k < 4; k++) set_lamp(k, !(data & (0x80u >> k)));   // spot L, spot R, start L, start R
     }
@@ -237,6 +244,8 @@ public:
     void ddr_output_callback(offs_t offset, u8 data);
     void drmn_output_callback(offs_t offset, u8 data);
     void ddrsolo_output_callback(offs_t offset, u8 data);
+    void dmx_output_callback(offs_t offset, u8 data);
+    void mamboagg_output_callback(offs_t offset, u8 data);
     void set_lamp(offs_t offset, bool lit);
 };
 
@@ -365,6 +374,8 @@ void sys573_state::device_add_mconfig(machine_config &config) {
         // ddr3m(): DDR's outputs; drmn2m() to drmn10m(): DrumMania's
         if (c.family == "drmn") m_k573dio->output_callback().set(*this, &sys573_state::drmn_output_callback);
         else if (c.family == "ddrsolo") m_k573dio->output_callback().set(*this, &sys573_state::ddrsolo_output_callback);
+        else if (c.family == "dmx") m_k573dio->output_callback().set(*this, &sys573_state::dmx_output_callback);       // dmx()
+        else if (c.family == "mambo") m_k573dio->output_callback().set(*this, &sys573_state::mamboagg_output_callback);   // mamboagg()
         else m_k573dio->output_callback().set(*this, &sys573_state::ddr_output_callback);
         // ddrsbm(): Solo Bass Mix's own FPGA program, whose MP3 counter runs free from power-on (the
         // game syncs its playback to it; without, it waits at READY with the counter at 0)
@@ -756,9 +767,21 @@ void sys573_state::ddrsolo_output_callback(offs_t offset, u8 data) {
     }
 }
 
+// MAME's dmx_output_callback (ksys573.cpp): the sensors' blue and red lamps, outputs 0-23, and
+// the yellow, blue and pink spotlights (28, 29, 31), lit at data 0
+void sys573_state::dmx_output_callback(offs_t offset, u8 data) {
+    if (offset < 24 || offset == 28 || offset == 29 || offset == 31) set_lamp(offset, !data);
+}
+
+// MAME's mamboagg_output_callback (ksys573.cpp): the fire lamps and fans (4-7), the congas'
+// lamps (28 left, 29 right, 31 centre), lit at data 0
+void sys573_state::mamboagg_output_callback(offs_t offset, u8 data) {
+    if ((offset >= 4 && offset <= 7) || offset == 28 || offset == 29 || offset == 31) set_lamp(offset, !data);
+}
+
 void sys573_state::set_lamp(offs_t offset, bool lit) {
-    if (offset >= 32) return;
-    const u32 bit = 1u << offset, was = m_outputs;
+    if (offset >= 64) return;
+    const u64 bit = 1ull << offset, was = m_outputs;
     m_outputs = lit ? m_outputs | bit : m_outputs & ~bit;
     if (m_outputs == was) return;
     const auto &defs = cab::lamps(cfg.family);
@@ -856,6 +879,12 @@ bool init(const Config &cfg) {
         if (r.file.empty()) continue;
         std::vector<u8> d = load_file(r.file);
         if (d.empty()) { fprintf(stderr, "cannot read %s\n", r.file.c_str()); return false; }
+        // an older MAME's ZS01 dump (4,116 bytes, no configuration registers): MAME loads the
+        // region's 140 bytes from it (WRONG LENGTH), so the game sees the same chip as in MAME
+        const std::string tag = r.tag;
+        const bool game_eeprom = tag == ":cassette:game:eeprom", install_eeprom = tag == ":cassette:install:eeprom";
+        const std::string &kind = install_eeprom && !cfg.install_kind.empty() ? cfg.install_kind : cfg.cassette;
+        if ((game_eeprom || install_eeprom) && kind == "zi" && d.size() > 0x8c) d.resize(0x8c);
         m.add_region(r.tag, std::move(d));
     }
     // chips the set has filled (an installed flash, a set timekeeper): the device's own region
@@ -1191,6 +1220,54 @@ bool set_input(const std::string &name, int value) {
             return bit(port(s2->second.first), s2->second.second);
         }
         if (auto s = solo.find(name); s != solo.end()) return bit(port(s->second.first), s->second.second);
+    }
+    // Dance Maniax (MAME's dmx ports, "D-Sensor ..." for both players: here "P1 ..." and "P2 ...")
+    // and Mambo a GoGo (MAME's mamboagg ports: every conga pad read by two sensors). A name of
+    // the cabinet's own (runtime/shell/cabinet.cpp) presses each sensor it lists.
+    if (g.cfg.family == "dmx" || g.cfg.family == "mambo") {
+        using Bits = std::vector<std::pair<int, u32>>;   // (port as `names` numbers them, mask)
+        static const std::map<std::string, Bits> dmx = {
+            {"P1 D-Sensor D1 L", {{0, 0x100}}}, {"P1 D-Sensor D1 R", {{0, 0x200}}},
+            {"P1 Select L", {{0, 0x400}}}, {"P1 Select R", {{0, 0x800}}},
+            {"P1 D-Sensor U L", {{1, 0x1000}}}, {"P1 D-Sensor U R", {{1, 0x2000}}},
+            {"P1 D-Sensor D0 L", {{2, 0x100}}}, {"P1 D-Sensor D0 R", {{2, 0x200}}},
+            {"P2 D-Sensor D1 L", {{0, 0x001}}}, {"P2 D-Sensor D1 R", {{0, 0x002}}},
+            {"P2 Select L", {{0, 0x004}}}, {"P2 Select R", {{0, 0x008}}},
+            {"P2 D-Sensor U L", {{1, 0x0010}}}, {"P2 D-Sensor U R", {{1, 0x0020}}},
+            {"P2 D-Sensor D0 L", {{2, 0x1000000}}}, {"P2 D-Sensor D0 R", {{2, 0x2000000}}},
+            // the cabinet's four hand sensors per player: the lower ones are two beams (D0, D1)
+            {"P1 Upper Left", {{1, 0x1000}}}, {"P1 Upper Right", {{1, 0x2000}}},
+            {"P1 Lower Left", {{2, 0x100}, {0, 0x100}}}, {"P1 Lower Right", {{2, 0x200}, {0, 0x200}}},
+            {"P2 Upper Left", {{1, 0x0010}}}, {"P2 Upper Right", {{1, 0x0020}}},
+            {"P2 Lower Left", {{2, 0x1000000}, {0, 0x001}}}, {"P2 Lower Right", {{2, 0x2000000}, {0, 0x002}}},
+        };
+        static const std::map<std::string, Bits> mambo = {
+            {"Left Pad 1 (Top Left)", {{1, 0x2000}}}, {"Left Pad 1 (Top Right)", {{1, 0x0080}}},
+            {"Left Pad 2 (Middle Left)", {{2, 0x200}}}, {"Left Pad 2 (Bottom Left)", {{1, 0x1000}}},
+            {"Left Pad 3 (Middle Right)", {{2, 0x100}}}, {"Left Pad 3 (Bottom Right)", {{1, 0x4000}}},
+            {"Centre Pad 1 (Top Left)", {{0, 0x004}}}, {"Centre Pad 1 (Top Right)", {{0, 0x800}}},
+            {"Centre Pad 2 (Middle Left)", {{0, 0x008}}}, {"Centre Pad 2 (Bottom Left)", {{0, 0x001}}},
+            {"Centre Pad 3 (Middle Right)", {{0, 0x400}}}, {"Centre Pad 3 (Bottom Right)", {{0, 0x002}}},
+            {"Right Pad 1 (Top Left)", {{1, 0x0020}}}, {"Right Pad 1 (Top Right)", {{3, 0x2000000}}},
+            {"Right Pad 2 (Middle Left)", {{2, 0x2000000}}}, {"Right Pad 2 (Bottom Left)", {{1, 0x0010}}},
+            {"Right Pad 3 (Middle Right)", {{2, 0x1000000}}}, {"Right Pad 3 (Bottom Right)", {{1, 0x0040}}},
+            // each pad as one: both its sensors (MAME gives the two one button)
+            {"Left Pad 1", {{1, 0x2000}, {1, 0x0080}}}, {"Left Pad 2", {{2, 0x200}, {1, 0x1000}}},
+            {"Left Pad 3", {{2, 0x100}, {1, 0x4000}}}, {"Centre Pad 1", {{0, 0x004}, {0, 0x800}}},
+            {"Centre Pad 2", {{0, 0x008}, {0, 0x001}}}, {"Centre Pad 3", {{0, 0x400}, {0, 0x002}}},
+            {"Right Pad 1", {{1, 0x0020}, {3, 0x2000000}}}, {"Right Pad 2", {{2, 0x2000000}, {1, 0x0010}}},
+            {"Right Pad 3", {{2, 0x1000000}, {1, 0x0040}}},
+        };
+        const auto &tab = g.cfg.family == "dmx" ? dmx : mambo;
+        if (auto s = tab.find(name); s != tab.end()) {
+            for (auto [p, mask] : s->second)
+                bit(p == 0 ? st.m_stage : p == 1 ? st.m_in2_buttons : p == 2 ? st.m_in3 : st.m_in1_coins, mask);
+            return true;
+        }
+        // their ports leave out the other cabinets' names on these bits (P2 Start, Coin 2, ...)
+        if (name != "1 Player Start" && name != "Coin 1" && name != "Test" && name != "Service" &&
+            name != "Service Mode" && name != "Service 1" && !(g.cfg.family == "dmx" && name == "2 Players Start"))
+            return false;
     }
     // the shell's cabinet names for MAME's (runtime/shell/cabinet.cpp)
     const char *service = g.cfg.family == "gtrf" ? "Service 1 (IN3)" : "Service 1";

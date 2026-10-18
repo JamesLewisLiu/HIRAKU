@@ -29,6 +29,8 @@ FAMILIES = {   # MAME input ports -> HIRAKU family, its cabinet comment
     "gtrfrks": ("gtrf", "GuitarFreaks cabinet: two guitars (neck R/G/B, pick, wailing, effect knob)"),
     "drmn": ("drmn", "DrumMania cabinet: five pads, the bass pedal, select buttons"),
     "ddrsolo": ("ddrsolo", "DDR Solo cabinet: one player, six panels (up-left, up-right too), Select L/R"),
+    "dmx": ("dmx", "Dance Maniax cabinet: per player four hand sensors (up, two down rows; left and right), Select L/R"),
+    "mamboagg": ("mambo", "Mambo a GoGo cabinet: three congas (left, centre, right), three zones each"),
 }
 CHIPS = {"x": "X76F041", "xi": "X76F041", "y": "X76F100", "yi": "X76F100", "zi": "ZS01"}
 CASSETTE = {"x": "X76F041, no DS2401", "xi": "X76F041 + DS2401", "y": "X76F100, no DS2401",
