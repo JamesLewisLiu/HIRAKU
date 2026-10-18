@@ -112,6 +112,10 @@ public:
     // 640x480 on the same 4:3 tube; Twinkle's on a 16:9 one), so its pixels aren't square.
     // 0: square pixels.
     virtual double display_aspect() const { return 4.0 / 3.0; }
+    // How many monitors a frame holds, side by side and equally wide (Keyboardmania: 2, one a
+    // player). display_aspect is the whole frame's; the window can show each in its own
+    // (runtime/host/window.h, window_set_split)
+    virtual int screens() const { return 1; }
     // The part of that screen a w x h frame covers, width and height as fractions, centred: 1, 1
     // when it fills the screen. The Python core's frames are the GS's display area, which on a TV
     // sits inside a wider and taller raster with black around it.

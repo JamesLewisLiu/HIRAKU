@@ -953,6 +953,8 @@ void turntable_add(int player, int delta) {
 void set_frame_hook(FrameHook h) { g_frame_hook = std::move(h); }
 void set_present_hook(PresentHook h) { g_present_hook = std::move(h); }
 void set_audio_sink(AudioSink sink) { g_audio_sink = std::move(sink); }
+int screens() { return g_gcu2 ? 2 : 1; }
+
 bool sound_flash_blank() {
     if (g_cfg.family != "kbm" && g_cfg.family != "ppp") return false;
     for (int k = 1; k <= 2; k++) {

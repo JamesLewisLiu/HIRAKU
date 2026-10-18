@@ -36,7 +36,8 @@ bool prepare(Mode m);
 // Draw a w x h XRGB8888 frame into the rectangle (x, y, vw, vh), from the top left, of a
 // win_w x win_h default framebuffer; the rest is black. Returns the mode drawn: `m`, or off
 // when its preset can't run here.
-Mode draw(const uint32_t *rgb, int w, int h, int x, int y, int vw, int vh, int win_w, int win_h, Mode m);
+// view: which window (0, or 1 for a second one: its own frame texture and preset state)
+Mode draw(const uint32_t *rgb, int w, int h, int x, int y, int vw, int vh, int win_w, int win_h, Mode m, int view = 0);
 // After draw: an ARGB picture (w x h, with its own alpha, times `alpha`) blended over the window,
 // drawn at (x, y, dw, dh) from the top left, its pixels sharp (host/notice.h's banner)
 void overlay(const uint32_t *argb, int w, int h, int x, int y, int dw, int dh, float alpha, int win_w, int win_h);

@@ -497,7 +497,8 @@ tools/ingest.py gq974-ja-c01.cue --cd2 gq974-ja-a02.cue --romset kbm.7z
 analyze/ghidra.sh kbm && analyze/prep.py kbm && ninja -C build/cmake hiraku-kbm
 ```
 
-**Screens:** both portrait monitors are shown side by side (MAME's ROT270).
+**Screens:** both portrait monitors are shown side by side (MAME's ROT270), at their shape: 3:2 together.
+With two displays, **Settings > Video > each player's monitor in its own window** (or `--split-screens`) opens player 2's in a second window on the next display; with fullscreen, each fills its own display. F11 toggles the window with the keyboard. The sound, the inputs and the update banner stay with player 1's window. On Wayland the compositor places windows itself: drag player 2's to its display, then F11.
 
 **First boot:** the backup data is blank (E161) and, on some versions, the sound flash too. Press **F2** for test mode:
 - **1 / 2** move the cursor;

@@ -27,6 +27,9 @@ void window_set_audio_asio(const std::string &driver);
 // loses any steady offset (a DC blocker, as a cabinet's amplifier's coupling capacitors), so a chip
 // stuck at full scale can't push the rest into clipping. Neither changes --wav or --digest.
 void window_set_volume(double db);
+// Before window_open: each monitor of a machine with several (Core::screens: Keyboardmania's
+// two) in a window of its own, for a monitor each; player 2's goes on the next display
+void window_set_split(bool on);
 bool window_open(const char *title, int scale, const std::string &bindings, int audio_target_ms, bool fullscreen = false,
                  int audio_rate = 44100);
 // Present one frame; then sleep so that `virtual_seconds` does not run ahead

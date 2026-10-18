@@ -270,6 +270,9 @@ public:
     bool audio_per_frame() const override { return synth::deferred(); }
     const std::vector<uint8_t> &lamp_state() const override { return fb::lamp_state(); }
     uint64_t lamp_changes() const override { return fb::lamp_changes(); }
+    int screens() const override { return fb::screens(); }
+    // Keyboardmania: two 4:3 monitors turned upright (MAME ROT270), side by side: 3:2
+    double display_aspect() const override { return fb::screens() == 2 ? 1.5 : 4.0 / 3.0; }
     std::vector<std::string> setup_warning() const override {
         if (!fb::sound_flash_blank()) return {};
         // the YMZ280B then plays erased flash: a level stuck at full scale under the rest

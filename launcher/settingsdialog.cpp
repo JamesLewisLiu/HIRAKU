@@ -158,6 +158,11 @@ SettingsDialog::SettingsDialog(QWidget *parent) : QDialog(parent) {
     m_fullscreen = new QCheckBox("Start in fullscreen (F11 or Alt+Enter toggles)");
     m_fullscreen->setChecked(s.value("video/fullscreen", false).toBool());
     fv->addRow("", m_fullscreen);
+    m_splitScreens = new QCheckBox("Keyboardmania: each player's monitor in its own window (two displays)");
+    m_splitScreens->setChecked(s.value("video/splitScreens", false).toBool());
+    m_splitScreens->setToolTip("The cabinet has a monitor for each player. Player 2's window opens on the next display; "
+                               "with fullscreen, each fills its own. F11 toggles the window with the keyboard.");
+    fv->addRow("", m_splitScreens);
     m_displaySync = new QCheckBox("Smooth frames on a 60, 120 or 240 Hz display");
     m_displaySync->setChecked(s.value("video/displaySync", true).toBool());
     m_displaySync->setToolTip("The games run at their own rates (pop'n 58.49 Hz, beatmania III 59.94 Hz), which a "
@@ -429,6 +434,7 @@ void SettingsDialog::accept() {
     }
     s.setValue("video/scale", m_scale->value());
     s.setValue("video/fullscreen", m_fullscreen->isChecked());
+    s.setValue("video/splitScreens", m_splitScreens->isChecked());
     s.setValue("video/displaySync", m_displaySync->isChecked());
     s.setValue("video/picture", m_picture->currentData().toString());
     s.setValue("audio/ms", m_audioMs->value());

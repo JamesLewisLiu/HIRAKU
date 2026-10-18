@@ -32,11 +32,20 @@ std::atomic<uint64_t> g_device_short_late{0};                  // ... of those, 
 uint64_t g_short_seen = 0;        // g_device_short when the target last grew for it
 uint64_t g_tune_from = 0;          // the queue target self-tunes from here on (window_open + 10 s)
 
+// window_set_split: each of the frame's monitors (Core::screens) in a window of its own
+bool g_split_wanted = false, g_split = false;
+SDL_Window *g_win2 = nullptr;     // the second monitor's window (player 2's)
+SDL_Renderer *g_ren2 = nullptr;   // ... its SDL renderer, without OpenGL
+SDL_Texture *g_tex2 = nullptr;
+std::vector<uint32_t> g_half[2];  // the frame's two halves, when split
+
 // A new window: 480 lines a scale step, as wide as the core's monitor shape makes them (640 for
-// 4:3; IIDX's 16:9 tube, 853)
+// 4:3; IIDX's 16:9 tube, 853), or one of its monitors' when split
 static int window_width(int scale) {
-    const double a = core().display_aspect();
-    return (int)std::lround(480.0 * scale * (a > 0 ? a : 4.0 / 3.0));
+    double a = core().display_aspect();
+    if (a <= 0) a = 4.0 / 3.0;
+    if (g_split) a /= core().screens();
+    return (int)std::lround(480.0 * scale * a);
 }
 SDL_Window *g_win = nullptr;
 SDL_Renderer *g_ren = nullptr;
@@ -108,11 +117,15 @@ auto g_last_poll = std::chrono::steady_clock::now();
 void poll() {
     SDL_Event e;
     while (SDL_PollEvent(&e)) {
-        if (e.type == SDL_EVENT_QUIT || (e.type == SDL_EVENT_KEY_DOWN && e.key.key == SDLK_ESCAPE)) g_quit = true;
+        if (e.type == SDL_EVENT_QUIT || e.type == SDL_EVENT_WINDOW_CLOSE_REQUESTED ||   // (either window, when split)
+            (e.type == SDL_EVENT_KEY_DOWN && e.key.key == SDLK_ESCAPE))
+            g_quit = true;
         if (e.type == SDL_EVENT_KEY_DOWN && !e.key.repeat &&
             (e.key.key == SDLK_F11 || (e.key.key == SDLK_RETURN && (e.key.mod & SDL_KMOD_ALT)))) {
-            bool fs = SDL_GetWindowFlags(g_win) & SDL_WINDOW_FULLSCREEN;
-            SDL_SetWindowFullscreen(g_win, !fs);
+            SDL_Window *w = SDL_GetWindowFromEvent(&e);   // the window with the keyboard
+            if (!w) w = g_win;
+            bool fs = SDL_GetWindowFlags(w) & SDL_WINDOW_FULLSCREEN;
+            SDL_SetWindowFullscreen(w, !fs);
         }
         if ((e.type == SDL_EVENT_KEY_DOWN || e.type == SDL_EVENT_KEY_UP) && e.key.key == SDLK_TAB) {
             g_fast = e.type == SDL_EVENT_KEY_DOWN;
@@ -191,6 +204,47 @@ std::vector<float> g_out;   // audio_push's samples after the DC blocker and the
 double g_dc_x[2], g_dc_y[2];
 }
 void window_set_volume(double db) { g_volume = (float)std::pow(10.0, db / 20.0); }
+void window_set_split(bool on) { g_split_wanted = on; }
+
+namespace {
+// When split: player 2's window beside the first; with two displays or more, player 1's on the
+// leftmost and player 2's on the next (where the system lets a program place its windows: not
+// on Wayland, where they're moved by hand), each then fullscreen there if asked
+bool open_second(const std::string &title, int scale, bool fullscreen) {
+    const int ww = window_width(scale), wh = 480 * scale;
+    if (g_gl) {
+        g_win2 = SDL_CreateWindow((title + " - 2P").c_str(), ww, wh, SDL_WINDOW_RESIZABLE | SDL_WINDOW_OPENGL);
+        if (!g_win2 || !SDL_GL_MakeCurrent(g_win2, g_gl)) return false;
+        SDL_GL_SetSwapInterval(0);
+        SDL_GL_MakeCurrent(g_win, g_gl);
+    } else {
+        if (!SDL_CreateWindowAndRenderer((title + " - 2P").c_str(), ww, wh, SDL_WINDOW_RESIZABLE, &g_win2, &g_ren2)) return false;
+        SDL_SetRenderVSync(g_ren2, 0);
+    }
+    SDL_SetWindowSize(g_win, ww, wh);
+    int n = 0;
+    SDL_DisplayID *ds = SDL_GetDisplays(&n);
+    std::vector<std::pair<int, SDL_DisplayID>> byx;
+    for (int k = 0; ds && k < n; k++) {
+        SDL_Rect r;
+        if (SDL_GetDisplayBounds(ds[k], &r)) byx.push_back({r.x, ds[k]});
+    }
+    SDL_free(ds);
+    std::sort(byx.begin(), byx.end());
+    if (byx.size() >= 2) {
+        SDL_SetWindowPosition(g_win, SDL_WINDOWPOS_CENTERED_DISPLAY(byx[0].second), SDL_WINDOWPOS_CENTERED_DISPLAY(byx[0].second));
+        SDL_SetWindowPosition(g_win2, SDL_WINDOWPOS_CENTERED_DISPLAY(byx[1].second), SDL_WINDOWPOS_CENTERED_DISPLAY(byx[1].second));
+    } else {
+        int x, y;
+        SDL_GetWindowPosition(g_win, &x, &y);
+        SDL_SetWindowPosition(g_win2, x + ww + 8, y);
+    }
+    if (fullscreen) SDL_SetWindowFullscreen(g_win2, true);
+    g_title_dirty = true;   // " - 1P" on the first
+    fprintf(stderr, "window: each monitor in its own window (%d displays)\n", (int)byx.size());
+    return true;
+}
+}  // namespace
 
 namespace {
 // A sound card of our own (--audio-device): HIRAKU writes to it through ALSA itself, as aplay does,
@@ -422,12 +476,18 @@ bool window_open(const char *title, int scale, const std::string &bindings, int 
         g_tune_from = prof::now_ns() + 10'000'000'000ull;
     }
     g_title = title;
+    g_split = g_split_wanted && core().screens() == 2;
+    if (g_split_wanted && !g_split) fprintf(stderr, "window: this machine has one monitor: one window\n");
     macro::on_change([](const std::string &name) {
         g_macro = name;
         g_title_dirty = true;
     });
     if (open_gl(title, scale)) {
         picture::prepare(g_mode);
+        if (g_split && !open_second(title, scale, fullscreen)) {
+            fprintf(stderr, "window: no second window (%s): one window\n", SDL_GetError());
+            g_split = false;
+        }
         if (fullscreen) SDL_SetWindowFullscreen(g_win, true);
         g_glFlush = (void (*)())SDL_GL_GetProcAddress("glFlush");
         pacing::init(g_win, g_display_sync);
@@ -436,6 +496,10 @@ bool window_open(const char *title, int scale, const std::string &bindings, int 
     if (!SDL_CreateWindowAndRenderer(title, window_width(scale), 480 * scale, SDL_WINDOW_RESIZABLE, &g_win, &g_ren)) return false;
     SDL_SetRenderVSync(g_ren, 0);   // presenting must never block on the display: we choose when (pacing.h)
     SDL_SetRenderLogicalPresentation(g_ren, 640, 480, SDL_LOGICAL_PRESENTATION_LETTERBOX);
+    if (g_split && !open_second(title, scale, fullscreen)) {
+        fprintf(stderr, "window: no second window (%s): one window\n", SDL_GetError());
+        g_split = false;
+    }
     if (fullscreen) SDL_SetWindowFullscreen(g_win, true);
     pacing::init(g_win, g_display_sync);
     return true;
@@ -514,7 +578,50 @@ static void place_banner(const notice::Banner &b, int win_w, int win_h, int &x, 
     y = win_h - dh - 8 * k;
 }
 
+// The second monitor's half in player 2's window (window_set_split), after the first window's
+// picture: nothing waits here, the first window's pacing stands for both
+static void present_second(const uint32_t *rgb, int w, int h, double aspect) {
+    if (g_gl) {
+        SDL_GL_MakeCurrent(g_win2, g_gl);
+        int ww = 0, wh = 0;
+        SDL_GetWindowSizeInPixels(g_win2, &ww, &wh);
+        int vw = ww, vh = (int)std::lround(ww / aspect);
+        if (vh > wh) vh = wh, vw = (int)std::lround(wh * aspect);
+        picture::draw(rgb, w, h, (ww - vw) / 2, (wh - vh) / 2, std::max(1, vw), std::max(1, vh), ww, wh, g_mode, 1);
+        SDL_GL_SwapWindow(g_win2);
+        SDL_GL_MakeCurrent(g_win, g_gl);
+        return;
+    }
+    static int tw = 0, th = 0;
+    if (!g_tex2 || w != tw || h != th) {
+        if (g_tex2) SDL_DestroyTexture(g_tex2);
+        g_tex2 = SDL_CreateTexture(g_ren2, SDL_PIXELFORMAT_XRGB8888, SDL_TEXTUREACCESS_STREAMING, w, h);
+        SDL_SetTextureScaleMode(g_tex2, SDL_SCALEMODE_NEAREST);
+        SDL_SetRenderLogicalPresentation(g_ren2, std::max(1, (int)std::lround(h * aspect)), h, SDL_LOGICAL_PRESENTATION_LETTERBOX);
+        tw = w, th = h;
+    }
+    const SDL_FRect dst{(float)((std::lround(h * aspect) - w) / 2), 0, (float)w, (float)h};
+    SDL_UpdateTexture(g_tex2, nullptr, rgb, w * 4);
+    SDL_RenderClear(g_ren2);
+    SDL_RenderTexture(g_ren2, g_tex2, nullptr, &dst);
+    SDL_RenderPresent(g_ren2);
+}
+
 void window_present(const uint32_t *rgb, int w, int h, double vsec) {
+    // split: each half (one monitor) in its own window, at half the frame's shape
+    double frame_aspect = display_aspect(w, h);
+    const int full_w = w;
+    if (g_split) {
+        const int hw = w / 2;
+        for (int k = 0; k < 2; k++) {
+            g_half[k].resize((size_t)hw * h);
+            for (int y = 0; y < h; y++)
+                memcpy(&g_half[k][(size_t)y * hw], rgb + (size_t)y * full_w + (size_t)k * hw, (size_t)hw * 4);
+        }
+        rgb = g_half[0].data();
+        w = hw;
+        frame_aspect /= 2;
+    }
     const double period = g_last_vsec < 0 || g_fast ? 0.0 : vsec - g_last_vsec;
     g_last_vsec = vsec;
     const bool sync = pacing::frame(period) && !g_fast;
@@ -525,7 +632,7 @@ void window_present(const uint32_t *rgb, int w, int h, double vsec) {
         SDL_GetWindowSizeInPixels(g_win, &ww, &wh);
         // letterboxed at the monitor's shape (Core::display_aspect), as SDL_LOGICAL_PRESENTATION_LETTERBOX
         // does: a 512x480 menu fills the same 4:3 as a 320x240 game
-        const double aspect = display_aspect(w, h);
+        const double aspect = frame_aspect;
         int vw = ww, vh = (int)std::lround(ww / aspect);
         if (vh > wh) vh = wh, vw = (int)std::lround(wh * aspect);
         // and of that, the part the frame covers (Core::display_cover)
@@ -550,6 +657,7 @@ void window_present(const uint32_t *rgb, int w, int h, double vsec) {
         SDL_GL_SwapWindow(g_win);
         g_start_to_picture.add(g_frame_start_ns);
         if (sync) pacing::committed();
+        if (g_split) present_second(g_half[1].data(), w, h, frame_aspect);
         if (shown != g_shown) {
             g_shown = shown;
             g_title_dirty = true;
@@ -561,7 +669,7 @@ void window_present(const uint32_t *rgb, int w, int h, double vsec) {
         // the logical size at the monitor's shape (as above), the frame's own part of it in g_dst
         double cw, ch;
         core().display_cover(w, h, cw, ch);
-        const float lh = (float)(h / ch), lw = (float)std::lround(lh * display_aspect(w, h));
+        const float lh = (float)(h / ch), lw = (float)std::lround(lh * frame_aspect);
         SDL_SetRenderLogicalPresentation(g_ren, std::max(1, (int)lw), std::max(1, (int)std::lround(lh)),
                                          SDL_LOGICAL_PRESENTATION_LETTERBOX);
         g_dst = {(lw - (float)(lw * cw)) / 2, (lh - (float)h) / 2, (float)(lw * cw), (float)h};
@@ -609,6 +717,7 @@ void window_present(const uint32_t *rgb, int w, int h, double vsec) {
         SDL_RenderPresent(g_ren);
         g_start_to_picture.add(g_frame_start_ns);
         if (sync) pacing::committed();
+        if (g_split) present_second(g_half[1].data(), w, h, frame_aspect);
     }
     if (!sync) g_present.add(vsec);
 
@@ -624,7 +733,8 @@ void window_present(const uint32_t *rgb, int w, int h, double vsec) {
         if (display.find_first_not_of(' ') != std::string::npos) t += " - [" + display + "]";
         if (g_shown != picture::Mode::off) t += std::string(" - ") + picture::mode_label(g_shown);
         if (!g_macro.empty()) t += " - typing: " + g_macro;
-        SDL_SetWindowTitle(g_win, t.c_str());
+        SDL_SetWindowTitle(g_win, (g_split ? t + " - 1P" : t).c_str());
+        if (g_win2) SDL_SetWindowTitle(g_win2, (t + " - 2P").c_str());
     }
 }
 
@@ -839,6 +949,9 @@ void window_close() {
     if (g_audio) SDL_DestroyAudioStream(g_audio);
     if (g_tex) SDL_DestroyTexture(g_tex);
     if (g_ren) SDL_DestroyRenderer(g_ren);
+    if (g_tex2) SDL_DestroyTexture(g_tex2);
+    if (g_ren2) SDL_DestroyRenderer(g_ren2);
+    if (g_win2) SDL_DestroyWindow(g_win2);
     if (g_gl) {
         picture::shutdown();
         SDL_GL_DestroyContext(g_gl);

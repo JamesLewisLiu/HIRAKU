@@ -44,6 +44,9 @@
 //                       Settings > Audio too). If it's busy, the system's default output instead
 //                       Windows: an output device by the name Windows shows (shared, through the system
 //                       mixer), or with --audio-exclusive alone
+//     --split-screens   a machine with several monitors (Keyboardmania: one a player) shows each in
+//                       a window of its own: player 2's on the next display, both fullscreen with
+//                       --fullscreen (F11 toggles the window with the keyboard)
 //     --volume DB       the sound out of the window, louder or quieter (e.g. 6 or -3; 0 by default):
 //                       what the speakers get, not what --wav and --digest record
 //     --audio-exclusive Windows: the output (--audio-device's, else the default one) in WASAPI exclusive
@@ -238,6 +241,7 @@ int main(int argc, char **argv) {
     std::string audio_device;
     bool audio_exclusive = false;
     double volume_db = 0;
+    bool split_screens = false;
     std::string audio_asio;
     for (int k = 1; k < argc; k++) {
         std::string a = argv[k];
@@ -271,6 +275,7 @@ int main(int argc, char **argv) {
         else if (a == "--audio-device") audio_device = val();
         else if (a == "--audio-exclusive") audio_exclusive = true;
         else if (a == "--volume") volume_db = std::stod(val());
+        else if (a == "--split-screens") split_screens = true;
         else if (a == "--audio-asio") audio_asio = val();
         else if (a == "--audio-buffer") audio_buffer = std::stoi(val());
         else if (a == "--window") window_scale = (k + 1 < argc && argv[k + 1][0] != '-') ? std::stoi(val()) : 2;
@@ -374,6 +379,7 @@ int main(int argc, char **argv) {
     host::window_set_audio_output(audio_device, audio_buffer, audio_exclusive);
     host::window_set_audio_asio(audio_asio);
     host::window_set_volume(volume_db);
+    host::window_set_split(split_screens);
     if (window_scale && !host::window_open(("HIRAKU - " + game).c_str(), window_scale, bindings, audio_ms, fullscreen, machine.audio_rate())) {
         fprintf(stderr, "cannot open a window\n");
         return 1;

@@ -217,8 +217,16 @@ struct Lut {
     Sampling sampling;
 };
 
-GLuint g_vao = 0, g_vbo = 0, g_plain = 0, g_frame = 0, g_over = 0, g_over_tex = 0;
-int g_fw = 0, g_fh = 0;
+GLuint g_vao = 0, g_vbo = 0, g_plain = 0, g_over = 0, g_over_tex = 0;
+// Each window draws its own picture (draw's view: Keyboardmania's two monitors in two windows):
+// its frame's texture and size here, its preset chains (their pass sizes, FrameCount) in g_chain
+struct Frame {
+    GLuint tex = 0;
+    int w = 0, h = 0;
+};
+Frame g_frames[2];
+int g_view = 0;
+Frame *g_cur = &g_frames[0];
 std::string g_shaders_dir;
 std::vector<std::string> g_config_dirs;
 bool g_ok = false;
@@ -298,7 +306,7 @@ Sampling Chain::sampling_of(Src src, int idx) const {
 
 void Chain::size_of(Src src, int idx, int pass, int &w, int &h) const {
     switch (src) {
-    case S_ORIGINAL: w = g_fw; h = g_fh; break;
+    case S_ORIGINAL: w = g_cur->w; h = g_cur->h; break;
     case S_LUT: w = m_luts[idx].w; h = m_luts[idx].h; break;
     case S_PASS:
         if (idx == -2) { w = m_vw; h = m_vh; }
@@ -576,7 +584,7 @@ void Chain::draw(int w, int h, int x, int y, int vw, int vh, int win_w, int win_
         gl.glUseProgram(p.prog);
         for (const SamplerUse &s : p.samplers) {
             GLuint tex = 0;
-            if (s.src == S_ORIGINAL) tex = g_frame;
+            if (s.src == S_ORIGINAL) tex = g_cur->tex;
             else if (s.src == S_PASS) tex = m_passes[s.idx].out.tex;
             else if (s.idx >= 0) tex = m_luts[s.idx].tex;
             gl.glActiveTexture(GL_TEXTURE0 + s.unit);
@@ -653,7 +661,7 @@ void gpu_collect(bool all) {
         g_gpu.read++;
     }
 }
-std::unique_ptr<Chain> g_chain[3];
+std::unique_ptr<Chain> g_chain[2][3];
 bool g_failed[3] = {};
 
 const char *const PLAIN_VS = R"(#version 330
@@ -746,7 +754,7 @@ bool init(const std::string &shaders_dir, const std::vector<std::string> &config
 
 bool prepare(Mode m) {
     int k = (int)m;
-    if (m == Mode::off || g_chain[k]) return true;
+    if (m == Mode::off || g_chain[g_view][k]) return true;
     if (g_failed[k] || !g_ok) return false;
     auto c = std::make_unique<Chain>();
     c->name = DIRS[k];
@@ -757,23 +765,25 @@ bool prepare(Mode m) {
         return false;
     }
     fprintf(stderr, "picture: %s ready (%.0f ms)\n", mode_label(m), (SDL_GetTicksNS() - t0) / 1e6);
-    g_chain[k] = std::move(c);
+    g_chain[g_view][k] = std::move(c);
     return true;
 }
 
-Mode draw(const uint32_t *rgb, int w, int h, int x, int y, int vw, int vh, int win_w, int win_h, Mode m) {
+Mode draw(const uint32_t *rgb, int w, int h, int x, int y, int vw, int vh, int win_w, int win_h, Mode m, int view) {
     if (!g_ok || w <= 0 || h <= 0 || vw <= 0 || vh <= 0) return Mode::off;
+    g_view = view & 1;
+    g_cur = &g_frames[g_view];
     gl.glActiveTexture(GL_TEXTURE0);
-    if (!g_frame || w != g_fw || h != g_fh) {
-        if (!g_frame) gl.glGenTextures(1, &g_frame);
-        gl.glBindTexture(GL_TEXTURE_2D, g_frame);
+    if (!g_cur->tex || w != g_cur->w || h != g_cur->h) {
+        if (!g_cur->tex) gl.glGenTextures(1, &g_cur->tex);
+        gl.glBindTexture(GL_TEXTURE_2D, g_cur->tex);
         gl.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_SWIZZLE_A, GL_ONE);   // XRGB: the X byte is not alpha
         gl.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
         gl.glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_BGRA, GL_UNSIGNED_INT_8_8_8_8_REV, nullptr);
-        g_fw = w;
-        g_fh = h;
+        g_cur->w = w;
+        g_cur->h = h;
     }
-    gl.glBindTexture(GL_TEXTURE_2D, g_frame);
+    gl.glBindTexture(GL_TEXTURE_2D, g_cur->tex);
     gl.glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
     gl.glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, w, h, GL_BGRA, GL_UNSIGNED_INT_8_8_8_8_REV, rgb);
 
@@ -797,8 +807,8 @@ Mode draw(const uint32_t *rgb, int w, int h, int x, int y, int vw, int vh, int w
         gl.glBindSampler(0, 0);
         gl.glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
     } else {
-        if (g_draws % 30 == 0) g_chain[k]->check_params();
-        g_chain[k]->draw(w, h, x, y, vw, vh, win_w, win_h);
+        if (g_draws % 30 == 0) g_chain[g_view][k]->check_params();
+        g_chain[g_view][k]->draw(w, h, x, y, vw, vh, win_w, win_h);
     }
     if (timed) {
         gl.glEndQuery(GL_TIME_ELAPSED);
@@ -846,11 +856,13 @@ void shutdown() {
             fprintf(stderr, "picture: %s: GPU %.2f ms per frame (worst %.2f) over %llu frames\n", mode_label((Mode)m),
                     g_gpu.sum_ms[m] / (g_gpu.n[m] - 31), g_gpu.max_ms[m], (unsigned long long)g_gpu.n[m]);
     gl.glDeleteQueries(4, g_gpu.q);
-    for (auto &c : g_chain) c.reset();
+    for (auto &v : g_chain)
+        for (auto &c : v) c.reset();
     if (g_plain) gl.glDeleteProgram(g_plain);
     if (g_over) gl.glDeleteProgram(g_over);
     if (g_over_tex) gl.glDeleteTextures(1, &g_over_tex);
-    if (g_frame) gl.glDeleteTextures(1, &g_frame);
+    for (Frame &f : g_frames)
+        if (f.tex) gl.glDeleteTextures(1, &f.tex);
     if (g_vbo) gl.glDeleteBuffers(1, &g_vbo);
     if (g_vao) gl.glDeleteVertexArrays(1, &g_vao);
     g_ok = false;
