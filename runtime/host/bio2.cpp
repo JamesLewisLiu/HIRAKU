@@ -46,9 +46,13 @@ void run() {
             continue;
         }
         told = false;
+        // the start-up as beatmania IIDX 27 does it (docs/BIO2-BI2A.md): a break and aa echoes at
+        // 115200, the node's address, its firmware version, then (below) start, init and watchdog
         AcioPort::Message m;
-        if (!port.handshake({115200, 57600, 38400, 19200}, [] { return g_running.load(); }) || !port.ask(0, 0x0001, {0x00}, m) ||
-            !port.ask(1, 0x0002, {}, m)) {
+        port.tag_zero(true);
+        uint8_t node = 1;
+        if (!port.handshake_bio2([] { return g_running.load(); }) || !port.ask_one(0, 0x0001, {0x00}, m, 500, 3) ||
+            !(node = m.payload.empty() || !m.payload[0] ? 1 : m.payload[0]) || !port.ask_one(node, 0x0002, {}, m, 500, 3)) {
             fprintf(stderr, "bio2 %s: no answer as an ACIO board\n", g_path.c_str());
             port.close();
             sleep_ms(5000);
@@ -64,14 +68,17 @@ void run() {
         }
         fprintf(stderr, "bio2 %s: BI2A %u.%u.%u: the cabinet's controls and lamps\n", g_path.c_str(), m.payload[5], m.payload[6],
                 m.payload[7]);
-        bool ok = port.ask(1, 0x0003, {}, m) && port.ask(1, 0x0100, {}, m);   // start, clear
+        // start (command mode), init (0x2d: IIDX's, which wakes the sub-I/O; SDVX sends 0x3b), the
+        // watchdog (x 100 ms, big-endian: 0 = off, as IIDX 27)
+        bool ok = port.ask_one(node, 0x0003, {}, m, 500, 3) && port.ask_one(node, 0x0100, {0x2d}, m, 500, 3) &&
+                  port.ask_one(node, 0x0120, {0x00, 0x00}, m, 500, 3);
         while (ok && g_running) {
             std::vector<uint8_t> out;
             {
                 std::lock_guard<std::mutex> l(g_mutex);
                 out.assign(g_out, g_out + OUT);
             }
-            ok = port.ask(1, 0x0152, out, m, 200);
+            ok = port.ask_one(node, 0x0152, out, m, 20, 3);   // IIDX 27: 20 ms, three tries
             if (ok && m.payload.size() >= IN) {
                 std::lock_guard<std::mutex> l(g_mutex);
                 memcpy(g_in, m.payload.data(), IN);
@@ -156,7 +163,7 @@ void bio2_frame(hk::Core &core) {
     uint8_t out[OUT] = {};
     const auto &lit = core.lamp_state();
     for (size_t i = 0; i < where.size() && i < lit.size(); i++)
-        if (where[i] >= 0 && lit[i]) out[where[i]] = 0xff;
+        if (where[i] >= 0 && lit[i]) out[where[i]] = 0x80;   // bit 7, as IIDX 27 writes a lit lamp
     const std::string text = core.display_text();
     if (!text.empty())
         for (size_t k = 0; k < 9; k++) out[0x17 + k] = k < text.size() ? (uint8_t)text[k] : ' ';
@@ -187,7 +194,7 @@ void bio2_frame(hk::Core &core) {
         if ((in[sliders[k]] ^ last[sliders[k]]) & 0xf0) core.set_input("Volume " + std::to_string(k + 1), in[sliders[k]] >> 4);
     // coins: the count goes up by one a coin; each a press of a few frames
     static int coins = 0, coin_frames = 0;
-    if (uint8_t d = (uint8_t)(in[8] - last[8]); d && d < 16) coins += d;
+    if (uint8_t d = (uint8_t)((in[8] - last[8]) & 0x3f); d && d < 16) coins += d;   // a 6-bit count (IIDX 27)
     if (coin_frames) {
         if (--coin_frames == 2) core.set_input("Coin 1", 0);
     } else if (coins) {

@@ -14,6 +14,7 @@
 #else
 #include <fcntl.h>
 #include <poll.h>
+#include <sys/ioctl.h>
 #include <termios.h>
 #include <unistd.h>
 #endif
@@ -96,6 +97,20 @@ bool AcioPort::write_all(const uint8_t *d, size_t n) {
     return true;
 }
 
+std::vector<uint8_t> AcioPort::read_chunk(int wait_ms) {
+    read_wait(fd_, wait_ms);
+    uint8_t b[512];
+    DWORD r = 0;
+    if (!ReadFile(handle(fd_), b, sizeof b, &r, nullptr)) r = 0;
+    return std::vector<uint8_t>(b, b + r);
+}
+
+void AcioPort::line_break(int ms) {
+    SetCommBreak(handle(fd_));
+    std::this_thread::sleep_for(std::chrono::milliseconds(ms));
+    ClearCommBreak(handle(fd_));
+}
+
 std::vector<uint8_t> AcioPort::read_some(int first_ms, size_t most) {
     std::vector<uint8_t> in;
     int wait = first_ms;
@@ -164,6 +179,20 @@ bool AcioPort::write_all(const uint8_t *d, size_t n) {
     return true;
 }
 
+std::vector<uint8_t> AcioPort::read_chunk(int wait_ms) {
+    pollfd p{(int)fd_, POLLIN, 0};
+    if (poll(&p, 1, wait_ms) <= 0) return {};
+    uint8_t b[512];
+    ssize_t r = read((int)fd_, b, sizeof b);
+    return r > 0 ? std::vector<uint8_t>(b, b + r) : std::vector<uint8_t>();
+}
+
+void AcioPort::line_break(int ms) {
+    ioctl((int)fd_, TIOCSBRK);
+    std::this_thread::sleep_for(std::chrono::milliseconds(ms));
+    ioctl((int)fd_, TIOCCBRK);
+}
+
 std::vector<uint8_t> AcioPort::read_some(int first_ms, size_t most) {
     std::vector<uint8_t> in;
     int wait = first_ms;
@@ -203,13 +232,69 @@ int AcioPort::handshake(const std::vector<int> &rates, const std::function<bool(
     return 0;
 }
 
+bool AcioPort::handshake_bio2(const std::function<bool()> &keep_going) {
+    if (!set_rate(115200)) return false;
+    line_break(250);
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    const std::vector<uint8_t> sync(10, 0xaa);
+    for (int n = 0; n < 100 && keep_going(); n++) {
+        if (!write_all(sync.data(), sync.size())) return false;
+        int got = 0;
+        const auto end = std::chrono::steady_clock::now() + std::chrono::milliseconds(50);
+        while (got < 10 && std::chrono::steady_clock::now() < end)
+            for (uint8_t b : read_chunk(10)) got = b == 0xaa ? got + 1 : 0;
+        if (got >= 10) return true;
+    }
+    return false;
+}
+
+bool AcioPort::receive_one(Message &m, int wait_ms) {
+    const auto end = std::chrono::steady_clock::now() + std::chrono::milliseconds(wait_ms);
+    bool escape = false;
+    std::vector<uint8_t> d;
+    size_t want = 0;
+    while (std::chrono::steady_clock::now() < end) {
+        const int left = (int)std::chrono::duration_cast<std::chrono::milliseconds>(end - std::chrono::steady_clock::now()).count();
+        for (uint8_t b : read_chunk(std::max(left, 1))) {
+            if (b == 0xaa && !escape) {
+                d.clear();
+                want = 6;
+                continue;
+            }
+            if (!want) continue;
+            if (b == 0xff && !escape) {
+                escape = true;
+                continue;
+            }
+            if (escape) b = (uint8_t)~b;
+            escape = false;
+            d.push_back(b);
+            if (d.size() == 5) want = 6 + d[4];
+            if (d.size() < want) continue;
+            uint8_t sum = 0;
+            for (size_t i = 0; i + 1 < d.size(); i++) sum += d[i];
+            dump(sum == d.back() ? "<" : "< (bad sum)", d);
+            want = 0;
+            if (sum == d.back() && d != last_sent_) {
+                m.node = d[0];
+                m.cmd = (uint16_t)(d[1] << 8 | d[2]);
+                m.id = d[3];
+                m.payload.assign(d.begin() + 5, d.end() - 1);
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
 bool AcioPort::send(uint8_t node, uint16_t cmd, const std::vector<uint8_t> &payload) {
-    std::vector<uint8_t> body = {node, uint8_t(cmd >> 8), uint8_t(cmd), ++id_, (uint8_t)payload.size()};
+    std::vector<uint8_t> body = {node, uint8_t(cmd >> 8), uint8_t(cmd), tag_zero_ ? uint8_t(0) : ++id_, (uint8_t)payload.size()};
     body.insert(body.end(), payload.begin(), payload.end());
     uint8_t sum = 0;
     for (uint8_t b : body) sum += b;
     body.push_back(sum);
     dump(">", body);
+    last_sent_ = body;
     std::vector<uint8_t> out = {0xaa};
     for (uint8_t b : body) {
         if (b == 0xaa || b == 0xff) {

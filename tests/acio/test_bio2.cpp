@@ -32,6 +32,7 @@ static int failures = 0;
 static std::atomic<int> g_polls{0};
 static uint8_t g_lamps_seen[0x30];
 static std::atomic<bool> g_seen{false};
+static std::string g_startup;   // the commands before the first poll (written by the board's thread)
 
 static void pretend_board(int fd, std::atomic<bool> &stop) {
     std::vector<uint8_t> frame;
@@ -56,11 +57,11 @@ static void pretend_board(int fd, std::atomic<bool> &stop) {
         uint8_t in[2048];
         ssize_t n = read(fd, in, sizeof in);
         if (n <= 0) continue;
-        bool hello = false;
+        int hello = 0;   // the sync's aa, echoed one for one (IIDX 27 waits for ten back)
         for (ssize_t i = 0; i < n; i++) {
             uint8_t b = in[i];
             if (b == 0xaa && !escape) {
-                hello = !framed;
+                hello += !framed;
                 frame.clear();
                 want = 6;
                 continue;
@@ -74,9 +75,16 @@ static void pretend_board(int fd, std::atomic<bool> &stop) {
             if (frame.size() < want) continue;
             want = 0;
             framed = true;
-            hello = false;
+            hello = 0;
             const uint16_t cmd = (uint16_t)(frame[1] << 8 | frame[2]);
             const std::vector<uint8_t> req(frame.begin() + 5, frame.end() - 1);
+            if (cmd != 0x0152) {   // the start-up, as it comes: "0001:00 0002: ..."
+                char s[16];
+                snprintf(s, sizeof s, "%04x:", cmd);
+                g_startup += s;
+                for (uint8_t b : req) snprintf(s, sizeof s, "%02x", b), g_startup += s;
+                g_startup += " ";
+            }
             const std::vector<uint8_t> head = {uint8_t(frame[0] ? frame[0] | 0x80 : 0), frame[1], frame[2], frame[3]};
             if (cmd == 0x0001) {
                 reply(head, {1});
@@ -104,8 +112,8 @@ static void pretend_board(int fd, std::atomic<bool> &stop) {
             }
         }
         if (hello) {
-            const uint8_t aa = 0xaa;
-            if (write(fd, &aa, 1) != 1) stop = true;
+            const std::vector<uint8_t> aa((size_t)hello, 0xaa);
+            if (write(fd, aa.data(), aa.size()) != (ssize_t)aa.size()) stop = true;
         }
     }
 }
@@ -174,10 +182,13 @@ int main() {
     close(master);
 
     CHECK(g_seen);
-    CHECK(g_lamps_seen[0x07 + 1] == 0xff);   // P1 key 2
+    CHECK(g_lamps_seen[0x07 + 1] == 0x80);   // P1 key 2 (bit 7, as IIDX 27)
     CHECK(g_lamps_seen[0x07] == 0);
-    CHECK(g_lamps_seen[0x26] == 0xff);       // spotlight 6
-    CHECK(g_lamps_seen[0x24] == 0xff);       // the neon
+    CHECK(g_lamps_seen[0x26] == 0x80);       // spotlight 6
+    CHECK(g_lamps_seen[0x24] == 0x80);       // the neon
+    // IIDX 27's start-up (docs/BIO2-BI2A.md)
+    CHECK(g_startup == "0001:00 0002: 0003: 0100:2d 0120:0000 ");
+    if (g_startup != "0001:00 0002: 0003: 0100:2d 0120:0000 ") fprintf(stderr, "start-up: %s\n", g_startup.c_str());
     CHECK(memcmp(&g_lamps_seen[0x17], "HELLO    ", 9) == 0);
     CHECK(has(m.inputs, "P1 Button 3=1"));
     CHECK(has(m.inputs, "Volume 1=9"));

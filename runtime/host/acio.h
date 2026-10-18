@@ -46,15 +46,32 @@ public:
         return send(node, cmd, payload) && receive(m, wait_ms);
     }
 
+    // The BIO2's way (beatmania IIDX 27, docs/BIO2-BI2A.md): at 115200, a 250 ms line break, then
+    // aa x 10 until ten aa come back (up to 100 rounds, while keep_going())
+    bool handshake_bio2(const std::function<bool()> &keep_going);
+    // The first whole packet with a good sum, as soon as it is in (up to wait_ms)
+    bool receive_one(Message &m, int wait_ms);
+    // send and receive_one, sent again up to `tries` times when no answer comes
+    bool ask_one(uint8_t node, uint16_t cmd, const std::vector<uint8_t> &payload, Message &m, int wait_ms, int tries) {
+        for (int k = 0; k < tries; k++)
+            if (send(node, cmd, payload) && receive_one(m, wait_ms)) return true;
+        return false;
+    }
+    void tag_zero(bool on) { tag_zero_ = on; }   // every packet's ID 0, as IIDX 27 sends them to the BIO2
+
 private:
     bool set_rate(int baud);
     bool write_all(const uint8_t *d, size_t n);
     std::vector<uint8_t> read_some(int first_ms, size_t most);
+    std::vector<uint8_t> read_chunk(int wait_ms);   // what arrives first within wait_ms (none: empty)
+    void line_break(int ms);
     void dump(const char *dir, const std::vector<uint8_t> &bytes) const;
 
     std::string path_;
     intptr_t fd_ = -1;   // a file descriptor; on Windows, the port's HANDLE
     uint8_t id_ = 0;
+    bool tag_zero_ = false;
+    std::vector<uint8_t> last_sent_;   // receive_one passes over an echo of it
     bool log_ = false;
 };
 
