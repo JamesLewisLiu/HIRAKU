@@ -411,6 +411,44 @@ device, no reset).
   before polling, from the owner's game data, as libaio does. The obfuscated variant wasn't sent
   (the plain one was answered). Board unchanged afterwards.
 
+## Cross-check with Feiryn's bio2-tools (2026-10-18)
+
+[github.com/Feiryn/bio2-tools](https://github.com/Feiryn/bio2-tools) (MIT, Rust; the BIO2's
+memory map, both protocols, firmware extraction and flashing tools) agrees with this file wherever
+both cover the same ground, independently of it:
+- **Packets:** the same layout, size bytes (their "VLQ"), flags, modes 0/2/3, CRC4 and CRC7, and
+  the tag ("sequence number") skipping 00, AA and FF. Mode 4 is MC_LZ compression, which they
+  decode (`lib/compression/src/mc_lz.rs`); libaio's host side rejects it.
+- **Obfuscation:** the same LCG, the same untouched bytes, masks and seeds (`tag ^ 0x55` to the
+  board, `tag ^ 0xAA` from it). They keep only the low 8 bits of the state between bytes; the
+  masks only use bits the low byte decides, so it's the same stream.
+- **Module upload:** `00 10` (size, big-endian) → handle, `00 13` (handle, offset, ≤ 64 bytes),
+  `00 78` (handle, descriptor offset, init arguments) → the handle for the module's own commands.
+  They call the module "game firmware"; test C above showed none is resident after power-up.
+- **Firmware images in libaio-iob.dll:** their `aio_iob_dumper` finds three encrypted images by
+  start and end bytes, undoes the XOR chain (the same one as the modules, above) and AC_LZ (the same
+  LZSS). `tools/bio2/aio_fw.py` does the same in Python (our own code; output only into `out/`,
+  as the images are Konami's). From IIDX 28's DLL:
+
+| file | size | what it is |
+|---|---|---|
+| `bio2wrfirm.bin` | 60 481 | the BIO2 loader, `bio2wrfirm-2019040100` |
+| `bi2a_804c.bin` | 65 536 | an `RXU1` image, "BI2X Apr 23 2019", FIRMINFO type `0D 06 01 00`: BI2X as written to a board still running BI2A (USB 0x804C) through the BI2A flasher (`0004`, then `A1`/`A2`/`A8`, docs/BIO2-BI2A.md) |
+| `bi2x.bin` | 131 072 | **the BI2X firmware, "MC-KERNEL"**: its first 32 bytes are FIRMINFO, `0D 06 00 01 \| 00 01 02 03 \| "BI2X" \| 01 8E B4 66 \| 0 × 12 \| 27 7D 8E E2`, version 1.2.3, key `8E E2`: the image libaio registers (its plain 32-byte header at 0x18002d580, then the size `00 02 00 00`, then this blob at 0x18002d5a4) and writes in band with `00 70`/`00 71` when the check above says so. bio2-tools calls it "the bi2x kernel (usage still to be found)" |
+
+  The owner's board answers the same layout with version 1.3.3 and `EF 73 8E E2`. The kernel's
+  strings include `BootMod` and `ExIoTCA6416A` (a TI TCA6416A 16-bit I/O expander).
+- **Disagreement:** their README gives USB PID 0x8040 as BI2A and 0x804C as BI2X. libaio's table
+  (above) has 0x8040 for the `BIO2WRFIRM` loader, 0x804C for a board running BI2A, and 0x8050 for
+  BI2X, which is what this board reports. libaio is the authority here; the never-send rules stand.
+- **Recovery:** the BIO2's MCU is a Renesas RX621. Its boot mode (pins J2 shorted at power-up) is in
+  mask ROM and takes a full flash from Renesas Flash Programmer, so a board can be rewritten from
+  scratch with a valid image (their `generate_mot`). That makes a bad in-band write recoverable,
+  and a BI2A downgrade possible (docs/BIO2-BI2A.md). It's still the owner's job, never HIRAKU's.
+
+Reading the kernel's RX code (how it starts a module and what the module may call) needs an RX
+disassembler: Ghidra 12.1.2 has no RX module, binutils' `rx-elf` target does.
+
 ## Proposed read-only tests (for the owner's approval)
 
 The board on 12 V, opened at 115200 8N1 raw, no BREAK. Each packet once, then 2 s of listening;

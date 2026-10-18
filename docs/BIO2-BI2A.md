@@ -165,6 +165,24 @@ and goes on with raw loader packets starting `A1` and `A8` (`FUN_18001a440`, whi
 The commands above (`0001`, `0002`, `0003`, `0100`, `0120`, `0152`, and `0110`, `0111`, `0153`,
 `0154`) are the whole of what IIDX 27 sends.
 
+## Flashing, and turning a BI2X board into a BI2A (Feiryn's bio2-tools, 2026-10-18)
+
+[github.com/Feiryn/bio2-tools](https://github.com/Feiryn/bio2-tools) (MIT) documents the BI2A side
+that libaio's writer uses (`0004`, then raw packets): in flash mode the board takes `A1` (answer
+`A1 AC` when in flash mode), `A2` blocks (`A2 4B`, a scrambled address with its checksum, 128
+encoded bytes, a checksum) and `A8` (start `A8 00 00 00 00`, end `A8`, reboot `A8 A8 A8`); `AC` is
+OK, `AF` an error, `A0` ready for more. Their BI2A framing is the ACIO1 one above (`AA`, node,
+command, sequence, length, payload, sum; the answer's node with bit 7 set), and they decode `0001`
+(ping: the byte + 1) and `0002` (version, 44 bytes); `0003`, `0008`, `0030`, `0031`, `0041`, `0080`
+are open. Nothing on the I/O commands this file covers (`0100`, `0120`, `0152`).
+
+**A BI2X board as a BI2A**, which HIRAKU's driver already speaks (no module to upload): the RX621's
+boot mode (pins J2 shorted while plugging in) lets Renesas Flash Programmer rewrite the whole flash
+from a `.mot` image that their `generate_mot` builds from the data flash (in their repository), and
+`bio2base` + the BI2A firmware decrypted from a cabinet's `D:\PCB\biovideo` file (`biovideo_crypt`).
+The boot mode is in mask ROM, so a failed write can be done again. The owner's to do, with the
+owner's files; HIRAKU never flashes a board.
+
 ## HIRAKU's bio2.cpp against this
 
 Discrepancies, by file and line, with the change proposed (not applied):
