@@ -1164,7 +1164,7 @@ std::string EamuseServer::answer_game(const std::string &game, const Request &r)
 // and reads it: 0x00 the name (Shift-JIS, 13 bytes), 0x1b the puzzle position, 0x1c-0x33 six puzzle
 // pieces (32-bit), 0x34 the password (four digits, a byte each), 0x38 the option, 0x3a the
 // character (16-bit), from 0x3c a 16-bit word per song (2-bit clear marks per chart in bits 0-7,
-// flags in 0x100-0x800: 0x1b3958), from about 0x5f0 the network battle's. Scores are kept apart
+// flags in 0x100-0x800: 0x1b3958), from 0x5f0 the network battle's (set's <netvs>). Scores are kept apart
 // (playerdata score asks one chart's).
 // One card for all: shared clear marks (docs/EAMUSE3.md, "One card for all"). All six games number
 // their songs alike (checked by their song tables), and every chart's clear mark is two bits, 1 a
@@ -1455,6 +1455,60 @@ std::string EamuseServer::answer_playerdata(const std::string &game, const Reque
         std::string t;
         for (const Record &e : scores) t += to_line(e);
         if (!scores.empty()) write_file(scores_file, t);
+        // NET TAISEN: the credit's <netvs .../> goes back into the record, each attribute where the
+        // game's loader reads it from (it copies the record and takes each field from its place: pop'n
+        // 12 0x19ef40, 13 0x17f28d0, 14 0x17e29e8; the set builders,
+        // 0x191d28, 0x17f7b04, 0x17e84b4, send them in the same order). A list ("a,b,c") is that many
+        // values in a row; names are the game's own text, 13 bytes each. pop'n 13 and 14's reset flag
+        // isn't in the record.
+        struct Field { const char *name; size_t at; int count, width; };   // width: bytes, or 13 for a name
+        static const Field netvs12[] = {
+            {"map_hi", 0x5f0, 1, 4}, {"map_lo", 0x5f4, 1, 4}, {"stage_record", 0x5fe, 3, 2}, {"rank", 0x604, 1, 1},
+            {"member_name", 0x60e, 3, 13}, {"member_pref", 0x683, 3, 1}, {"class", 0x68c, 1, 1},
+            {"class_skill", 0x68d, 1, 1}, {"music_num", 0x68e, 1, 2}, {"sheet_num", 0x690, 1, 1},
+            {"set_ojama", 0x691, 3, 1}, {"get_ojama", 0x694, 1, 4}, {"badge", 0x698, 1, 1}, {"caption", 0x699, 1, 1},
+            {"fruit", 0x69a, 1, 1}};
+        static const Field netvs13[] = {
+            {"music_num", 0xb4c, 1, 2}, {"sheet_num", 0xb4e, 1, 1}, {"category_num", 0xb4f, 1, 1}, {"badge", 0xb50, 1, 1},
+            {"caption", 0xb51, 1, 1}, {"type", 0xb52, 1, 1}, {"class", 0xb53, 1, 1}, {"class_skill", 0xb54, 1, 1},
+            {"class_start", 0xb55, 1, 1}, {"record", 0xb56, 1, 1}, {"member_name", 0xb6a, 3, 13},
+            {"member_pref", 0xbdf, 3, 1}, {"set_ojama", 0xc01, 3, 1}, {"get_ojama_hi", 0xc04, 1, 4},
+            {"get_ojama_lo", 0xc08, 1, 4}, {"trump_list", 0xc4e, 52, 2}, {"ojama_condition", 0xcb6, 48, 1},
+            {"ojama_cnt", 0xce6, 10, 1}};
+        static const Field netvs14[] = {
+            {"music_num", 0xbdc, 1, 2}, {"sheet_num", 0xbde, 1, 1}, {"category_num", 0xbdf, 1, 1}, {"badge", 0xbe0, 1, 1},
+            {"caption", 0xbe1, 1, 1}, {"job_num", 0xbe2, 1, 1}, {"class", 0xbe3, 1, 1}, {"class_skill", 0xbe4, 1, 1},
+            {"class_start", 0xbe5, 1, 1}, {"class_upgrade", 0xbe6, 1, 1}, {"record", 0xbe7, 1, 1},
+            {"member_name", 0xbfb, 3, 13}, {"member_pref", 0xc70, 3, 1}, {"ojama_condition", 0xc79, 51, 1},
+            {"job_var", 0xd66, 1, 2}, {"job_exp", 0xd68, 9, 4}, {"set_ojama", 0xda5, 3, 1},
+            {"get_ojama_hi", 0xda8, 1, 4}, {"get_ojama_lo", 0xdac, 1, 4}, {"item_hi", 0xdb0, 1, 4}, {"item_lo", 0xdb4, 1, 4}};
+        if (const size_t nv = r.inner.find("<netvs"); nv != std::string::npos) {
+            std::map<std::string, std::string> m;
+            bool sc = false;
+            read_attrs(r.inner, nv + 6, m, &sc);
+            const Field *fields = p14 ? netvs14 : p13 ? netvs13 : netvs12;
+            const size_t count = p14 ? std::size(netvs14) : p13 ? std::size(netvs13) : std::size(netvs12);
+            for (size_t k = 0; k < count; k++) {
+                const Field &fd = fields[k];
+                if (!m.count(fd.name)) continue;
+                const std::string list = attr(m, fd.name);
+                size_t at = 0;
+                for (int i = 0; i < fd.count; i++) {
+                    const size_t comma = list.find(',', at);
+                    const std::string v = list.substr(at, comma == std::string::npos ? std::string::npos : comma - at);
+                    const size_t place = fd.at + (size_t)i * (size_t)fd.width;
+                    if (place + (size_t)fd.width > rec.size()) break;
+                    if (fd.width == 13)
+                        for (size_t b = 0; b < 13; b++) rec[place + b] = b < v.size() && b < 12 ? v[b] : 0;
+                    else {
+                        const long n = std::strtol(v.c_str(), nullptr, 10);
+                        for (int b = 0; b < fd.width; b++) rec[place + (size_t)b] = (char)(n >> (8 * b) & 255);
+                    }
+                    if (comma == std::string::npos) break;
+                    at = comma + 1;
+                }
+            }
+        }
         write_file(file, rec);
         return open + "/>";
     }

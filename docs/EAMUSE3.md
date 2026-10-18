@@ -904,7 +904,19 @@ different PCs meet online through `hiraku-eamuse`'s relay (below, "Online").
   says so at start and NET TAISEN finds nobody.
 - **After the credit:** `playerdata set` carries `<netvs music_num sheet_num caption fruit class
   class_skill badge get_ojama set_ojama rank stage_record member_name member_pref map_hi map_lo/>`
-  (pop'n 13 and 14: their own fields).
+  (pop'n 13 and 14: their own fields). **The server puts them back into the player's record**, each
+  where the game's own loader takes it from (it copies the record, then each field: pop'n 12
+  `0x19ef40`, 13 `0x17f28d0`, 14 `0x17e29e8`; the set builders `0x191d28`, `0x17f7b04`, `0x17e84b4`
+  send them in the same order), so the next credit's player has their class, badge, last battle and
+  the rest. A list is that many values in a row; names are 13 bytes each, in the game's own text.
+
+| game | field: record offset (× count, bytes each) |
+|---|---|
+| pop'n 12 (0x708) | map_hi 0x5f0 (4), map_lo 0x5f4 (4), stage_record 0x5fe (×3, 2), rank 0x604, member_name 0x60e (×3, 13), member_pref 0x683 (×3), class 0x68c, class_skill 0x68d, music_num 0x68e (2), sheet_num 0x690, set_ojama 0x691 (×3), get_ojama 0x694 (4), badge 0x698, caption 0x699, fruit 0x69a |
+| pop'n 13 (0xd6c) | music_num 0xb4c (2), sheet_num 0xb4e, category_num 0xb4f, badge 0xb50, caption 0xb51, type 0xb52, class 0xb53, class_skill 0xb54, class_start 0xb55, record 0xb56, member_name 0xb6a (×3, 13), member_pref 0xbdf (×3), set_ojama 0xc01 (×3), get_ojama_hi 0xc04 (4), get_ojama_lo 0xc08 (4), trump_list 0xc4e (×52, 2), ojama_condition 0xcb6 (×48), ojama_cnt 0xce6 (×10) |
+| pop'n 14 (0xdb8) | music_num 0xbdc (2), sheet_num 0xbde, category_num 0xbdf, badge 0xbe0, caption 0xbe1, job_num 0xbe2, class 0xbe3, class_skill 0xbe4, class_start 0xbe5, class_upgrade 0xbe6, record 0xbe7, member_name 0xbfb (×3, 13), member_pref 0xc70 (×3), ojama_condition 0xc79 (×51), job_var 0xd66 (2), job_exp 0xd68 (×9, 4), set_ojama 0xda5 (×3), get_ojama_hi 0xda8 (4), get_ojama_lo 0xdac (4), item_hi 0xdb0 (4), item_lo 0xdb4 (4) |
+
+  pop'n 13 and 14 also send `reset`, which isn't in the record (the loaders don't read it back).
 
 ## GuitarFreaks and DrumMania V (Konami Python 2)
 
