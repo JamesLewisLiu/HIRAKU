@@ -3,13 +3,19 @@
 # Read-only tests A and B of docs/BIO2-BI2X.md ("Proposed read-only tests") against a BIO2 with BI2X
 # firmware: each packet sent once, as listed there, then 2 s of listening; answers decoded with the
 # doc's rules (size bytes, flags = mode<<5 | obfuscated<<4 | crc4, modes 0/2/3, the LCG scrambling
-# seeded with tag ^ 0xAA, CRC4 and CRC7 checked). B only if A was answered. Nothing else is sent.
+# seeded with tag ^ 0xAA, CRC4 and CRC7 checked). B only if A was answered. With --c, test C instead
+# (the owner's OK, 2026-10-18): sync and assign, then a TDJ poll to module 3, plain, and obfuscated
+# only if the plain one isn't answered. A poll changes no output. Nothing else is sent.
 import os, select, sys, termios, time
 
-PORT = sys.argv[1] if len(sys.argv) > 1 else "/dev/serial/by-id/usb-KAM_BI2X_0000-if00"
+TEST_C = "--c" in sys.argv
+args = [a for a in sys.argv[1:] if a != "--c"]
+PORT = args[0] if args else "/dev/serial/by-id/usb-KAM_BI2X_0000-if00"
 A = [("sync (empty packet to the master)", "AA 00 01 00 09"),
      ("assign nodes", "AA 00 02 02 00 00 01 4A"),
      ("node 1 FIRMINFO, as libaio asks (00 02 81)", "AA 02 03 03 0F 00 02 81 34")]
+C = [("TDJ poll to module 3, plain", "AA 02 06 02 02 03 10 3C"),
+     ("TDJ poll to module 3, obfuscated", "AA 02 07 02 10 20 30 65")]
 B = [("FIRMINFO again, plain", "AA 02 04 03 09 00 02 81 34"),
      ("FIRMINFO again, obfuscated", "AA 02 05 03 1B 49 4C C4 48")]
 
@@ -87,6 +93,12 @@ try:
     a[4] = a[5] = termios.B115200
     termios.tcsetattr(fd, termios.TCSANOW, a)
     termios.tcflush(fd, termios.TCIOFLUSH)
+    if TEST_C:
+        print("== C (after sync and assign)")
+        if exchange(fd, *A[0]) and exchange(fd, *A[1]):
+            if not exchange(fd, *C[0]):
+                exchange(fd, *C[1])
+        sys.exit(0)
     print("== A")
     answered = [exchange(fd, l, h) for l, h in A]
     if all(answered):

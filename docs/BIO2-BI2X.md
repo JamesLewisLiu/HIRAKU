@@ -404,6 +404,12 @@ device, no reset).
   older firmware**: don't run IIDX 28 (or any game whose I/O library carries a BI2X image) with this
   board connected, unless that downgrade is wanted. (The earlier note that IIDX 28 would leave it
   alone was drawn from the `F0 2E` answer.)
+- **C** (the owner's OK, after sync and assign): the plain TDJ poll to module 3, `AA 02 06 02 02 03
+  10 3C`, is answered `AA 03 06 03 53 76 0A 91 70`: payload `03 00 C0` (mode 2, obfuscated, CRCs
+  good), not `03 10 00` + 74 bytes. Read as target 3, command zeroed, status `C0`: no module 3 on
+  the board. So no I/O module is resident after a power-up: a driver has to upload one (16/19/120)
+  before polling, from the owner's game data, as libaio does. The obfuscated variant wasn't sent
+  (the plain one was answered). Board unchanged afterwards.
 
 ## Proposed read-only tests (for the owner's approval)
 
