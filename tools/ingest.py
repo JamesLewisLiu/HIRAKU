@@ -1118,21 +1118,35 @@ def main() -> int:
     # Konami Python: a .py1, or a set's folder (Reliquary's collections keep <set>.py1 beside it;
     # without it, the folder's files say what they are); each game given is added
     py1, folders = [f for f in args.inputs if f.lower().endswith(".py1")], []
+    used = set(py1)
     for f in args.inputs:
         if os.path.isdir(f):
             near = os.path.normpath(f) + ".py1"
             found = sorted(glob.glob(os.path.join(f, "*.py1"))) + ([near] if os.path.exists(near) else [])
             if found:
                 py1.append(found[0])
+                used.add(f)
             elif (g := python1_folder(f)) is not None:
                 folders.append((f, g))
+                used.add(f)
     if py1 or folders:
         rc = 0
         for f in py1:
             rc |= ingest_python(args, f)
         for f, g in folders:
             rc |= ingest_python1(args, g, os.path.abspath(f))
-        return rc
+        # the other games given with them (MAME sets, discs): on as below
+        rest = [f for f in args.inputs if f not in used and os.path.normpath(f) + ".py1" not in used]
+        if not rest:
+            return rc
+        print()
+        args.inputs = rest
+        return rc | ingest_rest(args)
+    return ingest_rest(args)
+
+
+def ingest_rest(args) -> int:
+    """main's inputs past the Konami Python 1 games: Python 2, else MAME sets, CHDs, disc images."""
     py2 = [f for f in args.inputs if f.lower().endswith(".py2")]
     for f in args.inputs:
         if os.path.isdir(f):
