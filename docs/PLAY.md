@@ -228,7 +228,7 @@ driver won't start, the game says why and plays on Windows' default output. The 
 `audio: the ASIO driver took ...` line says whether it kept pace and how often the sound came
 short. HIRAKU declares the ASIO driver interface itself, from the specification (Steinberg's SDK
 is GPLv3 since October 2025 too, but isn't needed). Checked under Wine with pwasio (PipeWire's
-ASIO driver for Wine): float, 48 kHz, 64-frame buffers, 99.97 % of the rate.
+ASIO driver for Wine): float, 48 kHz, 64-frame buffers, 99.97 % of the rate; and on real Windows.
 
 **System 573 and Twinkle: `--fine-sound`** (launcher: Settings > Audio > "Sound every millisecond"). These cores run MAME's devices, and MAME hands their sound on 50 times a second. So by default the sound reaches the PC in 20 ms pieces, which adds up to 20 ms of latency, uneven from moment to moment, and the controls are read once per piece. `--fine-sound` hands it on every millisecond instead:
 - The machine runs the same (the regress cases show the same pictures).
