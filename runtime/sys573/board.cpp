@@ -27,6 +27,8 @@
 #include "bus/pccard/linflash.h"
 #include "sys573/link.h"
 #include "sys573/cardunit.h"
+#include "sys573/rental.h"
+#include "sys573/mcal.h"
 #include "sys573/eagfdm.h"
 #include "sys573/npu.h"
 #include "imagedev/cdromimg.h"
@@ -101,6 +103,7 @@ const Config *g_build = nullptr;
 SessionLink g_link;   // the session cable to another cabinet's process (link.h), when there is one
 Eamuse g_eamuse;      // the network unit's network and e-AMUSEMENT server (eagfdm.h), with the unit
 CardUnit g_cards;     // the e-AMUSEMENT card units (cardunit.h), with the network unit
+RentalUnit g_rental;  // Mambo a GoGo's e-Amusement rental unit (rental.h)
 
 // MAME's ioport output field: the write callback runs when its bits change
 // (dynamic_field::write), with the active-low inversion of the field's default.
@@ -331,6 +334,11 @@ void sys573_state::device_add_mconfig(machine_config &config) {
             else if (l == SessionLink::RTS) { link_rts = s; if (!g_cards.selected()) sio1.write_cts(s); }
         };
         g_cards.on_select = [&sio1](bool extio) { sio1.write_cts(extio ? 0 : link_rts); };
+    } else if (c.rental) {
+        // the e-Amusement rental unit alone on SIO1 (rental.h): its TXD and RXD; CTS held ready
+        auto &sio1 = *m_maincpu->subdevice<psxsio1_uart_device>("sio1");
+        m_cassette->dsr_handler().set(sio1, &psxsio1_uart_device::write_dsr);
+        sio1.txd_handler().set([](int s) { g_rental.txd(s); });
     } else if (g_cards.fitted()) {
         // the card units alone on SIO1 (no session)
         auto &sio1 = *m_maincpu->subdevice<psxsio1_uart_device>("sio1");
@@ -419,6 +427,8 @@ void sys573_state::device_add_mconfig(machine_config &config) {
     }
     m_cassette->set_default_option(c.cassette_slot.c_str());
     if (c.memory_card_reader) KONAMI_573_MEMORY_CARD_READER(config, "k573mcr", m_sys573_jvs_host);
+    // the Master Calendar (mcal.h), a factory device MAME has but doesn't fit: --master-calendar
+    if (c.master_calendar >= 0) KONAMI_573_MASTER_CALENDAR_HLE(config, "k573mcal", 0, m_sys573_jvs_host).set_area((u8)c.master_calendar);
 
     // MAME's OUT0/OUT1/OUT2 port fields, in mask order (ioport fields are kept sorted)
     m_out0_fields = {
@@ -512,9 +522,22 @@ bool sys573_state::jvs_is_valid_packet() {
 }
 
 void sys573_state::jvs_input_w(offs_t, u16 data, u16) {
+    static const bool jvs_raw = getenv("HK_573_JVS_LOG") && atoi(getenv("HK_573_JVS_LOG")) >= 2;
+    if (jvs_raw) fprintf(stderr, "jvs %.6f w %04x\n", machine().time().as_double(), data);
     m_jvs_input_buffer[m_jvs_input_idx_w++] = data & 0xff;
     m_jvs_input_buffer[m_jvs_input_idx_w++] = data >> 8;
     if (m_jvs_input_buffer[0] != 0xe0) m_jvs_input_idx_w = 0;
+    // With the Master Calendar fitted (mcal.h, not MAME's config): the boot program's bus test
+    // first writes "e0 00 1f 00", then packets with a wrong checksum on purpose. MAME's framing
+    // never gets past either (the buffer only restarts on a byte other than e0), so the calendar
+    // would never hear its reset and address. Here a packet for node 0, or a whole one whose sum is
+    // wrong, is dropped and the framing starts again.
+    else if (cfg.master_calendar >= 0 && m_jvs_input_idx_w >= 2 &&
+             (m_jvs_input_buffer[1] == 0x00 ||
+              (m_jvs_input_idx_w >= 3 && m_jvs_input_idx_w >= m_jvs_input_buffer[2] + 3 && !jvs_is_valid_packet()))) {
+        m_jvs_input_idx_w = 0;
+        return;
+    }
     if (jvs_is_valid_packet()) {
         int command_size = m_jvs_input_buffer[2] + 3;
         // HK_573_JVS_LOG=1: each packet the game sends on its JVS bus (node, size, data, checksum)
@@ -939,7 +962,7 @@ bool init(const Config &cfg) {
             return false;
     }
     g_cards.configure(cfg.card_readers, cfg.nvram_dir);
-    hk_psx_sio1_uart = cfg.msu || !cfg.session_join.empty() || !cfg.session_host.empty() || cfg.card_readers > 0;
+    hk_psx_sio1_uart = cfg.msu || !cfg.session_join.empty() || !cfg.session_host.empty() || cfg.card_readers > 0 || cfg.rental;
     if (!cfg.session_host.empty() || !cfg.session_join.empty()) {
         const bool host = !cfg.session_host.empty();
         if (!g_link.open(host ? cfg.session_host : cfg.session_join, host, attotime::from_usec(cfg.session_quantum_us),
@@ -988,8 +1011,16 @@ bool init(const Config &cfg) {
         auto *sio1 = st.m_maincpu->subdevice<psxsio1_uart_device>("sio1");
         g_cards.attach(m, [sio1](int b) { sio1->write_rxd(b); });
     }
+    if (cfg.rental) {
+        auto *sio1 = st.m_maincpu->subdevice<psxsio1_uart_device>("sio1");
+        g_rental.attach(m, [sio1](int b) { sio1->write_rxd(b); });
+    }
     m.reset();
     g_cards.reset();
+    if (cfg.rental) {
+        g_rental.reset();
+        st.m_maincpu->subdevice<psxsio1_uart_device>("sio1")->write_cts(0);
+    }
 
     // HK_573_ITRACE=file,from,to: every instruction of frames [from, to) as "totalcycles pc"
     // (to compare with MAME's debugger trace, oracle/lua/itrace573.lua)

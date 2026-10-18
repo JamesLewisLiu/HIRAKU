@@ -1,0 +1,10 @@
+# Mambo A Go-Go (GQA40 VER. JRB, Rental), Konami 2001: the first boot's install with the e-Amusement rental unit's
+# presence on SIO1 (--rental, runtime/sys573/rental.h; MAME has no such device). The boot program
+# asks the unit its version ("a5 c0", answered "a5 c0 1 0 0") and, with an answer, installs with no
+# ERROR 198: INFO 508 by frame ~8400. Hashes the main RAM every frame and snapshots every 60 frames.
+game mamboagga
+
+hash ram  0x80000000 0x80400000   # 4 MiB main RAM (KSEG0)
+
+from 0 every 60 snap
+at 9300 quit

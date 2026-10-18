@@ -40,6 +40,8 @@ public:
         if (name == "--session-quantum") { session_quantum_ = std::stoi(value()); return true; }
         if (name == "--cd") { cd_ = value(); return true; }
         if (name == "--boot-cd") { boot_cd_ = true; return true; }
+        if (name == "--rental") { rental_ = 1; return true; }
+        if (name == "--master-calendar") { master_calendar_ = std::stoi(value()); return true; }
         if (name == "--eamuse") { eamuse_ = value(); return true; }
         return false;
     }
@@ -69,7 +71,11 @@ public:
                "                    cabinet, a Twinkle process with the other, whose music this one plays too)\n"
                "  --session-quantum US   the lockstep quantum in microseconds (default 500; both sides alike)\n"
                "  --boot-cd         DIP switch 4 (\"Start Up Device\") on the CD-ROM drive, not the flash: an\n"
-               "                    install over an installed game (DrumMania 2nd's Session Power Up Kit)\n";
+               "                    install over an installed game (DrumMania 2nd's Session Power Up Kit)\n"
+               "  --rental          fit the e-Amusement rental unit on SIO1 (Mambo a GoGo's rental version,\n"
+               "                    mamboagga; MAME has none: ERROR 198). Only its presence: no rental billing\n"
+               "  --master-calendar AREA  fit Konami's Master Calendar (a factory JVS device) with its area switch\n"
+               "                    (0 JA, 1 UA, 2 EA, 4 AA, 5 KA, 7 JR...): the boot program's factory set-up\n";
     }
 
     bool init(const Options &o) override {
@@ -146,6 +152,9 @@ public:
         cfg.session_join = session_join_;
         cfg.session_quantum_us = session_quantum_;
         cfg.boot_cd = boot_cd_;
+        // the e-Amusement rental unit (rental.h), opt-in: MAME has none
+        cfg.rental = rental_ == 1;
+        cfg.master_calendar = master_calendar_;
         cfg.rtc_time = rtc_ >= 0 ? rtc_ : (int64_t)time(nullptr);
         if (mame_mix_) cfg.mix_gain = 1.0f;
         cfg.fine_sound = fine_sound_;
@@ -202,6 +211,8 @@ private:
     std::string session_host_, session_join_;
     int session_quantum_ = 500;
     bool boot_cd_ = false;
+    int rental_ = 0;             // --rental
+    int master_calendar_ = -1;   // --master-calendar AREA
 };
 
 }  // namespace

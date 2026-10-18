@@ -1,0 +1,11 @@
+# Mambo A Go-Go (GQA40 VER. JRB, Rental), Konami 2001: the boot program's factory set-up, from what
+# mamboagga-rental-install left, with Konami's Master Calendar on JVS (--master-calendar 7, area JR;
+# MAME's k573mcal device, which MAME doesn't fit) and the rental unit (--rental). The FACTORY screen
+# (model GQA40-JR, the calendar's date and time, SID, XID), then ERROR 197: the cassette is already
+# initialised. Meanwhile the boot program formats the rental records in the timekeeper's RAM (0x1c00).
+game mamboagga
+
+hash ram  0x80000000 0x80400000   # 4 MiB main RAM (KSEG0)
+
+from 0 every 60 snap
+at 3000 quit

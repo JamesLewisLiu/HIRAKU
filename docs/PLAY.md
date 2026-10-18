@@ -799,7 +799,7 @@ So player 1 plays with the left hand on W and S and the right hand on O and L. O
 
 On the keyboard each conga is a triangle, the far pad's key above the near pads' two. Start is 1 or Return (button 9); coin, test and service are 5, F2 and 9 on both games. The launcher's **Controls** dialog has both cabinets, with these defaults. Three Taiko-style drums can stand in for the congas (`docs/CATALOGUE.md`, Phase 5: the hardware options).
 
-**The rental version** (`mamboagga`) needs Konami's e-Amusement rental device, which neither MAME nor HIRAKU has: it shows ERROR 198 (Start goes on), installs, and on the next boot stops at HARD-WARE ERROR +02H, RTCRAM INITIALIZE ERROR. Play `mamboagg`.
+**The rental version** (`mamboagga`) needs Konami's e-Amusement rental unit and its rental service. MAME has neither, and stops at ERROR 198 (Start goes on), then after the install at HARD-WARE ERROR +02H, RTCRAM INITIALIZE ERROR. HIRAKU's `--rental` (the unit's presence) and one boot with `--master-calendar 7` (Konami's factory device, which formats the rental records) take it as far as a real rental cabinet with no plays bought: "remaining plays used up, please replenish". Buying plays (Konami's encrypted per-cabinet codes) isn't emulated. Play `mamboagg`: the same game.
 
 **Lamps:** Dance Maniax's sensor lamps (blue and red), spotlights and start lamps; Mambo a GoGo's conga lamps, fire lamps and fans, start and select lamps, as MAME names them (`--lights`).
 

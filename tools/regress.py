@@ -316,6 +316,12 @@ CASES.update({
     "mamboagg-test": ("mamboagg", 7780, ["--rtc", "1792328203", "--script", "oracle/scripts/mamboagg-test.his"], "mamboagg-install"),
     "mamboagga-install": ("mamboagga", 9300, ["--rtc", "1792330345", "--script", "oracle/scripts/mamboagga-install.his"]),
     "mamboagga-boot": ("mamboagga", 4800, ["--rtc", "1792330438", "--script", "oracle/scripts/mamboagga-boot.his"], "mamboagga-install"),
+    # the rental Mambo with the rental unit's presence (--rental) and Konami's Master Calendar
+    # (--master-calendar): HIRAKU only, MAME fits neither (docs/CATALOGUE.md, Phase 5)
+    "mamboagga-rental-install": ("mamboagga", 9300, ["--rtc", "1792330345", "--rental", "--script",
+                                                     "oracle/scripts/mamboagga-rental-install.his"]),
+    "mamboagga-factory": ("mamboagga", 3000, ["--rtc", "1792330438", "--rental", "--master-calendar", "7", "--script",
+                                              "oracle/scripts/mamboagga-factory.his"], "mamboagga-rental-install"),
 })
 
 # report lines that describe the host, not the machine
