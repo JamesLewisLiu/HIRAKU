@@ -232,9 +232,10 @@ at 0x18002d580), it writes when all of these hold:
 5. the controller's `FirmPrgSetExFlags` agrees (the base class's, 0x1800173b0, always does).
 
 So a game whose libaio carries a different BI2X image rewrites any board with the same key, older or
-newer (a downgrade is as likely as an upgrade). This board's key is `F0 2E` and its version 1.3, so
-IIDX 28 leaves it alone (and then refuses it). Running any game's I/O library against the board is
-how it gets rewritten: don't.
+newer (a downgrade is as likely as an upgrade). Asked without `81` this board's key read `F0 2E`;
+asked as libaio asks (`00 02 81`, test A below) it reads `8E E2`, IIDX 28's own key, with version
+1.3.3 against the image's 1.2.3, so **IIDX 28 would most likely rewrite (downgrade) it**. Running any
+game's I/O library against the board is how it gets rewritten: don't.
 
 **USB bootloader** (outside ACIO2): at every boot IIDX 28 calls
 `aioIob2Bi2x_CreateWriteFirmContext(0, 1)` (`FUN_180629770`, from `FUN_180627b30`). It looks for a
@@ -383,6 +384,26 @@ the LEDs' 2-byte values; only changed tapes are sent; then `mm 22` shows them.
   port tunnelled through it (commands `nn 12` etc. to its id, `FUN_180017bc0`), presumably for card
   readers wired to the board; IIDX 28 doesn't use it (its readers are on a COM port of their own,
   `aioSciComm_OpenB8PNS1` + `aioIobIcca_Create`), so HIRAKU would need only the TDJ module.
+
+## Results on the owner's board (2026-10-18, tests A and B, `tools/bio2/bi2x_tests.py`)
+
+All five packets answered, every head and body CRC good; the board unchanged afterwards (same USB
+device, no reset).
+
+- **A.** The sync `AA 00 01 00 09` comes back as is. Assign nodes answers `00 01 21` (the first
+  probe got `00 01 20`: the low bit changes from one session to the next; meaning unknown). FIRMINFO
+  asked libaio's way (`00 02 81`) answers 35 bytes, mode 2, obfuscated with seed tag ^ 0xAA:
+  `00 02 00 | 0D 06 00 01 | 00 01 03 03 | "BI2X" | 01 A9 99 A4 | 00 00 00 33 | 00 x 8 | EF 73 8E E2`.
+- **B.** The same request plain (tag 04) and obfuscated (tag 05) both get the same answer: the board
+  takes plain packets even after it has answered obfuscated, and always answers obfuscated. HIRAKU
+  can send plain packets.
+- **The `81` changes the last four bytes:** without it (the first probe, `00 02`) they were
+  `00 00 F0 2E`; with it, `EF 73 8E E2`. libaio asks with `81`, so IIDX 28's firmware check sees
+  `8E E2`, its own image's key, and firmware info that differs from its image (1.3.3 against
+  1.2.3). By the rule in "Never send" above, **IIDX 28 would most likely rewrite this board with its
+  older firmware**: don't run IIDX 28 (or any game whose I/O library carries a BI2X image) with this
+  board connected, unless that downgrade is wanted. (The earlier note that IIDX 28 would leave it
+  alone was drawn from the `F0 2E` answer.)
 
 ## Proposed read-only tests (for the owner's approval)
 
