@@ -193,6 +193,13 @@ SettingsDialog::SettingsDialog(QWidget *parent) : QDialog(parent) {
     m_audioMs->setSuffix(" ms");
     m_audioMs->setValue(s.value("audio/ms", 8).toInt());
     m_audioMs->setToolTip("The audio queue the game starts with. It grows by itself after an underrun (docs/PLAY.md, Latency).");
+    m_volume = new QSpinBox;
+    m_volume->setRange(-20, 20);
+    m_volume->setSuffix(" dB");
+    m_volume->setValue(s.value("audio/volumeDb", 0).toInt());
+    m_volume->setToolTip("Louder or quieter than the machine makes it, for every game (6 dB: twice as loud). "
+                         "Some games, Keyboardmania among them, are quiet next to others; as in MAME.");
+    fa->addRow("Volume:", m_volume);
     fa->addRow("Starting audio queue:", m_audioMs);
     m_audioDevice = new QComboBox;
     const QString device = s.value("audio/device").toString();
@@ -425,6 +432,7 @@ void SettingsDialog::accept() {
     s.setValue("video/displaySync", m_displaySync->isChecked());
     s.setValue("video/picture", m_picture->currentData().toString());
     s.setValue("audio/ms", m_audioMs->value());
+    s.setValue("audio/volumeDb", m_volume->value());
     s.setValue("audio/fineSound", m_fineSound->isChecked());
     s.setValue("audio/device", m_audioDevice->currentData().toString());
     if (m_audioExclusive) s.setValue("audio/exclusive", m_audioExclusive->isChecked());

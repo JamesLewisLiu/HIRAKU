@@ -29,9 +29,19 @@ std::mutex g_mu;
 bool g_newer = false;
 std::string g_current, g_latest;
 Clock::time_point g_start, g_shown;
-enum class State { off, waiting, showing, done } g_state = State::off;
+enum class State { off, waiting, done } g_state = State::off;   // the update check's
+
+// the banners to show, in turn: the first is the one on screen once it has its picture
+struct Item {
+    std::vector<std::string> lines;
+    double seconds;
+    uint32_t edge;
+};
+std::vector<Item> g_queue;
+bool g_showing = false;
 std::vector<uint32_t> g_pixels;
 int g_w = 0, g_h = 0;
+unsigned g_id = 0;
 
 std::string read_all(const std::string &path) {
     std::ifstream f(path, std::ios::binary);
@@ -93,24 +103,27 @@ bool take(const std::string &json, const std::string &current, long max_age) {
     return true;
 }
 
-// the banner's picture: two lines of SDL's debug font on a dark box, drawn by SDL's software renderer
-void draw_picture() {
-    const std::string l1 = "HIRAKU " + g_latest + " is out (this is " + g_current + ").",
-                      l2 = "Update it from the launcher: Help > Check for updates.";
-    const int pad = 6, w = (int)std::max(l1.size(), l2.size()) * 8 + 2 * pad, h = 2 * 8 + 4 + 2 * pad;
+// a banner's picture: its lines in SDL's debug font on a dark box with a coloured edge, drawn by
+// SDL's software renderer
+void draw_picture(const Item &it) {
+    size_t cols = 0;
+    for (const std::string &l : it.lines) cols = std::max(cols, l.size());
+    const int pad = 6, w = (int)cols * 8 + 2 * pad, h = (int)it.lines.size() * 12 - 4 + 2 * pad;
+    g_pixels.clear();
     SDL_Surface *s = SDL_CreateSurface(w, h, SDL_PIXELFORMAT_ARGB8888);
     if (!s) return;
     if (SDL_Renderer *r = SDL_CreateSoftwareRenderer(s)) {
         SDL_SetRenderDrawBlendMode(r, SDL_BLENDMODE_NONE);
-        SDL_SetRenderDrawColor(r, 232, 108, 24, 235);   // an orange edge
+        SDL_SetRenderDrawColor(r, (uint8_t)(it.edge >> 16), (uint8_t)(it.edge >> 8), (uint8_t)it.edge, 235);
         SDL_RenderClear(r);
         SDL_SetRenderDrawColor(r, 16, 16, 20, 225);
         const SDL_FRect in{1, 1, (float)w - 2, (float)h - 2};
         SDL_RenderFillRect(r, &in);
-        SDL_SetRenderDrawColor(r, 255, 255, 255, 255);
-        SDL_RenderDebugText(r, (float)pad, (float)pad, l1.c_str());
-        SDL_SetRenderDrawColor(r, 200, 200, 200, 255);
-        SDL_RenderDebugText(r, (float)pad, (float)(pad + 12), l2.c_str());
+        for (size_t k = 0; k < it.lines.size(); k++) {
+            const uint8_t c = k ? 200 : 255;
+            SDL_SetRenderDrawColor(r, c, c, c, 255);
+            SDL_RenderDebugText(r, (float)pad, (float)(pad + 12 * k), it.lines[k].c_str());
+        }
         SDL_RenderPresent(r);
         SDL_DestroyRenderer(r);
         g_pixels.resize((size_t)w * h);
@@ -118,6 +131,7 @@ void draw_picture() {
             memcpy(&g_pixels[(size_t)y * w], (const uint8_t *)s->pixels + (size_t)y * s->pitch, (size_t)w * 4);
         g_w = w;
         g_h = h;
+        g_id++;
     }
     SDL_DestroySurface(s);
 }
@@ -145,8 +159,14 @@ void start(const std::string &root) {
     }).detach();
 }
 
+void warn(const std::vector<std::string> &lines, double seconds) {
+    if (lines.empty()) return;
+    for (const std::string &l : lines) fprintf(stderr, "%s\n", l.c_str());
+    // before the update's banner, unless one is on screen already
+    g_queue.insert(g_queue.begin() + (g_showing ? 1 : 0), Item{lines, seconds, 0xd03030});
+}
+
 bool banner(Banner &b) {
-    if (g_state == State::off || g_state == State::done) return false;
     const auto now = Clock::now();
     auto secs = [&](Clock::time_point t) { return std::chrono::duration<double>(now - t).count(); };
     if (g_state == State::waiting) {
@@ -155,27 +175,34 @@ bool banner(Banner &b) {
             std::lock_guard<std::mutex> lk(g_mu);
             newer = g_newer;
         }
-        if (secs(g_start) > kWithin) {   // too late: the game is under way
+        if (secs(g_start) > kWithin) g_state = State::done;   // too late: the game is under way
+        else if (newer) {
             g_state = State::done;
-            return false;
+            fprintf(stderr, "HIRAKU %s is out (this is %s): update it from the launcher\n", g_latest.c_str(), g_current.c_str());
+            g_queue.push_back(Item{{"HIRAKU " + g_latest + " is out (this is " + g_current + ").",
+                                    "Update it from the launcher: Help > Check for updates."},
+                                   kShow, 0xe86c18});
         }
-        if (!newer) return false;
-        draw_picture();
-        if (g_pixels.empty()) {
-            g_state = State::done;
-            return false;
+    }
+    while (!g_queue.empty()) {
+        if (!g_showing) {
+            draw_picture(g_queue.front());
+            if (g_pixels.empty()) {
+                g_queue.erase(g_queue.begin());
+                continue;
+            }
+            g_showing = true;
+            g_shown = now;
         }
-        fprintf(stderr, "HIRAKU %s is out (this is %s): update it from the launcher\n", g_latest.c_str(), g_current.c_str());
-        g_state = State::showing;
-        g_shown = now;
+        const double t = secs(g_shown), len = g_queue.front().seconds;
+        if (t < len) {
+            b = {&g_pixels, g_w, g_h, (float)std::min(1.0, (len - t) / kFade), g_id};
+            return true;
+        }
+        g_queue.erase(g_queue.begin());
+        g_showing = false;
     }
-    const double t = secs(g_shown);
-    if (t >= kShow) {
-        g_state = State::done;
-        return false;
-    }
-    b = {&g_pixels, g_w, g_h, (float)std::min(1.0, (kShow - t) / kFade)};
-    return true;
+    return false;
 }
 
 }  // namespace hk::host::notice

@@ -60,6 +60,9 @@ void set_present_hook(PresentHook h);
 using AudioSink = std::function<void(const float *lr, int frames)>;
 void set_audio_sink(AudioSink sink);
 uint64_t ymz_key_ons();
+// Keyboardmania, ParaParaParadise: the YMZ280B's sound flash (chips 1 and 2) has never been
+// written (test mode's SOUND FLASH INIT copies it from the CD): its sounds then read erased flash
+bool sound_flash_blank();
 uint64_t midi_out_bytes();         // Keyboardmania: bytes sent to the synth card
 uint64_t frame_count();
 // Lamps as the game last drove them, in cab::lamps(family()) order (1 = lit), and

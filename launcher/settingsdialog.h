@@ -14,7 +14,7 @@ public:
     explicit SettingsDialog(QWidget *parent = nullptr);
     void accept() override;
 private:
-    QSpinBox *m_scale, *m_audioMs;
+    QSpinBox *m_scale, *m_audioMs, *m_volume;
     QCheckBox *m_fullscreen, *m_displaySync, *m_fineSound, *m_audioExclusive = nullptr, *m_socket, *m_hideLauncher, *m_checkUpdates;
     QComboBox *m_picture, *m_audioDevice, *m_audioBuffer;
     QLineEdit *m_soundfont, *m_root, *m_bin, *m_nvram, *m_extra;

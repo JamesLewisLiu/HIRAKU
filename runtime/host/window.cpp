@@ -186,6 +186,13 @@ void window_set_audio_output(const std::string &device, int frames, bool exclusi
 void window_set_audio_asio(const std::string &driver) { g_audio_asio = driver; }
 
 namespace {
+float g_volume = 1.0f;
+std::vector<float> g_out;   // audio_push's samples after the DC blocker and the volume
+double g_dc_x[2], g_dc_y[2];
+}
+void window_set_volume(double db) { g_volume = (float)std::pow(10.0, db / 20.0); }
+
+namespace {
 // A sound card of our own (--audio-device): HIRAKU writes to it through ALSA itself, as aplay does,
 // a period at a time into a ring of four kept full. SDL's own ALSA output keeps a ring of two
 // periods, and a USB card's driver starves on that, playing stale sound without reporting it (a
@@ -569,7 +576,10 @@ void window_present(const uint32_t *rgb, int w, int h, double vsec) {
         if (notice::Banner b; notice::banner(b)) {
             // in the window's own pixels, not the game's logical size
             static SDL_Texture *bt = nullptr;
+            static unsigned bt_id = 0;
+            if (bt && bt_id != b.id) SDL_DestroyTexture(bt), bt = nullptr;
             if (!bt && (bt = SDL_CreateTexture(g_ren, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STATIC, b.w, b.h))) {
+                bt_id = b.id;
                 SDL_UpdateTexture(bt, nullptr, b.pixels->data(), b.w * 4);
                 SDL_SetTextureBlendMode(bt, SDL_BLENDMODE_BLEND);
                 SDL_SetTextureScaleMode(bt, SDL_SCALEMODE_NEAREST);
@@ -740,6 +750,18 @@ std::vector<float> g_pending;
 
 void audio_push(const float *lr, int frames) {
     if (!g_audio) return;
+    {   // DC blocker, 1-pole high-pass at 5 Hz (y = x - x1 + R y1), then the volume, held to full scale
+        const double r = 1.0 - 6.283185307179586 * 5.0 / g_rate;
+        g_out.resize(2 * (size_t)frames);
+        for (int i = 0; i < 2 * frames; i++) {
+            const int c = i & 1;
+            const double y = lr[i] - g_dc_x[c] + r * g_dc_y[c];
+            g_dc_x[c] = lr[i];
+            g_dc_y[c] = y;
+            g_out[i] = std::clamp((float)y * g_volume, -1.0f, 1.0f);
+        }
+        lr = g_out.data();
+    }
     if (g_pending.empty() && frames >= 64) { push_chunk(lr, frames); return; }
     g_pending.insert(g_pending.end(), lr, lr + 2 * frames);
     if (g_pending.size() >= 2 * 64) {

@@ -103,6 +103,10 @@ public:
     // A text display the game drives (beatmania IIDX's 16-segment ticker), as it reads now; ""
     // for machines without one. lamp_changes() moves when it changes.
     virtual std::string display_text() const { return {}; }
+    // Something to set up before playing, said on the window for a while when the game starts
+    // (runtime/host/notice.h), two lines; empty when all is set (Keyboardmania and ParaParaParadise
+    // with their sound flash still blank)
+    virtual std::vector<std::string> setup_warning() const { return {}; }
     // The monitor's shape, width over height, that every frame fills whatever its pixel count: a
     // board can switch video modes (the PlayStation-based System 573 shows 320x240, 512x480 and
     // 640x480 on the same 4:3 tube; Twinkle's on a 16:9 one), so its pixels aren't square.

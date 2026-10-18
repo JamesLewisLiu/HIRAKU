@@ -503,7 +503,7 @@ analyze/ghidra.sh kbm && analyze/prep.py kbm && ninja -C build/cmake hiraku-kbm
 - **1 / 2** move the cursor;
 - **1 + 2 together** enter an item;
 - **BACKUP CLEAR**, then **1** to confirm, sets the defaults;
-- **SOUND TEST → SOUND FLASH INIT**, then **1**, copies the sound effects and menu sounds from the CD into the sound flash. Without it the coin and menu sounds are silent.
+- **SOUND TEST → SOUND FLASH INIT**, then **1**, copies the sound effects and menu sounds from the CD into the sound flash. Without it those sounds are missing, and the YMZ280B plays erased flash instead: a level stuck near full scale under the rest, which made everything else quiet and clipped. The game doesn't say so; HIRAKU does, in red at the bottom of the window for 15 seconds, and the launcher keeps showing the first-boot steps until the flash is written. The sound to the speakers also passes a DC blocker (5 Hz, as a cabinet amplifier's coupling capacitors), so a stuck level can't push the rest into clipping.
 
 2nd and 3rd Mix have a different menu with the same two steps:
 - **2nd Mix:** SOUND CHECK → INITIALIZE SOUND FLASH, and ALL FACTORY SETTINGS.
@@ -521,6 +521,8 @@ Each asks three times. Answer "YES?" and "ARE YOU SURE?" with **1** (move to YES
 | F2 / 9 | test / service |
 
 **Status:** all four boot to attract mode, fully native, with CD and YMZ280B sound.
+
+**Volume:** Keyboardmania's mix is as loud as MAME's, about 9 dB under DDR's. **Settings > Audio > Volume** (or `--volume DB`) raises it for every game: 6 dB doubles it. It changes only what the speakers get, not `--wav` or the digests.
 
 **Keyboard notes:** they come from the XT446 synth card, an embedded Yamaha MU100B. HIRAKU runs the card itself: the MU100 firmware on MAME's H8S/2655 and SWP30 emulation (`runtime/dev/xt446.cpp`, `third_party/mame`). It needs the card's ROMs from the MAME set in `dumps/<game>/rom/`, which `tools/ingest.py --romset` copies: `xu50710-m27c160.bin` and the six wave ROMs `sx518b0.ic34` … `xt463a0.ic38` (in a split or merged set they are in `xt446.zip`: keep it beside the game's set). Sets newer than MAME 0.289 also hold the SWP30's `sin-table.bin`; with an older set HIRAKU rebuilds that table itself, byte for byte. It costs about a third of a CPU core.
 

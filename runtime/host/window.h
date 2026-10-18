@@ -23,6 +23,10 @@ void window_set_display_sync(bool on);
 void window_set_audio_output(const std::string &device, int frames, bool exclusive = false);
 // Windows: a card through its ASIO driver by name (host/asio.h; "": none), before the others
 void window_set_audio_asio(const std::string &driver);
+// Before window_open: the volume in dB (0: as the machine makes it). The sound to the device also
+// loses any steady offset (a DC blocker, as a cabinet's amplifier's coupling capacitors), so a chip
+// stuck at full scale can't push the rest into clipping. Neither changes --wav or --digest.
+void window_set_volume(double db);
 bool window_open(const char *title, int scale, const std::string &bindings, int audio_target_ms, bool fullscreen = false,
                  int audio_rate = 44100);
 // Present one frame; then sleep so that `virtual_seconds` does not run ahead

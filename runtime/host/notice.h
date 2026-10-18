@@ -16,12 +16,16 @@ namespace hk::host::notice {
 
 void start(const std::string &root);   // once the window is open
 
+// A setup problem (Core::setup_warning), shown first, for `seconds`, edged in red
+void warn(const std::vector<std::string> &lines, double seconds = 15);
+
 // The banner over this frame: false when there is none. pixels: ARGB, w x h (SDL's 8x8 font),
-// the same while it shows; alpha: 1, fading to 0 at the end.
+// the same while one banner shows; alpha: 1, fading to 0 at its end.
 struct Banner {
     const std::vector<uint32_t> *pixels;
     int w, h;
     float alpha;
+    unsigned id;   // changes with the picture
 };
 bool banner(Banner &b);
 

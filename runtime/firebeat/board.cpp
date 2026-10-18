@@ -953,6 +953,15 @@ void turntable_add(int player, int delta) {
 void set_frame_hook(FrameHook h) { g_frame_hook = std::move(h); }
 void set_present_hook(PresentHook h) { g_present_hook = std::move(h); }
 void set_audio_sink(AudioSink sink) { g_audio_sink = std::move(sink); }
+bool sound_flash_blank() {
+    if (g_cfg.family != "kbm" && g_cfg.family != "ppp") return false;
+    for (int k = 1; k <= 2; k++) {
+        const auto &d = g_flash[k].data();
+        if (std::any_of(d.begin(), d.end(), [](uint8_t b) { return b != 0xff; })) return false;
+    }
+    return true;
+}
+
 uint64_t ymz_key_ons() { return g_ymz ? g_ymz->key_ons : 0; }
 uint64_t midi_out_bytes() { return g_midi_out_bytes; }
 uint64_t frame_count() { return g_frame; }

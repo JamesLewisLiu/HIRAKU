@@ -472,6 +472,10 @@ void MainWindow::showDetails() {
         if (pre >= 0) h += "<pre>" + how.mid(pre + 2) + "</pre>";   // (a not-installed text has none)
     } else {
         bool fresh = !QFileInfo::exists(cfg::nvramDir(g->id));
+        // Keyboardmania, ParaParaParadise: not set up until test mode has written the sound flash
+        // (without it most sounds are missing; the game itself doesn't say)
+        if (!fresh && (g->family == "kbm" || g->family == "ppp"))
+            fresh = !QFileInfo::exists(cfg::nvramDir(g->id) + "/flash1.bin");
         if (fresh && !nvramSeed(*g).isEmpty())
             h += "<p><b>First boot:</b> the game starts installed, from the saves kept with its data "
                  "(<tt>nvram-seed</tt>, from a MAME NVRAM folder).</p>";
@@ -540,6 +544,7 @@ QStringList MainWindow::arguments(const Game &g) const {
     a << "--picture" << picture::mode(g.id) << "--picture-config" << picture::configDir() << "--picture-config"
       << picture::configDir(g.id);
     a << "--audio-ms" << QString::number(s.value("audio/ms", 8).toInt());
+    if (int v = s.value("audio/volumeDb", 0).toInt(); v) a << "--volume" << QString::number(v);
     if (QString d = s.value("audio/device").toString(); d.startsWith("asio:")) a << "--audio-asio" << d.mid(5);   // Windows
     else {
         if (!d.isEmpty()) a << "--audio-device" << d;

@@ -44,6 +44,8 @@
 //                       Settings > Audio too). If it's busy, the system's default output instead
 //                       Windows: an output device by the name Windows shows (shared, through the system
 //                       mixer), or with --audio-exclusive alone
+//     --volume DB       the sound out of the window, louder or quieter (e.g. 6 or -3; 0 by default):
+//                       what the speakers get, not what --wav and --digest record
 //     --audio-exclusive Windows: the output (--audio-device's, else the default one) in WASAPI exclusive
 //                       mode: no system mixer in between, other programs silent meanwhile
 //     --audio-asio NAME Windows: the sound card through its ASIO driver (the name its control panel and
@@ -235,6 +237,7 @@ int main(int argc, char **argv) {
     int audio_ms = 8, audio_buffer = 0;
     std::string audio_device;
     bool audio_exclusive = false;
+    double volume_db = 0;
     std::string audio_asio;
     for (int k = 1; k < argc; k++) {
         std::string a = argv[k];
@@ -267,6 +270,7 @@ int main(int argc, char **argv) {
         else if (a == "--audio-ms") audio_ms = std::stoi(val());
         else if (a == "--audio-device") audio_device = val();
         else if (a == "--audio-exclusive") audio_exclusive = true;
+        else if (a == "--volume") volume_db = std::stod(val());
         else if (a == "--audio-asio") audio_asio = val();
         else if (a == "--audio-buffer") audio_buffer = std::stoi(val());
         else if (a == "--window") window_scale = (k + 1 < argc && argv[k + 1][0] != '-') ? std::stoi(val()) : 2;
@@ -369,6 +373,7 @@ int main(int argc, char **argv) {
     host::window_set_display_sync(display_sync);
     host::window_set_audio_output(audio_device, audio_buffer, audio_exclusive);
     host::window_set_audio_asio(audio_asio);
+    host::window_set_volume(volume_db);
     if (window_scale && !host::window_open(("HIRAKU - " + game).c_str(), window_scale, bindings, audio_ms, fullscreen, machine.audio_rate())) {
         fprintf(stderr, "cannot open a window\n");
         return 1;
@@ -378,6 +383,7 @@ int main(int argc, char **argv) {
 #endif
     if (window_scale) {   // a player's readers and cabinet; scripted runs keep to their inputs
 #ifdef HK_WITH_SDL
+        host::notice::warn(machine.setup_warning());   // e.g. Keyboardmania's blank sound flash
         host::notice::start(opt.root);   // a new release, said on the window (not from the launcher)
 #endif
         host::readers_start();

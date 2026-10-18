@@ -270,6 +270,12 @@ public:
     bool audio_per_frame() const override { return synth::deferred(); }
     const std::vector<uint8_t> &lamp_state() const override { return fb::lamp_state(); }
     uint64_t lamp_changes() const override { return fb::lamp_changes(); }
+    std::vector<std::string> setup_warning() const override {
+        if (!fb::sound_flash_blank()) return {};
+        // the YMZ280B then plays erased flash: a level stuck at full scale under the rest
+        return {"The sound flash is blank: most sounds are missing.",
+                "Test mode (F2): SOUND FLASH INIT (the launcher says how)."};
+    }
 
 private:
     std::string image_, soundfont_, spec_;
