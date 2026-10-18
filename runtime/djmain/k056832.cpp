@@ -136,20 +136,28 @@ void K056832::draw_page(int page, int scrollx, int scrolly, int x0, int y0, int 
     // MAME tilemap_t: the page repeats every 512x256; screen pixel (x, y) shows
     // page pixel ((x + scrollx) mod 512, (y + scrolly) mod 256)
     auto wrap = [](int v, int m) { return ((v % m) + m) % m; };
+    // a tile at a time: its attributes, colour and pixel row are worked out once for its (up to)
+    // eight pixels on this line, not per pixel (the same pixels as per pixel)
     for (int y = y0; y <= y1; y++) {
         const int ty = wrap(y + scrolly, PAGE_H);
         const uint16_t *row = ram + (ty >> 3) * 64 * 2;
         uint32_t *d = bitmap + (size_t)y * bw;
-        for (int x = x0; x <= x1; x++) {
-            const int tx = wrap(x + scrollx, PAGE_W);
+        int tx = wrap(x0 + scrollx, PAGE_W);
+        for (int x = x0; x <= x1;) {
             const uint16_t attr = row[(tx >> 3) * 2], code = row[(tx >> 3) * 2 + 1];
             const int flip = flip_override & (attr >> sm.flips) & 3;
             const int color = (attr & sm.palm1) | (attr >> sm.pals2 & sm.palm2);
-            const int px = (flip & 1) ? 7 - (tx & 7) : (tx & 7), py = (flip & 2) ? 7 - (ty & 7) : (ty & 7);
-            const uint8_t pen = m_pens[(size_t)(code % m_tile_count) * 64 + (size_t)py * 8 + (size_t)px];
-            if (!pen) continue;   // transparent pen 0
-            const int idx = color * 16 + pen;
-            if (idx < npens) d[x] = pens[idx];
+            const int py = (flip & 2) ? 7 - (ty & 7) : (ty & 7);
+            const uint8_t *tile = &m_pens[(size_t)(code % m_tile_count) * 64 + (size_t)py * 8];
+            const int sub = tx & 7, n = std::min(8 - sub, x1 - x + 1);
+            const int limit = npens - color * 16;   // pens[color * 16 + pen] exists for pen < limit
+            const uint32_t *pal = pens + color * 16;
+            for (int k = 0; k < n; k++) {
+                const uint8_t pen = tile[(flip & 1) ? 7 - (sub + k) : sub + k];
+                if (pen && pen < limit) d[x + k] = pal[pen];   // pen 0 is transparent
+            }
+            x += n;
+            tx = wrap(tx + n, PAGE_W);
         }
     }
 }
