@@ -298,6 +298,26 @@ CASES.update({
                                           "--session-host", "out/regress/work/club2.sock"], "bmiidxc2-boot", "ddr2mc2-club"),
 })
 
+# Dance Maniax and Mambo a GoGo (docs/CATALOGUE.md, Phase 5; digital board, ZS01 cassette): each
+# set's first-boot install from blank NVRAM, then a song from what it left, in lockstep with MAME
+# (out/oracle/<set>/{install,play}); the rental Mambo to its RTCRAM error (no e-Amusement device)
+CASES.update({
+    "dmx-install": ("dmx", 9000, ["--rtc", "1792327450", "--script", "oracle/scripts/dmx-install.his"]),
+    "dmx-play": ("dmx", 17700, ["--rtc", "1792328276", "--script", "oracle/scripts/dmx-play.his"], "dmx-install"),
+    "dmx-test": ("dmx", 10600, ["--rtc", "1792328102", "--script", "oracle/scripts/dmx-test.his"], "dmx-install"),
+    "dncfrks-install": ("dncfrks", 9000, ["--rtc", "1792327900", "--script", "oracle/scripts/dncfrks-install.his"]),
+    "dncfrks-play": ("dncfrks", 17100, ["--rtc", "1792328954", "--script", "oracle/scripts/dncfrks-play.his"], "dncfrks-install"),
+    "dmx2m-install": ("dmx2m", 9900, ["--rtc", "1792327635", "--script", "oracle/scripts/dmx2m-install.his"]),
+    "dmx2m-play": ("dmx2m", 13500, ["--rtc", "1792328646", "--script", "oracle/scripts/dmx2m-play.his"], "dmx2m-install"),
+    "dmx2majp-install": ("dmx2majp", 9900, ["--rtc", "1792327789", "--script", "oracle/scripts/dmx2majp-install.his"]),
+    "dmx2majp-play": ("dmx2majp", 12600, ["--rtc", "1792328824", "--script", "oracle/scripts/dmx2majp-play.his"], "dmx2majp-install"),
+    "mamboagg-install": ("mamboagg", 9300, ["--rtc", "1792327539", "--script", "oracle/scripts/mamboagg-install.his"]),
+    "mamboagg-play": ("mamboagg", 13300, ["--rtc", "1792328476", "--script", "oracle/scripts/mamboagg-play.his"], "mamboagg-install"),
+    "mamboagg-test": ("mamboagg", 7780, ["--rtc", "1792328203", "--script", "oracle/scripts/mamboagg-test.his"], "mamboagg-install"),
+    "mamboagga-install": ("mamboagga", 9300, ["--rtc", "1792330345", "--script", "oracle/scripts/mamboagga-install.his"]),
+    "mamboagga-boot": ("mamboagga", 4800, ["--rtc", "1792330438", "--script", "oracle/scripts/mamboagga-boot.his"], "mamboagga-install"),
+})
+
 # report lines that describe the host, not the machine
 HOST_LINES = ("profile:", "audio:", "nvram:")
 HOST_TIME = re.compile(r" in [0-9.]+ s of host time")   # kbm's synth line

@@ -1,0 +1,10 @@
+# Dance Maniax (G*874 VER. JAA), Konami 2000: the first boot's install, from blank NVRAM with MAME's current cassette dump (the game
+# cassette is in; no install cassette). It installs itself from the CD to the onboard
+# flash, and by frame ~8100 shows INFO 508: install done, note the certificate number and
+# power-cycle. Hashes the main RAM every frame and snapshots every 60 frames, to compare HIRAKU's
+# 573 core with MAME through the install.
+game dmx
+
+hash ram  0x80000000 0x80400000   # 4 MiB main RAM (KSEG0)
+from 0 every 60 snap
+at 9000 quit

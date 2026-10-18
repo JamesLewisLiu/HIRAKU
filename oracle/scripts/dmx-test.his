@@ -1,0 +1,50 @@
+# Dance Maniax (G*874 VER. JAA), Konami 2000: test mode's I/O CHECK, from what dmx-install left (its NVRAM). Attract by
+# ~8000; Test at 8500 opens the MAIN MENU on I/O CHECK; Start at 9200. Then each input in turn,
+# held 40 frames, with a snapshot while it is held: player 1's sensors (D-SENSOR U L/R, D0 L, D1 L,
+# D0 R, D1 R), Select L/R, player 2's the same, then 2P Start; each shows ON in its own place.
+# 1P and 2P Start together leave it (to the MAIN MENU). Hashes the main RAM every frame, to compare
+# HIRAKU's 573 core with MAME, and checks the input map against the game's own test.
+game dmx
+
+hash ram  0x80000000 0x80400000   # 4 MiB main RAM (KSEG0)
+
+at 8500 press "Service Mode" 8
+at 9200 press "1 Player Start" 8
+at 9400 press "P1 D-Sensor U L" 40
+at 9420 snap
+at 9460 press "P1 D-Sensor U R" 40
+at 9480 snap
+at 9520 press "P1 D-Sensor D0 L" 40
+at 9540 snap
+at 9580 press "P1 D-Sensor D1 L" 40
+at 9600 snap
+at 9640 press "P1 D-Sensor D0 R" 40
+at 9660 snap
+at 9700 press "P1 D-Sensor D1 R" 40
+at 9720 snap
+at 9760 press "P1 Select L" 40
+at 9780 snap
+at 9820 press "P1 Select R" 40
+at 9840 snap
+at 9880 press "P2 D-Sensor U L" 40
+at 9900 snap
+at 9940 press "P2 D-Sensor U R" 40
+at 9960 snap
+at 10000 press "P2 D-Sensor D0 L" 40
+at 10020 snap
+at 10060 press "P2 D-Sensor D1 L" 40
+at 10080 snap
+at 10120 press "P2 D-Sensor D0 R" 40
+at 10140 snap
+at 10180 press "P2 D-Sensor D1 R" 40
+at 10200 snap
+at 10240 press "P2 Select L" 40
+at 10260 snap
+at 10300 press "P2 Select R" 40
+at 10320 snap
+at 10360 press "2 Players Start" 40
+at 10380 snap
+at 10420 press "1 Player Start" 20
+at 10420 press "2 Players Start" 20
+at 10540 snap
+at 10600 quit

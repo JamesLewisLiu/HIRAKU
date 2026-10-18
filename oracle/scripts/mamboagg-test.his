@@ -1,0 +1,59 @@
+# Mambo A Go-Go (GQA40 VER. JAB), Konami 2001: test mode's I/O CHECK, from what mamboagg-install left (its NVRAM).
+# NOTE 605: Test at 1500; attract by ~5000; Test at 6000 opens the MAIN MENU on GAME MODE; Select
+# right (P1 Right) to I/O CHECK, Start. Then each of the 18 conga sensors in turn, held 30 frames,
+# with a snapshot while it is held (the left, centre and right congas' PAD1-9 and their sensor
+# maps), then Select left and right. Holding Right and pressing Start leaves it. Hashes the main RAM
+# every frame, to compare HIRAKU's 573 core with MAME, and checks the input map against the game's
+# own test.
+game mamboagg
+
+hash ram  0x80000000 0x80400000   # 4 MiB main RAM (KSEG0)
+
+at 1500 press "Service Mode" 8   # NOTE 605
+at 6000 press "Service Mode" 8
+at 6550 press "P1 Right" 8
+at 6650 press "1 Player Start" 8
+at 6800 press "Left Pad 1 (Top Left)" 30
+at 6815 snap
+at 6840 press "Left Pad 1 (Top Right)" 30
+at 6855 snap
+at 6880 press "Left Pad 2 (Middle Left)" 30
+at 6895 snap
+at 6920 press "Left Pad 2 (Bottom Left)" 30
+at 6935 snap
+at 6960 press "Left Pad 3 (Middle Right)" 30
+at 6975 snap
+at 7000 press "Left Pad 3 (Bottom Right)" 30
+at 7015 snap
+at 7040 press "Centre Pad 1 (Top Left)" 30
+at 7055 snap
+at 7080 press "Centre Pad 1 (Top Right)" 30
+at 7095 snap
+at 7120 press "Centre Pad 2 (Middle Left)" 30
+at 7135 snap
+at 7160 press "Centre Pad 2 (Bottom Left)" 30
+at 7175 snap
+at 7200 press "Centre Pad 3 (Middle Right)" 30
+at 7215 snap
+at 7240 press "Centre Pad 3 (Bottom Right)" 30
+at 7255 snap
+at 7280 press "Right Pad 1 (Top Left)" 30
+at 7295 snap
+at 7320 press "Right Pad 1 (Top Right)" 30
+at 7335 snap
+at 7360 press "Right Pad 2 (Middle Left)" 30
+at 7375 snap
+at 7400 press "Right Pad 2 (Bottom Left)" 30
+at 7415 snap
+at 7440 press "Right Pad 3 (Middle Right)" 30
+at 7455 snap
+at 7480 press "Right Pad 3 (Bottom Right)" 30
+at 7495 snap
+at 7520 press "P1 Left" 30
+at 7535 snap
+at 7560 press "P1 Right" 30
+at 7575 snap
+at 7600 press "P1 Right" 40
+at 7610 press "1 Player Start" 8
+at 7720 snap
+at 7780 quit

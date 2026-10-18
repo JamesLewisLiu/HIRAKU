@@ -1,10 +1,13 @@
-# Mambo A Go-Go (Rental): power-on from blank NVRAM with the archive's (MAME 0.243) cassette dump. The BIOS reads the
-# program from CD; the game then stops at ERROR 121 (cassette error 9), in MAME at the pin as here:
-# that older ZS01 dump isn't the chip MAME's current dump is (docs/CATALOGUE.md, Phase 5). Hashes
+# Mambo A Go-Go (GQA40 VER. JRB, Rental), Konami 2001: the next boot, from what mamboagga-install left (its NVRAM).
+# The flash checksums, ERROR 198 again (no e-Amusement device): Start at 1000; NOTE 605 (RTC-RAM
+# cleared): Test at 1500; BOOT CHECK, then "HARD-WARE ERROR +02H, RTCRAM INITIALIZE ERROR, PLEASE
+# CALL ATTENDANT" by frame ~3900, where it stays (the JAB version passes its BOOT CHECK here). Hashes
 # the main RAM every frame and snapshots every 60 frames, to compare HIRAKU's 573 core with MAME.
 game mamboagga
 
 hash ram  0x80000000 0x80400000   # 4 MiB main RAM (KSEG0)
 
+at 1000 press "1 Player Start" 8   # ERROR 198
+at 1500 press "Service Mode" 8     # NOTE 605
 from 0 every 60 snap
-at 1800 quit
+at 4800 quit

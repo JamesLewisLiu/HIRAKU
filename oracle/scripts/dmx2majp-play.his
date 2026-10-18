@@ -1,0 +1,27 @@
+# Dance Maniax 2nd Mix Append J-Paradise (G*A38 VER. JAA), Konami 2001: a game, from what dmx2majp-install left (its NVRAM).
+# Power-on: MUSIC INITIALIZING, the loading, the title by frame ~4500. Two coins at 6000, then Start
+# every 300 frames through the caution, HOW TO PLAY and COURSE SELECT (its default, Moon course:
+# three tracks played without a break); the course played by breaking all four of player 1's
+# sensors every 8 frames from 7900: its first track, ロマンスの神様, then BE TOGETHER begins by ~12000.
+# Hashes the main RAM every frame and snapshots every 60 frames, to compare HIRAKU's 573 core with
+# MAME through a song.
+game dmx2majp
+
+hash ram  0x80000000 0x80400000   # 4 MiB main RAM (KSEG0)
+
+at 6000 press "Coin 1" 8
+at 6040 press "Coin 1" 8
+at 6300 press "1 Player Start" 8
+at 6600 press "1 Player Start" 8
+at 6900 press "1 Player Start" 8
+at 7200 press "1 Player Start" 8
+at 7500 press "1 Player Start" 8
+at 7800 press "1 Player Start" 8
+from 7900 every 8 press "P1 D-Sensor U L" 4
+from 7902 every 8 press "P1 D-Sensor U R" 4
+from 7904 every 8 press "P1 D-Sensor D0 L" 4
+from 7904 every 8 press "P1 D-Sensor D1 L" 4
+from 7906 every 8 press "P1 D-Sensor D0 R" 4
+from 7906 every 8 press "P1 D-Sensor D1 R" 4
+from 0 every 60 snap
+at 12600 quit

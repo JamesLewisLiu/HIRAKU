@@ -108,8 +108,8 @@ What the games need:
 
 | Game | Sets | What it needs |
 |---|---|---|
-| Dance Maniax | `dncfrks`, `dmx`, `dmxa`, `dmx2m`, `dmx2majp` | hand IR sensors. **Phase 5 (2026-10-18):** manifests, ingest, inputs, lamps and the launcher's controls are in; all but `dmxa` boot in lockstep with MAME to ERROR 121, the archive's cassette dumps being too old (below) |
-| Mambo a GoGo | `mamboagg`, `mamboagga` | congas. **Phase 5:** as Dance Maniax |
+| Dance Maniax | `dncfrks`, `dmx`, `dmxa`, `dmx2m`, `dmx2majp` | hand IR sensors. **Phase 5 (2026-10-18):** all but `dmxa` (no media) install and play a song in lockstep with MAME, with the owner's current cassette dumps |
+| Mambo a GoGo | `mamboagg`, `mamboagga` | congas. **Phase 5:** `mamboagg` installs and plays in lockstep with MAME; the rental `mamboagga` stops at RTCRAM INITIALIZE ERROR without its e-Amusement device, as in MAME |
 | Martial Beat | `mrtlbeat`, `mrtlbeata` | motion sensors |
 | Punch Mania / Fighting Mania | `pnchmn`, `pnchmna`, `pnchmn2`, `fghtmn` and 4 clones | punch pads that move |
 
@@ -507,33 +507,41 @@ Each needs an input design before code. The owner decides which are worth it.
 
 #### Phase 5 progress (2026-10-18): Dance Maniax and Mambo a GoGo, the owner's two
 
-**Blocked on the cassette dumps.** All six sets the archive has (`dncfrks`, `dmx`, `dmx2m`, `dmx2majp`, `mamboagg`, `mamboagga`) stop at **ERROR 121, cassette error (9)**, in MAME at the pin as in HIRAKU, about 5 s after power-on. Their ZS01 dumps are the 0.243 sets' 4,116-byte files; MAME's are 140 bytes, with the configuration registers, and other data (Phase 0). Neither the owner's MAME 0.289 zips nor the rar has these sets. Test at the error does nothing (tried on `dmx`). **Needed**, with the CRCs MAME 0.289 lists:
+**The media.** The archive's cassette dumps are the 0.243 sets' 4,116-byte ZS01 files, older than MAME's: with them all six sets stop at **ERROR 121, cassette error (9)**, in MAME at the pin as in HIRAKU. The owner then supplied MAME 0.289's zips of the six (`dncfrks`, `dmx`, `dmx2m`, `dmx2majp`, `mamboagg`, `mamboagga`), with the current 140-byte dumps; the CDs are the archive's. `dmxa` (874 AAA, CD `874aaa02`) isn't on hand.
 
-| Set | File | CRC |
+**In lockstep with MAME at the pin (main RAM on every hashed frame, every snapshot):**
+
+| Set | Runs | Notes |
 |---|---|---|
-| `dncfrks` | `gk874ka.u1` | 43244ec6 |
-| `dmx` | `ge874ja.u1` | f27cfd58 |
-| `dmx2m` | `gca39ja.u1` | 7f1e7a66 |
-| `dmx2majp` | `gca38ja.u1` | 34d8db6f |
-| `mamboagg` | `gqa40jab.u1` | bbb6033d |
-| `mamboagga` | `gqa40jrb.u1` | 313b5685 |
+| `dmx` | install, test mode's I/O check, a song | Installs with no input, INFO 508 by frame ~8100. The next boot sets itself up (RTC, loading), no NOTE; attract by ~8000. Two coins a credit. A song (BROKEN MY HEART, MILD) played on all four sensors: full combo, CLEARED, the result. One RAM word differs for two frames: MAME's uninitialised GTE (below). |
+| `dncfrks` | install, a song | Dance Maniax's Korean version: the same, three coins a credit. The same two-frame difference. |
+| `dmx2m`, `dmx2majp` | install, a song | NOTE 604 first (Test), INFO 508 by ~9000. Then the title by ~4500; the game plays courses of three tracks without a break: the first track and into the second. |
+| `mamboagg` | install, test mode's I/O check, a song | INFO 508 by ~8400; the next boot NOTE 605 (Test), attract by ~5000. Two coins. Select right at the music select (TRAINING to MAMBO NO.5), Start; the song played on the congas' far pads to GAME OVER. |
+| `mamboagga` | install, the next boot to its error | the rental version (below) |
 
-The rest of each set (the `.u6` serials, `dmx2majp`'s flash, the CDs) matches MAME's. `dmxa` (874 AAA, CD `874aaa02`) isn't in the archive. With the dumps, ingesting the set's zip again is all it takes, then the first boot, a song and regress cases. Making up a 140-byte image from the old file was not tried: comparing `ddr5m`'s two dumps, the data differs in more than the layout (a year field, a checksum, a block the old one lacks).
+- Scripts: `oracle/scripts/<set>-install.his`, `-play.his`, `dmx-test.his`, `mamboagg-test.his`; MAME's runs in `out/oracle/<set>/{install,play,test}`, the NVRAM each install left in `out/p5/nv/`.
+- **Test mode's I/O check** confirms the input map against the games themselves: on `dmx` every sensor shows ON in its own place (D-SENSOR U, D0 and D1, left and right, both players; Select L/R; Start). On `mamboagg` each of the 18 sensors lights its conga's PAD1–9 and a spot on its head (pad 1 the far half, pad 2 the left side, pad 3 the right side), and the panel's LEFT, RIGHT and START.
+- **The two-frame difference** (`dmx-play`, `dncfrks-play`, 140 frames after the third Start, on HOW TO PLAY) is MAME's uninitialised GTE. On frames 10050 and 10051 MAME holds 0x03d0 in the word at 0x800eb598, HIRAKU 0; before and after, all 4 MiB are identical and every snapshot matches. Both CPUs' instruction traces of those frames are identical, cycle for cycle. The word is the game pushing the GTE's matrix and translation onto its own stack (`0x8009199c`: `cfc2` of R11–R33 and TRX/TRY/TRZ, stored at 0x800eb580+); TRY was never written by the game before. MAME's `gte` class has no constructor or reset for its registers, so they start as whatever the heap held (`cpu.state["try"]` at power-on: 0x179f2000 in one run, 0x3d0 in another); HIRAKU's start at 0. The game overwrites the slot two frames later. Not a HIRAKU bug; left as it is (a real GTE's power-on state isn't known).
+
+**Mambo a GoGo, the rental version (`mamboagga`).** The same CD, its own cassette (GQA40 JRB). It looks for its e-Amusement rental device first: ERROR 198, "e-Amusement2 communication error. Please call a dealer near you. Press a Button for the next screen." Start goes on, and it installs as the JAB version does (INFO 508). The next boot shows ERROR 198 again, NOTE 605, then BOOT CHECK stops at **HARD-WARE ERROR +02H, RTCRAM INITIALIZE ERROR, PLEASE CALL ATTENDANT**. MAME has no such device either (a TODO in `ksys573.cpp`'s `mamboagga()`), and does the same: both runs (`oracle/scripts/mamboagga-install.his`, `mamboagga-boot.his`) are in lockstep with MAME to the error.
+- What the program shows of it: a `/s573/config.dat` with `product.mode` (`rental` / `normal`), `eamuse.ver` and `eamuse.port`, `boot.rtcram=clear` and `rtcramkeep`; messages "This software is for the e-Amusement system", "RENTAL INITIALIZE ERROR", and the JVS library's errors (JVS MRTC TIMEOUT, JVS COIN DEC...). With `HK_573_JVS_LOG=1` neither Mambo sends anything on the JVS bus during boot, so the device is not (or not yet) a JVS node. MAME's taps on the PS1's SIO ports show the same accesses on both versions up to the error (SIO1 set up at frame 668 as MODE 0x4E, CTRL 0x0837, reload 0x6E, after ERROR 198 is already on screen), so the check that fails isn't a conversation on SIO1 either. Left to look at: IN1's "network" bit (12), PC Card slot 2 (where the GuitarFreaks/DrumMania network unit sits) and the cassette's own data.
+- **Proposal (not built):** an HLE of the rental device, as the network unit's (`runtime/sys573/npu.h`), is possible only once its link is known; it isn't small or well understood yet. Next steps: find the code behind ERROR 198 and RTCRAM INITIALIZE ERROR in a RAM dump (the RAM-dump Ghidra method of the pop'n work), see which port it reads, and what answer passes. Nothing about the device is documented in MAME or the fork, so this is reverse engineering from the program; a cheaper route is a patch (a switch) that makes the rental build take the normal path, but that departs from the cabinet. Until then, `mamboagg` is the one to play.
 
 **What is in:**
 - **Manifests** `games/{dncfrks,dmx,dmx2m,dmx2majp,mamboagg,mamboagga}/game.toml` from `tools/gen573.py`, which knows the two input families now (`dmx`, `mambo`). Digital board, ZS01 cassette (`casszi`), no PC Card; `dmx2majp` preloads its installed flash (31m, 27m); Mambo boots MAME's default BIOS for it, `700b01` with `h8b01`.
-- **Ingested** with `--keep-chd` from the archive (`dumps/<set>/`, the CDs read in place on the USB disk; `dmx` uses `dncfrks/874jaa.chd`, `mamboagga` `mamboagg/a40jab02.chd`). Ingest notes each `.u1` as another dump.
-- **Checked at boot against MAME at the pin** (`oracle/scripts/<set>-boot.his`, 1,800 frames from blank NVRAM, `oracle/lockstep.sh`): all six identical on every hashed frame (180/180) and every snapshot (30/30), through the BIOS, the program's load from CD and the cassette check to ERROR 121.
+- **Ingested** with `--keep-chd`: the archive's CDs, read in place on the USB disk (`dmx` uses `dncfrks/874jaa.chd`, `mamboagga` `mamboagg/a40jab02.chd`), then the owner's 0.289 zips for the cassettes. `out/oracle-roms` links the six zips to the 0.289 ones.
 - **The 573 core** (`runtime/sys573/board.cpp`):
   - MAME's `dmx_output_callback` and `mamboagg_output_callback` on the digital board's outputs, and their LAMPS port bits (`dmx_lamps_b0..b5`, `mamboagg_lamps_b3..b5`) as lamps 32 and up (the outputs are now 64 bits);
   - the two input maps, MAME's ports bit for bit (checked against `ksys573.cpp`'s INPUT_PORTS by a script): every sensor by MAME's name, Dance Maniax's as "P1 D-Sensor U L" since MAME names both players' alike;
-  - an older ZS01 dump is cut to the chip's 140 bytes, as MAME's ROM loader does with a too-long file (WRONG LENGTH), so the game sees MAME's chip. Only these six and Phase 3's blocked `dsem2` and `dsfdr` have such files.
+  - an older ZS01 dump is cut to the chip's 140 bytes, as MAME's ROM loader does with a too-long file (WRONG LENGTH), so the game sees MAME's chip (Phase 3's blocked `dsem2` and `dsfdr` still have such files);
+  - Mambo's panel Select left/right: konami573's P1 Left/Right, which MAME's `mamboagg` ports keep (found at the music select; the test mode shows them as LEFT and RIGHT);
+  - `HK_573_JVS_LOG=1` prints the JVS packets the game sends and gets.
 - **`oracle/lua/hiraku.lua`:** fields of one name on one port hide each other in MAME's `port.fields`, so every field is also "P<player> <name>" (found by its bit). A script can press player 2's Dance Maniax sensors in MAME (checked).
 - **Controls** (`runtime/shell/cabinet.cpp`, the launcher's family tables in `launcher/config.cpp` and the icon in `launcher/games.cpp`): the families "Dance Maniax (System 573)" and "Mambo a GoGo (System 573)", with defaults. How they play is in `docs/PLAY.md`.
 
 **The input mapping:**
 - **Dance Maniax:** per player four controls, the cabinet's four hand sensors: upper left, lower left, lower right, upper right. MAME's lower sensors are two beams each (D0, D1); "P1 Lower Left" breaks both, as a hand does. The single beams keep MAME's names, unbound. Keys: player 1 W/S (left hand) and O/L (right hand), Left/Right to select; player 2 on the keypad (7/4, 9/6, 1/3). Pads: buttons 0–3, select 4–5, Start 9.
-- **Mambo a GoGo:** nine controls, three per conga (left, centre, right): pad 1 the far half of the head, pads 2 and 3 the near left and near right quarters (MAME's "Top", "Middle/Bottom Left", "Middle/Bottom Right" sensors). "Left Pad 1" presses both its sensors, as MAME's one button per pad does. Keys: W over A S, Y over G H, O over K L; buttons 0–8. MAME puts one sensor on Coin 2 and one on P2 Start, so those names do nothing on this cabinet.
+- **Mambo a GoGo:** nine controls, three per conga (left, centre, right): pad 1 the far half of the head, pads 2 and 3 the near left and near right quarters (MAME's "Top", "Middle/Bottom Left", "Middle/Bottom Right" sensors). "Left Pad 1" presses both its sensors, as MAME's one button per pad does. Keys: W over A S, Y over G H, O over K L; buttons 0–8. Select left/right on Left/Right (buttons 11, 12), Start on 1/Return. MAME puts one sensor on Coin 2 and one on P2 Start, so those names do nothing on this cabinet.
 
 **Hardware options for the owner (not built; pick one per game):**
 - **Dance Maniax's hand sensors.** The real sensors are IR beams read as plain switches (beam broken = pressed), so anything that gives HIRAKU a button per sensor works:
@@ -547,11 +555,13 @@ The rest of each set (the `.u6` serials, `dmx2majp`'s flash, the CDs) matches MA
   3. **Electronic drum pads** (head and rim zones) over MIDI: HIRAKU reads no MIDI, so a MIDI-to-gamepad bridge, or MIDI input in the shell (new work). Dual-zone pads give six of the nine zones.
 - **Real cabinet parts:** a cabinet's sensor or conga harness (active-low switches) into a keyboard encoder or a Pico works the same way.
 
+**Regress** (recorded in out/regress-p5/baseline, checked a second time: all identical): `dmx-install`, `dmx-play`, `dmx-test`, `dncfrks-install`, `dncfrks-play`, `dmx2m-install`, `dmx2m-play`, `dmx2majp-install`, `dmx2majp-play`, `mamboagg-install`, `mamboagg-play`, `mamboagg-test`, `mamboagga-install`, `mamboagga-boot`. Unchanged by this work (out/regress-p5-check, against out/regress/baseline): `ddr3mj-boot`, `-install`, `-attract`, `-play`, `dstage-install`, `-play`, `gtrfrk5m-install`, `-play`, `drmn4m-install` and the `drmn4m-session` + `gtrfrk5m-session` pair.
+
 **Open:**
-- The cassette dumps above; then first boots, test mode's I/O check (to confirm which beams the game pairs), a scripted song in lockstep, regress cases (`<set>-boot`, `<set>-play`) and a hands-on test.
-- `mamboagga` is the rental version: MAME has a TODO for its rental serial device, so it may stop even with its dump.
-- No regress cases yet: a boot to ERROR 121 would have to be re-recorded once the dumps come.
-- Unchanged by this work (out/regress-p5-check, against out/regress/baseline): `ddr3mj-boot`, `-install`, `-attract`, `-play`, `dstage-install`, `-play`, `gtrfrk5m-install`, `-play`, `drmn4m-install` and the `drmn4m-session` + `gtrfrk5m-session` pair, all identical.
+- `mamboagga`'s rental device (above).
+- A hands-on test with keys and a controller; the hardware options are the owner's choice.
+- `dmxa` needs its set and CD.
+- `oracle/lockstep.sh`'s pin pass runs MAME again with the host's clock, so on the 573 (whose RTC MAME seeds from the host) its hashes differ from frame 0 and the frame it names is meaningless; the every-10-frames verdict stands.
 
 ### Phase 6: cross-cabinet sessions
 

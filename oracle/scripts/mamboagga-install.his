@@ -1,0 +1,13 @@
+# Mambo A Go-Go (GQA40 VER. JRB, Rental), Konami 2001: the first boot's install, from blank NVRAM with MAME's current
+# cassette dump. The rental version looks for its e-Amusement device first and, with none (MAME has
+# no such device: a TODO in ksys573.cpp), shows ERROR 198 "e-Amusement2 communication error ...
+# Press a Button for the next screen" by frame ~600: Start at 900. Then it installs itself from the
+# CD to the onboard flash as the JAB version does, INFO 508 by frame ~8700. Hashes the main RAM every
+# frame and snapshots every 60 frames, to compare HIRAKU's 573 core with MAME.
+game mamboagga
+
+hash ram  0x80000000 0x80400000   # 4 MiB main RAM (KSEG0)
+
+at 900 press "1 Player Start" 8   # ERROR 198: on without the e-Amusement device
+from 0 every 60 snap
+at 9300 quit

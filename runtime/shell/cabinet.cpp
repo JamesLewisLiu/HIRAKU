@@ -164,8 +164,8 @@ std::vector<Control> make_dmx() {
 // Mambo a GoGo (System 573, MAME ksys573.cpp "mamboagg"): three congas, left, centre and right,
 // each with three pads: 1 the far half of the head, 2 and 3 the near left and near right quarters.
 // Each pad is two sensors, which MAME gives one button; a pad here presses both, and each sensor
-// has its own name too ("Left Pad 1 (Top Left)"). The game's menus are played on the congas; Start
-// is the panel's. On the keyboard each conga is a triangle, the far pad above the near two:
+// has its own name too ("Left Pad 1 (Top Left)"). The panel has Select left/right (konami573's P1
+// Left/Right, which MAME's mamboagg ports keep) and Start: the music select. On the keyboard each conga is a triangle, the far pad above the near two:
 // W over A S, Y over G H, O over K L. A Taiko-style drum sends its zones as buttons 0-8.
 std::vector<Control> make_mambo() {
     std::vector<Control> c;
@@ -176,6 +176,8 @@ std::vector<Control> make_mambo() {
         for (int z = 0; z < 3; z++)
             c.push_back({std::string(conga[k]) + " Pad " + std::to_string(z + 1), std::string(conga[k]) + " conga, " + pad[z],
                          std::string(conga[k]) + " conga", false, std::string(keys[k][z]) + ", joy0:button" + std::to_string(k * 3 + z)});
+    c.push_back({"Select Left", "Select left", "Panel", false, "key:Left, joy0:button11"});
+    c.push_back({"Select Right", "Select right", "Panel", false, "key:Right, joy0:button12"});
     c.push_back({"1 Player Start", "Start", "Panel", false, "key:1, key:Return, joy0:button9"});
     c.push_back({"Coin 1", "Coin", "Cabinet", false, "key:5, joy0:button10"});
     c.push_back({"Test", "Test", "Cabinet", false, "key:F2"});
@@ -519,7 +521,7 @@ std::vector<Lamp> make_mambo_lamps() {
         {"Conga Left", "Congas", 0, 28}, {"Conga Centre", "Congas", 0, 31}, {"Conga Right", "Congas", 0, 29},
         {"Fire Lamp Left", "Cabinet", 0, 4}, {"Fire Fan Left", "Cabinet", 0, 5},
         {"Fire Fan Right", "Cabinet", 0, 6}, {"Fire Lamp Right", "Cabinet", 0, 7},
-        {"Start Lamp", "Panel", 0, 35}, {"Select Left", "Panel", 0, 37}, {"Select Right", "Panel", 0, 36},
+        {"Start Lamp", "Panel", 0, 35}, {"Select Left Lamp", "Panel", 0, 37}, {"Select Right Lamp", "Panel", 0, 36},
     };
 }
 

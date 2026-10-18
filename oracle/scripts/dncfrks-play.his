@@ -1,0 +1,27 @@
+# Dance Freaks (G*874 VER. KAA), Konami 2000: a game, from what dncfrks-install left (its NVRAM). Dance Maniax's
+# Korean version: as dmx-play, but attract by ~8400 and three coins a credit. Coins at 9000, 9040
+# and 9080, then Start every 300 frames (MODE SELECT: MILD; the music select's default); the first
+# stage played by breaking all four of player 1's sensors every 8 frames from 10900: a full combo,
+# CLEARED by ~16200, the result, the second stage's music select. Hashes the main RAM every frame
+# and snapshots every 60 frames, to compare HIRAKU's 573 core with MAME through a song.
+game dncfrks
+
+hash ram  0x80000000 0x80400000   # 4 MiB main RAM (KSEG0)
+
+at 9000 press "Coin 1" 8
+at 9040 press "Coin 1" 8
+at 9080 press "Coin 1" 8
+at 9300 press "1 Player Start" 8
+at 9600 press "1 Player Start" 8
+at 9900 press "1 Player Start" 8
+at 10200 press "1 Player Start" 8
+at 10500 press "1 Player Start" 8
+at 10800 press "1 Player Start" 8
+from 10900 every 8 press "P1 D-Sensor U L" 4
+from 10902 every 8 press "P1 D-Sensor U R" 4
+from 10904 every 8 press "P1 D-Sensor D0 L" 4
+from 10904 every 8 press "P1 D-Sensor D1 L" 4
+from 10906 every 8 press "P1 D-Sensor D0 R" 4
+from 10906 every 8 press "P1 D-Sensor D1 R" 4
+from 0 every 60 snap
+at 17100 quit

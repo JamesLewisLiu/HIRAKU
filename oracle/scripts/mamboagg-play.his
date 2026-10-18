@@ -1,0 +1,28 @@
+# Mambo A Go-Go (GQA40 VER. JAB), Konami 2001: a game, from what mamboagg-install left (its NVRAM). Power-on: NOTE 605
+# (RTC-RAM cleared): Test at 1500. BOOT CHECK, the loading, attract by ~5000. Two coins at 7000,
+# Start at 7300, 7600 and 7900 (the caution, the play mode, HOW TO PLAY); at the music select
+# Select right once (TRAINING to MAMBO NO.5) and Start. The song, with its MP3 music, played by
+# hitting the far pad (pad 1, both its sensors) of each conga every 8 frames from 8700: chips hit
+# and missed, the Mambo Soul gauge runs out and GAME OVER by ~12500, then the best players and
+# attract. Hashes the main RAM every frame and snapshots every 60 frames, to compare HIRAKU's 573
+# core with MAME through a song.
+game mamboagg
+
+hash ram  0x80000000 0x80400000   # 4 MiB main RAM (KSEG0)
+
+at 1500 press "Service Mode" 8   # NOTE 605
+at 7000 press "Coin 1" 8
+at 7040 press "Coin 1" 8
+at 7300 press "1 Player Start" 8
+at 7600 press "1 Player Start" 8
+at 7900 press "1 Player Start" 8
+at 8200 press "P1 Right" 6        # Select right
+at 8400 press "1 Player Start" 8
+from 8700 every 8 press "Left Pad 1 (Top Left)" 4
+from 8700 every 8 press "Left Pad 1 (Top Right)" 4
+from 8702 every 8 press "Centre Pad 1 (Top Left)" 4
+from 8702 every 8 press "Centre Pad 1 (Top Right)" 4
+from 8704 every 8 press "Right Pad 1 (Top Left)" 4
+from 8704 every 8 press "Right Pad 1 (Top Right)" 4
+from 0 every 60 snap
+at 13300 quit

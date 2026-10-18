@@ -761,7 +761,7 @@ hiraku-gtfrk11m --session-join /tmp/gfdm.sock
 
 The regress cases are `gtfrk11m-install`, `gtfrk11m-boot`, `gtfrk11m-hdd`, `gtfrk11m-eaon` and `gtfrk11m-net` (the network unit, as drmn10m's), and `drmn10m-session` + `gtfrk11m-session` (a session game: both cabinets play the first stage of 花火).
 
-## System 573: Dance Maniax and Mambo a GoGo (waiting for cassette dumps)
+## System 573: Dance Maniax and Mambo a GoGo
 
 Dance Maniax (`dmx`; `dncfrks`, Dance Freaks, is its Korean version), Dance Maniax 2nd Mix (`dmx2m`), 2nd Mix Append J-Paradise (`dmx2majp`) and Mambo a GoGo (`mamboagg`; `mamboagga` is the rental version) are on the digital board, with a ZS01 security cassette. Each needs MAME's set and its runtime CD:
 
@@ -771,7 +771,12 @@ tools/ingest.py --keep-chd mamboagg.zip a40jab02.chd
 ninja -C build/cmake hiraku-dmx hiraku-mamboagg
 ```
 
-**They stop at ERROR 121** (cassette error 9) with the cassette dumps of older MAME sets (4,116-byte `.u1` files), in MAME as in HIRAKU. They need the current 140-byte dumps (MAME 0.250 and later): `gk874ka.u1`, `ge874ja.u1`, `gca39ja.u1`, `gca38ja.u1`, `gqa40jab.u1`, `gqa40jrb.u1`. Put the set's zip with that file through ingest again. Everything else is in: the boards' inputs, lamps and the launcher's controls.
+The cassette dumps must be MAME's current ones (MAME 0.250 and later: 140-byte `.u1` files). With an older MAME set's 4,116-byte files the games stop at **ERROR 121** (cassette error 9), in MAME too.
+
+**The first boots:**
+1. The first boot installs the CD to the onboard flash by itself and shows **INFO 508** (power-cycle) after about two and a half minutes of game time: stop it. Dance Maniax 2nd Mix and J-Paradise first show **NOTE 604** (the CD-ROM drive's update): press **Test** (F2).
+2. The next boot: Dance Maniax sets itself up (RTC, then the loading) and plays attract; Mambo a GoGo shows **NOTE 605** (RTC-RAM cleared): press **Test**.
+3. Two coins (5) make a credit; Dance Freaks takes three.
 
 **Dance Maniax** has four hand sensors per player: two upper ones above the head and two lower ones at the waist, left and right. You play by moving a hand through a sensor's beam. Each lower sensor is two beams (MAME's D0 and D1); a lower sensor here breaks both. The beams have their own names as well ("P1 D-Sensor D0 L"), with no keys, for a controller that reads them apart.
 
@@ -784,7 +789,7 @@ ninja -C build/cmake hiraku-dmx hiraku-mamboagg
 
 So player 1 plays with the left hand on W and S and the right hand on O and L. On a controller (`joy0` for player 1, `joy1` for player 2) the sensors are buttons 0–3 (upper left, lower left, lower right, upper right), select 4 and 5, start 9.
 
-**Mambo a GoGo** has three congas, left, centre and right. Each has three pads: pad 1 is the far half of the head, pads 2 and 3 the near left and near right quarters. Each pad is two sensors (MAME gives them one button); a pad here presses both, and each sensor has its own name too. The game's menus are played on the congas; Start is the panel's.
+**Mambo a GoGo** has three congas, left, centre and right. Each has three pads: pad 1 is the far half of the head, pads 2 and 3 the near left and near right quarters. Each pad is two sensors (MAME gives them one button); a pad here presses both, and each sensor has its own name too. The panel has Select left and right (Left and Right; buttons 11 and 12) and Start: the music select takes Select and Start, test mode Select right and Start.
 
 | Conga | Pad 1 (far) | Pad 2 (near left) | Pad 3 (near right) | Controller |
 |---|---|---|---|---|
@@ -793,6 +798,8 @@ So player 1 plays with the left hand on W and S and the right hand on O and L. O
 | Right | O | K | L | buttons 6, 7, 8 |
 
 On the keyboard each conga is a triangle, the far pad's key above the near pads' two. Start is 1 or Return (button 9); coin, test and service are 5, F2 and 9 on both games. The launcher's **Controls** dialog has both cabinets, with these defaults. Three Taiko-style drums can stand in for the congas (`docs/CATALOGUE.md`, Phase 5: the hardware options).
+
+**The rental version** (`mamboagga`) needs Konami's e-Amusement rental device, which neither MAME nor HIRAKU has: it shows ERROR 198 (Start goes on), installs, and on the next boot stops at HARD-WARE ERROR +02H, RTCRAM INITIALIZE ERROR. Play `mamboagg`.
 
 **Lamps:** Dance Maniax's sensor lamps (blue and red), spotlights and start lamps; Mambo a GoGo's conga lamps, fire lamps and fans, start and select lamps, as MAME names them (`--lights`).
 

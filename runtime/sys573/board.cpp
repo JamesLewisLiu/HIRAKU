@@ -517,6 +517,13 @@ void sys573_state::jvs_input_w(offs_t, u16 data, u16) {
     if (m_jvs_input_buffer[0] != 0xe0) m_jvs_input_idx_w = 0;
     if (jvs_is_valid_packet()) {
         int command_size = m_jvs_input_buffer[2] + 3;
+        // HK_573_JVS_LOG=1: each packet the game sends on its JVS bus (node, size, data, checksum)
+        static const bool jvs_log = getenv("HK_573_JVS_LOG") != nullptr;
+        if (jvs_log) {
+            fprintf(stderr, "jvs %.3f s:", machine().time().as_double());
+            for (int i = 1; i < command_size; i++) fprintf(stderr, " %02x", m_jvs_input_buffer[i]);
+            fprintf(stderr, "\n");
+        }
         m_sys573_jvs_host->send_packet(m_jvs_input_buffer + 1, command_size - 2);   // no checksum
         m_jvs_input_idx_w = 0;
         m_jvs_input_idx_r = 0;
@@ -531,7 +538,15 @@ u16 sys573_state::jvs_input_r(offs_t, u16) {
 }
 
 int sys573_state::jvs_rx_r() {
-    if (m_jvs_output_len_w <= 0) m_jvs_output_len_w = m_sys573_jvs_host->received_packet(m_jvs_output_buffer);
+    if (m_jvs_output_len_w <= 0) {
+        m_jvs_output_len_w = m_sys573_jvs_host->received_packet(m_jvs_output_buffer);
+        static const bool jvs_log = getenv("HK_573_JVS_LOG") != nullptr;
+        if (jvs_log && m_jvs_output_len_w > 0) {
+            fprintf(stderr, "jvs reply:");
+            for (int i = 0; i < m_jvs_output_len_w; i++) fprintf(stderr, " %02x", m_jvs_output_buffer[i]);
+            fprintf(stderr, "\n");
+        }
+    }
     return m_jvs_output_len_w > 0;
 }
 
@@ -1257,6 +1272,10 @@ bool set_input(const std::string &name, int value) {
             {"Centre Pad 2", {{0, 0x008}, {0, 0x001}}}, {"Centre Pad 3", {{0, 0x400}, {0, 0x002}}},
             {"Right Pad 1", {{1, 0x0020}, {3, 0x2000000}}}, {"Right Pad 2", {{2, 0x2000000}, {1, 0x0010}}},
             {"Right Pad 3", {{2, 0x1000000}, {1, 0x0040}}},
+            // the panel's select buttons: konami573's P1 Left/Right, which mamboagg's ports keep
+            // (its select lamps are mamboagg_lamps_b4/b5)
+            {"P1 Left", {{0, 0x100}}}, {"P1 Right", {{0, 0x200}}},
+            {"Select Left", {{0, 0x100}}}, {"Select Right", {{0, 0x200}}},
         };
         const auto &tab = g.cfg.family == "dmx" ? dmx : mambo;
         if (auto s = tab.find(name); s != tab.end()) {

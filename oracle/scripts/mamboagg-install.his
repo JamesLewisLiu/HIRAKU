@@ -1,0 +1,10 @@
+# Mambo A Go-Go (GQA40 VER. JAB), Konami 2001: the first boot's install, from blank NVRAM with MAME's current cassette dump (the game
+# cassette is in; no install cassette). It installs itself from the CD to the onboard
+# flash, and by frame ~8400 shows INFO 508: install done, note the certificate number and
+# power-cycle. Hashes the main RAM every frame and snapshots every 60 frames, to compare HIRAKU's
+# 573 core with MAME through the install.
+game mamboagg
+
+hash ram  0x80000000 0x80400000   # 4 MiB main RAM (KSEG0)
+from 0 every 60 snap
+at 9300 quit
