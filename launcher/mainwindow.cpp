@@ -41,6 +41,7 @@
 #include "config.h"
 #include "controlsdialog.h"
 #include "lightsdialog.h"
+#include "modsdialog.h"
 #include "picturedialog.h"
 #include "unlocksdialog.h"
 #include "settingsdialog.h"
@@ -454,6 +455,15 @@ static bool hasInstallCd(const Game &g);
 static bool installCd(const Game &g);
 static QString nvramSeed(const Game &g);
 
+// a folder and everything in it (a game's saves, for a mod set's first start)
+static void copyTree(const QString &from, const QString &to) {
+    QDir().mkpath(to);
+    for (const QFileInfo &f : QDir(from).entryInfoList(QDir::Files | QDir::Dirs | QDir::NoDotAndDotDot | QDir::Hidden)) {
+        if (f.isDir()) copyTree(f.filePath(), to + "/" + f.fileName());
+        else QFile::copy(f.filePath(), to + "/" + f.fileName());
+    }
+}
+
 void MainWindow::showDetails() {
     const Game *g = selected();
     if (!g) {
@@ -488,7 +498,9 @@ void MainWindow::showDetails() {
         if (installCd(*g))
             h += "<p><b>The install CD is in the drive</b> for the next start: the game installs itself from it. "
                  "When it says the install is done, stop it and play again: it then boots from the game's CD.</p>";
-        h += "<p>Saves: <tt>" + cfg::nvramDir(g->id).toHtmlEscaped() + "</tt>" + (fresh ? " (none yet)" : "") + "</p>";
+        h += "<p>Saves: <tt>" + cfg::saveDir(g->id).toHtmlEscaped() + "</tt>" + (fresh ? " (none yet)" : "") + "</p>";
+        if (const QString mods = ModsDialog::summary(g->id); !mods.isEmpty())
+            h += "<p><b>Mods on:</b> " + mods.toHtmlEscaped() + " (right-click: Mods…)</p>";
         QString m = picture::mode(g->id);
         bool own = cfg::settings().contains("picture/" + g->id) || QFileInfo::exists(picture::configDir(g->id));
         if (UnlocksDialog::available(g->id)) h += "<p>Unlocks and codes: right-click the game &gt; Unlocks.</p>";
@@ -580,7 +592,11 @@ QStringList MainWindow::arguments(const Game &g) const {
     }
     if (QString b = s.value("cabinet/bio2").toString(); !b.isEmpty() && cfg::controlsSet(g.family) == "beatmania")
         a << "--bio2" << b;   // the IIDX cabinet's controls and lamps (runtime/host/bio2.h)
-    if (!cfg::nvramBase().isEmpty()) a << "--nvram" << cfg::nvramDir(g.id);
+    // mods (docs/MODS.md): each folder in order, and the saves of their own (cfg::saveDir)
+    const QStringList mods = cfg::modsOn(g.id);
+    for (const QString &m : mods) a << "--mod" << cfg::modsDir(g.id) + "/" + m;
+    if (!mods.isEmpty()) a << "--nvram" << cfg::saveDir(g.id);
+    else if (!cfg::nvramBase().isEmpty()) a << "--nvram" << cfg::nvramDir(g.id);
     if (installCassette(g)) a << "--cassette" << "install";
     if (installCd(g)) a << "--cd" << "install";
     a << UnlocksDialog::macroArguments(g.id);   // codes typed at every start
@@ -620,6 +636,14 @@ void MainWindow::play(const QString &id) {
             QFile::copy(f.filePath(), cfg::nvramDir(g->id) + "/" + f.fileName());
         log("saves: started from " + seed + "\n");
     }
+    // the first start with these mods: their saves start as a copy of the clean game's
+    if (const QString mod_saves = cfg::saveDir(g->id); mod_saves != cfg::nvramDir(g->id) && !QFileInfo::exists(mod_saves)) {
+        QDir().mkpath(mod_saves);
+        if (QFileInfo::exists(cfg::nvramDir(g->id))) {
+            copyTree(cfg::nvramDir(g->id), mod_saves);
+            log("saves: with mods, started from a copy of " + cfg::nvramDir(g->id) + "\n");
+        }
+    }
     QStringList args = arguments(*g);
     log("$ " + g->exe + " " + args.join(' ') + "\n");
     m_running = g->id;
@@ -658,6 +682,10 @@ void MainWindow::contextMenu(const QPoint &pos) {
     QString id = g->id, title = g->title, family = g->family;
     QMenu menu;
     menu.addAction(m_play);
+    menu.addAction("Mods…", this, [this, id, title] {
+        ModsDialog d(id, title, this);
+        if (d.exec() == QDialog::Accepted) showDetails();
+    });
     menu.addSeparator();
     menu.addAction(QIcon::fromTheme("input-gaming"), "Controls for " + cfg::controlsSetName(cfg::controlsSet(family)) + "…", this, [this, family] {
         controls(family);

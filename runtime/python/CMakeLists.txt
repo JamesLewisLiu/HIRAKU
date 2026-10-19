@@ -24,9 +24,11 @@ add_library(hk_python_shell STATIC
 	${HK}/runtime/shell/cabinet.cpp
 	${HK}/runtime/shell/sys.cpp
 	${HK}/runtime/shell/net.cpp
+	${HK}/runtime/shell/overlay.cpp
 	${HK}/runtime/host/hiddesc.cpp
 	${HK}/runtime/host/script.cpp
 	${HK}/runtime/host/macro.cpp
+	${HK}/runtime/host/mods.cpp
 	${HK}/runtime/host/acio.cpp
 	${HK}/runtime/host/readers.cpp
 	${HK}/runtime/host/bio2.cpp

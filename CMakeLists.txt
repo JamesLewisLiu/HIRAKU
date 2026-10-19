@@ -144,7 +144,7 @@ add_executable(hiraku-xt446 tools/xt446/xt446_render.cpp runtime/core/sampler.cp
 target_link_libraries(hiraku-xt446 PRIVATE hiraku_xt446)
 
 # --- what Linux and Windows do differently (runtime/shell/sys.h) ------------------
-add_library(hiraku_sys STATIC runtime/shell/sys.cpp runtime/shell/net.cpp)
+add_library(hiraku_sys STATIC runtime/shell/sys.cpp runtime/shell/net.cpp runtime/shell/overlay.cpp)
 target_include_directories(hiraku_sys PUBLIC runtime)
 if(WIN32)
   target_link_libraries(hiraku_sys PUBLIC ws2_32)
@@ -157,7 +157,7 @@ target_link_libraries(hiraku_cabinet PUBLIC hiraku_sys)
 
 # --- the shell: what every machine core shares (runtime/shell/core.h) --------------
 # Input scripts; the host front end below. Cores provide hk::core().
-add_library(hiraku_shell STATIC runtime/host/script.cpp runtime/host/macro.cpp runtime/host/acio.cpp runtime/host/readers.cpp
+add_library(hiraku_shell STATIC runtime/host/script.cpp runtime/host/macro.cpp runtime/host/mods.cpp runtime/host/acio.cpp runtime/host/readers.cpp
             runtime/host/bio2.cpp)
 target_include_directories(hiraku_shell PUBLIC runtime)
 find_package(Threads REQUIRED)
@@ -334,6 +334,7 @@ if(Qt6_FOUND AND TARGET hiraku_hidout)
     launcher/capturedialog.cpp
     launcher/controlsdialog.cpp
     launcher/lightsdialog.cpp
+    launcher/modsdialog.cpp
     launcher/settingsdialog.cpp
     launcher/fit.cpp
     launcher/picturedialog.cpp

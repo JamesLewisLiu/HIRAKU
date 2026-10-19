@@ -71,6 +71,10 @@ public:
     // order, for input scripts' watches, hashes and dumps. nullptr if the range is
     // not plain memory.
     virtual const uint8_t *mem(uint32_t addr, uint32_t len) const = 0;
+    // A mod wrote len bytes at addr (mem()'s memory, host/mods.h): a core running translated or
+    // recorded code from there translates it again (or runs it interpreted); one that interprets
+    // needs nothing
+    virtual void code_changed(uint32_t addr, uint32_t len) { (void)addr, (void)len; }
     virtual uint64_t frame_count() const = 0;
 
     // Inputs by MAME name ("P1 Button 3", "Coin 1", "TURNTABLE_P1/Turntable"):

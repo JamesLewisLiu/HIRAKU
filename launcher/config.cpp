@@ -5,6 +5,7 @@
 #include <QDir>
 #include <QFileInfo>
 #include <QSaveFile>
+#include <QRegularExpression>
 #include <QStandardPaths>
 
 #include <algorithm>
@@ -82,6 +83,34 @@ QString nvramDir(const QString &game) {
         base = portable() ? portableRoot() + "/user/data"
                           : QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation) + "/hiraku";
     return base + "/" + game;
+}
+
+QString modsDir(const QString &game) {
+    QString base = nvramBase();
+    if (base.isEmpty())
+        base = portable() ? portableRoot() + "/user/data"
+                          : QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation) + "/hiraku";
+    return base + "/mods/" + game;
+}
+
+QStringList modsOn(const QString &game) {
+    QStringList on;   // the ones still there
+    for (const QString &m : settings().value("mods/" + game).toStringList())
+        if (QFileInfo::exists(modsDir(game) + "/" + m + "/mod.toml")) on << m;
+    return on;
+}
+
+void setModsOn(const QString &game, const QStringList &mods) {
+    if (mods.isEmpty()) settings().remove("mods/" + game);
+    else settings().setValue("mods/" + game, mods);
+}
+
+QString saveDir(const QString &game) {
+    const QStringList on = modsOn(game);
+    if (on.isEmpty()) return nvramDir(game);
+    QString name = game;
+    for (QString m : on) name += "+" + m.replace(QRegularExpression("[^A-Za-z0-9_.-]"), "_");
+    return QFileInfo(nvramDir(game)).path() + "/" + name;
 }
 
 QString controlsFile(const QString &family) { return configDir() + "/controls/" + controlsSet(family) + ".txt"; }

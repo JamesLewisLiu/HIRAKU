@@ -79,6 +79,7 @@
 #include "pcsx2/Memory.h"
 #include "pcsx2/Memory.h"
 #include "pcsx2/R5900.h"
+#include "shell/overlay.h"
 #include "pcsx2/SIO/Pad/Pad.h"
 #include "pcsx2/USB/USB.h"
 #include "pcsx2/VMManager.h"
@@ -487,6 +488,9 @@ public:
             {"external_dongle", "ExternalDonglePath", true}, {"memcard", "MemoryCardDonglePath", true},
             {"memcard_id", "MemoryCardIdPath", false},
         };
+        // mods' replaced bytes on the disk or CF card (shell/overlay.h, docs/MODS.md)
+        if (!m["hdd"].empty()) hdd_overlay_ = hk::overlay::find(o.data_path(m["hdd"]));
+        if (!m["cf"].empty()) cf_overlay_ = hk::overlay::find(o.data_path(m["cf"]));
         for (const F &f : files) {
             if (m[f.key].empty()) continue;
             std::string src = o.data_path(m[f.key]);
@@ -670,6 +674,10 @@ public:
             };
             Hiraku::net_command = [](u32 ch, const u32 *p, u32 q) { return self_->net_->command(ch, p, q); };
         }
+        if (hdd_overlay_ || cf_overlay_)   // mods' replaced bytes, laid over the board's disk reads
+            Hiraku::disk_read = [](u32 medium, u64 off, u8 *data, u32 size) {
+                hk::overlay::apply(medium ? self_->cf_overlay_ : self_->hdd_overlay_, off, data, size);
+            };
         if (eth_) {   // Python 2: the PS2's own network adapter, answered here (ethnet.h)
             if (net_log_) eth_->log = server_->log = [this](const std::string &s) {
                 std::lock_guard<std::mutex> l(net_log_mutex_);
@@ -768,6 +776,11 @@ public:
     }
 
     double seconds() const override { return (double)frame_ / 59.94; }
+    // a mod's patch (host/mods.h): the EE recompiler's blocks over it go (PCSX2 also notices a
+    // write to a page it has translated; this makes sure)
+    void code_changed(uint32_t addr, uint32_t len) override {
+        if (Cpu) Cpu->Clear(addr & 0x1ffffffc, (len + (addr & 3) + 3) / 4);
+    }
     const uint8_t *mem(uint32_t addr, uint32_t len) const override {
         addr &= 0x1fffffff;
         if (!eeMem || (uint64_t)addr + len > Ps2MemSize::MainRam) return nullptr;
@@ -1289,6 +1302,7 @@ private:
     bool full_frames_ = true, fill_screen_ = false;
     double cover_w_ = 1.0, cover_h_ = 1.0;   // display_cover() of pic_
     bool python2_ = false;   // a Konami Python 2 (write_py2)
+    int hdd_overlay_ = 0, cf_overlay_ = 0;   // mods' replaced bytes on the disk, the CF card (shell/overlay.h)
     std::deque<uint8_t> sci_in_;   // the card reader's bytes for the game (P2IO serial port 0)
     uint8_t p2io_lamps_[4] = {0, 0, 0x01, 0x1f};   // the P2IO's lamp banks: all lamps off till the game writes them
     std::unique_ptr<hk::py::EtherNet> eth_;

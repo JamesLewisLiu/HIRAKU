@@ -10,7 +10,7 @@
  #include "SIO/Pad/Pad.h"
  #include "SIO/Sio.h"
  #include "SIO/Sio0.h"
-@@ -3069,8 +3072,62 @@
+@@ -3069,8 +3072,63 @@
  	R5900SymbolImporter.OnElfLoadedInMemory();
  }
  
@@ -57,6 +57,7 @@
 +}
 +
 +void (*Hiraku::vsync_cpu)() = nullptr;
++void (*Hiraku::disk_read)(u32, u64, u8*, u32) = nullptr;
 +void (*Hiraku::vsync_posted)() = nullptr;
 +void (*Hiraku::audio_sample)(float, float) = nullptr;
 +void (*Hiraku::gs_frame)(const u32*, u32, u32) = nullptr;
@@ -218,7 +219,58 @@
  		if (bytes.size() >= 4 && bytes[0] == 0xaa && bytes[1] == 0xaa && bytes[2] == 0xaa && bytes[3] == 0x55)
  		{
  			if (IsPython1B22Mode())
-@@ -2474,6 +2477,12 @@
+@@ -1497,10 +1500,11 @@
+ 		if (!OpenHddImage(path))
+ 			return false;
+ 
+-		if (s_hdd_chd_hdd_image)
+-			return s_hdd_chd_hdd_image->ReadBytes(offset, size, dst);
+-
+-		return FileSystem::FSeek64(s_hdd_raw_image_file, offset, SEEK_SET) == 0 && std::fread(dst, 1, size, s_hdd_raw_image_file) == size;
++		const bool ok = s_hdd_chd_hdd_image ? s_hdd_chd_hdd_image->ReadBytes(offset, size, dst) :
++			FileSystem::FSeek64(s_hdd_raw_image_file, offset, SEEK_SET) == 0 && std::fread(dst, 1, size, s_hdd_raw_image_file) == size;
++		if (ok && Hiraku::disk_read) [[unlikely]] // HIRAKU: mods' replaced bytes (HirakuHooks.h)
++			Hiraku::disk_read(0, offset, dst, size);
++		return ok;
+ 	}
+ 
+ 	bool ReadHddImageSectors(const std::string& path, u32 sector, u32 count, u8* dst)
+@@ -1508,12 +1512,13 @@
+ 		if (!OpenHddImage(path))
+ 			return false;
+ 
+-		if (s_hdd_chd_hdd_image)
+-			return s_hdd_chd_hdd_image->ReadSectors(sector, count, dst);
+-
+ 		const u64 offset = static_cast<u64>(sector) * SECTOR_SIZE;
+ 		const u32 bytes = count * SECTOR_SIZE;
+-		return FileSystem::FSeek64(s_hdd_raw_image_file, offset, SEEK_SET) == 0 && std::fread(dst, 1, bytes, s_hdd_raw_image_file) == bytes;
++		const bool ok = s_hdd_chd_hdd_image ? s_hdd_chd_hdd_image->ReadSectors(sector, count, dst) :
++			FileSystem::FSeek64(s_hdd_raw_image_file, offset, SEEK_SET) == 0 && std::fread(dst, 1, bytes, s_hdd_raw_image_file) == bytes;
++		if (ok && Hiraku::disk_read) [[unlikely]] // HIRAKU: mods' replaced bytes (HirakuHooks.h)
++			Hiraku::disk_read(0, offset, dst, bytes);
++		return ok;
+ 	}
+ 
+ 	bool WriteHddImageSectors(const std::string& path, u32 sector, u32 count, const u8* src)
+@@ -1547,10 +1552,12 @@
+ 
+ 	bool ReadCfContainerBytes(u64 offset, void* dst, size_t size)
+ 	{
+-		if (s_cf_chd_hdd_image)
+-			return size <= std::numeric_limits<u32>::max() && s_cf_chd_hdd_image->ReadBytes(offset, static_cast<u32>(size), static_cast<u8*>(dst));
+-
+-		return s_cf_image_file && ReadFileBytes(s_cf_image_file, offset, dst, size);
++		const bool ok = s_cf_chd_hdd_image ?
++			size <= std::numeric_limits<u32>::max() && s_cf_chd_hdd_image->ReadBytes(offset, static_cast<u32>(size), static_cast<u8*>(dst)) :
++			s_cf_image_file && ReadFileBytes(s_cf_image_file, offset, dst, size);
++		if (ok && Hiraku::disk_read) [[unlikely]] // HIRAKU: mods' replaced bytes (HirakuHooks.h)
++			Hiraku::disk_read(1, offset, static_cast<u8*>(dst), static_cast<u32>(size));
++		return ok;
+ 	}
+ 
+ 	bool WriteCfContainerBytes(u64 offset, const void* src, size_t size)
+@@ -2474,6 +2481,12 @@
  		bool queued_read_data = false;
  		if (subop == 1 && word1 != 0)
  			HandleAcioUartWrite(payload, payload_quads, word1, extio_mode);
@@ -231,7 +283,7 @@
  		else if (subop == 2 && (extio_mode || !s_uart_rx_fifo.empty()))
  			queued_read_data = QueueUartReadData(UART_CALLBACK_BYTE_LIMIT);
  
-@@ -2828,6 +2837,8 @@
+@@ -2828,6 +2841,8 @@
  			return false;
  
  		const u32 command = payload[0];
@@ -240,7 +292,7 @@
  		switch (command)
  		{
  			case 0:
-@@ -3099,6 +3110,8 @@
+@@ -3099,6 +3114,8 @@
  
  			if (command_offset == KONAMI_JAMMA_OUTPUT_COMMAND_OFFSET && payload_quads >= 8)
  			{
@@ -249,7 +301,7 @@
  				if (IsPython1P1IOSerialMode())
  				{
  					const u32 previous_latch = s_p1io_output_latch_byte;
-@@ -3610,3 +3623,23 @@
+@@ -3610,3 +3627,23 @@
  		return p1io && p1io->DoState(sw);
  	}
  } // namespace FireWire::Devices
@@ -479,7 +531,7 @@
  				}
 --- a/pcsx2/HirakuHooks.h
 +++ b/pcsx2/HirakuHooks.h
-@@ -0,0 +1,65 @@
+@@ -0,0 +1,69 @@
 +// SPDX-License-Identifier: GPL-3.0+
 +// HIRAKU (local patch, not upstream): taps for running this emulator as a HIRAKU
 +// machine core (runtime/python/ in HIRAKU). All are null unless a host sets them.
@@ -534,6 +586,10 @@
 +	// CPU thread, instead of queuing it for the I/O thread, whose pace (host time) would decide
 +	// when a flush or a waiting command completes.
 +	extern bool sync_disk;
++	// CPU thread (IOP time), after the Python 1 interface board reads its hard disk (medium 0) or
++	// CF card (1): size bytes at offset, which the host may change before the game gets them
++	// (HIRAKU's mods, docs/MODS.md: byte ranges of the disk replaced as it's read).
++	extern void (*disk_read)(u32 medium, u64 offset, u8* data, u32 size);
 +	// CPU thread (IOP time), each lamp output the game sends Python 2's P2IO board: a bank (0-3)
 +	// and its 8 outputs. LAMP_OUT_ALL writes the four banks in turn.
 +	extern void (*p2io_lamp)(u8 bank, u8 value);

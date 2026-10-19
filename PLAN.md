@@ -1079,6 +1079,33 @@ The order of work:
 4. **Pilots on one game:** new songs; notes drawn at the display's rate from the audio clock,
    the logic staying at 60 Hz.
 
+### The foundation (2026-10-19; docs/MODS.md)
+
+Asked by the owner: game-agnostic ways for asset packs (languages, songs) and code changes (high
+frame rate), pop'n music 14 as the pilot. The foundation is in:
+- **The format:** a folder per mod with its `mod.toml` (name, version, game; `[[patch]]`,
+  `[[bytes]]`, `[[file]]`), in `<saves>/mods/<game>/`, `--mod FOLDER` (several, in order).
+- **Memory** (`runtime/host/mods.cpp`): each patch put in place every frame its expected bytes
+  are there (so it waits for code loaded later), or written every frame like a cheat;
+  `Core::code_changed` lets a core translate again (Python: the EE recompiler's blocks cleared;
+  573/Twinkle: their write-protected code pages already catch it; Firebeat: data only, the log
+  says so for code).
+- **Media** (`runtime/shell/overlay.{h,cpp}`): byte ranges of an image replaced as it's read, in
+  the image layer (every HIRAKU core) and through a new `Hiraku::disk_read` hook in the Reliquary
+  patch (Python 1's disk and CF card); `[[file]]` finds a file on an ISO 9660 disc (cooked or raw
+  sectors) and lays it over its sectors.
+- **The launcher:** Mods… on a game's right-click menu (on/off, order, the folder), the mods
+  passed to the game, and a save folder per mod set, `<game>+<mod>...`, started from a copy of
+  the clean game's.
+- **Cheats:** `tools/modimport.py` (`.pnach`, MAME `cheat.xml` plain writes).
+- Checked on pop'n music 14 (a test-menu text patch, an identity disk overlay with an unchanged
+  digest), DDR 2ndMIX (CD bytes and `PSX.EXE` as `[[file]]`, unchanged), and the launcher.
+
+**Next, the pilot (pop'n music 14):** its disk's file system (numbered files, `nr_file`), so a mod
+can name a file there as `[[file]]` does on a disc; then a translation (text and pictures), a song
+added, and smooth note scrolling. Firebeat code patches (the interpreter for patched functions)
+and Python 2's disk are later.
+
 ### Pilot: pop'n music 8 unlocks (done)
 
 - **What the phase is:** the event phase is one byte of the RTC NVRAM, kept three times

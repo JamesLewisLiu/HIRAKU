@@ -47,6 +47,8 @@
 //     --split-screens   a machine with several monitors (Keyboardmania: one a player) shows each in
 //                       a window of its own: player 2's on the next display, both fullscreen with
 //                       --fullscreen (F11 toggles the window with the keyboard)
+//     --mod FOLDER      a mod (docs/MODS.md: the folder's mod.toml), several in order: patches
+//                       to the game's memory, replaced bytes or files on its media
 //     --volume DB       the sound out of the window, louder or quieter (e.g. 6 or -3; 0 by default):
 //                       what the speakers get, not what --wav and --digest record
 //     --audio-exclusive Windows: the output (--audio-device's, else the default one) in WASAPI exclusive
@@ -79,6 +81,7 @@
 
 #include "core/prof.h"
 #include "host/macro.h"
+#include "host/mods.h"
 #include "host/script.h"
 #include "shell/core.h"
 #include "shell/userdir.h"
@@ -242,6 +245,7 @@ int main(int argc, char **argv) {
     bool audio_exclusive = false;
     double volume_db = 0;
     bool split_screens = false;
+    std::vector<std::string> mod_dirs;   // --mod: docs/MODS.md
     std::string audio_asio;
     for (int k = 1; k < argc; k++) {
         std::string a = argv[k];
@@ -276,6 +280,7 @@ int main(int argc, char **argv) {
         else if (a == "--audio-exclusive") audio_exclusive = true;
         else if (a == "--volume") volume_db = std::stod(val());
         else if (a == "--split-screens") split_screens = true;
+        else if (a == "--mod") mod_dirs.push_back(val());
         else if (a == "--audio-asio") audio_asio = val();
         else if (a == "--audio-buffer") audio_buffer = std::stoi(val());
         else if (a == "--window") window_scale = (k + 1 < argc && argv[k + 1][0] != '-') ? std::stoi(val()) : 2;
@@ -329,6 +334,15 @@ int main(int argc, char **argv) {
         }
         wav_frames += (uint64_t)n;
     });
+    // mods: their media ranges before the core opens its images, their patches every frame
+    if (!mod_dirs.empty()) {
+        std::string err;
+        if (!mods::load(mod_dirs, game, opt.root, err)) {
+            fprintf(stderr, "mods: %s\n", err.c_str());
+            return 2;
+        }
+        for (const std::string &m : mods::describe()) fprintf(stderr, "mods: %s\n", m.c_str());
+    }
     if (!machine.init(opt)) return 1;
 #ifdef HK_WITH_SDL
     if (!lights_file.empty() || !lights_socket.empty()) host::lights_init(game, machine.family(), lights_file, lights_socket);
@@ -426,6 +440,7 @@ int main(int argc, char **argv) {
 #endif
             exit(130);
         }
+        mods::frame();
         macro::frame(f);
         if (!script_path.empty()) {
             bool keep = script::frame(f, [&]() {

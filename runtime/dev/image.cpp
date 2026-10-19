@@ -20,6 +20,7 @@
 
 #include <sys/stat.h>
 
+#include "shell/overlay.h"
 #include "shell/sys.h"
 
 namespace hk::image {
@@ -367,7 +368,40 @@ std::string chd_kind(const std::string &path) {
     return c ? c->kind() : std::string();
 }
 
+namespace {
+// mods' replaced byte ranges (shell/overlay.h), by stream: laid over what pread() reads
+std::mutex g_overlay_mu;
+std::map<FILE *, int> &overlays() {
+    static std::map<FILE *, int> m;
+    return m;
+}
+FILE *with_overlay(FILE *f, const std::string &path) {
+    if (f)
+        if (const int id = overlay::find(path)) {
+            std::lock_guard<std::mutex> lock(g_overlay_mu);
+            overlays()[f] = id;
+        }
+    return f;
+}
+}  // namespace
+
 FILE *fopen_image(const std::string &path) {
+    return with_overlay(fopen_image_plain(path), path);
+}
+
+namespace {
+// mods find files on discs through this (shell/overlay.h, read()): a CHD as extracted too
+bool overlay_reader(const std::string &path, uint64_t off, void *buf, size_t n) {
+    FILE *f = fopen_image_plain(path);
+    if (!f) return false;
+    const bool ok = pread(f, buf, n, off) == (ssize_t)n;
+    close(f);
+    return ok;
+}
+const bool g_reader_set = (overlay::set_reader(overlay_reader), true);
+}  // namespace
+
+FILE *fopen_image_plain(const std::string &path) {
     if (!is_chd(path)) return fopen(path.c_str(), "rb");
     auto c = open_chd(path);
     if (!c) return nullptr;
@@ -412,8 +446,17 @@ ssize_t pread(FILE *f, void *buf, size_t n, uint64_t off) {
         auto it = streams().find(f);
         if (it != streams().end()) k = it->second;
     }
-    if (k) return k->chd->pread(buf, n, off);
-    return sys::pread(fileno(f), buf, n, off);
+    const ssize_t r = k ? k->chd->pread(buf, n, off) : sys::pread(fileno(f), buf, n, off);
+    if (r > 0) {
+        int id = 0;
+        {
+            std::lock_guard<std::mutex> lock(g_overlay_mu);
+            if (!overlays().empty())
+                if (auto it = overlays().find(f); it != overlays().end()) id = it->second;
+        }
+        if (id) overlay::apply(id, off, buf, (size_t)r);
+    }
+    return r;
 }
 
 int64_t chd_size(FILE *f) {
@@ -435,6 +478,10 @@ int64_t size(FILE *f) {
 
 void close(FILE *f) {
     if (!f) return;
+    {
+        std::lock_guard<std::mutex> lock(g_overlay_mu);
+        overlays().erase(f);
+    }
 #ifdef _WIN32
     Cookie *k = nullptr;
     {

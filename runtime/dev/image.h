@@ -29,6 +29,8 @@ std::string chd_kind(const std::string &path);
 // The image as a read-only stream ("rb"): a plain file, or a CHD as chdman would extract it.
 // nullptr if it cannot be opened. Close with close() (below).
 FILE *fopen_image(const std::string &path);
+// ... without mods' replaced byte ranges (shell/overlay.h), which fopen_image() lays over its reads
+FILE *fopen_image_plain(const std::string &path);
 
 // A CD's cue sheet: the .cue file itself, or for a CD CHD the sheet `chdman extractcd` writes
 // (FILE "<the CHD's name>" BINARY, its tracks, INDEX 01 / PREGAP / POSTGAP), as a stream.

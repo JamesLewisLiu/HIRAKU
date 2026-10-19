@@ -9,6 +9,7 @@
 // its functions run by the executor (core/exec.h) from dumps/<game>/recomp.txt.
 #include <cstdio>
 #include <cstring>
+#include <filesystem>
 #include <fstream>
 #include <iterator>
 #include <map>
@@ -116,6 +117,11 @@ public:
 
     bool init(const Options &o) override {
         if (image_.empty()) image_ = o.root + "/dumps/" + o.game + "/program.bin";
+        {   // its size: the program's range in RAM (code_changed)
+            std::error_code ec;
+            program_bytes_ = (size_t)std::filesystem::file_size(image_, ec);
+            if (ec) program_bytes_ = 0;
+        }
         auto machine = read_kv(o.root + "/dumps/" + o.game + "/machine.txt");
         if (machine.empty()) {
             fprintf(stderr, "no dumps/%s/machine.txt - run tools/ingest.py on your program disc first\n", o.game.c_str());
@@ -270,6 +276,15 @@ public:
     bool audio_per_frame() const override { return synth::deferred(); }
     const std::vector<uint8_t> &lamp_state() const override { return fb::lamp_state(); }
     uint64_t lamp_changes() const override { return fb::lamp_changes(); }
+    // a mod's patch (host/mods.h): the program is translated ahead of time (recompiled, or the
+    // executor's analysis), so a patch to its code changes nothing that runs; data patches do
+    void code_changed(uint32_t addr, uint32_t len) override {
+        const uint32_t p = HK_PHYS(addr), lo = HK_PHYS(load_), hi = lo + (uint32_t)program_bytes_;
+        if (p < hi && p + len > lo && !warned_code_)
+            fprintf(stderr, "mods: a patch at 0x%08x is in the program, which Firebeat runs translated: code patches "
+                            "don't take effect on this board yet (data patches do)\n", addr);
+        warned_code_ = warned_code_ || (p < hi && p + len > lo);
+    }
     int screens() const override { return fb::screens(); }
     // Keyboardmania: two 4:3 monitors turned upright (MAME ROT270), side by side: 3:2
     double display_aspect() const override { return fb::screens() == 2 ? 1.5 : 4.0 / 3.0; }
@@ -283,6 +298,8 @@ public:
 private:
     std::string image_, soundfont_, spec_;
     uint32_t load_ = HK_LOAD, entry_ = HK_ENTRY;   // the executor build's, from game.toml
+    size_t program_bytes_ = 0;   // the program image's size (code_changed)
+    bool warned_code_ = false;
     bool synth_stand_in_ = false;
     double bios_seconds_ = 21.65;
     AudioSink sink_;
