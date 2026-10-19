@@ -1,7 +1,7 @@
 name = "Smooth notes (high frame rate)"
-version = "0.3"
+version = "0.4"
 game = "popn11"
-description = "While a song plays, the machine's vsync follows the display's refresh rate (120, 144, 240 Hz...): the game draws its notes from its song clock, so they move at the display's rate, and judges as before. The animated objects (characters, hit effects) keep the cabinet's pace. Left: the GREAT/GOOD/BAD text shows for a shorter time. The same engine as pop'n music 14's mod (games/popn14/mods/smooth-notes)."
+description = "While a song plays, the machine's vsync follows the display's refresh rate (120, 144, 240 Hz...): the game draws its notes from its song clock, so they move at the display's rate, and judges as before. The animated objects (characters, hit effects) keep the cabinet's pace. The same engine as pop'n music 14's mod (games/popn14/mods/smooth-notes)."
 
 [[rate]]
 hz = "display"                 # the display's refresh rate (no window: 119.88); or a number, up to 1000
@@ -19,4 +19,10 @@ between_ticks = true
 address = 0x00116a84           # (addiu a0, v1, 1 -> addiu a0, v1, 0)
 original = "01006424"
 replace = "00006424"
+between_ticks = true
+
+[[patch]]                      # the GREAT/GOOD/BAD text's timer, counted through a pointer up to 20 frames
+address = 0x0011cbf0           # (addiu v0, v0, 1 -> addiu v0, v0, 0)
+original = "01004224"
+replace = "00004224"
 between_ticks = true

@@ -123,7 +123,13 @@ pop'n music 14 (`games/popn14/mods/smooth-notes`, 2026-10-19):
 - the HUD's animations (the difficulty name, NORMAL/HYPER/EX...) take their time from the play
   screen's frame counter (0x00f8b63c, +1 at 0x0174ce7c) and others from the vsync routine's
   three counters (0x0172f360): `between_ticks` on each;
-- left: the GREAT/GOOD/BAD text shows for half its time at 120 Hz. Its timer is a counter in a
+- the GREAT/GOOD/BAD text's timer is counted through a pointer (`lw v0, 0(v1); addiu v0, v0, 1;
+  slti v1, v0, 21`, at 0x0174dbb8): found with a write watchpoint (PCSX2's memory checks made to
+  log without pausing, a change kept out of the tree) on candidates from RAM dumps around a
+  judgement. At the cabinet's pace (between_ticks) the text shows 19 vsyncs at 120 Hz against 10
+  frames at 60. The same code is in pop'n 9-13 (0x00117850, 0x0011cf80, 0x0011cbf0, 0x0011d248,
+  0x0175bdb8), and pop'n 13 and 14 have an effect counter counted the same way (0x01766720,
+  0x01758a90). Its timer is a counter in a
   long-lived stack frame (0x01ffea20 in the attract demo), counted through a pointer; not found
   among the increment-and-store sites.
 
