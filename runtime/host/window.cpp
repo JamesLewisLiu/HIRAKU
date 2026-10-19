@@ -705,6 +705,26 @@ struct StartToPicture {
     }
 } g_start_to_picture;
 
+// From the window letting a frame run (the controls read) to that moment's sound entering the
+// sound device: the sound queued ahead of it, and how far the sound handed on lags the machine
+// (MAME's System 573 and Twinkle hand theirs on 50 times a second, up to 20 ms behind, unless
+// --fine-sound). The device's buffer comes on top. In 0.1 ms steps up to 100 ms.
+uint64_t g_machine_frames = 0;   // the machine's sound frames handed on (queued, or dropped by fast-forward)
+struct StartToSound {
+    uint64_t hist[1001] = {}, n = 0;
+    double sum = 0, behind_sum = 0, behind_max = 0;
+    void add(double ms, double behind) {
+        hist[std::clamp((int)(ms * 10), 0, 1000)]++, n++, sum += ms;
+        behind_sum += behind, behind_max = std::max(behind_max, behind);
+    }
+    double percentile(double q) const {
+        uint64_t need = (uint64_t)(q * (double)n), acc = 0;
+        for (int k = 0; k <= 1000; k++)
+            if ((acc += hist[k]) > need) return (k + 1) / 10.0;
+        return 100.0;
+    }
+} g_start_to_sound;
+
 // Display pacing: steer the sound's playback rate to the game's speed, keeping the queue at its
 // target where it is lowest (as the burst starts).
 void steer_audio() {
@@ -972,6 +992,14 @@ void window_present(const uint32_t *rgb, int w, int h, double vsec) {
     }
 }
 
+// a frame starts at machine time vsec: where its sound will be (g_start_to_sound)
+static void sound_lag(double vsec) {
+    if (!g_audio || g_fast || prof::now_ns() < g_settle_until || !g_machine_frames) return;
+    const double queued = SDL_GetAudioStreamQueued(g_audio) / 8 * 1000.0 / (g_rate * g_ratio);
+    const double behind = std::max(0.0, (vsec - (double)g_machine_frames / g_rate) * 1000.0 / g_ratio);
+    g_start_to_sound.add(queued + behind, behind);
+}
+
 bool window_next(double vsec) {
     const bool sync = g_sync;
     poll();
@@ -985,6 +1013,7 @@ bool window_next(double vsec) {
         pacing::pump();
         steer_audio();
         g_frame_start_ns = prof::now_ns();
+        sound_lag(vsec);
         return !g_quit;
     }
     if (g_audio && g_ratio != 1.0) SDL_SetAudioStreamFrequencyRatio(g_audio, 1.0f), g_ratio = 1.0;
@@ -1001,10 +1030,12 @@ bool window_next(double vsec) {
         prof::g_wait_ticks += prof::ticks() - w0;
         poll();
         g_frame_start_ns = g_last_push_end = prof::now_ns();   // the wait isn't host work
+        sound_lag(vsec);
         return !g_quit;
     }
     if (g_audio) {              // audio paces time (audio_push)
         g_frame_start_ns = prof::now_ns();
+        sound_lag(vsec);
         return true;
     }
 
@@ -1039,6 +1070,7 @@ bool g_log_stalls = getenv("HK_LOG_STALLS") != nullptr;
 
 // One chunk to the device, with pacing, underrun accounting and input polling.
 void push_chunk(const float *lr, int frames) {
+    g_machine_frames += (uint64_t)frames;
     if (g_fast) {               // fast-forward: no pacing, and the time isn't a stall
         poll();
         g_last_push_end = 0;
@@ -1170,6 +1202,14 @@ std::string audio_describe() {
             snprintf(b, sizeof b, ", each picture held to %.1f ms after its frame's start", g_frame_budget.budget / 1e6);
             out += b;
         }
+    }
+    if (const StartToSound &l = g_start_to_sound; l.n) {
+        snprintf(b, sizeof b,
+                 "\naudio: from a frame starting (the controls read) to that moment's sound entering the device: mean "
+                 "%.1f ms, p50 %.1f, p99 %.1f; of it, the sound handed on behind the machine: mean %.1f, worst %.1f "
+                 "(the device's buffer comes on top)",
+                 l.sum / (double)l.n, l.percentile(0.5), l.percentile(0.99), l.behind_sum / (double)l.n, l.behind_max);
+        out += b;
     }
     return out;
 }
