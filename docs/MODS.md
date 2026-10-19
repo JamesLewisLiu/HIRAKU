@@ -98,6 +98,11 @@ an increment patched to +0 there advances once per cabinet frame at any rate. Pa
 in place and taken out between frames (the Python core clears the EE recompiler's blocks over
 them each time).
 
+Above 90 Hz the Python core hands over the previous vsync's picture (as `--picture-overlap`), so
+the PS2's GS draws while its EE runs on: waiting for each vsync's own picture took 2.4 ms of a
+4.2 ms frame at 240 Hz (the owner's PC; frames ran late and the sound broke up), and the frame
+of latency it costs is 4 ms there, not 17. At the cabinet's rate it waits again as before.
+
 Display pacing follows the change: its smoothed estimate of the game's rate takes a jump of more
 than 5 % at once (smoothed, after 240 -> 60 Hz the sound played at a quarter of its speed for
 a while and queued seconds), and a sound queue grown far past its target is cut back at once

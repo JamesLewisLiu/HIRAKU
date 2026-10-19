@@ -429,7 +429,7 @@ public:
         if (name == "--pcsx2-log") { pcsx2_log_ = true; return true; }
         if (name == "--no-picture") { no_picture_ = true; return true; }
         if (name == "--bare-board") { bare_board_ = true; return true; }
-        if (name == "--picture-overlap") { picture_now_ = false; return true; }
+        if (name == "--picture-overlap") { picture_now_ = picture_now_user_ = want_picture_now_ = false; return true; }
         if (name == "--interlaced") { full_frames_ = false; return true; }
         if (name == "--fill-screen") { fill_screen_ = true; return true; }
         if (name == "--lan-host") { lan_where_ = value(); lan_host_ = true; return true; }
@@ -704,8 +704,16 @@ public:
     void set_on_fatal(std::function<void()> f) override { on_fatal_ = std::move(f); }
 
     [[noreturn]] void run() override {
-        if (picture_now_) Hiraku::vsync_posted = [] { self_->on_vsync(); };
-        else Hiraku::vsync_cpu = [] { self_->on_vsync(); };
+        // each vsync handed over once: at its post to the GS (its own picture), or at the CPU's
+        // vsync (the previous one's: --picture-overlap, or a [[rate]] above 90 Hz). The choice for
+        // a vsync is made at its first hook, the CPU's
+        Hiraku::vsync_cpu = [] {
+            self_->picture_now_ = self_->want_picture_now_;
+            if (!self_->picture_now_) self_->on_vsync();
+        };
+        Hiraku::vsync_posted = [] {
+            if (self_->picture_now_) self_->on_vsync();
+        };
         Hiraku::audio_sample = [](float l, float r) {
             self_->audio_.push_back(l);
             self_->audio_.push_back(r);
@@ -839,6 +847,10 @@ public:
     // applied in the frame hook, on the emulator's side, at the next vsync
     bool set_vsync_rate(double hz) override {
         want_rate_ = hz > 0 ? hz : Pcsx2Config::GSOptions::DEFAULT_FRAME_RATE_NTSC;
+        // above 90 Hz the GS overlaps the EE (the previous vsync's picture handed over): waiting
+        // for each vsync's own took 2.4 ms of a 4.2 ms frame at 240 Hz (the owner's PC, the sound
+        // breaking up when frames ran late), and the frame of latency it costs is 4 ms there
+        want_picture_now_ = picture_now_user_ && want_rate_ <= 90;
         return true;
     }
     // a mod's patch (host/mods.h): the EE recompiler's blocks over it go (PCSX2 also notices a
@@ -1370,6 +1382,7 @@ private:
     }
     GSRendererType renderer_ = GSRendererType::SW;
     bool interp_ = false, pcsx2_log_ = false, no_picture_ = false, picture_now_ = true, autoplay_ = false;
+    bool picture_now_user_ = true, want_picture_now_ = true;   // --picture-overlap's choice; the next vsync's
     bool full_frames_ = true, fill_screen_ = false;
     double cover_w_ = 1.0, cover_h_ = 1.0;   // display_cover() of pic_
     bool python2_ = false;   // a Konami Python 2 (write_py2)
