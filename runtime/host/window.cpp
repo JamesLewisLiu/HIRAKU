@@ -73,6 +73,8 @@ bool g_fast = false;              // Tab held: run as fast as possible (audio is
 int g_device_frames = 0;
 bool g_quit = false;
 bool g_display_sync = true;       // display pacing (pacing.h)
+bool g_smooth_motion = false;     // --smooth-motion: the core's in-between pictures on the frame's other refreshes
+uint64_t g_in_between = 0;        // how many it showed (the exit report)
 double g_ratio = 1.0;             // the audio stream's frequency ratio: the game's speed, steered
 // Display sync off, and the core hands its sound on once per frame (Core::audio_per_frame): the
 // window waits for the sound after showing a frame, before the next one runs (window_frame), and
@@ -189,6 +191,7 @@ void window_set_picture(const std::string &mode, const std::string &shaders_dir,
 }
 
 void window_set_display_sync(bool on) { g_display_sync = on; }
+void window_set_smooth_motion(bool on) { g_smooth_motion = on; }
 
 void window_set_audio_output(const std::string &device, int frames, bool exclusive) {
     g_audio_device = device;
@@ -815,7 +818,25 @@ void window_present(const uint32_t *rgb, int w, int h, double vsec) {
         if (!sync) pacing::observe();
         SDL_GL_SwapWindow(g_win);
         g_start_to_picture.add(g_frame_start_ns);
-        if (sync) pacing::committed();
+        // --smooth-motion: the frame's other refreshes each with a picture of its own, the core's
+        // in-between one (what moves further along its move), instead of the frame held
+        const int k = sync ? pacing::refreshes_per_frame() : 1;
+        int bw = w, bh = h;
+        const uint32_t *between = g_smooth_motion && !g_split && k > 1 && pacing::can_fill_refreshes()
+                                      ? core().render_between(1.0 / k, bw, bh) : nullptr;
+        if (sync) pacing::committed(between == nullptr);
+        for (int i = 1; between && i < k; i++) {
+            if (i > 1 && !(between = core().render_between((double)i / k, bw, bh))) between = rgb;
+            picture::draw(between, bw, bh, (ww - vw) / 2, (wh - vh) / 2, vw, vh, ww, wh, g_mode);
+            if (notice::Banner b; notice::banner(b)) {
+                int bx, by, bw2, bh2;
+                place_banner(b, ww, wh, bx, by, bw2, bh2);
+                picture::overlay(b.pixels->data(), b.w, b.h, bx, by, bw2, bh2, b.alpha, ww, wh);
+            }
+            pacing::commit_extra();
+            SDL_GL_SwapWindow(g_win);
+            g_in_between++;
+        }
         if (g_split) present_second(g_half[1].data(), w, h, frame_aspect);
         if (shown != g_shown) {
             g_shown = shown;
@@ -1080,6 +1101,7 @@ std::string audio_describe() {
                  (unsigned long long)p.hist[5]);
     }
     std::string out = std::string(b) + "\n" + pacing::describe();
+    if (g_smooth_motion) out += "\nvideo: smooth motion: " + std::to_string(g_in_between) + " in-between pictures shown";
     if (std::string sc = pacing::scanout_describe(); !sc.empty()) out += "\n" + sc;
     if (const StartToPicture &l = g_start_to_picture; l.n) {
         snprintf(b, sizeof b,

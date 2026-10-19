@@ -6,6 +6,7 @@
 #include "board.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdlib>
 #include <cstdio>
 #include <cstring>
@@ -59,6 +60,10 @@ bool g_hold4 = false, g_hold1 = false;
 uint64_t g_cycles = 0;          // CPU clocks at the start of the current m68k_execute
 bool g_in_execute = false;
 uint64_t g_frame = 0;
+constexpr uint64_t VBLANK_FLOOR = 2 * 34 * 660;   // the shortest frame set_frame_rate gives: twice the vblank
+uint64_t g_frame_start = 0;               // the CPU cycle the frame began at
+uint64_t g_frame_cycles = FRAME_CYCLES;   // its length (set_frame_rate)
+uint64_t g_want_frame_cycles = FRAME_CYCLES;
 FrameHook g_frame_hook;
 PresentHook g_present_hook;
 AudioSink g_audio;
@@ -66,6 +71,13 @@ Stats g_stats;
 std::vector<uint8_t> g_lamps;
 uint64_t g_lamp_changes = 0;
 std::vector<uint32_t> g_screen(SCREEN_W * SCREEN_H);
+std::vector<uint8_t> g_shown_objram, g_prev_objram;   // the sprite lists of the last two frames
+std::vector<uint32_t> g_between(SCREEN_W * SCREEN_H);  // render_between()'s picture
+// the sprite list the picture just shown was drawn from, and the one before (render_between())
+void keep_shown_sprites() {
+    g_prev_objram.swap(g_shown_objram);
+    g_shown_objram = g_objram;
+}
 
 // sound: both chips render at 48 kHz up to the present on every access
 uint64_t g_snd_done = 0;        // 48 kHz samples rendered so far
@@ -784,16 +796,20 @@ void run() {
     // any case, so a run with the window goes as one without.
     constexpr uint64_t VBLANK_CYCLES = 34 * 660;
     for (;;) {
-        run_until((g_frame + 1) * FRAME_CYCLES);
+        run_until(g_frame_start + g_frame_cycles);
+        g_frame_start += g_frame_cycles;
+        g_frame_cycles = g_want_frame_cycles;   // a new rate from this frame on
         g_frame++;
         vb_interrupt();
         screen_update();
+        if (!g_present_hook) keep_shown_sprites();
         sound_flush();
         if (g_frame_hook) g_frame_hook(g_frame, g_screen.data(), SCREEN_W, SCREEN_H);
         hk_dj_itrace_frame(g_frame);
-        run_until(g_frame * FRAME_CYCLES + VBLANK_CYCLES);
+        run_until(g_frame_start + VBLANK_CYCLES);
         if (g_present_hook) {
             screen_update();
+            keep_shown_sprites();
             g_present_hook(g_screen.data(), SCREEN_W, SCREEN_H);
         }
     }
@@ -801,6 +817,53 @@ void run() {
 
 uint64_t cycles() { return now(); }
 uint64_t frame_count() { return g_frame; }
+
+// In-between pictures (a display faster than the board): the last frame, each sprite that moved
+// since the frame before drawn `t` of a frame further along that move. The game rebuilds its
+// sprite list every frame, slots in another order (pop'n music: a note's slot changes as notes
+// come and go), so a sprite is matched to the nearest one of the frame before with the same tile,
+// within 16 pixels each way; one without a match, or that hasn't moved, stays where it is. The
+// tilemaps are as they are. A sprite that stops or turns overshoots for less than a frame.
+const uint32_t *render_between(double t) {
+    if (g_shown_objram.size() != g_objram.size() || g_prev_objram.size() != g_objram.size()) return nullptr;
+    struct Spr { int code, x, y; };
+    auto list = [](const std::vector<uint8_t> &ram) {
+        std::vector<Spr> v(128, Spr{-1, 0, 0});
+        for (int i = 0; i < 128; i++) {
+            const uint32_t w0 = be32(ram, (uint32_t)i * 16), w1 = be32(ram, (uint32_t)i * 16 + 4);
+            if ((w0 & 0x00008000) && !(w0 & 0x80000000)) v[i] = {(int)(w0 >> 16), (int16_t)(w1 & 0xffff), (int16_t)(w1 >> 16)};
+        }
+        return v;
+    };
+    const std::vector<Spr> cur = list(g_shown_objram), prev = list(g_prev_objram);
+    std::vector<uint8_t> moved = g_shown_objram;
+    std::vector<bool> taken(128, false);
+    for (int i = 0; i < 128; i++) {
+        const Spr &c = cur[i];
+        if (c.code < 0) continue;
+        int best = -1, best_d = 33;
+        for (int j = 0; j < 128; j++) {
+            const Spr &p = prev[j];
+            if (taken[j] || p.code != c.code || std::abs(c.x - p.x) > 16 || std::abs(c.y - p.y) > 16) continue;
+            const int d = std::abs(c.x - p.x) + std::abs(c.y - p.y);
+            if (d < best_d) best = j, best_d = d;
+        }
+        if (best < 0 || best_d == 0) continue;
+        taken[best] = true;
+        const int x = c.x + (int)std::lround((c.x - prev[best].x) * t), y = c.y + (int)std::lround((c.y - prev[best].y) * t);
+        put_be32(moved, (uint32_t)i * 16 + 4, (uint32_t)(uint16_t)x | (uint32_t)(uint16_t)y << 16, 0xffffffffu);
+    }
+    // drawn as screen_update() draws, into g_between, the machine's own state untouched
+    g_objram.swap(moved);
+    g_screen.swap(g_between);
+    screen_update();
+    g_screen.swap(g_between);
+    g_objram.swap(moved);
+    return g_between.data();
+}
+void set_frame_rate(double hz) {
+    g_want_frame_cycles = hz > 0 ? std::max<uint64_t>(VBLANK_FLOOR, (uint64_t)(CPU_HZ / hz + 0.5)) : FRAME_CYCLES;
+}
 const std::string &family() { return g_cfg.family; }
 const Stats &stats() { return g_stats; }
 const std::vector<uint8_t> &lamp_state() { return g_lamps; }

@@ -79,6 +79,12 @@ public:
     // own rate again. The CPUs keep their clocks: the game gets more frames a second, each with
     // less time. false where the core can't
     virtual bool set_vsync_rate(double hz) { (void)hz; return false; }
+    // The machine's own vsync rate (the cabinet's ticks, host/mods.h between_ticks)
+    virtual double native_rate() const { return 59.94; }
+    // Between the machine's frames, for a display faster than the game (--smooth-motion): the last
+    // frame with what moves drawn `t` (0 < t < 1) of a frame further along its move, w x h.
+    // nullptr: the core can't (or not yet)
+    virtual const uint32_t *render_between(double t, int &w, int &h) { (void)t, (void)w, (void)h; return nullptr; }
     virtual uint64_t frame_count() const = 0;
 
     // Inputs by MAME name ("P1 Button 3", "Coin 1", "TURNTABLE_P1/Turntable"):

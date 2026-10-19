@@ -393,15 +393,36 @@ void commit() {
 #endif
 }
 
-void committed() {
+void committed(bool hold) {
 #ifdef HK_WITH_WAYLAND
     if (!g_fifo) return;
-    for (int i = 1; i < g_k; i++) {   // the frame's other refreshes: empty updates, one refresh each
+    for (int i = 1; hold && i < g_k; i++) {   // the frame's other refreshes: empty updates, one refresh each
         wp_fifo_v1_set_barrier(g_fifo);
         wp_fifo_v1_wait_barrier(g_fifo);
         wl_surface_commit(g_surface);
     }
     wl_display_flush(g_wd);
+#endif
+}
+
+int refreshes_per_frame() { return g_active ? g_k : 1; }
+
+bool can_fill_refreshes() {
+#ifdef HK_WITH_WAYLAND
+    return g_active && g_fifo != nullptr;
+#else
+    return false;
+#endif
+}
+
+// before a picture of the frame's own for one of its other refreshes: shown no sooner than the
+// refresh after the last one's (the swap that follows commits it)
+void commit_extra() {
+#ifdef HK_WITH_WAYLAND
+    if (g_fifo) {
+        wp_fifo_v1_set_barrier(g_fifo);
+        wp_fifo_v1_wait_barrier(g_fifo);
+    }
 #endif
 }
 

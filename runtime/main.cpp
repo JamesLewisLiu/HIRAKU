@@ -23,6 +23,10 @@
 //                       whole number of refreshes, running the game at the display's rate (up to
 //                       3 % off: pop'n 2.6 % fast at 60 Hz); off: the game's exact speed, frames
 //                       shown as they come (for variable-refresh displays). runtime/host/pacing.h
+//     --smooth-motion   with display sync on a display faster than the game (120, 144, 240 Hz):
+//                       the refreshes between two frames show what moves further along its move
+//                       (the core's in-between pictures: DJ Main's sprites) instead of the frame
+//                       held; the game runs as before. Needs the compositor's fifo-v1 (KWin 6.7)
 //     --macro NAME[@F]  run one of the game's code macros (games/<game>/macros.txt) at frame F, or
 //                       at its own `at` frame (power-on codes); repeatable. In the window,
 //                       Ctrl+1..9 types the 1st..9th macro
@@ -239,7 +243,7 @@ int main(int argc, char **argv) {
     std::string picture_mode = "off";
     std::vector<std::string> picture_config;
     std::vector<std::string> macro_specs;
-    bool display_sync = true;
+    bool display_sync = true, smooth_motion = false;
     bool nvram_given = false;
     int audio_ms = 8, audio_buffer = 0;
     std::string audio_device;
@@ -275,6 +279,7 @@ int main(int argc, char **argv) {
         else if (a == "--picture-config") picture_config.push_back(val());
         else if (a == "--macro") macro_specs.push_back(val());
         else if (a == "--display-sync") display_sync = val() != "off";
+        else if (a == "--smooth-motion") smooth_motion = true;
         else if (a == "--nvram") { nvram_dir = val(); nvram_given = true; }
         else if (a == "--audio-ms") audio_ms = std::stoi(val());
         else if (a == "--audio-device") audio_device = val();
@@ -391,6 +396,7 @@ int main(int argc, char **argv) {
 #ifdef HK_WITH_SDL
     host::window_set_picture(picture_mode, opt.root + "/shaders", picture_config);
     host::window_set_display_sync(display_sync);
+    host::window_set_smooth_motion(smooth_motion);
     host::window_set_audio_output(audio_device, audio_buffer, audio_exclusive);
     host::window_set_audio_asio(audio_asio);
     host::window_set_volume(volume_db);
@@ -481,6 +487,11 @@ int main(int argc, char **argv) {
             char name[64];
             snprintf(name, sizeof name, "/frame%06llu.ppm", (unsigned long long)f);
             write_ppm(out + name, rgb, w, h);
+            int bw = w, bh = h;   // and with --smooth-motion, the picture halfway to the next frame
+            if (const uint32_t *b = smooth_motion ? machine.render_between(0.5, bw, bh) : nullptr) {
+                snprintf(name, sizeof name, "/frame%06llu-half.ppm", (unsigned long long)f);
+                write_ppm(out + name, b, bw, bh);
+            }
         }
         if (frames && f >= frames) {
             machine.shutdown();

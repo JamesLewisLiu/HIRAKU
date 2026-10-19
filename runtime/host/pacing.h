@@ -54,7 +54,12 @@ double speed();
 // committed() right after it.
 void wait_commit();
 void commit();
-void committed();
+void committed(bool hold = true);   // hold: the frame's other refreshes empty (it stays up)
+// Display pacing: refreshes per frame (k), and whether each refresh can be given a picture of
+// its own (fifo-v1: commit_extra() before each of the frame's k - 1 others, then committed(false))
+int refreshes_per_frame();
+bool can_fill_refreshes();
+void commit_extra();
 // Display pacing, after the swap: wait until the next frame's burst should start.
 void wait_next();
 // Read the compositor's presentation events (after SDL's event pump).

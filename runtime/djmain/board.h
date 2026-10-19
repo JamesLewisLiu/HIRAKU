@@ -44,6 +44,12 @@ void set_audio_sink(AudioSink s);
 
 uint64_t cycles();                     // CPU clocks since power-on
 uint64_t frame_count();
+// A mod's [[rate]] (host/mods.h): frames (the vblank interrupt) at hz, from the next frame on; 0:
+// the board's own 57.9962 Hz. The CPU keeps its clock: each frame has fewer cycles
+void set_frame_rate(double hz);
+// A picture between the last frame and the next (0 < t < 1): what moved drawn further along its
+// move (Core::render_between). nullptr before there are two frames to go by
+const uint32_t *render_between(double t);
 const std::string &family();
 bool set_input(const std::string &name, int value);
 void turntable_add(int player, int delta);

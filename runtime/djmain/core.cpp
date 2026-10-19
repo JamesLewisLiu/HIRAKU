@@ -91,6 +91,12 @@ public:
     double seconds() const override { return (double)dj::cycles() / dj::CPU_HZ; }
     const uint8_t *mem(uint32_t addr, uint32_t len) const override { return dj::mem(addr, len); }
     uint64_t frame_count() const override { return dj::frame_count(); }
+    bool set_vsync_rate(double hz) override { return dj::set_frame_rate(hz), true; }
+    double native_rate() const override { return (double)dj::CPU_HZ / dj::FRAME_CYCLES; }
+    const uint32_t *render_between(double t, int &w, int &h) override {
+        w = dj::SCREEN_W, h = dj::SCREEN_H;
+        return dj::render_between(t);
+    }
 
     bool set_input(const std::string &name, int value) override { return dj::set_input(name, value); }
     int script_button_delay() const override { return 1; }

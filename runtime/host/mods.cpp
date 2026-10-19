@@ -102,12 +102,12 @@ struct Rate {
     double hz = 0, now = 0;   // as asked; as set
     uint32_t address = 0, last = 0;
     int changed = 0, still = 0;   // frames in a row the word changed, didn't
+    bool always = false;          // no while_changing: from the first frame on
     bool gated = false;           // while_equal: and only while this word holds `value`
     uint32_t gate = 0, value = 0;
     bool on = false, refused = false;
 };
 
-constexpr double kCabinetHz = 59.94;
 constexpr double kDisplayFallbackHz = 119.88;   // hz = "display" with no window, or not known
 double g_display_hz = 0;
 // Whether the coming frame ends a cabinet frame's worth of time (1/59.94 s): between_ticks
@@ -335,7 +335,8 @@ bool load(const std::vector<std::string> &dirs, const std::string &game, const s
                         r.hz = real("hz");
                         if (r.hz < 30 || r.hz > 1000) fail("'hz' is between 30 and 1000");
                     }
-                    r.address = (uint32_t)num("while_changing");
+                    if (t.values.count("while_changing")) r.address = (uint32_t)num("while_changing");
+                    else r.always = true;
                     if (t.values.count("while_equal") || t.values.count("value")) {
                         r.gated = true;
                         r.gate = (uint32_t)num("while_equal");
@@ -386,13 +387,17 @@ void display_rate(double hz) { g_display_hz = hz; }
 void frame() {
     for (Rate &r : g_rates) {
         if (r.refused) continue;
-        const uint8_t *m = core().mem(r.address, 4);
-        if (!m) continue;
-        uint32_t v;
-        memcpy(&v, m, 4);
-        if (v != r.last) r.changed++, r.still = 0;
-        else r.still++, r.changed = 0;
-        r.last = v;
+        if (r.always) {
+            r.changed = 2, r.still = 0;
+        } else {
+            const uint8_t *m = core().mem(r.address, 4);
+            if (!m) continue;
+            uint32_t v;
+            memcpy(&v, m, 4);
+            if (v != r.last) r.changed++, r.still = 0;
+            else r.still++, r.changed = 0;
+            r.last = v;
+        }
         // two frames in a row either way, so a word that changes once (a load) doesn't count; and
         // with while_equal, only while that word holds the value (off at once when it doesn't)
         bool in_state = true;
@@ -422,7 +427,7 @@ void frame() {
         if (r.on) rate_on = true, rate_hz = r.now;
     // the coming frame: a cabinet tick when the time owed reaches a cabinet frame
     if (rate_on) {
-        g_owed += kCabinetHz / rate_hz;
+        g_owed += core().native_rate() / rate_hz;
         g_tick = g_owed >= 1 - 1e-9;
         if (g_tick) g_owed -= 1;
     } else {
