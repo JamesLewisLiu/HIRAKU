@@ -1382,8 +1382,12 @@ queue at its target). The emulated machine is unchanged.
   The beatmania games (2026-10-19): DJ Main's and beatmania III's notes move as sprites/objects
   (checked on 1st mix and beatmania III's practice stage); beatmania IIDX (Twinkle) through the
   PlayStation GPU's queue (`hk_between`, hiraku-edits.py): the shown frame's primitives moved on
-  and drawn again into VRAM, composed, the rows put back; about 0.6 ms a picture. The 573's core
-  only needs its `render_between` (same GPU) for DDR, DrumMania, GuitarFreaks.
+  and drawn again into VRAM, composed, the rows put back; about 0.6 ms a picture.
+  System 573 (2026-10-20): its `render_between`, and the GPU's frames now go from flip to flip
+  (DDR 2ndMIX runs at 30 frames a second), uploads since the frame on show undone while it's
+  drawn again (DDR's arrows flash by palette), and only what moves whole and is a sprite,
+  rectangle or level line carried on (DDR's 3D dancer came apart). Checked on DDR 2ndMIX's and
+  GuitarFreaks 2ndMIX's play cases.
 
 ## 21. Twinkle roadmap (M15, written 2026-10-13)
 

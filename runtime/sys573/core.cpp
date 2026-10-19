@@ -190,6 +190,7 @@ public:
     void debug_line(uint64_t f) override { printf("f%llu pc %08x\n", (unsigned long long)f, k573::pc()); }
 
     double seconds() const override { return k573::seconds(); }
+    const uint32_t *render_between(double t, int &w, int &h) override { return k573::render_between(t, w, h); }
     const uint8_t *mem(uint32_t addr, uint32_t len) const override { return k573::mem(addr, len); }
     uint64_t frame_count() const override { return k573::frame_count(); }
     bool set_input(const std::string &name, int value) override { return k573::set_input(name, value); }

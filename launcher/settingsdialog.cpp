@@ -170,7 +170,7 @@ SettingsDialog::SettingsDialog(QWidget *parent) : QDialog(parent) {
                               "refreshes, and the game runs at the display's rate (pop'n 2.6 % faster, its sound "
                               "with it). Off: the exact speed, for a variable-refresh (FreeSync, G-Sync) display.");
     fv->addRow("", m_displaySync);
-    m_smoothMotion = new QCheckBox("Smooth motion (DJ Main, Firebeat and Twinkle games)");
+    m_smoothMotion = new QCheckBox("Smooth motion (DJ Main, Firebeat, Twinkle and System 573 games)");
     m_smoothMotion->setChecked(s.value("video/smoothMotion", false).toBool());
     m_smoothMotion->setToolTip("With smooth frames on: the game at its exact speed on any display (60, 144, 240 Hz), "
                                "and every refresh a picture of its own moment, the notes and other moving objects "

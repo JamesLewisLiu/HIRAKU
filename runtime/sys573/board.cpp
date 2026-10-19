@@ -1054,6 +1054,16 @@ void set_present_hook(PresentHook h) {
 }
 void set_audio_sink(AudioSink s) { g.audio_sink = std::move(s); }
 
+// The GPU draws the frame on show again with what moves carried on (psxgpu_device::hk_between)
+const u32 *render_between(double t, int &w, int &h) {
+    static bitmap_rgb32 bm;
+    static std::vector<u32> out;
+    screen_device &screen = *g.state->m_screen;
+    if (!g.state->m_gpu->hk_between(t, screen, bm)) return nullptr;
+    picture(screen, bm, out, w, h);
+    return out.data();
+}
+
 // --fine-sound (Config::fine_sound): the sound for the host every millisecond of machine time.
 // MAME brings its streams up to date 50 times a second (and when the CPU touches a sound chip), so
 // by default the host gets the sound in 20 ms pieces: the controls are read once per piece and

@@ -301,18 +301,34 @@ private:
 	std::deque<std::pair<uint64_t, hk_area>> m_hk_pending;
 	int32_t m_hk_rows = 0; // VRAM's height (rows beyond it alias)
 
-	// HIRAKU: in-between pictures (Core::render_between, --smooth-motion). Once asked for, each
-	// frame's queued items are kept (each holds all it draws from); hk_between() draws the frame on
-	// show again, what moved carried on `t` of a frame along its last move (matched with the frame
-	// before's), into VRAM, composes it into `bitmap` with update_screen(), and puts VRAM back.
-	// false: nothing to draw from yet.
+	// HIRAKU: in-between pictures (Core::render_between, --smooth-motion). Once asked for, the
+	// queued items are kept (each holds all it draws from), a frame's from one flip of the display
+	// to the next (a write of a new display start: the game shows what it drew since its last
+	// flip); a game that never flips (it draws where it shows) has a frame each VBLANK. hk_between()
+	// draws the frame on show again, what moved whole carried on along its last move (matched with
+	// the frame before's), `t` of a VBLANK on from this one's (a game at 30 frames a second moves half
+	// a step a VBLANK), into VRAM, composes it into `bitmap` with update_screen(), and puts VRAM
+	// back. false: nothing to draw from yet.
 public:
 	bool hk_between( double t, screen_device &screen, bitmap_rgb32 &bitmap );
 private:
 	void hk_dispatch( raster &r, const uint32_t *item );
 	hk_area hk_item_area( const uint32_t *item ) const;
+	void hk_new_frame( uint32_t vblanks );
 	bool m_hk_keep = false;
 	std::vector<uint32_t> m_hk_drawing, m_hk_shown, m_hk_shown_before; // items, back to back
+	uint32_t m_hk_display = ~0u;    // the display start last written (x | y << 16)
+	uint32_t m_hk_vblanks = 0;      // VBLANKs since the last frame began to show
+	uint32_t m_hk_frame_vblanks = 1; // ... and how many the frame before it showed for
+	uint32_t m_hk_no_flip = 1000;   // VBLANKs since the last flip
+	// what the uploads (CPU-to-VRAM, MoveImage, fills) wrote over, kept by the drawing thread from the
+	// queue's position where the frame after the one on show begins: the textures and palettes that
+	// frame changes (the game prepares it while this one shows) put back while this one is drawn again
+	struct hk_undo { uint64_t at; hk_area a; std::vector<uint16_t> pixels; };
+	void hk_keep_undo( const uint32_t *item, uint64_t at );
+	std::atomic<bool> m_hk_undo_on{ false };
+	std::atomic<uint64_t> m_hk_frame_at{ 0 };
+	std::deque<hk_undo> m_hk_undo;
 
 	void psx_gpu_init( int n_gputype );
 	void gpu_reset();

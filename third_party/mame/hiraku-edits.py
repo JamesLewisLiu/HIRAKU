@@ -1337,18 +1337,34 @@ void psxgpu_device::raster::image( const uint32_t *p_data, uint32_t n_words )
 '''
 
 BETWEEN_H_DECL = '''
-	// HIRAKU: in-between pictures (Core::render_between, --smooth-motion). Once asked for, each
-	// frame's queued items are kept (each holds all it draws from); hk_between() draws the frame on
-	// show again, what moved carried on `t` of a frame along its last move (matched with the frame
-	// before's), into VRAM, composes it into `bitmap` with update_screen(), and puts VRAM back.
-	// false: nothing to draw from yet.
+	// HIRAKU: in-between pictures (Core::render_between, --smooth-motion). Once asked for, the
+	// queued items are kept (each holds all it draws from), a frame's from one flip of the display
+	// to the next (a write of a new display start: the game shows what it drew since its last
+	// flip); a game that never flips (it draws where it shows) has a frame each VBLANK. hk_between()
+	// draws the frame on show again, what moved whole carried on along its last move (matched with
+	// the frame before's), `t` of a VBLANK on from this one's (a game at 30 frames a second moves half
+	// a step a VBLANK), into VRAM, composes it into `bitmap` with update_screen(), and puts VRAM
+	// back. false: nothing to draw from yet.
 public:
 	bool hk_between( double t, screen_device &screen, bitmap_rgb32 &bitmap );
 private:
 	void hk_dispatch( raster &r, const uint32_t *item );
 	hk_area hk_item_area( const uint32_t *item ) const;
+	void hk_new_frame( uint32_t vblanks );
 	bool m_hk_keep = false;
 	std::vector<uint32_t> m_hk_drawing, m_hk_shown, m_hk_shown_before; // items, back to back
+	uint32_t m_hk_display = ~0u;    // the display start last written (x | y << 16)
+	uint32_t m_hk_vblanks = 0;      // VBLANKs since the last frame began to show
+	uint32_t m_hk_frame_vblanks = 1; // ... and how many the frame before it showed for
+	uint32_t m_hk_no_flip = 1000;   // VBLANKs since the last flip
+	// what the uploads (CPU-to-VRAM, MoveImage, fills) wrote over, kept by the drawing thread from the
+	// queue's position where the frame after the one on show begins: the textures and palettes that
+	// frame changes (the game prepares it while this one shows) put back while this one is drawn again
+	struct hk_undo { uint64_t at; hk_area a; std::vector<uint16_t> pixels; };
+	void hk_keep_undo( const uint32_t *item, uint64_t at );
+	std::atomic<bool> m_hk_undo_on{ false };
+	std::atomic<uint64_t> m_hk_frame_at{ 0 };
+	std::deque<hk_undo> m_hk_undo;
 '''
 
 
@@ -1413,17 +1429,63 @@ psxgpu_device::hk_area psxgpu_device::hk_item_area( const uint32_t *item ) const
 	}
 }
 
+// the items since the last frame are the frame on show now
+void psxgpu_device::hk_new_frame( uint32_t vblanks )
+{
+	m_hk_shown_before = std::move( m_hk_shown );
+	m_hk_shown = std::move( m_hk_drawing );
+	m_hk_drawing.clear();
+	m_hk_frame_vblanks = std::clamp<uint32_t>( vblanks, 1, 4 );
+	m_hk_vblanks = 0;
+	m_hk_frame_at.store( m_hk_write, std::memory_order_release );
+}
+
+// (the drawing thread) before an upload: what it writes over
+void psxgpu_device::hk_keep_undo( const uint32_t *item, uint64_t at )
+{
+	const uint64_t from = m_hk_frame_at.load( std::memory_order_acquire );
+	while( !m_hk_undo.empty() && m_hk_undo.front().at < from )
+		m_hk_undo.pop_front();
+	hk_undo u{ at, hk_item_area( item ), {} };
+	u.pixels.reserve( size_t( u.a.w ) * u.a.h );
+	for( int32_t y = 0; y < u.a.h; y++ )
+		for( int32_t x = 0; x < u.a.w; x++ )
+			u.pixels.push_back( m_hk_raster.p_p_vram[ ( u.a.y + y ) & 1023 ][ ( u.a.x + x ) & 1023 ] );
+	m_hk_undo.push_back( std::move( u ) );
+}
+
 bool psxgpu_device::hk_between( double t, screen_device &screen, bitmap_rgb32 &bitmap )
 {
 	if( !m_hk_keep )
 	{
 		m_hk_keep = true; // from now on
 		m_hk_drawing.clear();
+		m_hk_frame_at.store( m_hk_write );
+		m_hk_undo_on.store( true );
 		return false;
 	}
 	if( m_hk_shown.empty() || m_hk_shown_before.empty() )
 		return false;
 	hk_sync(); // VRAM as the queue leaves it, the worker idle
+	// the uploads since the frame on show undone, newest first (and done again at the end)
+	std::vector<std::pair<hk_area, std::vector<uint16_t>>> redo;
+	const uint64_t from = m_hk_frame_at.load();
+	for( auto u = m_hk_undo.rbegin(); u != m_hk_undo.rend() && u->at >= from; ++u )
+	{
+		std::vector<uint16_t> now;
+		now.reserve( u->pixels.size() );
+		size_t k = 0;
+		for( int32_t y = 0; y < u->a.h; y++ )
+			for( int32_t x = 0; x < u->a.w; x++ )
+			{
+				uint16_t &px = p_p_vram[ ( u->a.y + y ) & 1023 ][ ( u->a.x + x ) & 1023 ];
+				now.push_back( px );
+				px = u->pixels[ k++ ];
+			}
+		redo.emplace_back( u->a, std::move( now ) );
+	}
+	// how far on, in the frame's moves: a frame shown for two VBLANKs moves half its step a VBLANK
+	const double on = std::min( ( m_hk_vblanks + t ) / m_hk_frame_vblanks, 1.5 );
 
 	// where an item's vertices are in its packet (n_entry), and how many: none for what doesn't move
 	auto vertices = []( uint32_t op, int n_points, int *at ) {
@@ -1443,10 +1505,11 @@ bool psxgpu_device::hk_between( double t, screen_device &screen, bitmap_rgb32 &b
 		return n;
 	};
 
-	// Each primitive drawn is matched with the nearest of the frame before's with the same command
-	// and colour and at most one other word of its packet different (its size: a note clipped
-	// shorter going off the lane; its texture: an animated one), within 16 pixels, and carried on
-	// by that move
+	// Each primitive drawn is matched with the nearest of the frame before's (its first vertex, within
+	// 16 pixels) with the same command: a rectangle or sprite with the same colour and at most one
+	// other word of its packet different (its size: a note clipped shorter going off the lane; its
+	// texture: an animated one); a polygon or line with the same texture (a shaded one's colours
+	// change with its light).
 	std::vector<uint32_t> items = m_hk_shown;
 	std::vector<const uint32_t *> before;
 	for( size_t i = 0; i < m_hk_shown_before.size(); i += m_hk_shown_before[ i + 1 ] )
@@ -1460,37 +1523,87 @@ bool psxgpu_device::hk_between( double t, screen_device &screen, bitmap_rgb32 &b
 		if( n == 0 )
 			continue;
 		uint32_t *c = reinterpret_cast<draw_state *>( &item[ 2 ] )->m_packet.n_entry;
+		if( n > 1 )
+		{
+			// a polygon only if it's a rectangle on the screen's axes (a sprite drawn as a quad: an
+			// arrow, a note), a line only if it's level or upright (a bar line). A 3D model's
+			// polygons, each moving its own way, would come apart at their seams
+			int xs[ 4 ], ys[ 4 ], nx = 0, ny = 0;
+			for( int v = 0; v < n; v++ )
+			{
+				const int px = (int16_t)( c[ at[ v ] ] & 0xffff ), py = (int16_t)( c[ at[ v ] ] >> 16 );
+				if( std::find( xs, xs + nx, px ) == xs + nx ) xs[ nx++ ] = px;
+				if( std::find( ys, ys + ny, py ) == ys + ny ) ys[ ny++ ] = py;
+			}
+			if( n == 4 ? nx > 2 || ny > 2 : n == 2 ? nx > 1 && ny > 1 : true )
+				continue;
+		}
 		const int words = at[ n - 1 ] + 4 > 12 ? 12 : at[ n - 1 ] + 4; // the packet's words, and a few after
 		const int x = (int16_t)( c[ at[ 0 ] ] & 0xffff ), y = (int16_t)( c[ at[ 0 ] ] >> 16 );
-		int best = 1 << 30, dx = 0, dy = 0;
+		int best = 1 << 30;
+		const uint32_t *match = nullptr;
+		const uint32_t op = item[ 0 ] & 0xff;
+		const bool gouraud = op == HK_GouraudPolygon || op == HK_GouraudTexturedPolygon || op == HK_GouraudLine;
+		const bool textured = op == HK_FlatTexturedPolygon || op == HK_GouraudTexturedPolygon;
 		for( const uint32_t *b : before )
 		{
-			if( b[ 0 ] != item[ 0 ] )
+			if( b[ 0 ] != item[ 0 ] ) // the same primitive, with as many points
 				continue;
 			const uint32_t *p = packet( b );
-			if( p[ 0 ] != c[ 0 ] )
+			if( gouraud ? ( p[ 0 ] >> 24 ) != ( c[ 0 ] >> 24 ) : p[ 0 ] != c[ 0 ] )
 				continue;
 			int other = 0;
-			for( int w = 1, v = 0; w < words && other < 2; w++ )
+			if( n > 1 )
 			{
-				if( v < n && w == at[ v ] )
+				// polygons and lines: the same texture (each vertex's word after its coordinates);
+				// a shaded one's colours change with its light as a model moves
+				for( int v = 0; textured && v < n; v++ )
+					other += p[ at[ v ] + 1 ] != c[ at[ v ] + 1 ] ? 2 : 0;
+			}
+			else
+			{
+				for( int w = 1, v = 0; w < words && other < 2; w++ )
 				{
-					v++;
-					continue;
+					if( v < n && w == at[ v ] )
+					{
+						v++;
+						continue;
+					}
+					other += p[ w ] != c[ w ];
 				}
-				other += p[ w ] != c[ w ];
 			}
 			if( other > 1 )
 				continue;
 			const int bx = (int16_t)( p[ at[ 0 ] ] & 0xffff ), by = (int16_t)( p[ at[ 0 ] ] >> 16 );
-			const int d = std::abs( x - bx ) + std::abs( y - by ) + 8 * other;
-			if( std::abs( x - bx ) > 16 || std::abs( y - by ) > 16 || d >= best )
+			if( std::abs( x - bx ) > 16 || std::abs( y - by ) > 16 )
 				continue;
-			best = d, dx = x - bx, dy = y - by;
+			// the one whose every vertex moved least (a model's polygons crowd each other; the same
+			// polygon keeps its shape), a shaded one's colours closest
+			int d = 8 * other;
+			for( int v = 0; v < n && d < best; v++ )
+			{
+				d += std::abs( (int16_t)( c[ at[ v ] ] & 0xffff ) - (int16_t)( p[ at[ v ] ] & 0xffff ) );
+				d += std::abs( (int16_t)( c[ at[ v ] ] >> 16 ) - (int16_t)( p[ at[ v ] ] >> 16 ) );
+				for( int k = 0; gouraud && k < 24; k += 8 )
+					d += std::abs( int( ( c[ at[ v ] - 1 ] >> k ) & 0xff ) - int( ( p[ at[ v ] - 1 ] >> k ) & 0xff ) ) / 16;
+			}
+			if( d >= best )
+				continue;
+			best = d, match = p;
 		}
-		if( dx == 0 && dy == 0 )
+		if( match == nullptr )
 			continue;
-		const int mx = (int)std::lround( dx * t ), my = (int)std::lround( dy * t );
+		// carried on only if it moved whole, every vertex by the same step (within a pixel): what
+		// changes shape (grows, turns) stays as the game drew it
+		const int dx = (int16_t)( c[ at[ 0 ] ] & 0xffff ) - (int16_t)( match[ at[ 0 ] ] & 0xffff );
+		const int dy = (int16_t)( c[ at[ 0 ] ] >> 16 ) - (int16_t)( match[ at[ 0 ] ] >> 16 );
+		bool whole = dx != 0 || dy != 0;
+		for( int v = 1; v < n && whole; v++ )
+			whole = std::abs( (int16_t)( c[ at[ v ] ] & 0xffff ) - (int16_t)( match[ at[ v ] ] & 0xffff ) - dx ) <= 1 &&
+				std::abs( (int16_t)( c[ at[ v ] ] >> 16 ) - (int16_t)( match[ at[ v ] ] >> 16 ) - dy ) <= 1;
+		if( !whole )
+			continue;
+		const int mx = (int)std::lround( dx * on ), my = (int)std::lround( dy * on );
 		for( int v = 0; v < n; v++ )
 		{
 			const uint32_t w = c[ at[ v ] ];
@@ -1524,6 +1637,13 @@ bool psxgpu_device::hk_between( double t, screen_device &screen, bitmap_rgb32 &b
 	update_screen( screen, bitmap, screen.visible_area() );
 	for( size_t i = rows.size(); i-- > 0; ) // in reverse: rows beyond VRAM's height alias
 		std::copy_n( &pixels[ i * 1024 ], 1024, p_p_vram[ rows[ i ] ] );
+	for( auto r = redo.rbegin(); r != redo.rend(); ++r ) // oldest first
+	{
+		size_t k = 0;
+		for( int32_t y = 0; y < r->first.h; y++ )
+			for( int32_t x = 0; x < r->first.w; x++ )
+				p_p_vram[ ( r->first.y + y ) & 1023 ][ ( r->first.x + x ) & 1023 ] = r->second[ k++ ];
+	}
 	return true;
 }
 '''
@@ -1536,12 +1656,18 @@ def video_psx_between_cpp(s):
 		switch( op )
 ''', '''		tail += item[ 1 ];
 		m_hk_tail.store( tail, std::memory_order_seq_cst );''', '''		if( op != HK_SKIP )
+		{
+			if( m_hk_undo_on.load( std::memory_order_relaxed ) && ( op == HK_IMAGE || op == HK_MoveImage || op == HK_FrameBufferRectangleDraw ) )
+				hk_keep_undo( item, tail ); // in-between pictures
 			hk_dispatch( r, item );
+		}
 ''', 'video/psx.cpp between hk_run')
     s = edit(s, '''		const int n_points = item[ 0 ] >> 8;
 		if( op != HK_SKIP )
-			hk_dispatch''', '''		if( op != HK_SKIP )
-			hk_dispatch''', 'video/psx.cpp between hk_run n_points')
+		{
+''', '''		if( op != HK_SKIP )
+		{
+''', 'video/psx.cpp between hk_run n_points')
     # hk_publish's rectangle from hk_item_area()
     s = cut(s, '''		const draw_state &d = *reinterpret_cast<const draw_state *>( &item[ 2 ] );
 		const PACKET &p = d.m_packet;
@@ -1558,14 +1684,25 @@ def video_psx_between_cpp(s):
 ''', 'video/psx.cpp between keep')
     # a new frame at VBLANK start, which the game's VBLANK interrupt then flips to show
     s = edit(s, '''		m_vblank_handler(1);
-''', '''		if( m_hk_keep && !m_hk_drawing.empty() ) // HIRAKU: in-between pictures, a new frame
+''', '''		if( m_hk_keep ) // HIRAKU: in-between pictures
 		{
-			m_hk_shown_before = std::move( m_hk_shown );
-			m_hk_shown = std::move( m_hk_drawing );
-			m_hk_drawing.clear();
+			m_hk_vblanks++;
+			if( ++m_hk_no_flip > 16 && !m_hk_drawing.empty() ) // a game that doesn't flip: a frame a VBLANK
+				hk_new_frame( 1 );
 		}
 		m_vblank_handler(1);
 ''', 'video/psx.cpp between vblank')
+    # a flip: the display start changed
+    s = edit(s, """			LOGMASKED(LOG_WRITE, "%s: start of display area %d %d\\n", machine().describe_context(), m_n_displaystartx, n_displaystarty);
+""", """			LOGMASKED(LOG_WRITE, "%s: start of display area %d %d\\n", machine().describe_context(), m_n_displaystartx, n_displaystarty);
+			if( m_hk_keep && ( m_n_displaystartx | n_displaystarty << 16 ) != m_hk_display ) // HIRAKU: in-between pictures
+			{
+				m_hk_display = m_n_displaystartx | n_displaystarty << 16;
+				if( !m_hk_drawing.empty() )
+					hk_new_frame( m_hk_vblanks );
+				m_hk_no_flip = 0;
+			}
+""", 'video/psx.cpp between flip')
     return s.rstrip('\n') + '\n' + BETWEEN_CPP
 
 

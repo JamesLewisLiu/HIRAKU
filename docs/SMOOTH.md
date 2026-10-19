@@ -7,7 +7,7 @@ from somewhere. HIRAKU has two ways, and which one fits depends on how the game 
 | The game's play goes by | Way | Where | Games so far |
 |---|---|---|---|
 | a clock (a hardware timer read each frame) | more vsyncs: the game draws more pictures (`[[rate]]` mods) | per game: docs/MODS.md | pop'n music 9-14 (Python) |
-| frames (each frame moves the notes a fixed step) | in-between pictures: HIRAKU draws them (`--smooth-motion`) | per core: every game on it | DJ Main, Firebeat, Twinkle |
+| frames (each frame moves the notes a fixed step) | in-between pictures: HIRAKU draws them (`--smooth-motion`) | per core: every game on it | DJ Main, Firebeat, Twinkle, System 573 |
 
 To tell which one a game is: run its attract demo (or a play script) with the vsync at twice the
 rate. If the demo song takes the same number of frames (it plays twice as fast, out of step with
@@ -91,37 +91,55 @@ frame again (about 100 commands for pop'n).
 Not covered:
 - Keyboardmania (two GCUs, one a monitor): no in-between pictures.
 - A game drawing a frame over two vsyncs (30 frames a second) moves its objects per two vsyncs,
-  which the in-between pictures don't know: they would spread a frame's move over one vsync.
-  Not seen in pop'n or beatmania III yet.
+  which the GCU's in-between pictures don't know (the PlayStation GPU's do: below): they would
+  spread a frame's move over one vsync. Not seen in pop'n or beatmania III yet.
 - Objects drawn from the CPU straight into VRAM (not through commands) aren't moved.
 
-### Twinkle (beatmania IIDX; third_party/mame/hiraku-edits.py, `hk_between`)
+### Twinkle and System 573 (beatmania IIDX, DDR, DrumMania, GuitarFreaks; third_party/mame/hiraku-edits.py, `hk_between`)
 
 The PlayStation's GPU draws primitives (polygons, lines, rectangles and sprites, from VRAM
 textures) into VRAM; HIRAKU's edit of MAME's GPU already queues each one with a copy of all it
 draws from (its packet and the drawing state) for the drawing thread. Once in-between pictures are
-asked for, each frame's queued items are kept (a new frame at VBLANK start, which the game's
-VBLANK interrupt then flips to show). An in-between picture waits for the drawing thread, moves
-each primitive's vertices on by its last move (matched with the frame before's by command and
-colour, with at most one other word of its packet different: a size or a texture, within 16
-pixels), keeps the rows the frame draws on, draws the frame again on the emulation thread, lets
-MAME's screen update compose it, and puts the rows back. The DVD/Video CD player's picture under
-it is taken at the in-between picture's own moment, so the background video moves on too.
+asked for:
+- the queued items are kept, a frame's from one flip to the next: a write of a new display start
+  (the game shows what it drew since its last flip). How many VBLANKs a frame lasts is counted
+  too: DDR 2ndMIX draws at 30 frames a second, so its in-between pictures move a quarter, then
+  three quarters, of a step. A game that never flips (it draws where it shows) has a frame each
+  VBLANK.
+- the drawing thread keeps what each upload (CPU-to-VRAM, MoveImage, fill) writes over: while a
+  frame shows for two VBLANKs the game already prepares the next, its textures and palettes
+  included (DDR's arrows flash by palette), and the frame on show must be drawn again with its own.
 
-beatmania IIDX 3rd style, the play case's song: each frame clears the back buffer (640x240), then
-about 132 textured rectangles (the notes, 3 lines tall, moving 1 line a frame at that speed; the
-bar lines, semi-transparent; the panels), into a double buffer flipped at VBLANK. Halfway, only
-the notes and bar lines differ. A note moving 1 line a frame has no in-between position at the
-game's resolution (240 lines): in-between pictures help the higher speeds (hi-speed) most. The
-other styles, 1st to 8th, run on the same core and GPU; not each checked.
+An in-between picture waits for the drawing thread, undoes the uploads made since the frame on
+show (newest first), moves what moved whole on along its last move, keeps the rows the frame
+draws on, draws the frame again on the emulation thread, lets MAME's screen update compose it,
+and puts the rows and the uploads back. Matching, with the frame before's (first vertex within 16
+pixels): a rectangle or sprite with the same command and colour and at most one other word of its
+packet different (a size: a note clipped shorter going off the lane; a texture: an animated one);
+a polygon or line with the same command and texture (a shaded one's colours change with its
+light), the one whose every vertex moved least. Only what moved whole is carried on (every vertex
+by the same step) and, of polygons, only rectangles on the screen's axes (sprites drawn as quads:
+DDR's arrows) and level or upright lines (bar lines): a 3D model's polygons (DDR's dancer), each
+moving its own way, came apart at their seams when carried on, so they stay as the game draws
+them, at its own rate. On Twinkle the DVD/Video CD player's picture under it is taken at the
+in-between picture's own moment, so the background video moves on too.
 
-The System 573 (DDR, DrumMania, GuitarFreaks) has the same GPU and edit: its core only lacks the
-`render_between` that passes the picture on (runtime/twinkle/board.cpp's is a few lines).
+Checked:
+- beatmania IIDX 3rd style, the play case's song: each frame clears the back buffer (640x240),
+  then about 132 textured rectangles (the notes, 3 lines tall, moving 1 line a frame at that
+  speed; the bar lines, semi-transparent; the panels), flipped at VBLANK. Halfway, only the notes
+  and bar lines differ. A note moving 1 line a frame has no in-between position at the game's
+  resolution (240 lines): in-between pictures help the higher speeds (hi-speed) most.
+- DDR 2ndMIX, the play case's song (320x240, 30 frames a second, no clear: about 470 textured and
+  shaded polygons a frame, the arrows semi-transparent quads moving 2 lines a frame): the arrows
+  and panels move on, the dancer stays whole.
+- GuitarFreaks 2ndMIX, the play case's stage: the bar lines move on.
 
 ### Other games and boards
 
-Any game on these three cores gets in-between pictures with no per-game work: pop'n music 1-8,
-Animelo 1/2, Mickey Tunes, beatmania (DJ Main), beatmania III and beatmania IIDX (1st-8th style). Whether they look right
+Any game on these four cores gets in-between pictures with no per-game work: pop'n music 1-8,
+Animelo 1/2, Mickey Tunes, beatmania (DJ Main), beatmania III, beatmania IIDX (1st-8th style), and
+the System 573's DDR, DrumMania, GuitarFreaks, Dance Maniax and the rest. Whether they look right
 depends on how each draws its notes (sprites or objects moving a steady step, which is usual).
 To check a game:
 1. find a stretch where notes move (attract demo or a play script);
