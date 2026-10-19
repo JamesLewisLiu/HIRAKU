@@ -137,8 +137,10 @@ A picture, for a mod: `tools/popnfs.py IMAGE topng image/256_title/1.gzz title1.
 and name `files/1.gzz` in a `[[file]]`. 16-bit pictures (song banners `kc/`, backgrounds,
 characters) take any colour; the 8-bit ones (the `256_*` folders: the menus' lettering and
 parts) share their folder's 256-colour palette, so the PNG's colours become the nearest of it.
-The songs' sound is not in these files: it is in the disk's second area (from 0x25000000, read by
-the sound board), not yet worked out.
+The songs are not in these files: each has a 20 MB slot after them, its parts scrambled with
+the slot's number. `tools/popnsong.py IMAGE list` lists the 749 songs' slots and
+`tools/popnsong.py IMAGE extract SLOT OUT` writes a slot's keysounds, charts, music and preview
+(PLAN.md section 20). Mods can't add or change songs yet.
 
 ## Cheats
 

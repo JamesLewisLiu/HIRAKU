@@ -1130,8 +1130,24 @@ frame rate), pop'n music 14 as the pilot. The foundation is in:
   The full regress identical with all this in (151 cases, 2026-10-19).
 - **Finding the songs:** `HK_PY_DISK_LOG=FILE` logs every read of the board's disk ("frame
   medium offset size"), to see where a song's data is read from.
-- **Not in these files:** the songs' sound. The disk's second area (0x25000000 on, about 17 GB)
-  is read by the sound side, by its own table, not yet found.
+
+**Pilot step 2, the songs on the disk (worked out 2026-10-19; `tools/popnsong.py`):** the disk log
+of the play case showed per-song reads past the file system; the program (FUN_017c0438,
+FUN_017c04a8, FUN_017c1be0 "pnote header error") tells the rest.
+- **Slots:** song slot n is 20 MB from sector 0x100000 + n * 0xa000. 753 slots carry a header,
+  749 of them songs (4 placeholders whose charts are all one 2 KB stand-in).
+- **Scrambling:** XOR with bits 5-12 of an LCG seeded by the slot (state = slot + 13; state =
+  state * 0x5d588b65 + 13 per byte), restarted at each read; those bits repeat every 8 KB and
+  the parts start on 8 KB boundaries, so one 8 KB pattern per slot.
+- **Header:** "LB13", the slot, 12 parts (sector, size, tag): `ele` keysounds (SPU ADPCM),
+  `pwm` their table (44,100 Hz), seven charts (`np` `hp` `ep` `op` `bp` `xep` `xnp`; a sheet a
+  song lacks repeats `np`), `bt` the music (streamed while playing), `pre` the preview.
+- **Charts:** a u32 size and LZSS (as the pictures), then 8-byte events: time in ms, a command
+  and its data (notes, keysound changes, tempo, measure lines).
+- **Next:** which slot is which song (the song list in the program), the chart commands, the
+  ADPCM layout of `ele`/`bt`/`pre`; then a slot made from a mod's files (`[[song]]`, laid
+  scrambled into a free slot the way `[[file]]` lays files) and the song list's entry.
+- **Not in these files:** the songs. They are in slots after the file system (step 2 below).
 
 **Next, the pilot:** a translation (the pictures' `GC` format to and from PNG; the text in
 `game.bin` as `[[patch]]`es), a song added (the sound area and its table, the charts, the song
