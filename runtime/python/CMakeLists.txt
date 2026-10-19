@@ -29,6 +29,7 @@ add_library(hk_python_shell STATIC
 	${HK}/runtime/host/script.cpp
 	${HK}/runtime/host/macro.cpp
 	${HK}/runtime/host/mods.cpp
+	${HK}/runtime/host/pythondisk.cpp
 	${HK}/runtime/host/acio.cpp
 	${HK}/runtime/host/readers.cpp
 	${HK}/runtime/host/bio2.cpp

@@ -80,6 +80,7 @@
 #include "pcsx2/Memory.h"
 #include "pcsx2/R5900.h"
 #include "shell/overlay.h"
+#include "libchdr/chd.h"
 #include "pcsx2/SIO/Pad/Pad.h"
 #include "pcsx2/USB/USB.h"
 #include "pcsx2/VMManager.h"
@@ -112,6 +113,54 @@ extern "C" int __llvm_profile_write_file(void) __attribute__((weak));
 #endif
 
 namespace {
+
+// Mods find files on the board's disk through this (shell/overlay.h read(), host/pythondisk.h):
+// the disk as it is, a CHD read with PCSX2's libchdr (this core has no HIRAKU image layer), any
+// other image as a plain file. The last disk's handle and hunk are kept between reads.
+bool disk_reader(const std::string &path, uint64_t off, void *buf, size_t n) {
+    static std::string open_path;
+    static chd_file *chd = nullptr;
+    static std::vector<uint8_t> hunk;
+    static uint32_t hunk_no = UINT32_MAX;
+    if (path.size() < 4 || (path.substr(path.size() - 4) != ".chd" && path.substr(path.size() - 4) != ".CHD")) {
+        FILE *f = fopen(path.c_str(), "rb");
+        if (!f) return false;
+#ifdef _WIN32
+        const bool ok = _fseeki64(f, (long long)off, SEEK_SET) == 0 && fread(buf, 1, n, f) == n;
+#else
+        const bool ok = fseeko(f, (off_t)off, SEEK_SET) == 0 && fread(buf, 1, n, f) == n;
+#endif
+        fclose(f);
+        return ok;
+    }
+    if (path != open_path) {
+        if (chd) chd_close(chd);
+        chd = nullptr;
+        hunk_no = UINT32_MAX;
+        if (chd_open(path.c_str(), CHD_OPEN_READ, nullptr, &chd) != CHDERR_NONE) {
+            chd = nullptr;
+            open_path.clear();
+            return false;
+        }
+        open_path = path;
+        hunk.resize(chd_get_header(chd)->hunkbytes);
+    }
+    const chd_header *h = chd_get_header(chd);
+    if (off + n > h->logicalbytes) return false;
+    auto *out = static_cast<uint8_t *>(buf);
+    while (n) {
+        const uint32_t no = (uint32_t)(off / h->hunkbytes), at = (uint32_t)(off % h->hunkbytes);
+        if (no != hunk_no) {
+            if (chd_read(chd, no, hunk.data()) != CHDERR_NONE) return false;
+            hunk_no = no;
+        }
+        const size_t take = std::min<size_t>(n, h->hunkbytes - at);
+        memcpy(out, hunk.data() + at, take);
+        out += take, off += take, n -= take;
+    }
+    return true;
+}
+const bool g_disk_reader_set = (hk::overlay::set_reader(disk_reader), true);
 
 #ifdef _WIN32
 // PCSX2's CPU thread (here the main thread) needs COM multithreaded (VMManager's
@@ -674,8 +723,16 @@ public:
             };
             Hiraku::net_command = [](u32 ch, const u32 *p, u32 q) { return self_->net_->command(ch, p, q); };
         }
-        if (hdd_overlay_ || cf_overlay_)   // mods' replaced bytes, laid over the board's disk reads
+        // HK_PY_DISK_LOG=FILE: every read of the board's disk and CF card, "frame medium offset
+        // size" (medium 0 the disk, 1 the CF card): where a game keeps what it reads
+        if (const char *f = getenv("HK_PY_DISK_LOG")) disk_log_ = fopen(f, "w");
+        if (hdd_overlay_ || cf_overlay_ || disk_log_)   // mods' replaced bytes, laid over the board's disk reads
             Hiraku::disk_read = [](u32 medium, u64 off, u8 *data, u32 size) {
+                if (self_->disk_log_) {
+                    fprintf(self_->disk_log_, "%llu %u 0x%llx 0x%x\n", (unsigned long long)self_->frame_, medium,
+                            (unsigned long long)off, size);
+                    fflush(self_->disk_log_);
+                }
                 hk::overlay::apply(medium ? self_->cf_overlay_ : self_->hdd_overlay_, off, data, size);
             };
         if (eth_) {   // Python 2: the PS2's own network adapter, answered here (ethnet.h)
@@ -1303,6 +1360,7 @@ private:
     double cover_w_ = 1.0, cover_h_ = 1.0;   // display_cover() of pic_
     bool python2_ = false;   // a Konami Python 2 (write_py2)
     int hdd_overlay_ = 0, cf_overlay_ = 0;   // mods' replaced bytes on the disk, the CF card (shell/overlay.h)
+    FILE *disk_log_ = nullptr;               // HK_PY_DISK_LOG
     std::deque<uint8_t> sci_in_;   // the card reader's bytes for the game (P2IO serial port 0)
     uint8_t p2io_lamps_[4] = {0, 0, 0x01, 0x1f};   // the P2IO's lamp banks: all lamps off till the game writes them
     std::unique_ptr<hk::py::EtherNet> eth_;

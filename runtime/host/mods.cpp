@@ -10,6 +10,7 @@
 #include <sstream>
 #include <stdexcept>
 
+#include "host/pythondisk.h"
 #include "shell/core.h"
 #include "shell/overlay.h"
 
@@ -140,7 +141,8 @@ std::map<std::string, std::string> media(const std::string &root, const std::str
 // [[file]]: a file on an ISO 9660 disc (docs/MODS.md), its data laid over the sectors it holds.
 // The data track's sectors are told from where the volume descriptor is: 2048 bytes of data
 // each (a cooked image), or 2352 with a 16-byte (mode 1) or 24-byte (mode 2 form 1) header.
-void iso_file(const std::string &image, const std::string &name, std::vector<uint8_t> data, const std::string &label) {
+// false when the image has no ISO 9660 volume.
+bool iso_file(const std::string &image, const std::string &name, std::vector<uint8_t> data, const std::string &label) {
     struct Layout { uint64_t sector, header; };
     const Layout layouts[] = {{2048, 0}, {2352, 16}, {2352, 24}};
     const Layout *lay = nullptr;
@@ -150,7 +152,7 @@ void iso_file(const std::string &image, const std::string &name, std::vector<uin
             lay = &l;
             break;
         }
-    if (!lay) throw std::runtime_error(image + ": no ISO 9660 volume (or it can't be read)");
+    if (!lay) return false;
     auto u32 = [](const uint8_t *p) { return (uint32_t)p[0] | (uint32_t)p[1] << 8 | (uint32_t)p[2] << 16 | (uint32_t)p[3] << 24; };
     auto read_sector = [&](uint32_t lba, uint8_t *out) {
         if (!overlay::read(image, (uint64_t)lba * lay->sector + lay->header, out, 2048))
@@ -193,13 +195,14 @@ void iso_file(const std::string &image, const std::string &name, std::vector<uin
     data.resize(size, 0);   // shorter: the rest of the file's bytes are zeros
     if (lay->sector == 2048) {
         overlay::add(image, (uint64_t)lba * 2048, std::move(data), label);
-        return;
+        return true;
     }
     for (uint32_t s = 0; (uint64_t)s * 2048 < size; s++) {   // raw sectors: each one's 2048 data bytes
         const size_t from = (size_t)s * 2048, n = std::min<size_t>(2048, size - from);
         overlay::add(image, (uint64_t)(lba + s) * lay->sector + lay->header,
                      std::vector<uint8_t>(data.begin() + (long)from, data.begin() + (long)(from + n)), label);
     }
+    return true;
 }
 
 }  // namespace
@@ -207,6 +210,7 @@ void iso_file(const std::string &image, const std::string &name, std::vector<uin
 bool load(const std::vector<std::string> &dirs, const std::string &game, const std::string &root, std::string &err) {
     try {
         const auto medium_paths = media(root, game);
+        std::map<std::string, std::unique_ptr<pythondisk::Files>> python_disks;   // [[file]]s on Konami Python disks
         for (const std::string &dir : dirs) {
             const std::string file = dir + "/mod.toml";
             const std::string text = read_file(file);
@@ -297,7 +301,14 @@ bool load(const std::vector<std::string> &dirs, const std::string &game, const s
                     auto it = medium_paths.find(medium);
                     if (it == medium_paths.end()) fail("no medium '" + medium + "' in dumps/" + game + "/machine.txt");
                     try {
-                        iso_file(it->second, str("path", true), from(), mod.name + ": " + str("path", true));
+                        const std::string label = mod.name + ": " + str("path", true);
+                        auto data = from();
+                        if (!python_disks.count(it->second) && !iso_file(it->second, str("path", true), data, label)) {
+                            auto disk = pythondisk::Files::open(it->second);
+                            if (!disk) throw std::runtime_error(it->second + ": neither an ISO 9660 disc nor a disk whose file system HIRAKU knows");
+                            python_disks[it->second] = std::move(disk);
+                        }
+                        if (python_disks.count(it->second)) python_disks[it->second]->put(str("path", true), data, label);
                     } catch (const std::exception &e) {
                         fail(e.what());
                     }
@@ -307,6 +318,7 @@ bool load(const std::vector<std::string> &dirs, const std::string &game, const s
             }
             g_mods.push_back(mod);
         }
+        for (auto &d : python_disks) d.second->finish();
     } catch (const std::exception &e) {
         err = e.what();
         return false;

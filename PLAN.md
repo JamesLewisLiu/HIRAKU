@@ -1101,10 +1101,42 @@ frame rate), pop'n music 14 as the pilot. The foundation is in:
 - Checked on pop'n music 14 (a test-menu text patch, an identity disk overlay with an unchanged
   digest), DDR 2ndMIX (CD bytes and `PSX.EXE` as `[[file]]`, unchanged), and the launcher.
 
-**Next, the pilot (pop'n music 14):** its disk's file system (numbered files, `nr_file`), so a mod
-can name a file there as `[[file]]` does on a disc; then a translation (text and pictures), a song
-added, and smooth note scrolling. Firebeat code patches (the interpreter for patched functions)
-and Python 2's disk are later.
+**Pilot step 1, pop'n music 14's file system (done, 2026-10-19):** worked out from the loader
+(boot record C, a Ghidra project of its own) and the game's program; told in full in
+`tools/popnfs.py`, which lists and extracts the files.
+- **The directory:** 0x1f8 sectors at sector 0x4800, 24-byte entries: name hash, first sector,
+  size, 0, byte sum, 0. It ends at an empty entry holding the sum of the bytes before it. The
+  loader searches it linearly. Sector 0x4a00 holds a second one, for `disk/write/` (the saves).
+- **The names:** a CRC (0x04c11db7) over each character's low 6 bits. They come from the game's
+  strings (`/bg/bg_%03d.gzz`, `disk0:image/%s/system.idx`, ...) and the folders' `system.idx`
+  lists: 10,010 of 10,165 files named.
+- **Encryption:** a 4-byte tag (13G0..13A9, 13P0 for the program), the plain length, then
+  Blowfish-CBC. Each tag picks a key and IV from a table in the loader (IV words stored
+  little-endian). Files without a known tag aren't decrypted, so a mod's file needs no key.
+- **Packing:** the pictures (`.gzz`, `GC` containers) are a u32 size plus Okumura LZSS (4 KB
+  window from 0xfee), at most 0x80018 bytes unpacked. The 719 largest stop a few bytes short;
+  the game decodes on into what follows. The index files are stored as they are; the program is
+  only encrypted.
+- **In HIRAKU** (`runtime/host/pythondisk.{h,cpp}`): `[[file]]` on the disk. The mod's file is
+  packed the game's way, unencrypted, in place or in the unused room after the last file (55 MB
+  of zeros up to 0x25000000). The directory is laid over with its sums made again, and new
+  names are added. The Python core got a libchdr reader for mods (`overlay::set_reader`).
+- **Pictures:** `GC` containers, either 16-bit (A1B5G5R5) or 8-bit. The 92 8-bit folders (the
+  `256_*` menus among them) share one 256-colour palette: the last 1 KB of the folder's
+  `system.idx`, in the GS's CSM1 entry order. `tools/popnfs.py topng` / `frompng` convert both
+  ways, byte-identical for an unchanged picture; frompng takes the palette's nearest colours.
+- **Checked:** a picture changed on screen. The same picture repacked runs the play case
+  through; the title loop's timing moves with the file's size and place, then joins up again.
+  The full regress identical with all this in (151 cases, 2026-10-19).
+- **Finding the songs:** `HK_PY_DISK_LOG=FILE` logs every read of the board's disk ("frame
+  medium offset size"), to see where a song's data is read from.
+- **Not in these files:** the songs' sound. The disk's second area (0x25000000 on, about 17 GB)
+  is read by the sound side, by its own table, not yet found.
+
+**Next, the pilot:** a translation (the pictures' `GC` format to and from PNG; the text in
+`game.bin` as `[[patch]]`es), a song added (the sound area and its table, the charts, the song
+list), smooth note scrolling. Firebeat code patches (the interpreter for patched functions) and
+Python 2's disk are later.
 
 ### Pilot: pop'n music 8 unlocks (done)
 
