@@ -1370,6 +1370,12 @@ queue at its target). The emulated machine is unchanged.
 - **Without Wayland** (X11): the grid runs on the display mode's rate with an unknown phase.
 - Tested with the window on DP-1 (240 Hz) and DP-2 (144 Hz, with `HK_DISPLAY_SYNC_SKEW` to force a
   fit); 60 Hz still to test on a real 60 Hz display (the N100 cabinet).
+- **Smooth motion (2026-10-19, `--smooth-motion`, docs/SMOOTH.md):** the k - 1 empty commits can
+  carry in-between pictures instead (the core's `render_between`): DJ Main's sprites and the
+  Firebeat GCU's objects carried on by their last move, for the games that count their play in
+  frames (pop'n music 1-8 and the rest of those two cores). Checked offline on pop'n 1, 4 and 8
+  (halfway pictures: only the notes, half a step on); the window on a real 240 Hz display is the
+  owner's to try. Left: DJ Main's tilemap scroll, a launcher check that the display fits.
 
 ## 21. Twinkle roadmap (M15, written 2026-10-13)
 

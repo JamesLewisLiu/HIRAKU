@@ -8,6 +8,8 @@
 #include "k057714.h"
 
 #include <algorithm>
+#include <cmath>
+#include <cstdlib>
 #include <cstring>
 #if defined(__SSE2__)
 #include <emmintrin.h>
@@ -206,6 +208,13 @@ void K057714::write(uint32_t reg, uint32_t data, uint32_t mem_mask) {
 }
 
 void K057714::vblank(bool state) {
+    if (state && m_keep && !m_drawing.cmds.empty()) {   // a new frame (in-between pictures)
+        m_shown_before = std::move(m_shown.cmds);
+        m_shown = std::move(m_drawing);
+        m_drawing = Drawn{};
+        m_drawing.origin_x = m_fb_origin_x, m_drawing.origin_y = m_fb_origin_y;
+        m_mark++;
+    }
     if (state && (m_irqctrl & 1) && irq) irq(true);
 }
 
@@ -340,6 +349,7 @@ void K057714::draw_object(const uint32_t *cmd) {
     width = (((width * 65536) / xscale) * 64) / 65536;
     height = (((height * 65536) / yscale) * 64) / 65536;
     if (height <= 0 || width <= 0) return;
+    touch(y, y + height);   // + 1: a row running past x 1023 goes on into the next
     if (xscale == 64 && yscale == 64 && !xflip && !yflip && !blend_mode) {
         // the common case, same result as the general loop below
         uint16_t *v = V16;
@@ -424,6 +434,7 @@ void K057714::fill_rect(const uint32_t *cmd) {
     int width = (cmd[0] & 0x3ff) + 1, height = ((cmd[0] >> 10) & 0x3ff) + 1;
     if (cmd[0] & 0x10000000) { x += m_fb_origin_x; y += m_fb_origin_y; }
     uint16_t color[4] = {(uint16_t)(cmd[2] >> 16), (uint16_t)cmd[2], (uint16_t)(cmd[3] >> 16), (uint16_t)cmd[3]};
+    touch(y, y + height);
     for (int j = y; j < y + height; j++) {
         const uint32_t d = (uint32_t)(j * 1024 + x);
         if (d + (uint32_t)width <= VRAM_SIZE_HALF) {
@@ -441,6 +452,7 @@ void K057714::draw_character(const uint32_t *cmd) {
     bool double_height = cmd[1] & 0x01000000, trans_enable = cmd[1] & 0x40000000;
     uint16_t color[4] = {(uint16_t)(cmd[2] >> 16), (uint16_t)cmd[2], (uint16_t)(cmd[3] >> 16), (uint16_t)cmd[3]};
     int height = double_height ? 16 : 8;
+    touch(y, y + height);
     for (int j = 0; j < height; j++) {
         uint32_t fbaddr = (y + j) * 1024;
         uint16_t line = pix(address);
@@ -468,10 +480,7 @@ void K057714::execute_display_list(uint32_t addr) {
         case 0: break;
         case 1: execute_display_list(cmd[0] & 0xffffff); break;
         case 2: end = true; break;
-        case 3: fb_config(cmd); break;
-        case 4: fill_rect(cmd); break;
-        case 5: draw_object(cmd); break;
-        default: draw_character(cmd); break;   // 6, 7
+        default: run(cmd); break;   // 3-7
         }
         counter++;
     }
@@ -481,11 +490,98 @@ void K057714::execute_command(const uint32_t *cmd) {
     switch ((cmd[0] >> 29) & 7) {
     case 0: case 2: break;
     case 1: execute_display_list(cmd[0] & 0xffffff); break;
+    default: run(cmd); break;
+    }
+}
+
+void K057714::run(const uint32_t *cmd) {
+    if (m_keep && !m_replaying) m_drawing.cmds.push_back({cmd[0], cmd[1], cmd[2], cmd[3]});
+    switch ((cmd[0] >> 29) & 7) {
     case 3: fb_config(cmd); break;
     case 4: fill_rect(cmd); break;
     case 5: draw_object(cmd); break;
-    default: draw_character(cmd); break;
+    default: draw_character(cmd); break;   // 6, 7
     }
+}
+
+// ---- HIRAKU: in-between pictures --------------------------------------------------------
+// A frame's drawing goes into rows of VRAM (1024 pixels, 512 words each). Before a command draws
+// on a row for the first time in a frame, the row is kept as it was; in a replay, as it is now, to
+// be put back after.
+static constexpr int ROWS = (int)(K057714::VRAM_SIZE_HALF / 1024);
+
+void K057714::touch(int y0, int y1) {
+    if (!m_keep) return;
+    if (m_row_mark.empty()) m_row_mark.assign(2 * ROWS, 0);
+    y0 = std::max(y0, 0);
+    y1 = std::min(y1, y0 + ROWS - 1);
+    for (int y = y0; y <= y1; y++) {
+        const uint32_t r = (uint32_t)y & (ROWS - 1);
+        const uint32_t *row = &m_vram[(size_t)r * 512];
+        if (m_replaying) {
+            if (m_row_mark[ROWS + r] == m_replay_mark) continue;
+            m_row_mark[ROWS + r] = m_replay_mark;
+            m_restore_rows.push_back(r);
+            m_restore.insert(m_restore.end(), row, row + 512);
+        } else {
+            if (m_row_mark[r] == m_mark) continue;
+            m_row_mark[r] = m_mark;
+            m_drawing.rows.push_back(r);
+            m_drawing.before.insert(m_drawing.before.end(), row, row + 512);
+        }
+    }
+}
+
+bool K057714::draw_between(uint32_t *out, int width, int height, double t) {
+    if (!m_keep) {   // from now on
+        m_keep = true;
+        m_mark++;
+        m_drawing = Drawn{};
+        m_drawing.origin_x = m_fb_origin_x, m_drawing.origin_y = m_fb_origin_y;
+        return false;
+    }
+    if (m_shown.cmds.empty() || m_shown_before.empty()) return false;
+    // Each object drawn is matched with the nearest of the frame before's that looks the same (its
+    // size and scale, and its picture or height: a note moving off the lane gets shorter, an
+    // animated one changes picture) within 16 pixels, and carried on by that move
+    std::vector<Cmd> cmds = m_shown.cmds;
+    for (Cmd &c : cmds) {
+        if (((c[0] >> 29) & 7) != 5) continue;
+        const int x = c[1] & 0x3ff, y = (c[1] >> 10) & 0x3fff;
+        int best = 1 << 30, dx = 0, dy = 0;
+        for (const Cmd &b : m_shown_before) {
+            if (((b[0] >> 29) & 7) != 5 || b[2] != c[2] || (b[1] & 0xff000000) != (c[1] & 0xff000000)) continue;
+            if (b[0] != c[0] && b[3] != c[3]) continue;
+            const int bx = b[1] & 0x3ff, by = (b[1] >> 10) & 0x3fff;
+            const int d = std::abs(x - bx) + std::abs(y - by) + (b[0] != c[0] ? 8 : 0) + (b[3] != c[3] ? 8 : 0);
+            if (std::abs(x - bx) > 16 || std::abs(y - by) > 16 || d >= best) continue;
+            best = d, dx = x - bx, dy = y - by;
+        }
+        if (!dx && !dy) continue;
+        const int nx = x + (int)std::lround(dx * t), ny = y + (int)std::lround(dy * t);
+        if (nx < 0 || nx > 0x3ff || ny < 0 || ny > 0x3fff) continue;
+        c[1] = (c[1] & ~0xffffffu) | (c[1] & 0xff000000u) | (uint32_t)ny << 10 | (uint32_t)nx;
+    }
+    // The rows back as they were before the frame was drawn, the frame drawn again, composed, and
+    // VRAM and the frame buffer origin put back
+    m_replaying = true;
+    m_replay_mark++;
+    m_restore_rows.clear();
+    m_restore.clear();
+    for (size_t i = 0; i < m_shown.rows.size(); i++) {
+        const uint32_t r = m_shown.rows[i];
+        touch((int)r, (int)r);
+        std::memcpy(&m_vram[(size_t)r * 512], &m_shown.before[i * 512], 512 * 4);
+    }
+    const int ox = m_fb_origin_x, oy = m_fb_origin_y;
+    m_fb_origin_x = m_shown.origin_x, m_fb_origin_y = m_shown.origin_y;
+    for (const Cmd &c : cmds) run(c.data());
+    draw(out, width, height);
+    m_fb_origin_x = ox, m_fb_origin_y = oy;
+    for (size_t i = 0; i < m_restore_rows.size(); i++)
+        std::memcpy(&m_vram[(size_t)m_restore_rows[i] * 512], &m_restore[i * 512], 512 * 4);
+    m_replaying = false;
+    return true;
 }
 
 }  // namespace hk

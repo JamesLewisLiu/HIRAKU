@@ -23,10 +23,11 @@
 //                       whole number of refreshes, running the game at the display's rate (up to
 //                       3 % off: pop'n 2.6 % fast at 60 Hz); off: the game's exact speed, frames
 //                       shown as they come (for variable-refresh displays). runtime/host/pacing.h
-//     --smooth-motion   with display sync on a display faster than the game (120, 144, 240 Hz):
-//                       the refreshes between two frames show what moves further along its move
-//                       (the core's in-between pictures: DJ Main's sprites) instead of the frame
-//                       held; the game runs as before. Needs the compositor's fifo-v1 (KWin 6.7)
+//     --smooth-motion   with display sync on a display at a multiple of the game's rate (120, 240
+//                       Hz): the refreshes between two frames show what moves further along its
+//                       move (the core's in-between pictures: DJ Main's sprites, the Firebeat
+//                       GCU's objects) instead of the frame held; the game runs as before. Needs
+//                       the compositor's fifo-v1 (KWin 6.7). docs/SMOOTH.md
 //     --macro NAME[@F]  run one of the game's code macros (games/<game>/macros.txt) at frame F, or
 //                       at its own `at` frame (power-on codes); repeatable. In the window,
 //                       Ctrl+1..9 types the 1st..9th macro
@@ -487,7 +488,9 @@ int main(int argc, char **argv) {
             char name[64];
             snprintf(name, sizeof name, "/frame%06llu.ppm", (unsigned long long)f);
             write_ppm(out + name, rgb, w, h);
-            int bw = w, bh = h;   // and with --smooth-motion, the picture halfway to the next frame
+            // and with --smooth-motion, the picture halfway to the next frame (DJ Main: Firebeat's go
+            // with the window's picture, at the end of vblank after the game's flip, not this one)
+            int bw = w, bh = h;
             if (const uint32_t *b = smooth_motion ? machine.render_between(0.5, bw, bh) : nullptr) {
                 snprintf(name, sizeof name, "/frame%06llu-half.ppm", (unsigned long long)f);
                 write_ppm(out + name, b, bw, bh);

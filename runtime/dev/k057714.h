@@ -6,9 +6,11 @@
 // framework is replaced by plain C++, the drawing logic is unchanged.
 #pragma once
 
+#include <array>
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <vector>
 
 namespace hk {
 
@@ -39,6 +41,13 @@ public:
 
     const uint32_t *vram() const { return m_vram.get(); }
 
+    // HIRAKU: in-between pictures (Core::render_between, --smooth-motion). Once first asked, the GCU
+    // keeps each frame's drawing commands and what the rows they drew over held before them; this
+    // then draws the frame on show again with its objects carried on `t` (0 < t < 1) of their last
+    // move (matched with the frame before's), composes it into `out` like draw(), and puts VRAM
+    // back as it was. false: nothing to draw from yet.
+    bool draw_between(uint32_t *out, int width, int height, double t);
+
 private:
     struct Frame {
         uint32_t base = 0;
@@ -54,6 +63,21 @@ private:
     void fb_config(const uint32_t *cmd);
     void execute_display_list(uint32_t addr);
     void execute_command(const uint32_t *cmd);
+    void run(const uint32_t *cmd);                          // fb config, fill, object, character
+    void touch(int y0, int y1);                             // rows y0..y1 are about to be drawn on
+
+    using Cmd = std::array<uint32_t, 4>;
+    struct Drawn {                                          // a frame's drawing
+        std::vector<Cmd> cmds;
+        int origin_x = 0, origin_y = 0;                     // fb_config as it began
+        std::vector<uint32_t> rows;                         // the rows it drew on, and what they
+        std::vector<uint32_t> before;                       // held before (512 words each)
+    };
+    bool m_keep = false, m_replaying = false;
+    Drawn m_drawing, m_shown;
+    std::vector<Cmd> m_shown_before;                        // the commands of the frame before m_shown
+    std::vector<uint32_t> m_row_mark, m_restore_rows, m_restore;
+    uint32_t m_mark = 0, m_replay_mark = 0;
 
     std::unique_ptr<uint32_t[]> m_vram;
     uint32_t m_vram_read_addr = 0;

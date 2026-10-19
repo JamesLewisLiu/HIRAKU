@@ -170,6 +170,13 @@ SettingsDialog::SettingsDialog(QWidget *parent) : QDialog(parent) {
                               "refreshes, and the game runs at the display's rate (pop'n 2.6 % faster, its sound "
                               "with it). Off: the exact speed, for a variable-refresh (FreeSync, G-Sync) display.");
     fv->addRow("", m_displaySync);
+    m_smoothMotion = new QCheckBox("Smooth motion on a 120 or 240 Hz display (DJ Main and Firebeat games)");
+    m_smoothMotion->setChecked(s.value("video/smoothMotion", false).toBool());
+    m_smoothMotion->setToolTip("These games count their play in frames, so they keep their rate; with smooth frames on "
+                               "and a display at two or four times it, the refreshes between frames show pictures in "
+                               "between, with the notes and other moving objects carried on along their move. "
+                               "Wayland with the fifo protocol (KWin 6.7) only.");
+    fv->addRow("", m_smoothMotion);
     m_picture = new QComboBox;
     m_picture->addItem("Off: sharp pixels", "off");
     m_picture->addItem("CRT light: crt-guest-advanced-fast", "light");
@@ -436,6 +443,7 @@ void SettingsDialog::accept() {
     s.setValue("video/fullscreen", m_fullscreen->isChecked());
     s.setValue("video/splitScreens", m_splitScreens->isChecked());
     s.setValue("video/displaySync", m_displaySync->isChecked());
+    s.setValue("video/smoothMotion", m_smoothMotion->isChecked());
     s.setValue("video/picture", m_picture->currentData().toString());
     s.setValue("audio/ms", m_audioMs->value());
     s.setValue("audio/volumeDb", m_volume->value());

@@ -165,14 +165,13 @@ times in 1,000 vsyncs).
 
 The Firebeat pop'n music (4-8) are another case (checked on pop'n 4, 2026-10-19, with the
 Firebeat core's frame period halved by hand): the attract demo's song lasts the same number of
-frames at twice the rate (about 2,400 at both), so its play goes by frames, not by a clock. Its
-notes would run away from its music; smooth notes there need the game's scroll itself patched
-(each frame's step split over the vsyncs between ticks), per game, and the core's
-`set_vsync_rate` (its frame period is `frame_ticks()`, runtime/firebeat/board.cpp). DJ Main's
-pop'n music 1-3 (`FRAME_CYCLES`, runtime/djmain/board.cpp) are older still: not looked at.
+frames at twice the rate (about 2,400 at both), so its play goes by frames, not by a clock, and
+so does DJ Main's pop'n music 1. A faster vsync would only make them faster: on those cores the
+display's extra refreshes get in-between pictures instead (`--smooth-motion`, docs/SMOOTH.md),
+for every game on them, with no mod.
 
-Only the Python core changes its rate so far; elsewhere `[[rate]]` says so in the log and does
-nothing.
+Only the Python and DJ Main cores change their rate so far; elsewhere `[[rate]]` says so in the
+log and does nothing.
 
 ## How the layers work
 

@@ -952,6 +952,16 @@ void turntable_add(int player, int delta) {
 
 void set_frame_hook(FrameHook h) { g_frame_hook = std::move(h); }
 void set_present_hook(PresentHook h) { g_present_hook = std::move(h); }
+
+double frame_rate() { return g_gcu->pixclock() / ((double)g_gcu->htotal() * g_gcu->vtotal()); }
+
+const uint32_t *render_between(double t, int &w, int &h) {
+    static std::vector<uint32_t> between;
+    if (g_gcu2) return nullptr;
+    w = g_gcu->hvisible(), h = g_gcu->vvisible();
+    between.resize((size_t)w * h);
+    return g_gcu->draw_between(between.data(), w, h, t) ? between.data() : nullptr;
+}
 void set_audio_sink(AudioSink sink) { g_audio_sink = std::move(sink); }
 int screens() { return g_gcu2 ? 2 : 1; }
 

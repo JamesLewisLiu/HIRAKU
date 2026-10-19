@@ -263,6 +263,8 @@ public:
     }
 
     double seconds() const override { return (double)now() / CPU_HZ; }
+    double native_rate() const override { return fb::frame_rate(); }
+    const uint32_t *render_between(double t, int &w, int &h) override { return fb::render_between(t, w, h); }
     const uint8_t *mem(uint32_t addr, uint32_t len) const override {
         const uint32_t p = HK_PHYS(addr);
         return p < HK_RAM_SIZE && len <= HK_RAM_SIZE - p ? hk_ram + p : nullptr;
