@@ -4,6 +4,18 @@ The games drive their cabinet's lamps through the board's lamp registers. HIRAKU
 - **HID controller LEDs:** lit pop'n, IIDX and DIY controllers.
 - **A local socket:** LED strips, microcontrollers, the launcher's live view, anything else.
 
+It can also show them over the game's picture (below), with no hardware at all.
+
+## The lights over the picture (F9)
+
+Press **F9** in a game, or start it with `--lights-overlay` (launcher: Settings > "Show the game's lights over its picture"), for a panel at the window's top left:
+- every lamp HIRAKU decodes for that cabinet, grouped as in the table below;
+- each lamp's output number in brackets: the bit in the board's output register (`[16]`), or the register and bit where the board has several (`[1.6]`), as `runtime/shell/cabinet.cpp` lists them;
+- a square filled in the lamp's colour while the game has it lit (from its name: Blue, Red, Yellow, Pink...; amber otherwise), empty while it's off;
+- how many times the lamps have changed since the game started, at the top: it moves whenever any lamp does.
+
+It's for seeing what a game does with its lights: which output is which lamp, when each comes on, what a test mode's lamp check drives. Dance Maniax, for example: the 12 hand sensors' blue and red lamps (outputs 0–23, two per sensor), the three spotlights (28, 29, 31), the side lamps and the Start lamps (32–37, the LAMPS port). The panel goes on top of in-between pictures too (smooth motion), and changes nothing in the game.
+
 The easiest way to set this up is the launcher (`hiraku`, **Lights**). This page covers what the launcher writes and what it does under the hood.
 
 ## Lamps per cabinet

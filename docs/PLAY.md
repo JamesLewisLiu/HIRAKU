@@ -95,6 +95,7 @@ The machine boots like a cabinet. The skipped BIOS time passes instantly. Then t
 | Tab (hold) | fast-forward |
 | F11, Alt+Enter | fullscreen |
 | F10 | picture: off, CRT light, CRT full |
+| F9 | the game's lights over the picture (docs/LIGHTS.md) |
 | Ctrl+1 … Ctrl+9 | type one of the game's codes (below) |
 | Esc | quit |
 

@@ -18,6 +18,7 @@
 #include "pacing.h"
 #include "asio.h"
 #include "wasapi.h"
+#include "lampview.h"
 #include "notice.h"
 #include "picture.h"
 #include "input.h"
@@ -138,6 +139,10 @@ void poll() {
             macro::trigger((size_t)(e.key.key - SDLK_1));
             continue;   // not a game input
         }
+        if (e.type == SDL_EVENT_KEY_DOWN && !e.key.repeat && e.key.key == SDLK_F9) {   // F9: the game's lights
+            lampview::toggle();
+            continue;
+        }
         if (e.type == SDL_EVENT_KEY_DOWN && !e.key.repeat && e.key.key == SDLK_F10 && g_gl)   // F10: off, light, full
             g_mode = g_mode == picture::Mode::off ? picture::Mode::light
                    : g_mode == picture::Mode::light ? picture::Mode::full : picture::Mode::off;
@@ -191,6 +196,7 @@ void window_set_picture(const std::string &mode, const std::string &shaders_dir,
 }
 
 void window_set_display_sync(bool on) { g_display_sync = on; }
+void window_set_lights_overlay(bool on) { lampview::set_shown(on); }
 void window_set_smooth_motion(bool on) { g_smooth_motion = on, pacing::set_smooth_motion(on); }
 
 void window_set_audio_output(const std::string &device, int frames, bool exclusive) {
@@ -740,6 +746,28 @@ static void place_banner(const notice::Banner &b, int win_w, int win_h, int &x, 
     y = win_h - dh - 8 * k;
 }
 
+// host/lampview.h's panel: top left, whole times its size, up to 60 % of the window's width
+static void place_lights(const lampview::Panel &p, int win_w, int win_h, int &x, int &y, int &dw, int &dh) {
+    int k = std::max(1, std::min(win_h / 540, win_w * 6 / 10 / std::max(1, p.w)));
+    dw = p.w * k;
+    dh = p.h * k;
+    x = y = 8 * k;
+}
+
+// The overlays over a picture in the GL window: the banner (host/notice.h) and the lights
+static void draw_overlays(int ww, int wh) {
+    if (notice::Banner b; notice::banner(b)) {
+        int bx, by, bw, bh;
+        place_banner(b, ww, wh, bx, by, bw, bh);
+        picture::overlay(b.pixels->data(), b.w, b.h, bx, by, bw, bh, b.alpha, ww, wh);
+    }
+    if (lampview::Panel p; lampview::panel(p)) {
+        int px, py, pw, ph;
+        place_lights(p, ww, wh, px, py, pw, ph);
+        picture::overlay(p.pixels->data(), p.w, p.h, px, py, pw, ph, 1.0f, ww, wh);
+    }
+}
+
 // The second monitor's half in player 2's window (window_set_split), after the first window's
 // picture: nothing waits here, the first window's pacing stands for both
 static void present_second(const uint32_t *rgb, int w, int h, double aspect) {
@@ -813,11 +841,7 @@ void window_present(const uint32_t *rgb, int w, int h, double vsec) {
             if (const uint32_t *b = core().render_between(pacing::phase(0), fw, fh)) first = b;
         picture::Mode shown = picture::draw(first, first == rgb ? w : fw, first == rgb ? h : fh, (ww - vw) / 2, (wh - vh) / 2,
                                             vw, vh, ww, wh, g_mode);
-        if (notice::Banner b; notice::banner(b)) {
-            int bx, by, bw, bh;
-            place_banner(b, ww, wh, bx, by, bw, bh);
-            picture::overlay(b.pixels->data(), b.w, b.h, bx, by, bw, bh, b.alpha, ww, wh);
-        }
+        draw_overlays(ww, wh);
         if (sync) {
             if (g_glFlush) g_glFlush();   // the GPU draws while we wait for the commit time
             pacing::wait_commit();
@@ -839,11 +863,7 @@ void window_present(const uint32_t *rgb, int w, int h, double vsec) {
         for (int i = 1; between && i < k; i++) {
             if (i > 1 && !(between = core().render_between(pacing::phase(i), bw, bh))) between = rgb, bw = w, bh = h;
             picture::draw(between, bw, bh, (ww - vw) / 2, (wh - vh) / 2, vw, vh, ww, wh, g_mode);
-            if (notice::Banner b; notice::banner(b)) {
-                int bx, by, bw2, bh2;
-                place_banner(b, ww, wh, bx, by, bw2, bh2);
-                picture::overlay(b.pixels->data(), b.w, b.h, bx, by, bw2, bh2, b.alpha, ww, wh);
-            }
+            draw_overlays(ww, wh);
             pacing::commit_extra();
             SDL_GL_SwapWindow(g_win);
             g_in_between++;
@@ -893,6 +913,29 @@ void window_present(const uint32_t *rgb, int w, int h, double vsec) {
                 const SDL_FRect r{(float)bx, (float)by, (float)bw, (float)bh};
                 SDL_SetTextureAlphaModFloat(bt, b.alpha);
                 SDL_RenderTexture(g_ren, bt, nullptr, &r);
+                SDL_SetRenderLogicalPresentation(g_ren, lw, lh, lm);
+            }
+        }
+        if (lampview::Panel p; lampview::panel(p)) {   // the lights, likewise
+            static SDL_Texture *lt = nullptr;
+            static unsigned lt_id = 0;
+            static int lt_w = 0, lt_h = 0;
+            if (lt && (lt_w != p.w || lt_h != p.h)) SDL_DestroyTexture(lt), lt = nullptr;
+            if (!lt && (lt = SDL_CreateTexture(g_ren, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STATIC, p.w, p.h))) {
+                lt_w = p.w, lt_h = p.h, lt_id = p.id - 1;
+                SDL_SetTextureBlendMode(lt, SDL_BLENDMODE_BLEND);
+                SDL_SetTextureScaleMode(lt, SDL_SCALEMODE_NEAREST);
+            }
+            if (lt && lt_id != p.id) SDL_UpdateTexture(lt, nullptr, p.pixels->data(), p.w * 4), lt_id = p.id;
+            int lw, lh, ow, oh;
+            SDL_RendererLogicalPresentation lm;
+            if (lt && SDL_GetRenderLogicalPresentation(g_ren, &lw, &lh, &lm)) {
+                SDL_SetRenderLogicalPresentation(g_ren, 0, 0, SDL_LOGICAL_PRESENTATION_DISABLED);
+                SDL_GetCurrentRenderOutputSize(g_ren, &ow, &oh);
+                int px, py, pw, ph;
+                place_lights(p, ow, oh, px, py, pw, ph);
+                const SDL_FRect r{(float)px, (float)py, (float)pw, (float)ph};
+                SDL_RenderTexture(g_ren, lt, nullptr, &r);
                 SDL_SetRenderLogicalPresentation(g_ren, lw, lh, lm);
             }
         }

@@ -29,6 +29,8 @@
 //                       GCU's objects, Twinkle's GPU primitives) instead of frames held for
 //                       uneven numbers of refreshes.
 //                       Needs the compositor's fifo-v1 (KWin 6.7). docs/SMOOTH.md
+//     --lights-overlay  the game's lights over its picture: every lamp the core decodes, lit or not
+//                       as the game drives it, and how often they change (F9 shows or hides it)
 //     --macro NAME[@F]  run one of the game's code macros (games/<game>/macros.txt) at frame F, or
 //                       at its own `at` frame (power-on codes); repeatable. In the window,
 //                       Ctrl+1..9 types the 1st..9th macro
@@ -245,7 +247,7 @@ int main(int argc, char **argv) {
     std::string picture_mode = "off";
     std::vector<std::string> picture_config;
     std::vector<std::string> macro_specs;
-    bool display_sync = true, smooth_motion = false;
+    bool display_sync = true, smooth_motion = false, lights_overlay = false;
     bool nvram_given = false;
     int audio_ms = 8, audio_buffer = 0;
     std::string audio_device;
@@ -282,6 +284,7 @@ int main(int argc, char **argv) {
         else if (a == "--macro") macro_specs.push_back(val());
         else if (a == "--display-sync") display_sync = val() != "off";
         else if (a == "--smooth-motion") smooth_motion = true;
+        else if (a == "--lights-overlay") lights_overlay = true;
         else if (a == "--nvram") { nvram_dir = val(); nvram_given = true; }
         else if (a == "--audio-ms") audio_ms = std::stoi(val());
         else if (a == "--audio-device") audio_device = val();
@@ -399,6 +402,7 @@ int main(int argc, char **argv) {
     host::window_set_picture(picture_mode, opt.root + "/shaders", picture_config);
     host::window_set_display_sync(display_sync);
     host::window_set_smooth_motion(smooth_motion);
+    host::window_set_lights_overlay(lights_overlay);
     host::window_set_audio_output(audio_device, audio_buffer, audio_exclusive);
     host::window_set_audio_asio(audio_asio);
     host::window_set_volume(volume_db);

@@ -277,6 +277,11 @@ SettingsDialog::SettingsDialog(QWidget *parent) : QDialog(parent) {
     m_socket = new QCheckBox("Publish lamps on a local socket (live view in Lights, external LED tools)");
     m_socket->setChecked(s.value("lights/socket", true).toBool());
     fl->addWidget(m_socket);
+    m_lightsOverlay = new QCheckBox("Show the game's lights over its picture (F9 in the game shows or hides them)");
+    m_lightsOverlay->setChecked(s.value("lights/overlay", false).toBool());
+    m_lightsOverlay->setToolTip("Every lamp the game drives, lit or not, grouped as the cabinet has them, and how often "
+                                "they change: for seeing what a game does with its lights without the cabinet.");
+    fl->addWidget(m_lightsOverlay);
     auto *path = new QLabel("Socket: <tt>" + cfg::lightsSocket().toHtmlEscaped() + "</tt> (protocol: docs/LIGHTS.md)");
     path->setTextInteractionFlags(Qt::TextSelectableByMouse);
     fl->addWidget(path);
@@ -453,6 +458,7 @@ void SettingsDialog::accept() {
     s.setValue("audio/buffer", m_audioBuffer->currentData().toInt());
     s.setValue("audio/soundfont", m_soundfont->text().trimmed());
     s.setValue("lights/socket", m_socket->isChecked());
+    s.setValue("lights/overlay", m_lightsOverlay->isChecked());
     s.setValue("paths/root", m_root->text().trimmed());
     s.setValue("paths/bin", m_bin->text().trimmed());
     s.setValue("paths/nvram", m_nvram->text().trimmed());

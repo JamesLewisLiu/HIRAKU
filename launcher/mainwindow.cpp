@@ -574,6 +574,7 @@ QStringList MainWindow::arguments(const Game &g) const {
     if (QFileInfo::exists(controls)) a << "--bindings" << controls;
     if (lightsFileUsed(lights)) a << "--lights" << lights;
     if (s.value("lights/socket", true).toBool()) a << "--lights-socket" << cfg::lightsSocket();
+    if (s.value("lights/overlay", false).toBool()) a << "--lights-overlay";   // runtime/host/lampview.h
     QString sf = s.value("audio/soundfont").toString();
     if (g.family == "kbm" && !sf.isEmpty()) a << "--soundfont" << sf;
     if (g.core == "python") a << "--renderer" << "vk";   // Vulkan GS: less CPU than the software one (PLAN.md section 23)

@@ -34,6 +34,8 @@ void window_set_split(bool on);
 // the k - 1 refreshes after each frame show the core's in-between pictures (Core::render_between)
 // instead of holding the frame
 void window_set_smooth_motion(bool on);
+// --lights-overlay: the game's lights over its picture from the start (F9 toggles it; host/lampview.h)
+void window_set_lights_overlay(bool on);
 bool window_open(const char *title, int scale, const std::string &bindings, int audio_target_ms, bool fullscreen = false,
                  int audio_rate = 44100);
 // Present one frame; then sleep so that `virtual_seconds` does not run ahead
