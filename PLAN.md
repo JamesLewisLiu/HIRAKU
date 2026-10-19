@@ -1149,6 +1149,18 @@ FUN_017c04a8, FUN_017c1be0 "pnote header error") tells the rest.
   scrambled into a free slot the way `[[file]]` lays files) and the song list's entry.
 - **Not in these files:** the songs. They are in slots after the file system (step 2 below).
 
+**Pilot: high frame rate (2026-10-19, `[[rate]]`, docs/MODS.md):** pop'n music 14 computes the
+song's position from a hardware timer each frame (FUN_01740298 → 0x018ff668) and draws and
+judges notes from it. PCSX2's NTSC frame rate sets the vsync's interval in machine time, so
+`Core::set_vsync_rate` (the Python core: `EmuConfig.GS.FramerateNTSC` + `UpdateVSyncRate`, at
+the next vsync) gives the game more frames a second while the clock moves; `hz = "display"`
+follows the display (`pacing::refresh_hz`), any number to 1000 otherwise. `between_ticks`
+patches keep frame counters at the cabinet's pace at any rate: pop'n 14's animated objects read
+their speed as 0 between ticks. `games/popn<N>/mods/smooth-notes` for pop'n 9-14 (the same engine: table in docs/MODS.md). Checked at 120, 240 and 480 Hz
+(a picture every vsync; notes where they are at 60 Hz; same results; characters at the
+cabinet's pace). Left: the judgement text's timer (counted through a pointer in a stack frame);
+the window at a real high-refresh display; other cores' `set_vsync_rate`.
+
 **Next, the pilot:** a translation (the pictures' `GC` format to and from PNG; the text in
 `game.bin` as `[[patch]]`es), a song added (the sound area and its table, the charts, the song
 list), smooth note scrolling. Firebeat code patches (the interpreter for patched functions) and

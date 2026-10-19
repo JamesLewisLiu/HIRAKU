@@ -46,6 +46,8 @@ void display_changed();
 // pacing is on for it. Call first thing in the frame (before drawing).
 bool frame(double period);
 bool active();
+// The display's refresh rate, Hz (0: not known)
+double refresh_hz();
 // Emulated seconds per real second (1 when off): the sound plays at this rate.
 double speed();
 // Display pacing: wait for the frame's commit time, then call commit() right before the swap and

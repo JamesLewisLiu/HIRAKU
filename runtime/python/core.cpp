@@ -66,6 +66,7 @@
 
 #include "pcsx2/Achievements.h"
 #include "pcsx2/Config.h"
+#include "pcsx2/Counters.h"
 #include "pcsx2/FireWire/FireWire.h"
 #include "pcsx2/GS.h"
 #include "pcsx2/GameList.h"
@@ -832,7 +833,14 @@ public:
         printf("frame %llu: EE pc %08x, cycle %llu\n", (unsigned long long)f, cpuRegs.pc, (unsigned long long)cpuRegs.cycle);
     }
 
-    double seconds() const override { return (double)frame_ / 59.94; }
+    double seconds() const override { return seconds_; }
+    // a mod's [[rate]] (host/mods.h): PCSX2's NTSC frame rate is the vsync's interval in the
+    // machine's own time (Counters.cpp vSyncInfoCalc), so the EE gets that many frames a second;
+    // applied in the frame hook, on the emulator's side, at the next vsync
+    bool set_vsync_rate(double hz) override {
+        want_rate_ = hz > 0 ? hz : Pcsx2Config::GSOptions::DEFAULT_FRAME_RATE_NTSC;
+        return true;
+    }
     // a mod's patch (host/mods.h): the EE recompiler's blocks over it go (PCSX2 also notices a
     // write to a page it has translated; this makes sure)
     void code_changed(uint32_t addr, uint32_t len) override {
@@ -1156,6 +1164,12 @@ private:
             fflush(p1io_log_);
         }
         frame_++;
+        seconds_ += 1.0 / rate_;
+        if (want_rate_ != rate_) {
+            rate_ = want_rate_;
+            EmuConfig.GS.FramerateNTSC = (float)rate_;
+            UpdateVSyncRate(false);
+        }
         if (audio_sink_ && !audio_.empty()) audio_sink_(audio_.data(), (int)(audio_.size() / 2));
         audio_.clear();
         {
@@ -1375,6 +1389,8 @@ private:
     AudioSink audio_sink_;
     std::function<void()> on_fatal_;
     uint64_t frame_ = 0;
+    double seconds_ = 0;                     // the machine's time, through any change of rate
+    double rate_ = Pcsx2Config::GSOptions::DEFAULT_FRAME_RATE_NTSC, want_rate_ = rate_;   // vsyncs a second
     std::vector<float> audio_;
     FILE *p1io_log_ = nullptr;
     uint64_t p1io_polls_ = 0, p1io_polls_logged_ = 0;

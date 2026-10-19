@@ -53,7 +53,7 @@ std::vector<Table> parse(const std::string &text, const std::string &file) {
             out.push_back(t);
             continue;
         }
-        if (line[0] == '[') fail("only [[patch]], [[bytes]] and [[file]] tables");
+        if (line[0] == '[') fail("only [[patch]], [[bytes]], [[file]] and [[rate]] tables");
         const size_t eq = line.find('=');
         if (eq == std::string::npos) fail("expected key = value");
         std::string key = line.substr(0, eq), val = line.substr(eq + 1);
@@ -88,13 +88,37 @@ struct Patch {
     uint32_t address = 0;
     std::vector<uint8_t> original, replace;
     bool once = false, done = false, logged = false;
+    bool while_rate = false;   // in place only while a [[rate]] is on; the original bytes otherwise
+    // ... and then only on the frames between the cabinet's ticks: an increment made 0 there keeps
+    // the cabinet's pace at any rate (pop'n music 14's objects' frame counters)
+    bool between_ticks = false;
 };
+
+// [[rate]]: the machine's vsync at hz while a word of the game's memory changes from frame to
+// frame (pop'n music 14's song clock: the notes are drawn from it, so they move smoothly); hz 0:
+// the display's refresh rate
+struct Rate {
+    std::string mod;
+    double hz = 0, now = 0;   // as asked; as set
+    uint32_t address = 0, last = 0;
+    int changed = 0, still = 0;   // frames in a row the word changed, didn't
+    bool on = false, refused = false;
+};
+
+constexpr double kCabinetHz = 59.94;
+constexpr double kDisplayFallbackHz = 119.88;   // hz = "display" with no window, or not known
+double g_display_hz = 0;
+// Whether the coming frame ends a cabinet frame's worth of time (1/59.94 s): between_ticks
+// patches are out then. Kept by frame() while a rate is on; always so otherwise
+double g_owed = 0;
+bool g_tick = true;
 
 struct Mod {
     std::string dir, name, version;
 };
 
 std::vector<Patch> g_patches;
+std::vector<Rate> g_rates;
 std::vector<Mod> g_mods;
 
 std::string read_file(const std::string &path) {
@@ -239,6 +263,14 @@ bool load(const std::vector<std::string> &dirs, const std::string &game, const s
                     if (v.empty() || *end) fail(std::string("'") + k + "' isn't a number");
                     return r;
                 };
+                auto real = [&](const char *k) -> double {
+                    auto it = t.values.find(k);
+                    if (it == t.values.end()) fail(std::string("'") + k + "' is missing");
+                    char *end = nullptr;
+                    const double r = std::strtod(it->second.c_str(), &end);
+                    if (it->second.empty() || *end) fail(std::string("'") + k + "' isn't a number");
+                    return r;
+                };
                 auto flag = [&](const char *k) {
                     auto it = t.values.find(k);
                     if (it == t.values.end()) return false;
@@ -277,16 +309,32 @@ bool load(const std::vector<std::string> &dirs, const std::string &game, const s
                     mod.version = str("version", false);
                     if (const std::string g = str("game", true); g != game) fail("this mod is for " + g + ", not " + game);
                 } else if (t.kind == "patch") {
-                    known({"address", "original", "replace", "once"});
+                    known({"address", "original", "replace", "once", "while_rate", "between_ticks"});
                     Patch p;
                     p.mod = mod.name;
                     p.address = (uint32_t)num("address");
                     if (t.values.count("original")) p.original = hex("original");   // none: written every frame (a cheat)
                     p.replace = hex("replace");
                     p.once = flag("once");
+                    p.between_ticks = flag("between_ticks");
+                    p.while_rate = flag("while_rate") || p.between_ticks;
+                    if (p.while_rate && (p.once || !t.values.count("original")))
+                        fail("a while_rate patch has its 'original' (put back when the rate is off) and isn't 'once'");
                     if (p.replace.empty()) fail("'replace' is empty");
                     if (!p.original.empty() && p.original.size() != p.replace.size()) fail("'original' and 'replace' are as long as each other");
                     g_patches.push_back(std::move(p));
+                } else if (t.kind == "rate") {
+                    known({"hz", "while_changing"});
+                    Rate r;
+                    r.mod = mod.name;
+                    if (t.values.count("hz") && t.is_string.at("hz")) {
+                        if (str("hz", true) != "display") fail("'hz' is a number, or \"display\" (the display's refresh rate)");
+                    } else {
+                        r.hz = real("hz");
+                        if (r.hz < 30 || r.hz > 1000) fail("'hz' is between 30 and 1000");
+                    }
+                    r.address = (uint32_t)num("while_changing");
+                    g_rates.push_back(r);
                 } else if (t.kind == "bytes") {
                     known({"medium", "offset", "from"});
                     const std::string medium = str("medium", true);
@@ -326,9 +374,57 @@ bool load(const std::vector<std::string> &dirs, const std::string &game, const s
     return true;
 }
 
+void display_rate(double hz) { g_display_hz = hz; }
+
 void frame() {
+    for (Rate &r : g_rates) {
+        if (r.refused) continue;
+        const uint8_t *m = core().mem(r.address, 4);
+        if (!m) continue;
+        uint32_t v;
+        memcpy(&v, m, 4);
+        if (v != r.last) r.changed++, r.still = 0;
+        else r.still++, r.changed = 0;
+        r.last = v;
+        // two frames in a row either way, so a word that changes once (a load) doesn't count
+        const bool want = r.on ? r.still < 2 : r.changed >= 2;
+        // hz = "display": follow the display (a window moved to another one)
+        const double hz = r.hz > 0 ? r.hz : g_display_hz > 30 ? g_display_hz : kDisplayFallbackHz;
+        if (want == r.on && (!want || hz == r.now)) continue;
+        if (!core().set_vsync_rate(want ? hz : 0)) {
+            fprintf(stderr, "mods: %s: this machine's core can't change its vsync rate ([[rate]] ignored)\n", r.mod.c_str());
+            r.refused = true;
+            continue;
+        }
+        r.on = want;
+        r.now = want ? hz : 0;
+        fprintf(stderr, "mods: %s: frame %llu, vsync at %s\n", r.mod.c_str(), (unsigned long long)core().frame_count(),
+                want ? (std::to_string(hz) + " Hz").c_str() : "the machine's own rate");
+    }
+    bool rate_on = false;
+    double rate_hz = 0;
+    for (const Rate &r : g_rates)
+        if (r.on) rate_on = true, rate_hz = r.now;
+    // the coming frame: a cabinet tick when the time owed reaches a cabinet frame
+    if (rate_on) {
+        g_owed += kCabinetHz / rate_hz;
+        g_tick = g_owed >= 1 - 1e-9;
+        if (g_tick) g_owed -= 1;
+    } else {
+        g_owed = 0;
+        g_tick = true;
+    }
     for (Patch &p : g_patches) {
         if (p.done) continue;
+        if (p.while_rate && (!rate_on || (p.between_ticks && g_tick))) {   // the original back, if the patch is there
+            const size_t n = p.original.size();
+            auto *m = const_cast<uint8_t *>(core().mem(p.address, (uint32_t)n));
+            if (m && memcmp(m, p.replace.data(), n) == 0) {
+                memcpy(m, p.original.data(), n);
+                core().code_changed(p.address, (uint32_t)n);
+            }
+            continue;
+        }
         const size_t n = p.replace.size();
         auto *m = const_cast<uint8_t *>(core().mem(p.address, (uint32_t)n));
         if (!m || memcmp(m, p.replace.data(), n) == 0) continue;   // not mapped, or in place

@@ -75,6 +75,10 @@ public:
     // recorded code from there translates it again (or runs it interpreted); one that interprets
     // needs nothing
     virtual void code_changed(uint32_t addr, uint32_t len) { (void)addr, (void)len; }
+    // A mod asks for the machine's vsync to come at hz (host/mods.h [[rate]]); 0: the machine's
+    // own rate again. The CPUs keep their clocks: the game gets more frames a second, each with
+    // less time. false where the core can't
+    virtual bool set_vsync_rate(double hz) { (void)hz; return false; }
     virtual uint64_t frame_count() const = 0;
 
     // Inputs by MAME name ("P1 Button 3", "Coin 1", "TURNTABLE_P1/Turntable"):

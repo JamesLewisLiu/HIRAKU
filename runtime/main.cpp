@@ -92,6 +92,7 @@
 #include "host/readers.h"
 #include "host/notice.h"
 #include "host/window.h"
+#include "host/pacing.h"
 #endif
 
 #ifdef HK_GAME_ID
@@ -440,6 +441,9 @@ int main(int argc, char **argv) {
 #endif
             exit(130);
         }
+#ifdef HK_WITH_SDL
+        if (window_scale) mods::display_rate(host::pacing::refresh_hz());
+#endif
         mods::frame();
         macro::frame(f);
         if (!script_path.empty()) {

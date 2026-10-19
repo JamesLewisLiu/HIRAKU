@@ -16,6 +16,10 @@ bool load(const std::vector<std::string> &dirs, const std::string &game, const s
 // The memory patches: each put in place when its original bytes are there (call once a frame)
 void frame();
 
+// The display's refresh rate (Hz, 0: none or unknown), for a [[rate]] at hz = "display"; the shell
+// tells it once a frame
+void display_rate(double hz);
+
 // The mods loaded, for the log: "name version (folder)"
 std::vector<std::string> describe();
 

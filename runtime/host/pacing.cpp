@@ -354,6 +354,7 @@ bool frame(double period) {
 }
 
 bool active() { return g_active; }
+double refresh_hz() { return g_T > 0 ? 1e9 / (double)g_T : 0.0; }
 double speed() { return g_active ? g_speed : 1.0; }
 
 void wait_commit() {

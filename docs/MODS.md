@@ -43,6 +43,8 @@ address = 0x0191cdb8            # where, as the core's mem() takes it (the main 
 original = "46524545 20504c41 59"   # hex: what must be there (spaces are ignored)
 replace  = "4d4f4444 45442120 21"   # hex: what goes there (as long as original)
 # once = true                   # apply the first time only (default: whenever original is there again)
+# while_rate = true             # in place only while a [[rate]] is on, original back otherwise
+# between_ticks = true          # ... and then only on the vsyncs between the cabinet's ticks (below)
 # Without `original`, replace is written every frame, whatever is there (a cheat: MAME's and
 # PCSX2's write their values so); with once = true, only the first frame. Careful with that: from
 # the very first frame means while the game is still loading or unpacking its code there too,
@@ -50,6 +52,10 @@ replace  = "4d4f4444 45442120 21"   # hex: what goes there (as long as original)
 # into its neighbours. With `original`, a patch waits for the bytes it was made for. Bytes are in the
 # machine's own order: big-endian on DJ Main (68000) and Firebeat (PowerPC), little-endian on
 # System 573, Twinkle and Konami Python (MIPS).
+
+[[rate]]                        # the machine's vsync at another rate while the game is somewhere
+hz = "display"                  # the display's refresh rate (no window: 119.88), or a number (30-1000)
+while_changing = 0x018ff668     # ... while this word of its memory changes from frame to frame
 
 [[bytes]]                       # bytes the game reads from one of its media
 medium = "hdd"                  # the medium's key in dumps/<game>/machine.txt
@@ -70,6 +76,64 @@ from = "files/0.gzz"            # the file as the game uses it (tools/popnfs.py 
 Numbers are decimal or `0x` hex. A mod is checked when it's loaded: an unknown key, a `game` other
 than the one being started, a patch whose `original` and `replace` differ in length, or a
 missing `from` file stops the game with a message saying which.
+
+## High frame rates (`[[rate]]`)
+
+A game draws one picture per vsync. `[[rate]]` makes the vsync come `hz` times a second of the
+machine's own time while a word of the game's memory keeps changing (two frames in a row: on;
+two still: back to the machine's rate). `hz = "display"` follows the display's refresh rate, so
+the game's frames meet the display's one for one (display pacing then shows each for one
+refresh). The CPUs keep their clocks, so each frame has less time; a game that keeps up draws
+more pictures a second. What it computes from a clock (a song's position, timing windows) stays
+right and moves more smoothly; what it counts in frames (animations, effects, menu timers) would
+run faster, which is why the rate is tied to a condition, and what `between_ticks` is for.
+
+The cabinet's ticks: while a rate is on, HIRAKU keeps count of the machine's time, and a vsync
+that completes another 1/59.94 s is a tick (every second one at 119.88 Hz, every fourth at 239.76,
+5 in 12 at 144). A `[[patch]]` with `between_ticks` is in place on the vsyncs between ticks only:
+an increment patched to +0 there advances once per cabinet frame at any rate. Patches are put
+in place and taken out between frames (the Python core clears the EE recompiler's blocks over
+them each time).
+
+pop'n music 14 (`games/popn14/mods/smooth-notes`, 2026-10-19):
+- the play screen computes the song's position from a hardware timer on every frame
+  (FUN_01740298, the word at 0x018ff668), draws the notes from it and judges from it: while that
+  word changes (from the song's start to its end) the vsync follows the display;
+- checked headless at 119.88, 239.76 and 479.52 Hz: a new picture on every vsync (the EE keeps
+  up even at 480), the notes where they are at 60 Hz for the same moment of the song, and the
+  play case's results identical with its presses at the same moments;
+- the animated objects (the characters, the hits' sparks, many effects) go through one update
+  (around 0x01736fb4) that adds each object's speed (percent, +0x20) to its frame counter (+8,
+  with the remainder at +0xa); reading the speed as 0 between ticks (`between_ticks` on the load
+  at 0x01736fbc) holds every object at the cabinet's pace: the characters' counter advances 500
+  times in 1,000 vsyncs at 120 Hz, 250 at 240, 125 at 480, and their poses match 60 Hz's at the
+  same moments. (Taking the objects' "paused" branch instead skips their drawing: they blink.)
+- left: the GREAT/GOOD/BAD text shows for half its time at 120 Hz. Its timer is a counter in a
+  long-lived stack frame (0x01ffea20 in the attract demo), counted through a pointer; not found
+  among the increment-and-store sites.
+
+pop'n music 9 to 13 (`games/popn<N>/mods/smooth-notes`, 2026-10-19): the same engine. Their
+song clocks were found by the clock function's shape (pop'n 10-13: a pause flag at +0x20, the
+timer, a 64-bit subtraction and conversion, the result stored at +0 of the same block; pop'n 9,
+an older build, by a RAM search) and checked to move only from a song's start; the objects'
+update is the same code in every one (`lh v1, 0x20(sN)` before `addiu a1, zero, 100`), and pop'n
+10-13 have the 13-frame effect timer too:
+
+| game | song clock | objects' speed load | effect timer |
+|---|---|---|---|
+| pop'n 9 | 0x0025a188 | 0x00106ca4 | — |
+| pop'n 10 | 0x002fa3e0 | 0x001084dc | 0x001163bc |
+| pop'n 11 | 0x002ca180 | 0x00108d94 | 0x00116a84 |
+| pop'n 12 | 0x002d2488 | 0x0010847c | 0x00115ccc |
+| pop'n 13 | 0x01907fd8 | 0x01745a14 | 0x01753350 |
+| pop'n 14 | 0x018ff668 | 0x01736fbc | 0x017448f0 |
+
+Checked on each at 119.88 Hz: the rate on from the song's start, a new picture on every vsync,
+the clock at 8.34 ms a vsync; on pop'n 12 an object's frame counter at the cabinet's pace (500
+times in 1,000 vsyncs).
+
+Only the Python core changes its rate so far (not the Firebeat pop'n music 4-8 yet); elsewhere
+`[[rate]]` says so in the log and does nothing.
 
 ## How the layers work
 

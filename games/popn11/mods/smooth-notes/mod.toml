@@ -1,0 +1,20 @@
+name = "Smooth notes (high frame rate)"
+version = "0.2"
+game = "popn11"
+description = "While a song plays, the machine's vsync follows the display's refresh rate (120, 144, 240 Hz...): the game draws its notes from its song clock, so they move at the display's rate, and judges as before. The animated objects (characters, hit effects) keep the cabinet's pace. Left: the GREAT/GOOD/BAD text shows for a shorter time. The same engine as pop'n music 14's mod (games/popn14/mods/smooth-notes)."
+
+[[rate]]
+hz = "display"                 # the display's refresh rate (no window: 119.88); or a number, up to 1000
+while_changing = 0x002ca180    # the song clock, recomputed from a hardware timer on every frame of the play screen
+
+[[patch]]                      # the animated objects' update: on the vsyncs between the cabinet's ticks
+address = 0x00108d94           # each object's speed (+0x20) reads 0 (lh v1, 0x20(s4) -> addiu v1, zero, 0)
+original = "20008386"
+replace = "00000324"
+between_ticks = true
+
+[[patch]]                      # an effect's 13-frame timer: +1 on ticks only
+address = 0x00116a84           # (addiu a0, v1, 1 -> addiu a0, v1, 0)
+original = "01006424"
+replace = "00006424"
+between_ticks = true
