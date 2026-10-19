@@ -132,8 +132,16 @@ Checked on each at 119.88 Hz: the rate on from the song's start, a new picture o
 the clock at 8.34 ms a vsync; on pop'n 12 an object's frame counter at the cabinet's pace (500
 times in 1,000 vsyncs).
 
-Only the Python core changes its rate so far (not the Firebeat pop'n music 4-8 yet); elsewhere
-`[[rate]]` says so in the log and does nothing.
+The Firebeat pop'n music (4-8) are another case (checked on pop'n 4, 2026-10-19, with the
+Firebeat core's frame period halved by hand): the attract demo's song lasts the same number of
+frames at twice the rate (about 2,400 at both), so its play goes by frames, not by a clock. Its
+notes would run away from its music; smooth notes there need the game's scroll itself patched
+(each frame's step split over the vsyncs between ticks), per game, and the core's
+`set_vsync_rate` (its frame period is `frame_ticks()`, runtime/firebeat/board.cpp). DJ Main's
+pop'n music 1-3 (`FRAME_CYCLES`, runtime/djmain/board.cpp) are older still: not looked at.
+
+Only the Python core changes its rate so far; elsewhere `[[rate]]` says so in the log and does
+nothing.
 
 ## How the layers work
 
