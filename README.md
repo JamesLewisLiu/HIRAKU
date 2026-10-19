@@ -4,7 +4,7 @@
 
 <p align="center"><b>“HIRAKU” is all about giggles and fun. Enjoy!!</b></p>
 
-HIRAKU runs Konami's BEMANI arcade games as native programs on Linux and Windows. It covers five arcade boards, from DJ Main (1997) to Konami Python (2002–2006), all behind one launcher.
+HIRAKU runs Konami's BEMANI arcade games as native or optimized interpreted programs on Linux and Windows. It covers five arcade boards, from DJ Main (1997) to Konami Python (2002–2006), all behind one launcher.
 
 - **Firebeat** games are statically recompiled: HIRAKU analyses each game's PowerPC program and translates it to C, linked against a runtime that stands in for the board. The packages, which carry no game's code, run the same analysis through an executor (`hiraku-firebeat`) instead, with identical results.
 - **DJ Main, System 573, Twinkle and Python** run as cores behind the same shell (`runtime/shell/core.h`). Each core is an interpreter, a recompiler fed by recordings, or a hosted emulator.
