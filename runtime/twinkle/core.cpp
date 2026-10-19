@@ -129,6 +129,7 @@ public:
     }
 
     double seconds() const override { return twinkle::seconds(); }
+    const uint32_t *render_between(double t, int &w, int &h) override { return twinkle::render_between(t, w, h); }
     const uint8_t *mem(uint32_t addr, uint32_t len) const override { return twinkle::mem(addr, len); }
     uint64_t frame_count() const override { return twinkle::frame_count(); }
     bool set_input(const std::string &name, int value) override { return twinkle::set_input(name, value); }

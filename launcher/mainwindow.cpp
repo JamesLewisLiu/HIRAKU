@@ -552,7 +552,8 @@ QStringList MainWindow::arguments(const Game &g) const {
     if (g.coreBinary) a = QStringList{"--game", g.id} + a;   // the core's own binary (games.h)
     if (s.value("video/fullscreen", false).toBool()) a << "--fullscreen";
     if (!s.value("video/displaySync", true).toBool()) a << "--display-sync" << "off";   // runtime/host/pacing.h
-    else if ((g.core == "djmain" || g.core.isEmpty() || g.core == "firebeat") && s.value("video/smoothMotion", false).toBool())
+    else if ((g.core == "djmain" || g.core.isEmpty() || g.core == "firebeat" || g.core == "twinkle") &&
+             s.value("video/smoothMotion", false).toBool())
         a << "--smooth-motion";   // docs/SMOOTH.md
     // the picture mode, and its settings: all games', then the game's (picturedialog.h)
     a << "--picture" << picture::mode(g.id) << "--picture-config" << picture::configDir() << "--picture-config"

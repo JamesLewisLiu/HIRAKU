@@ -696,7 +696,8 @@ void DvdState::command(const unsigned char *c, double t) {
 
 // The picture: the screen's visible area from `bm`, and the sub board's overlay, the player's
 // picture where the PlayStation draws black, at the machine's time.
-void picture(screen_device &screen, const bitmap_rgb32 &bm, std::vector<u32> &out, int &w, int &h, bool frame) {
+void picture(screen_device &screen, const bitmap_rgb32 &bm, std::vector<u32> &out, int &w, int &h, bool frame,
+             double later = 0) {
     const rectangle &vis = screen.visible_area();
     w = vis.width(), h = vis.height();
     out.resize((size_t)w * h);
@@ -714,7 +715,7 @@ void picture(screen_device &screen, const bitmap_rgb32 &bm, std::vector<u32> &ou
         pic.contrast = st.m_bt812[0x09];
         pic.saturation = st.m_bt812[0x0a];
         pic.hue = (s8)st.m_bt812[0x0b];
-        g.video.composite(screen.machine().time().as_double(), out.data(), w, h, pic);
+        g.video.composite(screen.machine().time().as_double() + later, out.data(), w, h, pic);
         if (frame && getenv("HK_TW_VIDEO_AT") && g.frames == (u64)atoll(getenv("HK_TW_VIDEO_AT")))
             fprintf(stderr, "frame %llu t %.6f %dx%d bri %d con %d sat %d hue %d\n", (unsigned long long)g.frames,
                     screen.machine().time().as_double(), w, h, pic.brightness, pic.contrast, pic.saturation, pic.hue);
@@ -842,6 +843,17 @@ void set_present_hook(PresentHook h) {
     };
 }
 void set_audio_sink(AudioSink s) { g.audio_sink = std::move(s); }
+
+// The GPU draws the frame on show again with what moves carried on (psxgpu_device::hk_between),
+// and the player's video comes from the in-between picture's moment too
+const u32 *render_between(double t, int &w, int &h) {
+    static bitmap_rgb32 bm;
+    static std::vector<u32> out;
+    screen_device &screen = *g.state->m_screen;
+    if (!g.state->m_gpu->hk_between(t, screen, bm)) return nullptr;
+    picture(screen, bm, out, w, h, false, t * screen.frame_period().as_double());
+    return out.data();
+}
 
 [[noreturn]] void run() {
     running_machine &m = *g.machine;

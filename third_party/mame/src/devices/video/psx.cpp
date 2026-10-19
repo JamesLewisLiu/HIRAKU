@@ -3550,6 +3550,12 @@ void psxgpu_device::vblank(screen_device &screen, bool vblank_state)
 		else
 			n_gpustatus |= 1U << 13;
 
+		if( m_hk_keep && !m_hk_drawing.empty() ) // HIRAKU: in-between pictures, a new frame
+		{
+			m_hk_shown_before = std::move( m_hk_shown );
+			m_hk_shown = std::move( m_hk_drawing );
+			m_hk_drawing.clear();
+		}
 		m_vblank_handler(1);
 	}
 }
@@ -3691,36 +3697,14 @@ uint32_t *psxgpu_device::hk_reserve( uint32_t n_words )
 void psxgpu_device::hk_publish()
 {
 	uint32_t *item = m_hk_image != nullptr ? m_hk_image : &m_hk_ring[ m_hk_write & ( HK_RING - 1 ) ];
+	if( m_hk_keep ) // in-between pictures: the frame's items
+		m_hk_drawing.insert( m_hk_drawing.end(), item, item + item[ 1 ] );
 	m_hk_write += item[ 1 ];
 	m_hk_image = nullptr;
 	if( m_hk_thread.joinable() )
 	{
 		// the rectangle it may write (its run's, when the last item's was the same)
-		const draw_state &d = *reinterpret_cast<const draw_state *>( &item[ 2 ] );
-		const PACKET &p = d.m_packet;
-		hk_area a;
-		switch( item[ 0 ] & 0xff )
-		{
-		case HK_FrameBufferRectangleDraw: // rows and columns wrap
-			a = { COORD_X( p.FlatRectangle.n_coord ) & 1023, std::min<int32_t>( SIZE_W( p.FlatRectangle.n_size ), 1024 ),
-				COORD_Y( p.FlatRectangle.n_coord ) & 1023, std::min<int32_t>( SIZE_H( p.FlatRectangle.n_size ), 1024 ) };
-			break;
-		case HK_MoveImage: // to vertex 1, wrapping; its sizes are int16_t there
-			a = { COORD_X( p.MoveImage.vertex[ 1 ].n_coord ) & 1023, std::min<int32_t>( (int16_t)SIZE_W( p.MoveImage.n_size ), 1024 ),
-				COORD_Y( p.MoveImage.vertex[ 1 ].n_coord ) & 1023, std::min<int32_t>( (int16_t)SIZE_H( p.MoveImage.n_size ), 1024 ) };
-			break;
-		case HK_IMAGE: // from n_vramx/y within the transfer's rectangle, wrapping; a size of 0 writes one pixel
-			a = { int32_t( p.n_entry[ 1 ] & 1023 ), std::clamp<int32_t>( p.n_entry[ 2 ] & 0xffff, 1, 1024 ),
-				int32_t( ( p.n_entry[ 1 ] >> 16 ) & 1023 ), std::clamp<int32_t>( p.n_entry[ 2 ] >> 16, 1, 1024 ) };
-			break;
-		case HK_FlatRectangle16x16: // MAME tests the row before the drawing offset: any row
-			a = { int32_t( d.n_drawarea_x1 ), int32_t( d.n_drawarea_x2 ) - int32_t( d.n_drawarea_x1 ) + 1, 0, 1024 };
-			break;
-		default: // the primitives clip to the drawing area
-			a = { int32_t( d.n_drawarea_x1 ), int32_t( d.n_drawarea_x2 ) - int32_t( d.n_drawarea_x1 ) + 1,
-				int32_t( d.n_drawarea_y1 ), int32_t( d.n_drawarea_y2 ) - int32_t( d.n_drawarea_y1 ) + 1 };
-			break;
-		}
+		const hk_area a = hk_item_area( item );
 		if( a.w > 0 && a.h > 0 )
 		{
 			if( !m_hk_pending.empty() && m_hk_pending.back().second == a )
@@ -3826,30 +3810,8 @@ void psxgpu_device::hk_run()
 	{
 		const uint32_t *item = &m_hk_ring[ tail & ( HK_RING - 1 ) ];
 		const uint32_t op = item[ 0 ] & 0xff;
-		const int n_points = item[ 0 ] >> 8;
 		if( op != HK_SKIP )
-			static_cast<draw_state &>( r ) = *reinterpret_cast<const draw_state *>( &item[ 2 ] );
-		switch( op )
-		{
-		case HK_FlatPolygon: r.FlatPolygon( n_points ); break;
-		case HK_FlatTexturedPolygon: r.FlatTexturedPolygon( n_points ); break;
-		case HK_GouraudPolygon: r.GouraudPolygon( n_points ); break;
-		case HK_GouraudTexturedPolygon: r.GouraudTexturedPolygon( n_points ); break;
-		case HK_MonochromeLine: r.MonochromeLine(); break;
-		case HK_GouraudLine: r.GouraudLine(); break;
-		case HK_FrameBufferRectangleDraw: r.FrameBufferRectangleDraw(); break;
-		case HK_FlatRectangle: r.FlatRectangle(); break;
-		case HK_FlatRectangle8x8: r.FlatRectangle8x8(); break;
-		case HK_FlatRectangle16x16: r.FlatRectangle16x16(); break;
-		case HK_FlatTexturedRectangle: r.FlatTexturedRectangle(); break;
-		case HK_Sprite8x8: r.Sprite8x8(); break;
-		case HK_Sprite16x16: r.Sprite16x16(); break;
-		case HK_Dot: r.Dot(); break;
-		case HK_TexturedDot: r.TexturedDot(); break;
-		case HK_MoveImage: r.MoveImage(); break;
-		case HK_IMAGE: r.image( &item[ HK_HEADER ], item[ 1 ] - HK_HEADER ); break;
-		case HK_SKIP: break;
-		}
+			hk_dispatch( r, item );
 		tail += item[ 1 ];
 		m_hk_tail.store( tail, std::memory_order_seq_cst );
 		if( m_hk_wait.load( std::memory_order_seq_cst ) != 0 )
@@ -3908,4 +3870,172 @@ void psxgpu_device::raster::image( const uint32_t *p_data, uint32_t n_words )
 			data >>= 16;
 		}
 	}
+}
+
+// HIRAKU: in-between pictures (psx.h)
+
+// an item drawn by r, the state it was queued with first
+void psxgpu_device::hk_dispatch( raster &r, const uint32_t *item )
+{
+	const uint32_t op = item[ 0 ] & 0xff;
+	const int n_points = item[ 0 ] >> 8;
+	static_cast<draw_state &>( r ) = *reinterpret_cast<const draw_state *>( &item[ 2 ] );
+	switch( op )
+	{
+	case HK_FlatPolygon: r.FlatPolygon( n_points ); break;
+	case HK_FlatTexturedPolygon: r.FlatTexturedPolygon( n_points ); break;
+	case HK_GouraudPolygon: r.GouraudPolygon( n_points ); break;
+	case HK_GouraudTexturedPolygon: r.GouraudTexturedPolygon( n_points ); break;
+	case HK_MonochromeLine: r.MonochromeLine(); break;
+	case HK_GouraudLine: r.GouraudLine(); break;
+	case HK_FrameBufferRectangleDraw: r.FrameBufferRectangleDraw(); break;
+	case HK_FlatRectangle: r.FlatRectangle(); break;
+	case HK_FlatRectangle8x8: r.FlatRectangle8x8(); break;
+	case HK_FlatRectangle16x16: r.FlatRectangle16x16(); break;
+	case HK_FlatTexturedRectangle: r.FlatTexturedRectangle(); break;
+	case HK_Sprite8x8: r.Sprite8x8(); break;
+	case HK_Sprite16x16: r.Sprite16x16(); break;
+	case HK_Dot: r.Dot(); break;
+	case HK_TexturedDot: r.TexturedDot(); break;
+	case HK_MoveImage: r.MoveImage(); break;
+	case HK_IMAGE: r.image( &item[ HK_HEADER ], item[ 1 ] - HK_HEADER ); break;
+	}
+}
+
+// the rectangle of VRAM an item may write: columns and rows modulo 1024, with a length
+psxgpu_device::hk_area psxgpu_device::hk_item_area( const uint32_t *item ) const
+{
+	const draw_state &d = *reinterpret_cast<const draw_state *>( &item[ 2 ] );
+	const PACKET &p = d.m_packet;
+	switch( item[ 0 ] & 0xff )
+	{
+	case HK_FrameBufferRectangleDraw: // rows and columns wrap
+		return { COORD_X( p.FlatRectangle.n_coord ) & 1023, std::min<int32_t>( SIZE_W( p.FlatRectangle.n_size ), 1024 ),
+			COORD_Y( p.FlatRectangle.n_coord ) & 1023, std::min<int32_t>( SIZE_H( p.FlatRectangle.n_size ), 1024 ) };
+	case HK_MoveImage: // to vertex 1, wrapping; its sizes are int16_t there
+		return { COORD_X( p.MoveImage.vertex[ 1 ].n_coord ) & 1023, std::min<int32_t>( (int16_t)SIZE_W( p.MoveImage.n_size ), 1024 ),
+			COORD_Y( p.MoveImage.vertex[ 1 ].n_coord ) & 1023, std::min<int32_t>( (int16_t)SIZE_H( p.MoveImage.n_size ), 1024 ) };
+	case HK_IMAGE: // from n_vramx/y within the transfer's rectangle, wrapping; a size of 0 writes one pixel
+		return { int32_t( p.n_entry[ 1 ] & 1023 ), std::clamp<int32_t>( p.n_entry[ 2 ] & 0xffff, 1, 1024 ),
+			int32_t( ( p.n_entry[ 1 ] >> 16 ) & 1023 ), std::clamp<int32_t>( p.n_entry[ 2 ] >> 16, 1, 1024 ) };
+	case HK_FlatRectangle16x16: // MAME tests the row before the drawing offset: any row
+		return { int32_t( d.n_drawarea_x1 ), int32_t( d.n_drawarea_x2 ) - int32_t( d.n_drawarea_x1 ) + 1, 0, 1024 };
+	default: // the primitives clip to the drawing area
+		return { int32_t( d.n_drawarea_x1 ), int32_t( d.n_drawarea_x2 ) - int32_t( d.n_drawarea_x1 ) + 1,
+			int32_t( d.n_drawarea_y1 ), int32_t( d.n_drawarea_y2 ) - int32_t( d.n_drawarea_y1 ) + 1 };
+	}
+}
+
+bool psxgpu_device::hk_between( double t, screen_device &screen, bitmap_rgb32 &bitmap )
+{
+	if( !m_hk_keep )
+	{
+		m_hk_keep = true; // from now on
+		m_hk_drawing.clear();
+		return false;
+	}
+	if( m_hk_shown.empty() || m_hk_shown_before.empty() )
+		return false;
+	hk_sync(); // VRAM as the queue leaves it, the worker idle
+
+	// where an item's vertices are in its packet (n_entry), and how many: none for what doesn't move
+	auto vertices = []( uint32_t op, int n_points, int *at ) {
+		int n = 0, step = 1;
+		switch( op )
+		{
+		case HK_FlatPolygon: n = n_points; break;
+		case HK_FlatTexturedPolygon: case HK_GouraudPolygon: n = n_points, step = 2; break;
+		case HK_GouraudTexturedPolygon: n = n_points, step = 3; break;
+		case HK_MonochromeLine: n = 2; break;
+		case HK_GouraudLine: n = 2, step = 2; break;
+		case HK_FlatRectangle: case HK_FlatRectangle8x8: case HK_FlatRectangle16x16: case HK_FlatTexturedRectangle:
+		case HK_Sprite8x8: case HK_Sprite16x16: case HK_Dot: case HK_TexturedDot: n = 1; break;
+		}
+		for( int i = 0; i < n; i++ )
+			at[ i ] = 1 + i * step;
+		return n;
+	};
+
+	// Each primitive drawn is matched with the nearest of the frame before's with the same command
+	// and colour and at most one other word of its packet different (its size: a note clipped
+	// shorter going off the lane; its texture: an animated one), within 16 pixels, and carried on
+	// by that move
+	std::vector<uint32_t> items = m_hk_shown;
+	std::vector<const uint32_t *> before;
+	for( size_t i = 0; i < m_hk_shown_before.size(); i += m_hk_shown_before[ i + 1 ] )
+		before.push_back( &m_hk_shown_before[ i ] );
+	auto packet = []( const uint32_t *item ) { return reinterpret_cast<const draw_state *>( &item[ 2 ] )->m_packet.n_entry; };
+	for( size_t i = 0; i < items.size(); i += items[ i + 1 ] )
+	{
+		uint32_t *item = &items[ i ];
+		int at[ 4 ];
+		const int n = vertices( item[ 0 ] & 0xff, item[ 0 ] >> 8, at );
+		if( n == 0 )
+			continue;
+		uint32_t *c = reinterpret_cast<draw_state *>( &item[ 2 ] )->m_packet.n_entry;
+		const int words = at[ n - 1 ] + 4 > 12 ? 12 : at[ n - 1 ] + 4; // the packet's words, and a few after
+		const int x = (int16_t)( c[ at[ 0 ] ] & 0xffff ), y = (int16_t)( c[ at[ 0 ] ] >> 16 );
+		int best = 1 << 30, dx = 0, dy = 0;
+		for( const uint32_t *b : before )
+		{
+			if( b[ 0 ] != item[ 0 ] )
+				continue;
+			const uint32_t *p = packet( b );
+			if( p[ 0 ] != c[ 0 ] )
+				continue;
+			int other = 0;
+			for( int w = 1, v = 0; w < words && other < 2; w++ )
+			{
+				if( v < n && w == at[ v ] )
+				{
+					v++;
+					continue;
+				}
+				other += p[ w ] != c[ w ];
+			}
+			if( other > 1 )
+				continue;
+			const int bx = (int16_t)( p[ at[ 0 ] ] & 0xffff ), by = (int16_t)( p[ at[ 0 ] ] >> 16 );
+			const int d = std::abs( x - bx ) + std::abs( y - by ) + 8 * other;
+			if( std::abs( x - bx ) > 16 || std::abs( y - by ) > 16 || d >= best )
+				continue;
+			best = d, dx = x - bx, dy = y - by;
+		}
+		if( dx == 0 && dy == 0 )
+			continue;
+		const int mx = (int)std::lround( dx * t ), my = (int)std::lround( dy * t );
+		for( int v = 0; v < n; v++ )
+		{
+			const uint32_t w = c[ at[ v ] ];
+			c[ at[ v ] ] = ( uint32_t( uint16_t( int16_t( w >> 16 ) + my ) ) << 16 ) | uint16_t( int16_t( w & 0xffff ) + mx );
+		}
+	}
+
+	// the rows the frame draws on kept as they are, the frame drawn again, composed, and the rows
+	// put back
+	std::vector<uint8_t> kept( 1024, 0 );
+	std::vector<uint32_t> rows;
+	std::vector<uint16_t> pixels;
+	for( size_t i = 0; i < items.size(); i += items[ i + 1 ] )
+	{
+		const hk_area a = hk_item_area( &items[ i ] );
+		for( int32_t r = 0; r < std::min<int32_t>( a.h, 1024 ); r++ )
+		{
+			const uint32_t y = uint32_t( a.y + r ) & 1023;
+			if( kept[ y ] )
+				continue;
+			kept[ y ] = 1;
+			rows.push_back( y );
+			pixels.insert( pixels.end(), p_p_vram[ y ], p_p_vram[ y ] + 1024 );
+		}
+	}
+	auto r = std::make_unique<raster>();
+	std::copy_n( p_p_vram, 1024, r->p_p_vram );
+	for( size_t i = 0; i < items.size(); i += items[ i + 1 ] )
+		hk_dispatch( *r, &items[ i ] );
+	bitmap.resize( screen.m_bitmap.width(), screen.m_bitmap.height() );
+	update_screen( screen, bitmap, screen.visible_area() );
+	for( size_t i = rows.size(); i-- > 0; ) // in reverse: rows beyond VRAM's height alias
+		std::copy_n( &pixels[ i * 1024 ], 1024, p_p_vram[ rows[ i ] ] );
+	return true;
 }

@@ -65,6 +65,9 @@ void set_frame_hook(FrameHook h);
 // The picture at the end of vertical blank (Core::set_present_hook), every frame; after init().
 using PresentHook = std::function<void(const uint32_t *rgb, int w, int h)>;
 void set_present_hook(PresentHook h);
+// The picture on show with what moves carried on `t` of a frame (Core::render_between); nullptr
+// while the GPU has nothing to draw it from yet
+const uint32_t *render_between(double t, int &w, int &h);
 void set_audio_sink(AudioSink s);
 [[noreturn]] void run();
 void save_nvram();

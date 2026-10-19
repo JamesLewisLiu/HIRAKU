@@ -26,7 +26,8 @@
 //     --smooth-motion   with display sync, on any display (60, 144, 240 Hz): the game at its own
 //                       speed, and every refresh shows what moves carried on to that refresh's
 //                       moment (the core's in-between pictures: DJ Main's sprites, the Firebeat
-//                       GCU's objects) instead of frames held for uneven numbers of refreshes.
+//                       GCU's objects, Twinkle's GPU primitives) instead of frames held for
+//                       uneven numbers of refreshes.
 //                       Needs the compositor's fifo-v1 (KWin 6.7). docs/SMOOTH.md
 //     --macro NAME[@F]  run one of the game's code macros (games/<game>/macros.txt) at frame F, or
 //                       at its own `at` frame (power-on codes); repeatable. In the window,

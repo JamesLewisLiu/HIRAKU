@@ -1379,6 +1379,11 @@ queue at its target). The emulated machine is unchanged.
   moment on the steady clock to the next's (any number, any display, 144 Hz too) and each refresh
   the frame carried on to its own moment (`frame_exact`, `phase`). Checked in a virtual KWin at
   60 Hz. Left: DJ Main's tilemap scroll; the owner's 144/240 Hz displays.
+  The beatmania games (2026-10-19): DJ Main's and beatmania III's notes move as sprites/objects
+  (checked on 1st mix and beatmania III's practice stage); beatmania IIDX (Twinkle) through the
+  PlayStation GPU's queue (`hk_between`, hiraku-edits.py): the shown frame's primitives moved on
+  and drawn again into VRAM, composed, the rows put back; about 0.6 ms a picture. The 573's core
+  only needs its `render_between` (same GPU) for DDR, DrumMania, GuitarFreaks.
 
 ## 21. Twinkle roadmap (M15, written 2026-10-13)
 

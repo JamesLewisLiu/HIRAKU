@@ -7,12 +7,14 @@ from somewhere. HIRAKU has two ways, and which one fits depends on how the game 
 | The game's play goes by | Way | Where | Games so far |
 |---|---|---|---|
 | a clock (a hardware timer read each frame) | more vsyncs: the game draws more pictures (`[[rate]]` mods) | per game: docs/MODS.md | pop'n music 9-14 (Python) |
-| frames (each frame moves the notes a fixed step) | in-between pictures: HIRAKU draws them (`--smooth-motion`) | per core: every game on it | DJ Main, Firebeat |
+| frames (each frame moves the notes a fixed step) | in-between pictures: HIRAKU draws them (`--smooth-motion`) | per core: every game on it | DJ Main, Firebeat, Twinkle |
 
 To tell which one a game is: run its attract demo (or a play script) with the vsync at twice the
 rate. If the demo song takes the same number of frames (it plays twice as fast, out of step with
 its music), the game counts frames. If it takes twice the frames, it follows a clock. pop'n music
-4 (Firebeat) and pop'n music 1 (DJ Main) count frames; pop'n music 9-14 follow a clock.
+4 (Firebeat) and pop'n music 1 (DJ Main) count frames; pop'n music 9-14 follow a clock. The
+beatmania games were checked as they draw (below): beatmania (DJ Main), beatmania III (Firebeat)
+and beatmania IIDX (Twinkle) all move their notes a fixed step a frame.
 
 ## In-between pictures (`--smooth-motion`)
 
@@ -59,7 +61,9 @@ frame to the next. So each sprite is matched with the nearest one of the frame b
 the same tile, within 16 pixels, and moved on by that step. The picture is drawn from a copy of
 object RAM and into a buffer of its own, so the machine is never touched. Checked on pop'n music
 1 (notes are sprites moving 2 pixels a frame): halfway, the notes are 1 pixel on, nothing else
-moved. The tilemaps (backgrounds) aren't carried on: their scroll registers could be, the same way.
+moved. beatmania (1st mix's "u gotta groove"): the notes, the bar lines and the FREE ZONE panel
+are sprites too, and move half a step. The tilemaps (backgrounds) aren't carried on: their scroll
+registers could be, the same way.
 
 ### Firebeat (runtime/dev/k057714.cpp, `draw_between`)
 
@@ -91,27 +95,53 @@ Not covered:
   Not seen in pop'n or beatmania III yet.
 - Objects drawn from the CPU straight into VRAM (not through commands) aren't moved.
 
+### Twinkle (beatmania IIDX; third_party/mame/hiraku-edits.py, `hk_between`)
+
+The PlayStation's GPU draws primitives (polygons, lines, rectangles and sprites, from VRAM
+textures) into VRAM; HIRAKU's edit of MAME's GPU already queues each one with a copy of all it
+draws from (its packet and the drawing state) for the drawing thread. Once in-between pictures are
+asked for, each frame's queued items are kept (a new frame at VBLANK start, which the game's
+VBLANK interrupt then flips to show). An in-between picture waits for the drawing thread, moves
+each primitive's vertices on by its last move (matched with the frame before's by command and
+colour, with at most one other word of its packet different: a size or a texture, within 16
+pixels), keeps the rows the frame draws on, draws the frame again on the emulation thread, lets
+MAME's screen update compose it, and puts the rows back. The DVD/Video CD player's picture under
+it is taken at the in-between picture's own moment, so the background video moves on too.
+
+beatmania IIDX 3rd style, the play case's song: each frame clears the back buffer (640x240), then
+about 132 textured rectangles (the notes, 3 lines tall, moving 1 line a frame at that speed; the
+bar lines, semi-transparent; the panels), into a double buffer flipped at VBLANK. Halfway, only
+the notes and bar lines differ. A note moving 1 line a frame has no in-between position at the
+game's resolution (240 lines): in-between pictures help the higher speeds (hi-speed) most. The
+other styles, 1st to 8th, run on the same core and GPU; not each checked.
+
+The System 573 (DDR, DrumMania, GuitarFreaks) has the same GPU and edit: its core only lacks the
+`render_between` that passes the picture on (runtime/twinkle/board.cpp's is a few lines).
+
 ### Other games and boards
 
-Any game on these two cores gets in-between pictures with no per-game work: pop'n music 1-8,
-Animelo 1/2, Mickey Tunes, beatmania (DJ Main) and beatmania III. Whether they look right
+Any game on these three cores gets in-between pictures with no per-game work: pop'n music 1-8,
+Animelo 1/2, Mickey Tunes, beatmania (DJ Main), beatmania III and beatmania IIDX (1st-8th style). Whether they look right
 depends on how each draws its notes (sprites or objects moving a steady step, which is usual).
 To check a game:
 1. find a stretch where notes move (attract demo or a play script);
 2. dump the window's picture and an in-between picture at a few frames: on DJ Main,
    `--smooth-motion --snap-every N` writes `frameNNNNNN-half.ppm` beside each snapshot. Firebeat's
-   in-between pictures go with the picture at the end of vblank (after the game's flip), not the
-   frame hook's, so they need a dump there (a few lines in `vblank_end_fire`,
-   runtime/firebeat/board.cpp, calling `render_between(0.5, w, h)`);
+   and Twinkle's in-between pictures go with the picture at the end of vblank (after the game's
+   flip), not the frame hook's, so they need a dump there (a few lines in `vblank_end_fire`,
+   runtime/firebeat/board.cpp, or a screen `m_hk_vblank_end` on Twinkle, calling
+   `render_between(0.5, w, h)`);
 3. compare: only what moves should differ, by half its step.
 
 To see how a Firebeat game draws: log each GCU command with its frame number (type, source,
 destination, size, scale) and the layers at each vblank. pop'n music 4 runs one display list a
 frame, kicked from its vblank interrupt: fill (clear) the sprite layers, then the objects.
 
-The System 573 (the PlayStation's GPU), Twinkle and Python could have in-between pictures the
-same way (match the frame's primitives), not done. For their clock-following games the `[[rate]]`
-way is better: the pictures are the game's own.
+To see how a Twinkle game draws: log each queued item (`hk_draw`: its op and packet words) and the
+display start and drawing area at each VBLANK.
+
+Python (the PS2's GS) could have in-between pictures the same way, not done. For its
+clock-following games the `[[rate]]` way is better: the pictures are the game's own.
 
 ## More vsyncs (`[[rate]]` mods)
 

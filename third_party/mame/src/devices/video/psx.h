@@ -18,6 +18,7 @@
 #include <deque>
 #include <memory>
 #include <thread>
+#include <vector>
 
 #define PSXGPU_DEBUG_VIEWER ( 0 )
 
@@ -299,6 +300,19 @@ private:
 	struct hk_area { int32_t x, w, y, h; bool operator==( const hk_area & ) const = default; };
 	std::deque<std::pair<uint64_t, hk_area>> m_hk_pending;
 	int32_t m_hk_rows = 0; // VRAM's height (rows beyond it alias)
+
+	// HIRAKU: in-between pictures (Core::render_between, --smooth-motion). Once asked for, each
+	// frame's queued items are kept (each holds all it draws from); hk_between() draws the frame on
+	// show again, what moved carried on `t` of a frame along its last move (matched with the frame
+	// before's), into VRAM, composes it into `bitmap` with update_screen(), and puts VRAM back.
+	// false: nothing to draw from yet.
+public:
+	bool hk_between( double t, screen_device &screen, bitmap_rgb32 &bitmap );
+private:
+	void hk_dispatch( raster &r, const uint32_t *item );
+	hk_area hk_item_area( const uint32_t *item ) const;
+	bool m_hk_keep = false;
+	std::vector<uint32_t> m_hk_drawing, m_hk_shown, m_hk_shown_before; // items, back to back
 
 	void psx_gpu_init( int n_gputype );
 	void gpu_reset();
