@@ -26,6 +26,7 @@ namespace hk::host::pacing {
 
 namespace {
 
+bool g_smooth_motion = false;
 double g_max_skew = 0.03;   // the most the game's speed may change (pop'n at 60 Hz: 2.6 %); HK_DISPLAY_SYNC_SKEW
 constexpr int64_t MS = 1'000'000;
 
@@ -294,6 +295,8 @@ void pump() {
 #endif
 }
 
+void set_smooth_motion(bool on) { g_smooth_motion = on; }
+
 bool frame(double period) {
     if (!g_enabled) return false;
     pump();
@@ -318,7 +321,7 @@ bool frame(double period) {
     const double game_hz = 1.0 / period;
     if (g_game_hz <= 0 || std::fabs(game_hz - g_game_hz) > 0.05 * g_game_hz) g_game_hz = game_hz;
     else g_game_hz += (game_hz - g_game_hz) / 64;
-    if (std::fabs(f - 1.0) > g_max_skew) {
+    if (std::fabs(f - 1.0) > (g_smooth_motion ? std::max(g_max_skew, 0.035) : g_max_skew)) {
         if (g_active) g_active = false;
         g_fresh = true;
         g_speed = 1.0;

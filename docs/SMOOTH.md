@@ -29,8 +29,10 @@ show pictures of it with what moves carried on 1/k, 2/k... of a frame along its 
 - the exit report says how many it showed (`video: smooth motion: N in-between pictures shown`).
 
 Use it: `--smooth-motion` (display sync on, the default), or the launcher's Settings > "Smooth
-motion on a 120 or 240 Hz display". The display's rate must be a multiple of the game's (within
-3 %): 120 or 240 Hz for every DJ Main and Firebeat game; 144 Hz doesn't fit them.
+motion on a 120 or 240 Hz display". The display's rate must be a multiple of the game's: within
+3 %, or 3.5 % with smooth motion on, as DJ Main's 58.00 Hz needs 3.4 % (the game then runs that
+much faster, its sound with it; Firebeat's pop'n 2.6 %). So 120 or 240 Hz for every DJ Main and
+Firebeat game; 144 Hz fits none of them (2.48 frames' worth of refreshes).
 
 It's a guess one frame ahead: a note's next position is where its last move takes it. Notes
 scroll at a steady speed, so the guess is right while they keep moving; where something stops,

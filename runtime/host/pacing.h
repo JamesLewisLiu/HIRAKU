@@ -59,6 +59,9 @@ void committed(bool hold = true);   // hold: the frame's other refreshes empty (
 // its own (fifo-v1: commit_extra() before each of the frame's k - 1 others, then committed(false))
 int refreshes_per_frame();
 bool can_fill_refreshes();
+// --smooth-motion: the game may run up to 3.5 % fast to fit (DJ Main's 58.00 Hz at 60, 120 and 240
+// Hz needs 3.4 %); without it 3 %
+void set_smooth_motion(bool on);
 void commit_extra();
 // Display pacing, after the swap: wait until the next frame's burst should start.
 void wait_next();

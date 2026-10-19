@@ -191,7 +191,7 @@ void window_set_picture(const std::string &mode, const std::string &shaders_dir,
 }
 
 void window_set_display_sync(bool on) { g_display_sync = on; }
-void window_set_smooth_motion(bool on) { g_smooth_motion = on; }
+void window_set_smooth_motion(bool on) { g_smooth_motion = on, pacing::set_smooth_motion(on); }
 
 void window_set_audio_output(const std::string &device, int frames, bool exclusive) {
     g_audio_device = device;
