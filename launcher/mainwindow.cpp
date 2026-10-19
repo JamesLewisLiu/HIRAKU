@@ -594,7 +594,7 @@ QStringList MainWindow::arguments(const Game &g) const {
         a << "--bio2" << b;   // the IIDX cabinet's controls and lamps (runtime/host/bio2.h)
     // mods (docs/MODS.md): each folder in order, and the saves of their own (cfg::saveDir)
     const QStringList mods = cfg::modsOn(g.id);
-    for (const QString &m : mods) a << "--mod" << cfg::modsDir(g.id) + "/" + m;
+    for (const QString &m : mods) a << "--mod" << cfg::modPath(g.id, m);
     if (!mods.isEmpty()) a << "--nvram" << cfg::saveDir(g.id);
     else if (!cfg::nvramBase().isEmpty()) a << "--nvram" << cfg::nvramDir(g.id);
     if (installCassette(g)) a << "--cassette" << "install";

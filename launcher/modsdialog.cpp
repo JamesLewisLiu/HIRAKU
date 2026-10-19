@@ -39,7 +39,7 @@ ModsDialog::Info ModsDialog::read(const QString &dir) {
 
 QString ModsDialog::summary(const QString &game) {
     QStringList names;
-    for (const QString &m : cfg::modsOn(game)) names << read(cfg::modsDir(game) + "/" + m).name;
+    for (const QString &m : cfg::modsOn(game)) names << read(cfg::modPath(game, m)).name;
     return names.join(", ");
 }
 
@@ -69,7 +69,7 @@ ModsDialog::ModsDialog(const QString &game, const QString &title, QWidget *paren
     v->addWidget(m_about);
     connect(m_list, &QListWidget::currentRowChanged, this, [this](int r) {
         if (r < 0) { m_about->clear(); return; }
-        const Info i = read(cfg::modsDir(m_game) + "/" + m_list->item(r)->data(Qt::UserRole).toString());
+        const Info i = read(cfg::modPath(m_game, m_list->item(r)->data(Qt::UserRole).toString()));
         m_about->setText(i.description.isEmpty() ? "(no description)" : i.description);
     });
     auto *bb = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
@@ -87,18 +87,22 @@ ModsDialog::ModsDialog(const QString &game, const QString &title, QWidget *paren
     fill();
 }
 
-// the ones on first, in their order, then the rest by name; a mod for another game is left out
+// the ones on first, in their order, then the rest by name: the player's, then those that come
+// with HIRAKU (a folder of the player's with the same name wins); a mod for another game is left out
 void ModsDialog::fill() {
     m_list->clear();
     const QStringList on = cfg::modsOn(m_game);
     QStringList folders = on;
-    QStringList rest = QDir(cfg::modsDir(m_game)).entryList(QDir::Dirs | QDir::NoDotAndDotDot, QDir::Name);
-    for (const QString &f : rest)
-        if (!folders.contains(f) && QFileInfo::exists(cfg::modsDir(m_game) + "/" + f + "/mod.toml")) folders << f;
+    for (const QString &dir : {cfg::modsDir(m_game), cfg::bundledModsDir(m_game)})
+        for (const QString &f : QDir(dir).entryList(QDir::Dirs | QDir::NoDotAndDotDot, QDir::Name))
+            if (!folders.contains(f) && QFileInfo::exists(dir + "/" + f + "/mod.toml")) folders << f;
     for (const QString &f : folders) {
-        const Info i = read(cfg::modsDir(m_game) + "/" + f);
+        const QString path = cfg::modPath(m_game, f);
+        const Info i = read(path);
         if (!i.game.isEmpty() && i.game != m_game) continue;
-        auto *it = new QListWidgetItem(i.name + (i.version.isEmpty() ? "" : " " + i.version) + "  (" + f + ")");
+        const bool bundled = !path.startsWith(cfg::modsDir(m_game) + "/");
+        auto *it = new QListWidgetItem(i.name + (i.version.isEmpty() ? "" : " " + i.version) +
+                                       (bundled ? "  (comes with HIRAKU)" : "  (" + f + ")"));
         it->setData(Qt::UserRole, f);
         it->setFlags(it->flags() | Qt::ItemIsUserCheckable);
         it->setCheckState(on.contains(f) ? Qt::Checked : Qt::Unchecked);
@@ -107,6 +111,8 @@ void ModsDialog::fill() {
     if (m_list->count() == 0)
         m_about->setText("No mods for this game yet: put each in a folder of its own, with its mod.toml, in " +
                          cfg::modsDir(m_game) + " (docs/MODS.md).");
+    else if (m_list->currentRow() < 0)
+        m_list->setCurrentRow(0);
 }
 
 void ModsDialog::move(int by) {

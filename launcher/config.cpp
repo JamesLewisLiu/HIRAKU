@@ -93,10 +93,17 @@ QString modsDir(const QString &game) {
     return base + "/mods/" + game;
 }
 
+QString bundledModsDir(const QString &game) { return rootDir() + "/games/" + game + "/mods"; }
+
+QString modPath(const QString &game, const QString &mod) {
+    const QString own = modsDir(game) + "/" + mod;
+    return QFileInfo::exists(own + "/mod.toml") ? own : bundledModsDir(game) + "/" + mod;
+}
+
 QStringList modsOn(const QString &game) {
     QStringList on;   // the ones still there
     for (const QString &m : settings().value("mods/" + game).toStringList())
-        if (QFileInfo::exists(modsDir(game) + "/" + m + "/mod.toml")) on << m;
+        if (QFileInfo::exists(modPath(game, m) + "/mod.toml")) on << m;
     return on;
 }
 

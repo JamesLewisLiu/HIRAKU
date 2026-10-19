@@ -23,7 +23,9 @@ QString nvramDir(const QString &game);     // where the game's NVRAM is (or will
 // Mods (docs/MODS.md): their folder for a game (<saves>/mods/<game>), the ones on, in order
 // (folder names), and where the game's saves are with them on: a folder of their own,
 // <game>+<mod>+<mod>, apart from the clean game's (nvramDir)
-QString modsDir(const QString &game);
+QString modsDir(const QString &game);         // the player's mods: <saves>/mods/<game>
+QString bundledModsDir(const QString &game);  // the ones that come with HIRAKU: games/<game>/mods
+QString modPath(const QString &game, const QString &mod);   // the player's, else the bundled one
 QStringList modsOn(const QString &game);
 void setModsOn(const QString &game, const QStringList &mods);
 QString saveDir(const QString &game);

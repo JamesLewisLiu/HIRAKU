@@ -22,8 +22,9 @@ to the game they were made for.
 
 `<saves>/mods/<game>/<mod>/` (the saves' folder: `user/data` in a portable package, else
 `~/.local/share/hiraku`, `%LOCALAPPDATA%\hiraku` on Windows), one folder per mod with its
-`mod.toml` and the files it names. The launcher lists them under a game's **Mods…** (right-click
-the game), in order; the command line takes `--mod FOLDER`, several in order (a later mod's bytes
+`mod.toml` and the files it names. Mods that come with HIRAKU are in `games/<game>/mods/<mod>/`
+(pop'n music 9-14's `smooth-notes`); a folder of the player's with the same name wins. The
+launcher lists both under a game's **Mods…** (right-click the game), in order; the command line takes `--mod FOLDER`, several in order (a later mod's bytes
 win where two touch the same place).
 
 A game with mods on keeps its saves in a folder of its own, named after the mods
