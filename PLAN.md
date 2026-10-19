@@ -1374,8 +1374,11 @@ queue at its target). The emulated machine is unchanged.
   carry in-between pictures instead (the core's `render_between`): DJ Main's sprites and the
   Firebeat GCU's objects carried on by their last move, for the games that count their play in
   frames (pop'n music 1-8 and the rest of those two cores). Checked offline on pop'n 1, 4 and 8
-  (halfway pictures: only the notes, half a step on); the window on a real 240 Hz display is the
-  owner's to try. Left: DJ Main's tilemap scroll, a launcher check that the display fits.
+  (halfway pictures: only the notes, half a step on). Then at the game's own speed (the owner's
+  pop'n 3 at 240 Hz didn't fit: 58.00 Hz needs 3.4 %): each frame gets the refreshes from its
+  moment on the steady clock to the next's (any number, any display, 144 Hz too) and each refresh
+  the frame carried on to its own moment (`frame_exact`, `phase`). Checked in a virtual KWin at
+  60 Hz. Left: DJ Main's tilemap scroll; the owner's 144/240 Hz displays.
 
 ## 21. Twinkle roadmap (M15, written 2026-10-13)
 

@@ -170,12 +170,12 @@ SettingsDialog::SettingsDialog(QWidget *parent) : QDialog(parent) {
                               "refreshes, and the game runs at the display's rate (pop'n 2.6 % faster, its sound "
                               "with it). Off: the exact speed, for a variable-refresh (FreeSync, G-Sync) display.");
     fv->addRow("", m_displaySync);
-    m_smoothMotion = new QCheckBox("Smooth motion on a 120 or 240 Hz display (DJ Main and Firebeat games)");
+    m_smoothMotion = new QCheckBox("Smooth motion (DJ Main and Firebeat games)");
     m_smoothMotion->setChecked(s.value("video/smoothMotion", false).toBool());
-    m_smoothMotion->setToolTip("These games count their play in frames, so they keep their rate; with smooth frames on "
-                               "and a display at two or four times it, the refreshes between frames show pictures in "
-                               "between, with the notes and other moving objects carried on along their move. "
-                               "Wayland with the fifo protocol (KWin 6.7) only.");
+    m_smoothMotion->setToolTip("With smooth frames on: the game at its exact speed on any display (60, 144, 240 Hz), "
+                               "and every refresh a picture of its own moment, the notes and other moving objects "
+                               "carried on along their move. Best on a fast display. Wayland with the fifo protocol "
+                               "(KWin 6.7) only.");
     fv->addRow("", m_smoothMotion);
     m_picture = new QComboBox;
     m_picture->addItem("Off: sharp pixels", "off");

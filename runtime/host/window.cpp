@@ -788,6 +788,9 @@ void window_present(const uint32_t *rgb, int w, int h, double vsec) {
     g_last_vsec = vsec;
     const bool sync = pacing::frame(period) && !g_fast;
     g_sync = sync;
+    // --smooth-motion at the game's own speed (pacing::exact_speed): a frame that falls between two
+    // refreshes, the game faster than the display, isn't shown
+    if (sync && pacing::refreshes_per_frame() == 0) return;
     if (g_gl) {
         prof::Scope ps(prof::PRESENT);
         int ww = 0, wh = 0;
@@ -801,7 +804,15 @@ void window_present(const uint32_t *rgb, int w, int h, double vsec) {
         double cw, ch;
         core().display_cover(w, h, cw, ch);
         vw = std::max(1, (int)std::lround(vw * cw)), vh = std::max(1, (int)std::lround(vh * ch));
-        picture::Mode shown = picture::draw(rgb, w, h, (ww - vw) / 2, (wh - vh) / 2, vw, vh, ww, wh, g_mode);
+        // --smooth-motion at the game's own speed: the frame's first refresh comes after its moment
+        // (up to a refresh), so it too is shown carried on to the refresh's
+        const bool exact = sync && g_smooth_motion && !g_split && pacing::exact_speed();
+        const uint32_t *first = rgb;
+        int fw = w, fh = h;
+        if (exact && pacing::phase(0) > 0.01)
+            if (const uint32_t *b = core().render_between(pacing::phase(0), fw, fh)) first = b;
+        picture::Mode shown = picture::draw(first, first == rgb ? w : fw, first == rgb ? h : fh, (ww - vw) / 2, (wh - vh) / 2,
+                                            vw, vh, ww, wh, g_mode);
         if (notice::Banner b; notice::banner(b)) {
             int bx, by, bw, bh;
             place_banner(b, ww, wh, bx, by, bw, bh);
@@ -823,10 +834,10 @@ void window_present(const uint32_t *rgb, int w, int h, double vsec) {
         const int k = sync ? pacing::refreshes_per_frame() : 1;
         int bw = w, bh = h;
         const uint32_t *between = g_smooth_motion && !g_split && k > 1 && pacing::can_fill_refreshes()
-                                      ? core().render_between(1.0 / k, bw, bh) : nullptr;
+                                      ? core().render_between(pacing::phase(1), bw, bh) : nullptr;
         if (sync) pacing::committed(between == nullptr);
         for (int i = 1; between && i < k; i++) {
-            if (i > 1 && !(between = core().render_between((double)i / k, bw, bh))) between = rgb;
+            if (i > 1 && !(between = core().render_between(pacing::phase(i), bw, bh))) between = rgb, bw = w, bh = h;
             picture::draw(between, bw, bh, (ww - vw) / 2, (wh - vh) / 2, vw, vh, ww, wh, g_mode);
             if (notice::Banner b; notice::banner(b)) {
                 int bx, by, bw2, bh2;

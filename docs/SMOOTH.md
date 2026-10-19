@@ -16,27 +16,38 @@ its music), the game counts frames. If it takes twice the frames, it follows a c
 
 ## In-between pictures (`--smooth-motion`)
 
-The game keeps its rate and runs exactly as before; nothing in the machine changes. When display
-sync shows each frame for k refreshes (2 at 120 Hz, 4 at 240), the k - 1 refreshes after the frame
-show pictures of it with what moves carried on 1/k, 2/k... of a frame along its last move:
+The game keeps its rate and runs exactly as before, at its own speed; nothing in the machine
+changes. Display pacing keeps the game on the steady clock: each frame has a moment, one frame
+period after the last, and gets the display's refreshes from its moment to the next frame's (at
+144 Hz, a 58 Hz game's frames get 2 or 3; at 240 Hz 4 or 5; at 60 Hz 1, and every 30th frame 2).
+Every refresh shows the frame with what moves carried on to that refresh's moment, a fraction of
+a frame along its last move (the first refresh too: it comes after the frame's moment, up to a
+refresh):
 
 - `Core::render_between(t)` (runtime/shell/core.h) draws the last frame again, each moving thing
   `t` of a frame further along, into a picture of its own;
 - the window (runtime/host/window.cpp) shows them on those refreshes through the same picture
   pipeline (CRT shaders and all), and commits each refresh with the compositor's fifo protocol
-  (runtime/host/pacing.cpp, `commit_extra`). Without fifo-v1 (KWin 6.7), or with display sync
-  off, nothing changes;
+  (runtime/host/pacing.cpp: `frame_exact` gives the frame's refreshes, `phase(i)` each one's
+  moment, `commit_extra` commits it). The rest is display sync's (the commit's lead, the burst
+  budget, the grid kept on the compositor's vblanks; the sound steered to its queue at speed 1).
+  Without fifo-v1 (KWin 6.7), or with display sync off, nothing changes;
 - the exit report says how many it showed (`video: smooth motion: N in-between pictures shown`).
 
 Use it: `--smooth-motion` (display sync on, the default), or the launcher's Settings > "Smooth
-motion on a 120 or 240 Hz display". The display's rate must be a multiple of the game's: within
-3 %, or 3.5 % with smooth motion on, as DJ Main's 58.00 Hz needs 3.4 % (the game then runs that
-much faster, its sound with it; Firebeat's pop'n 2.6 %). So 120 or 240 Hz for every DJ Main and
-Firebeat game; 144 Hz fits none of them (2.48 frames' worth of refreshes).
+motion (DJ Main and Firebeat games)". Any refresh rate works, 144 Hz too, and the game keeps its
+exact speed and pitch (without smooth motion, display sync speeds pop'n 4-8 up 2.6 % to fit
+60/120/240 Hz, and leaves DJ Main's 58.00 Hz, 3.4 % off, juddering). The faster the display, the
+smoother; at 60 Hz it mostly evens out the frame that would be held twice every 30 frames.
+`HK_PACING_DEBUG` prints each frame's refreshes and their moments.
+
+Checked in a virtual KWin (60 Hz): pop'n 3 and pop'n 4 at their own 58.00 and 58.49 Hz, every
+refresh on time, each refresh's moment 1/30 of a frame on from the last's (60 against 58 Hz).
 
 It's a guess one frame ahead: a note's next position is where its last move takes it. Notes
 scroll at a steady speed, so the guess is right while they keep moving; where something stops,
-turns or appears, its in-between pictures show it where it was. The judgement, the sound and
+turns or appears, its in-between pictures carry it on up to a frame too far (at most a
+refresh's worth of time) before the next frame puts it right. The judgement, the sound and
 the latency are the game's own: the in-between pictures add nothing between pressing a button and
 the game seeing it.
 

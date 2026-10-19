@@ -285,12 +285,11 @@ runs the game on the display's refreshes:
 - The console says what it chose (`display sync: on: 60.00 Hz display, 1 refresh per frame, the
   game at +2.6 % speed`), and the exit report's `video: display sync` line how it went.
 
-**Smooth motion** (launcher: Settings > "Smooth motion on a 120 or 240 Hz display";
-`--smooth-motion`): on DJ Main and Firebeat games at 2 or 4 refreshes per frame, the refreshes
-between frames show the notes and other moving things carried on along their move, instead of
-the frame held. The game runs as before, but DJ Main's games (58.00 Hz) only fit 60/120/240 Hz
-3.4 % fast, so with smooth motion display sync allows that (3 % otherwise, and they judder). Needs
-Wayland with the fifo protocol (KWin 6.7). See docs/SMOOTH.md.
+**Smooth motion** (launcher: Settings > "Smooth motion (DJ Main and Firebeat games)";
+`--smooth-motion`): the game runs at its exact speed on any display (144 Hz too), and every
+refresh shows the notes and other moving things where they are at that refresh's moment, carried
+on along their move, instead of a frame held for 2 or 3 refreshes unevenly. Needs Wayland with
+the fifo protocol (KWin 6.7). See docs/SMOOTH.md.
 
 **When it's off:**
 - **A display that doesn't fit**, such as 144 Hz (58.49 × 2 = 117, × 3 = 175): frames are shown as

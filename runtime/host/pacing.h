@@ -59,9 +59,13 @@ void committed(bool hold = true);   // hold: the frame's other refreshes empty (
 // its own (fifo-v1: commit_extra() before each of the frame's k - 1 others, then committed(false))
 int refreshes_per_frame();
 bool can_fill_refreshes();
-// --smooth-motion: the game may run up to 3.5 % fast to fit (DJ Main's 58.00 Hz at 60, 120 and 240
-// Hz needs 3.4 %); without it 3 %
+// --smooth-motion: with fifo-v1, display pacing keeps the game at its own speed on any display and
+// every refresh gets a picture (frame()'s refreshes_per_frame() varies: 2 or 3 at 144 Hz for a
+// 58 Hz game; 0: the frame isn't shown); exact_speed() says it's so, and phase(i) is refresh i's
+// moment in frames after the frame's (0 <= phase, the next frame's moment at 1)
 void set_smooth_motion(bool on);
+bool exact_speed();
+double phase(int i);
 void commit_extra();
 // Display pacing, after the swap: wait until the next frame's burst should start.
 void wait_next();

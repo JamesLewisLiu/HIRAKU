@@ -26,7 +26,10 @@ namespace hk::host::pacing {
 
 namespace {
 
-bool g_smooth_motion = false;
+bool g_smooth_motion = false;  // set_smooth_motion: the game at its own speed, every refresh a picture (fifo)
+bool g_exact = false;          // ... and in use (fifo-v1 and presentation-time there)
+double g_frame_at = 0;         // exact speed: when the current frame's moment is, on the steady clock (ns)
+double g_period_ns = 0;        // exact speed: the game's frame period (ns), the last one seen
 double g_max_skew = 0.03;   // the most the game's speed may change (pop'n at 60 Hz: 2.6 %); HK_DISPLAY_SYNC_SKEW
 constexpr int64_t MS = 1'000'000;
 
@@ -96,6 +99,7 @@ void announce(const std::string &key, const std::string &s) {
 int g_skip = 5;                // presented frames ignored (the window settling, or after a catch-up)
 bool g_sweep = getenv("HK_PACING_SWEEP") != nullptr;   // testing: keep moving the commit, to map the deadline
 int64_t g_prev_t = 0;          // the previous presented frame, 0 after a gap
+int g_prev_k = 0;              // ... and its refreshes
 int64_t g_best = 0;            // the shortest commit-to-screen median (0: none yet)
 std::vector<int64_t> g_window; // commit-to-screen times for the next median
 constexpr int64_t MARGIN = 3 * MS / 2;
@@ -108,9 +112,10 @@ constexpr int64_t MARGIN = 3 * MS / 2;
     const int64_t prev = g_prev_t, d = t - committed;
     g_prev_t = t;
     if (prev) {   // the cadence, for the report: did the previous frame stay up its k refreshes?
-        if (std::llround((double)(t - prev) / (double)g_T) == k) n_on_time++;
+        if (std::llround((double)(t - prev) / (double)g_T) == g_prev_k) n_on_time++;
         else n_late++;
     }
+    g_prev_k = k;
     if (g_debug) fprintf(stderr, "pacing: commit to screen %.3f ms, lead %.2f ms, overrun %d\n", d / 1e6, g_lead / 1e6, (int)overrun);
     if (g_skip > 0) {
         g_skip--;
@@ -297,6 +302,49 @@ void pump() {
 
 void set_smooth_motion(bool on) { g_smooth_motion = on; }
 
+// --smooth-motion: the game at its own speed. Each frame has a moment on the steady clock, one
+// period after the last; it gets the refreshes from the first at or after its moment up to the
+// next frame's (2 or 3 a frame at 144 Hz for 58 Hz games, 4 or 5 at 240; 0 when the game is
+// faster than the display and two frames fall between refreshes: the first isn't shown), and the
+// window shows on each the frame carried on to that refresh's moment (phase()). The schedule
+// (lead, burst budget, the grid kept on the real vblanks) is display sync's.
+static bool frame_exact(double period, double hz) {
+    g_active = true;
+    g_speed = 1.0;
+    g_period_ns = period * 1e9;
+    char b[256];
+    snprintf(b, sizeof b, "on: %.2f Hz display, smooth motion: every refresh a picture of its own moment, the game at its "
+             "own %.2f Hz (exact speed)", hz, 1.0 / period);
+    announce("exact " + std::to_string(std::lround(hz * 100)) + " " + std::to_string(std::lround(10.0 / period)), b);
+    const int64_t now = (int64_t)prof::now_ns();
+    if (!g_lead_set) g_lead = g_T / 2, g_lead_set = true;
+    // the first refresh this frame can make: the one after the last frame's (g_target + g_k * T)
+    int64_t first = now + MS + g_lead;
+    if (g_fresh || g_target + (int64_t)g_k * g_T - g_lead < now - g_T / 2) {   // a start, or far behind: rejoin
+        if (!g_fresh) n_resync++;
+        int64_t t = g_target > 0 ? g_target : now;
+        if (t < first) t += ((first - t + g_T - 1) / g_T) * g_T;
+        g_target = t;
+        g_frame_at = (double)t;   // this frame's moment: its first refresh
+        g_fresh = false;
+    } else {
+        g_target += (int64_t)g_k * g_T;
+        g_frame_at += g_period_ns;
+        // estimated a frame early or late (the period changed, or the grid moved under it): its
+        // first refresh is the first at or after its moment
+        while ((double)g_target < g_frame_at - 0.5 && (double)(g_target + g_T) < g_frame_at + g_period_ns) g_target += g_T;
+    }
+    const double end = g_frame_at + g_period_ns;   // the next frame's moment
+    g_k = (double)g_target >= end ? 0 : (int)std::ceil((end - (double)g_target) / (double)g_T - 1e-9);
+    if (g_debug) {
+        std::string s;
+        for (int i = 0; i < g_k; i++) s += " " + std::to_string(phase(i)).substr(0, 5);
+        fprintf(stderr, "pacing: frame %d refreshes, at%s\n", g_k, s.c_str());
+    }
+    n_frames++;
+    return true;
+}
+
 bool frame(double period) {
     if (!g_enabled) return false;
     pump();
@@ -321,7 +369,11 @@ bool frame(double period) {
     const double game_hz = 1.0 / period;
     if (g_game_hz <= 0 || std::fabs(game_hz - g_game_hz) > 0.05 * g_game_hz) g_game_hz = game_hz;
     else g_game_hz += (game_hz - g_game_hz) / 64;
-    if (std::fabs(f - 1.0) > (g_smooth_motion ? std::max(g_max_skew, 0.035) : g_max_skew)) {
+#ifdef HK_WITH_WAYLAND
+    g_exact = g_smooth_motion && g_fifo && g_pres;
+#endif
+    if (g_exact) return frame_exact(period, hz);
+    if (std::fabs(f - 1.0) > g_max_skew) {
         if (g_active) g_active = false;
         g_fresh = true;
         g_speed = 1.0;
@@ -373,7 +425,7 @@ void wait_commit() {
         if (g_sample_at % 64 == 0) {   // the burst's budget: the 99th percentile of recent ones, plus 1 ms
             std::vector<int64_t> s(g_samples.begin(), g_samples.begin() + (long)std::min(g_sample_at, g_samples.size()));
             std::nth_element(s.begin(), s.begin() + (long)(s.size() * 99 / 100), s.end());
-            g_budget = std::clamp(s[s.size() * 99 / 100] + MS, MS, (int64_t)g_k * g_T);
+            g_budget = std::clamp(s[s.size() * 99 / 100] + MS, MS, (int64_t)std::max(g_k, 1) * g_T);
         }
     }
     const int64_t at = g_target - g_lead;
@@ -409,6 +461,13 @@ void committed(bool hold) {
 }
 
 int refreshes_per_frame() { return g_active ? g_k : 1; }
+
+bool exact_speed() { return g_active && g_exact; }
+
+double phase(int i) {
+    if (!exact_speed() || g_period_ns <= 0) return (double)i / std::max(g_k, 1);
+    return std::max(0.0, ((double)g_target + (double)i * (double)g_T - g_frame_at) / g_period_ns);
+}
 
 bool can_fill_refreshes() {
 #ifdef HK_WITH_WAYLAND
@@ -456,10 +515,15 @@ std::string scanout_describe() {
 
 std::string describe() {
     char b[512];
+    std::string refreshes = std::to_string(g_k);
+    if (g_exact && g_game_hz > 0 && g_T > 0) {   // smooth motion at the game's own speed: so many, or one more
+        const double r = 1e9 / (g_game_hz * (double)g_T);
+        refreshes = std::to_string(std::max(0, (int)std::floor(r))) + "-" + std::to_string((int)std::ceil(r));
+    }
     if (!g_enabled) return "video: display sync off (--display-sync off)";
     if (!n_frames) return "video: display sync " + (g_state.empty() ? std::string("not used") : g_state);
     snprintf(b, sizeof b,
-             "video: display sync %s%s, %llu frames on the %.3f Hz %s, the game at %+.2f %% speed; %llu presented: %llu held their %d refreshes, "
+             "video: display sync %s%s, %llu frames on the %.3f Hz %s, the game at %+.2f %% speed; %llu presented: %llu held their %s refreshes, "
              "%llu irregular, %llu replaced; %llu not ready in time, %llu re-synced; commit to screen %.1f ms at best, "
              "lead %.1f ms%s (moved %llu times), burst budget %.1f ms",
              g_active ? "on" : "was on",
@@ -470,7 +534,7 @@ std::string describe() {
 #endif
              (unsigned long long)n_frames, g_T ? 1e9 / (double)g_T : 0.0,
              g_T_exact ? "refresh (from the compositor)" : "display mode (phase unknown)", (g_speed - 1.0) * 100.0, (unsigned long long)n_presented,
-             (unsigned long long)n_on_time, g_k, (unsigned long long)n_late,
+             (unsigned long long)n_on_time, refreshes.c_str(), (unsigned long long)n_late,
              (unsigned long long)n_discarded, (unsigned long long)n_overrun, (unsigned long long)n_resync,
              (double)g_best / MS, (double)g_lead / MS, g_settled ? " (settled)" : "", (unsigned long long)n_moved,
              (double)g_budget / MS);

@@ -23,11 +23,11 @@
 //                       whole number of refreshes, running the game at the display's rate (up to
 //                       3 % off: pop'n 2.6 % fast at 60 Hz); off: the game's exact speed, frames
 //                       shown as they come (for variable-refresh displays). runtime/host/pacing.h
-//     --smooth-motion   with display sync on a display at a multiple of the game's rate (120, 240
-//                       Hz): the refreshes between two frames show what moves further along its
-//                       move (the core's in-between pictures: DJ Main's sprites, the Firebeat
-//                       GCU's objects) instead of the frame held; the game runs as before. Needs
-//                       the compositor's fifo-v1 (KWin 6.7). docs/SMOOTH.md
+//     --smooth-motion   with display sync, on any display (60, 144, 240 Hz): the game at its own
+//                       speed, and every refresh shows what moves carried on to that refresh's
+//                       moment (the core's in-between pictures: DJ Main's sprites, the Firebeat
+//                       GCU's objects) instead of frames held for uneven numbers of refreshes.
+//                       Needs the compositor's fifo-v1 (KWin 6.7). docs/SMOOTH.md
 //     --macro NAME[@F]  run one of the game's code macros (games/<game>/macros.txt) at frame F, or
 //                       at its own `at` frame (power-on codes); repeatable. In the window,
 //                       Ctrl+1..9 types the 1st..9th macro
