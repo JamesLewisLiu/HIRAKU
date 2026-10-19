@@ -277,6 +277,7 @@ struct Api {
     int (*recover)(pcm *, int, int);
     int (*drop)(pcm *);
     const char *(*strerror)(int);
+    int (*card_index)(const char *);   // snd_card_get_index: for the card's reservation (optional)
 } api;
 pcm *g_pcm = nullptr;
 int g_period = 0, g_frame_bytes = 0;
@@ -304,8 +305,153 @@ bool load(std::string &why) {
     get(api.hw_params, "snd_pcm_hw_params"), get(api.wait, "snd_pcm_wait"), get(api.avail_update, "snd_pcm_avail_update");
     get(api.writei, "snd_pcm_writei"), get(api.recover, "snd_pcm_recover"), get(api.drop, "snd_pcm_drop");
     get(api.strerror, "snd_strerror");
+    api.card_index = reinterpret_cast<int (*)(const char *)>(SDL_LoadFunction(lib, "snd_card_get_index"));
     return ok;
 }
+
+// The card's reservation (org.freedesktop.ReserveDevice1, the protocol JACK and PulseAudio use):
+// PipeWire's WirePlumber holds the bus name Audio<card> for each card it drives. Asked
+// (RequestRelease), it lets the card go and waits; when the name is given up (close()), it takes
+// the card back. Opened without this, WirePlumber found the card busy while a game held it and
+// was left without its device after the game had closed (2026-10-19, the owner's PC). libdbus is
+// loaded when needed; anything missing (no D-Bus, no PipeWire, not a hw: device): nothing done.
+namespace reserve {
+struct DBusError {
+    const char *name, *message;
+    unsigned dummy1 : 1, dummy2 : 1, dummy3 : 1, dummy4 : 1, dummy5 : 1;
+    void *padding;
+};
+struct Conn;
+struct Msg;
+struct {
+    Conn *(*bus_get_private)(int, DBusError *);
+    void (*set_exit_on_disconnect)(Conn *, unsigned);
+    int (*request_name)(Conn *, const char *, unsigned, DBusError *);
+    int (*release_name)(Conn *, const char *, DBusError *);
+    Msg *(*new_method_call)(const char *, const char *, const char *, const char *);
+    unsigned (*append_args)(Msg *, int, ...);
+    Msg *(*send_block)(Conn *, Msg *, int, DBusError *);
+    unsigned (*get_args)(Msg *, DBusError *, int, ...);
+    void (*unref)(Msg *);
+    void (*flush)(Conn *);
+    void (*close)(Conn *);
+    void (*conn_unref)(Conn *);
+    void (*error_init)(DBusError *);
+    void (*error_free)(DBusError *);
+    unsigned (*read_write)(Conn *, int);
+    Msg *(*pop)(Conn *);
+    int (*type)(Msg *);
+    unsigned (*is_call)(Msg *, const char *, const char *);
+    Msg *(*new_return)(Msg *);
+    Msg *(*new_error)(Msg *, const char *, const char *);
+    unsigned (*send)(Conn *, Msg *, uint32_t *);
+} d;
+Conn *g_conn = nullptr;
+std::string g_name;
+
+bool load() {
+    static SDL_SharedObject *lib = SDL_LoadObject("libdbus-1.so.3");
+    if (!lib) return false;
+    bool ok = true;
+    auto get = [&](auto &f, const char *name) {
+        f = reinterpret_cast<std::remove_reference_t<decltype(f)>>(SDL_LoadFunction(lib, name));
+        if (!f) ok = false;
+    };
+    get(d.bus_get_private, "dbus_bus_get_private"), get(d.set_exit_on_disconnect, "dbus_connection_set_exit_on_disconnect");
+    get(d.request_name, "dbus_bus_request_name"), get(d.release_name, "dbus_bus_release_name");
+    get(d.new_method_call, "dbus_message_new_method_call"), get(d.append_args, "dbus_message_append_args");
+    get(d.send_block, "dbus_connection_send_with_reply_and_block"), get(d.get_args, "dbus_message_get_args");
+    get(d.unref, "dbus_message_unref"), get(d.flush, "dbus_connection_flush"), get(d.close, "dbus_connection_close");
+    get(d.conn_unref, "dbus_connection_unref"), get(d.error_init, "dbus_error_init"), get(d.error_free, "dbus_error_free");
+    get(d.read_write, "dbus_connection_read_write"), get(d.pop, "dbus_connection_pop_message");
+    get(d.type, "dbus_message_get_type"), get(d.is_call, "dbus_message_is_method_call");
+    get(d.new_return, "dbus_message_new_method_return"), get(d.new_error, "dbus_message_new_error");
+    get(d.send, "dbus_connection_send");
+    return ok;
+}
+
+// the card a device names: hw:CARD=Generic,DEV=0, plughw:1,0 ... (-1: not a card's own device)
+int card_of(const std::string &device) {
+    const size_t colon = device.find(':');
+    if (colon == std::string::npos || !api.card_index) return -1;
+    const std::string kind = device.substr(0, colon);
+    if (kind != "hw" && kind != "plughw") return -1;
+    std::string card = device.substr(colon + 1);
+    card = card.substr(0, card.find(','));
+    if (card.rfind("CARD=", 0) == 0) card = card.substr(5);
+    return card.empty() ? -1 : api.card_index(card.c_str());
+}
+
+// "": reserved (or nothing to do); else what happened, for the log
+std::string acquire(const std::string &device) {
+    const int card = card_of(device);
+    if (card < 0 || !load()) return "";
+    DBusError e;
+    d.error_init(&e);
+    g_conn = d.bus_get_private(0 /* session */, &e);
+    if (!g_conn) return d.error_free(&e), "no session bus";
+    d.set_exit_on_disconnect(g_conn, 0);
+    g_name = "org.freedesktop.ReserveDevice1.Audio" + std::to_string(card);
+    constexpr unsigned REPLACE_EXISTING = 2, DO_NOT_QUEUE = 4;
+    int r = d.request_name(g_conn, g_name.c_str(), DO_NOT_QUEUE, &e);
+    if (r == 3 /* exists: someone has the card */) {
+        d.error_free(&e);
+        const std::string path = "/org/freedesktop/ReserveDevice1/Audio" + std::to_string(card);
+        Msg *m = d.new_method_call(g_name.c_str(), path.c_str(), "org.freedesktop.ReserveDevice1", "RequestRelease");
+        int32_t priority = 100;   // above WirePlumber's own (its default is -20)
+        d.append_args(m, 'i', &priority, 0);
+        Msg *reply = d.send_block(g_conn, m, 2000, &e);
+        d.unref(m);
+        unsigned granted = 0;
+        if (reply) d.get_args(reply, &e, 'b', &granted, 0), d.unref(reply);
+        d.error_free(&e);
+        if (!granted) return "the card's owner wouldn't release it (" + g_name + ")";
+        r = d.request_name(g_conn, g_name.c_str(), DO_NOT_QUEUE | REPLACE_EXISTING, &e);
+    }
+    d.error_free(&e);
+    if (r != 1 && r != 4) {
+        d.close(g_conn), d.conn_unref(g_conn), g_conn = nullptr;
+        return "couldn't take " + g_name;
+    }
+    d.flush(g_conn);
+    return "";
+}
+
+// While we hold the card: the owner we took it from asks for it back at once (WirePlumber keeps
+// trying to hold every card); "no", promptly. Unanswered, its call waited out the bus's timeout,
+// it missed the name coming free when we closed, and it never took the card back. Anything else
+// called on us: the standard "no such method". From the thread that plays (the only one using the
+// connection while it runs), every ~100 ms.
+void serve() {
+    if (!g_conn) return;
+    d.read_write(g_conn, 0);
+    while (Msg *m = d.pop(g_conn)) {
+        if (d.is_call(m, "org.freedesktop.ReserveDevice1", "RequestRelease")) {
+            Msg *r = d.new_return(m);
+            unsigned no = 0;
+            d.append_args(r, 'b', &no, 0);
+            d.send(g_conn, r, nullptr), d.unref(r);
+        } else if (d.type(m) == 1 /* a method call */) {
+            Msg *r = d.new_error(m, "org.freedesktop.DBus.Error.UnknownMethod", "HIRAKU holds this card");
+            d.send(g_conn, r, nullptr), d.unref(r);
+        }
+        d.unref(m);
+    }
+    d.flush(g_conn);
+}
+
+void release() {
+    if (!g_conn) return;
+    DBusError e;
+    d.error_init(&e);
+    d.release_name(g_conn, g_name.c_str(), &e);
+    d.error_free(&e);
+    d.flush(g_conn);
+    d.close(g_conn);
+    d.conn_unref(g_conn);
+    g_conn = nullptr;
+}
+}  // namespace reserve
 
 // each time a period of the ring is free: that much from the stream (silence for what it lacks:
 // the stream's get callback counts that as a break), written
@@ -313,7 +459,8 @@ void run(SDL_AudioStream *stream) {
     SDL_SetCurrentThreadPriority(SDL_THREAD_PRIORITY_TIME_CRITICAL);
     std::vector<uint8_t> buf((size_t)g_period * g_frame_bytes);
     const int bytes = (int)buf.size();
-    while (!g_stop.load(std::memory_order_relaxed)) {
+    for (unsigned turn = 0; !g_stop.load(std::memory_order_relaxed); turn++) {
+        if (turn % 32 == 0) reserve::serve();   // the card's reservation: its owner's calls answered
         long avail = api.avail_update(g_pcm);
         if (avail < 0) {
             g_xruns.fetch_add(1, std::memory_order_relaxed);
@@ -341,8 +488,12 @@ void run(SDL_AudioStream *stream) {
 [[maybe_unused]] std::string open(const std::string &device, const SDL_AudioSpec &src, int period, SDL_AudioStream *&stream, std::string &what) {
     std::string why;
     if (!load(why)) return why;
+    const std::string reserved = reserve::acquire(device);
+    if (!reserved.empty()) fprintf(stderr, "sound: %s; opening the card anyway\n", reserved.c_str());
     int e = api.open(&g_pcm, device.c_str(), 0 /* playback */, 0);
-    if (e < 0) return g_pcm = nullptr, api.strerror(e);
+    // the owner closes the card once it has released it: a moment busy (EBUSY) at most
+    for (int tries = 0; e == -16 && tries < 20; tries++) SDL_Delay(50), e = api.open(&g_pcm, device.c_str(), 0, 0);
+    if (e < 0) return reserve::release(), g_pcm = nullptr, api.strerror(e);
     hw *h = nullptr;
     api.hw_malloc(&h);
     api.hw_any(g_pcm, h);
@@ -370,6 +521,7 @@ void run(SDL_AudioStream *stream) {
     if (e < 0) {
         api.close(g_pcm);
         g_pcm = nullptr;
+        reserve::release();
         return api.strerror(e);
     }
     g_period = (int)p;
@@ -395,6 +547,7 @@ void close() {
     api.drop(g_pcm);
     api.close(g_pcm);
     g_pcm = nullptr;
+    reserve::release();   // the card back to its owner (PipeWire)
 }
 }  // namespace alsa
 }  // namespace
@@ -551,6 +704,12 @@ void steer_audio() {
     double target_ms = g_target_frames * 1000.0 / g_rate;
     if (q_ms < target_ms / 2) {   // starting, or after a stall: fill up at once, not over seconds
         std::vector<float> silence((size_t)((target_ms - q_ms) * g_rate * g_ratio / 1000) * 2, 0.0f);
+        SDL_PutAudioStreamData(g_audio, silence.data(), (int)(silence.size() * sizeof(float)));
+        q_ms = target_ms;
+    }
+    if (q_ms > target_ms * 3 + 50) {   // far too long (the steering below takes minutes): back to the target at once
+        SDL_ClearAudioStream(g_audio);
+        std::vector<float> silence((size_t)(target_ms * g_rate * g_ratio / 1000) * 2, 0.0f);
         SDL_PutAudioStreamData(g_audio, silence.data(), (int)(silence.size() * sizeof(float)));
         q_ms = target_ms;
     }

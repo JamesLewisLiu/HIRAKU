@@ -57,6 +57,8 @@ replace  = "4d4f4444 45442120 21"   # hex: what goes there (as long as original)
 [[rate]]                        # the machine's vsync at another rate while the game is somewhere
 hz = "display"                  # the display's refresh rate (no window: 119.88), or a number (30-1000)
 while_changing = 0x018ff668     # ... while this word of its memory changes from frame to frame
+# while_equal = 0x00f898d8      # ... and (optional) while this word (4 bytes) holds `value`
+# value = 4
 
 [[bytes]]                       # bytes the game reads from one of its media
 medium = "hdd"                  # the medium's key in dumps/<game>/machine.txt
@@ -96,6 +98,11 @@ an increment patched to +0 there advances once per cabinet frame at any rate. Pa
 in place and taken out between frames (the Python core clears the EE recompiler's blocks over
 them each time).
 
+Display pacing follows the change: its smoothed estimate of the game's rate takes a jump of more
+than 5 % at once (smoothed, after 240 -> 60 Hz the sound played at a quarter of its speed for
+a while and queued seconds), and a sound queue grown far past its target is cut back at once
+rather than steered down over minutes (runtime/host/pacing.cpp, window.cpp).
+
 pop'n music 14 (`games/popn14/mods/smooth-notes`, 2026-10-19):
 - the play screen computes the song's position from a hardware timer on every frame
   (FUN_01740298, the word at 0x018ff668), draws the notes from it and judges from it: while that
@@ -109,6 +116,13 @@ pop'n music 14 (`games/popn14/mods/smooth-notes`, 2026-10-19):
   at 0x01736fbc) holds every object at the cabinet's pace: the characters' counter advances 500
   times in 1,000 vsyncs at 120 Hz, 250 at 240, 125 at 480, and their poses match 60 Hz's at the
   same moments. (Taking the objects' "paused" branch instead skips their drawing: they blink.)
+- the rate holds only while the play screen's phase (0x00f898d8, `while_equal`) is 4, the song
+  itself: phases 0-3 start it, 5-7 end it (cleared or failed), and the results follow; with the
+  clock alone the rate stayed up through a cleared song's ending (2026-10-19, the owner's play:
+  the results' animations ran fast and the sound fell behind);
+- the HUD's animations (the difficulty name, NORMAL/HYPER/EX...) take their time from the play
+  screen's frame counter (0x00f8b63c, +1 at 0x0174ce7c) and others from the vsync routine's
+  three counters (0x0172f360): `between_ticks` on each;
 - left: the GREAT/GOOD/BAD text shows for half its time at 120 Hz. Its timer is a counter in a
   long-lived stack frame (0x01ffea20 in the attract demo), counted through a pointer; not found
   among the increment-and-store sites.
@@ -120,14 +134,19 @@ an older build, by a RAM search) and checked to move only from a song's start; t
 update is the same code in every one (`lh v1, 0x20(sN)` before `addiu a1, zero, 100`), and pop'n
 10-13 have the 13-frame effect timer too:
 
-| game | song clock | objects' speed load | effect timer |
-|---|---|---|---|
-| pop'n 9 | 0x0025a188 | 0x00106ca4 | — |
-| pop'n 10 | 0x002fa3e0 | 0x001084dc | 0x001163bc |
-| pop'n 11 | 0x002ca180 | 0x00108d94 | 0x00116a84 |
-| pop'n 12 | 0x002d2488 | 0x0010847c | 0x00115ccc |
-| pop'n 13 | 0x01907fd8 | 0x01745a14 | 0x01753350 |
-| pop'n 14 | 0x018ff668 | 0x01736fbc | 0x017448f0 |
+| game | song clock | play phase | objects' speed load | effect timer |
+|---|---|---|---|---|
+| pop'n 9 | 0x0025a188 | not found | 0x00106ca4 | — |
+| pop'n 10 | 0x002fa3e0 | 0x00376090 | 0x001084dc | 0x001163bc |
+| pop'n 11 | 0x002ca180 | 0x0034e778 | 0x00108d94 | 0x00116a84 |
+| pop'n 12 | 0x002d2488 | 0x0035ad00 | 0x0010847c | 0x00115ccc |
+| pop'n 13 | 0x01907fd8 | 0x00fa90e8 | 0x01745a14 | 0x01753350 |
+| pop'n 14 | 0x018ff668 | 0x00f898d8 | 0x01736fbc | 0x017448f0 |
+
+The play phase (a halfword the gameplay function switches on: `lh v1, X(gp)` or a `lui` base,
+then `sltiu v0, v1, 8`) is 4 while the song plays (checked on each through a play); pop'n 9 keeps
+its state elsewhere, so its rate follows the clock alone. pop'n 13 has pop'n 14's vsync routine
+(its counters patched too); 10-12's and the HUD counters outside 14 aren't found yet.
 
 Checked on each at 119.88 Hz: the rate on from the song's start, a new picture on every vsync,
 the clock at 8.34 ms a vsync; on pop'n 12 an object's frame counter at the cabinet's pace (500

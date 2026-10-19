@@ -102,6 +102,8 @@ struct Rate {
     double hz = 0, now = 0;   // as asked; as set
     uint32_t address = 0, last = 0;
     int changed = 0, still = 0;   // frames in a row the word changed, didn't
+    bool gated = false;           // while_equal: and only while this word holds `value`
+    uint32_t gate = 0, value = 0;
     bool on = false, refused = false;
 };
 
@@ -324,7 +326,7 @@ bool load(const std::vector<std::string> &dirs, const std::string &game, const s
                     if (!p.original.empty() && p.original.size() != p.replace.size()) fail("'original' and 'replace' are as long as each other");
                     g_patches.push_back(std::move(p));
                 } else if (t.kind == "rate") {
-                    known({"hz", "while_changing"});
+                    known({"hz", "while_changing", "while_equal", "value"});
                     Rate r;
                     r.mod = mod.name;
                     if (t.values.count("hz") && t.is_string.at("hz")) {
@@ -334,6 +336,11 @@ bool load(const std::vector<std::string> &dirs, const std::string &game, const s
                         if (r.hz < 30 || r.hz > 1000) fail("'hz' is between 30 and 1000");
                     }
                     r.address = (uint32_t)num("while_changing");
+                    if (t.values.count("while_equal") || t.values.count("value")) {
+                        r.gated = true;
+                        r.gate = (uint32_t)num("while_equal");
+                        r.value = (uint32_t)num("value");
+                    }
                     g_rates.push_back(r);
                 } else if (t.kind == "bytes") {
                     known({"medium", "offset", "from"});
@@ -386,8 +393,16 @@ void frame() {
         if (v != r.last) r.changed++, r.still = 0;
         else r.still++, r.changed = 0;
         r.last = v;
-        // two frames in a row either way, so a word that changes once (a load) doesn't count
-        const bool want = r.on ? r.still < 2 : r.changed >= 2;
+        // two frames in a row either way, so a word that changes once (a load) doesn't count; and
+        // with while_equal, only while that word holds the value (off at once when it doesn't)
+        bool in_state = true;
+        if (r.gated) {
+            const uint8_t *g = core().mem(r.gate, 4);
+            uint32_t gv = 0;
+            if (g) memcpy(&gv, g, 4);
+            in_state = g && gv == r.value;
+        }
+        const bool want = in_state && (r.on ? r.still < 2 : r.changed >= 2);
         // hz = "display": follow the display (a window moved to another one)
         const double hz = r.hz > 0 ? r.hz : g_display_hz > 30 ? g_display_hz : kDisplayFallbackHz;
         if (want == r.on && (!want || hz == r.now)) continue;

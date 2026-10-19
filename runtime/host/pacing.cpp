@@ -311,7 +311,13 @@ bool frame(double period) {
     double hz = 1e9 / (double)g_T;
     int k = std::max(1, (int)std::lround(period * 1e9 / (double)g_T));
     double f = period * 1e9 / ((double)k * (double)g_T);
-    g_game_hz = g_game_hz > 0 ? g_game_hz + (1.0 / period - g_game_hz) / 64 : 1.0 / period;
+    // smoothed, so the sound's rate doesn't flutter with each frame's jitter; but a jump of more than
+    // 5 % is the game's rate changing (a mod's [[rate]]: 59.94 Hz <-> the display's), taken at once:
+    // smoothed, the sound played at a fraction of its speed (a quarter, 240 -> 60 Hz) until it caught
+    // up, and its queue grew seconds long
+    const double game_hz = 1.0 / period;
+    if (g_game_hz <= 0 || std::fabs(game_hz - g_game_hz) > 0.05 * g_game_hz) g_game_hz = game_hz;
+    else g_game_hz += (game_hz - g_game_hz) / 64;
     if (std::fabs(f - 1.0) > g_max_skew) {
         if (g_active) g_active = false;
         g_fresh = true;

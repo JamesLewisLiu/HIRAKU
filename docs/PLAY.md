@@ -216,9 +216,13 @@ On exit, the console prints the buffer it actually got.
 **Your own sound card, and its buffer** (launcher: Settings > Audio > Output, Device buffer).
 `--audio-device hw:CARD=Generic,DEV=0` opens that card through ALSA with no sound server in
 between: the lowest latency, and nothing else plays on it meanwhile. `aplay -l` lists the cards
-(`card 1: Generic ... device 0` is `hw:CARD=Generic,DEV=0`). If the sound server still has the
-card open (it lets go a few seconds after the last sound on it stops), the game says so and uses
-the default instead. `--audio-buffer N` sets the device buffer in frames (default 128, 2.7 ms at
+(`card 1: Generic ... device 0` is `hw:CARD=Generic,DEV=0`). The card is borrowed from the sound
+server the way JACK does it (the D-Bus device reservation, `org.freedesktop.ReserveDevice1`):
+PipeWire's WirePlumber lets it go when asked, is told "no" while the game plays, and takes it
+back the moment the game closes. (Without the reservation, WirePlumber lost the card while a game
+held it and didn't get it back after: no sound from it for the desktop until it was restarted.)
+If the sound server still has the card open anyway, the game says so and uses the default
+instead. `--audio-buffer N` sets the device buffer in frames (default 128, 2.7 ms at
 48 kHz): the sound server's quantum, or the card's period. On a card of its own HIRAKU writes
 through ALSA itself, keeping a ring of four periods full (at 64 frames, 256 frames or 5.3 ms): a
 USB card's driver starves on fewer and plays stale sound without reporting it, which made SDL's

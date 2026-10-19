@@ -1,11 +1,13 @@
 name = "Smooth notes (high frame rate)"
-version = "0.2"
+version = "0.3"
 game = "popn14"
 description = "While a song plays, the machine's vsync follows the display's refresh rate (120, 144, 240 Hz...): the game draws its notes from its song clock, so they move at the display's rate, and judges as before. The animated objects (characters, hit effects) keep the cabinet's pace. Left: the GREAT/GOOD/BAD text shows for a shorter time."
 
 [[rate]]
 hz = "display"                 # the display's refresh rate (no window: 119.88); or a number, up to 1000
 while_changing = 0x018ff668    # the song clock (FUN_01740298), recomputed on every frame of the play screen
+while_equal = 0x00f898d8       # ... and while the play screen's phase is 4: the song itself (not the
+value = 4                      # clear or failed end, not the results)
 
 [[patch]]                      # the animated objects' update reads each one's speed (percent) at +0x20; on
 address = 0x01736fbc           # the vsyncs between the cabinet's ticks it reads 0, so no object moves on
@@ -17,4 +19,28 @@ between_ticks = true
 address = 0x017448f0           # (addiu a0, v1, 1 -> addiu a0, v1, 0)
 original = "01006424"
 replace = "00006424"
+between_ticks = true
+
+[[patch]]                      # the play screen's own frame counter (0x00f8b63c, FUN_0174bae4): the
+address = 0x0174ce7c           # HUD's animations (the difficulty name...) take their time from it
+original = "01004224"          # (addiu v0, v0, 1 -> addiu v0, v0, 0)
+replace = "00004224"
+between_ticks = true
+
+[[patch]]                      # the frame counters the vsync routine (0x0172f360) keeps, which other
+address = 0x0172f388           # animations take their time from (daddiu v1, v1, 1 -> 0)
+original = "01006364"
+replace = "00006364"
+between_ticks = true
+
+[[patch]]
+address = 0x0172f394           # (daddiu v0, v0, 1 -> 0)
+original = "01004264"
+replace = "00004264"
+between_ticks = true
+
+[[patch]]
+address = 0x0172f3a0           # a countdown (daddiu v1, v1, -1 -> 0)
+original = "ffff6364"
+replace = "00006364"
 between_ticks = true

@@ -454,6 +454,9 @@ int main(int argc, char **argv) {
             });
             if (!keep) {
                 finish();
+#ifdef HK_WITH_SDL
+                if (window_scale) host::window_close();
+#endif
                 exit(machine.exit_code());
             }
         }
@@ -483,6 +486,9 @@ int main(int argc, char **argv) {
             machine.shutdown();
             lights_off();
             report();
+#ifdef HK_WITH_SDL
+            if (window_scale) host::window_close();   // the sound card back to its owner
+#endif
             exit(machine.exit_code());
         }
     });
