@@ -245,7 +245,7 @@ std::vector<std::string> g_config_dirs;
 int g_monitor_khz = 0;   // set_monitor: the cabinet's monitor, for shaders/<name>/hiraku-<k>khz.params
 bool g_ok = false;
 uint32_t g_draws = 0;
-uint32_t g_snap_frame = UINT32_MAX;
+uint32_t g_snap_frame = UINT32_MAX, g_snap_last = UINT32_MAX;   // HK_PICTURE_SNAP=FRAME[-LAST],FILE
 std::string g_snap_path;
 
 class Chain {
@@ -831,16 +831,21 @@ void main() {
 }
 )";
 
-void snap(int win_w, int win_h) {
+void snap(int win_w, int win_h, uint32_t frame) {
     std::vector<uint8_t> px((size_t)win_w * win_h * 3);
     gl.glPixelStorei(GL_PACK_ALIGNMENT, 1);
     gl.glReadPixels(0, 0, win_w, win_h, GL_RGB, GL_UNSIGNED_BYTE, px.data());
-    FILE *f = fopen(g_snap_path.c_str(), "wb");
+    std::string path = g_snap_path;   // a range: the frame's number before the extension
+    if (g_snap_last != g_snap_frame) {
+        const size_t dot = path.rfind('.');
+        path.insert(dot == std::string::npos ? path.size() : dot, "-" + std::to_string(frame));
+    }
+    FILE *f = fopen(path.c_str(), "wb");
     if (!f) return;
     fprintf(f, "P6\n%d %d\n255\n", win_w, win_h);
     for (int y = win_h - 1; y >= 0; y--) fwrite(&px[(size_t)y * win_w * 3], 1, (size_t)win_w * 3, f);
     fclose(f);
-    fprintf(stderr, "picture: frame %u written to %s\n", g_snap_frame, g_snap_path.c_str());
+    fprintf(stderr, "picture: frame %u written to %s\n", frame, path.c_str());
 }
 
 }  // namespace
@@ -888,7 +893,9 @@ bool init(const std::string &shaders_dir, const std::vector<std::string> &config
     gl.glGenQueries(4, g_gpu.q);
     if (const char *e = getenv("HK_PICTURE_PASSES")) g_pass_times = *e && *e != '0';
     if (const char *e = getenv("HK_PICTURE_SNAP")) {
-        g_snap_frame = (uint32_t)strtoul(e, nullptr, 10);
+        char *end = nullptr;
+        g_snap_frame = g_snap_last = (uint32_t)strtoul(e, &end, 10);
+        if (end && *end == '-') g_snap_last = (uint32_t)strtoul(end + 1, nullptr, 10);
         if (const char *c = strchr(e, ',')) g_snap_path = c + 1;
     }
     fprintf(stderr, "picture: OpenGL %s on %s\n", (const char *)gl.glGetString(GL_VERSION),
@@ -1048,8 +1055,9 @@ Mode draw(const uint32_t *rgb, int w, int h, int x, int y, int vw, int vh, int w
         g_gpu.issued++;
     }
     // the game's frame (the first draw of it), else the draws counted
-    if ((frame == UINT64_MAX ? g_draws == g_snap_frame : next && frame == g_snap_frame) && !g_snap_path.empty())
-        snap(win_w, win_h);
+    const uint64_t at = frame == UINT64_MAX ? g_draws : frame;
+    if ((frame == UINT64_MAX || next) && at >= g_snap_frame && at <= g_snap_last && !g_snap_path.empty())
+        snap(win_w, win_h, (uint32_t)at);
     g_draws++;
     return m;
 }

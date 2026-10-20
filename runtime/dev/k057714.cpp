@@ -209,7 +209,7 @@ void K057714::write(uint32_t reg, uint32_t data, uint32_t mem_mask) {
 
 void K057714::vblank(bool state) {
     if (state && m_keep && !m_drawing.cmds.empty()) {   // a new frame (in-between pictures)
-        m_shown_before = std::move(m_shown.cmds);
+        m_shown_before = std::move(m_shown);
         m_shown = std::move(m_drawing);
         m_drawing = Drawn{};
         m_drawing.origin_x = m_fb_origin_x, m_drawing.origin_y = m_fb_origin_y;
@@ -558,32 +558,92 @@ bool K057714::draw_between(uint32_t *out, int width, int height, double t) {
         m_drawing.origin_x = m_fb_origin_x, m_drawing.origin_y = m_fb_origin_y;
         return false;
     }
-    if (m_shown.cmds.empty() || m_shown_before.empty()) return false;
+    if (m_shown.cmds.empty() || m_shown_before.cmds.empty()) return false;
+    // The frame on the screen: the one whose frame buffer the first layer shows (a frame's buffer:
+    // where its own fb_config, its first command, puts the origin). It's the last one drawn, as a
+    // rule; a game that drew a frame ahead would show the one before it, its objects then going
+    // towards where the next one has them.
+    auto buffer_shown = [&](const Drawn &d) {
+        int x = d.origin_x, y = d.origin_y;
+        for (const Cmd &c : d.cmds)
+            if (((c[0] >> 29) & 7) == 3) {
+                x = c[2] & 0x3ff, y = c[3] & 0x3fff;
+                break;
+            }
+        return m_frame[0].base == (uint32_t)(y * 1024 + x);
+    };
+    const bool ahead = buffer_shown(m_shown_before) && !buffer_shown(m_shown);
+    const Drawn &shown = ahead ? m_shown_before : m_shown;
+    int shown_y = shown.origin_y;   // its buffer's origin row
+    for (const Cmd &c : shown.cmds)
+        if (((c[0] >> 29) & 7) == 3) {
+            shown_y = c[3] & 0x3fff;
+            break;
+        }
+    const std::vector<Cmd> &other = ahead ? m_shown.cmds : m_shown_before.cmds;
+    // Where each object reaches the screen: some games draw objects into a strip of VRAM that a later
+    // object copies onto the screen, the strip elsewhere from frame to frame (pop'n music 8's notes:
+    // in a strip at x 608 or 611 by turns, copied onto the lanes), so where they are in VRAM moves
+    // sideways while the notes only fall. An object inside a later one's source rectangle is placed
+    // through it (and its scale noted, to turn a move on the screen back into one in the strip)
+    // Its place is its middle: pop'n music 8's notes also squash and stretch to the beat about their
+    // middle, so their left edge moves while they don't
+    struct Placed { int x, y, xs, ys; bool copied, rel; };   // on the screen; the copy's scale; drawn relative to the origin
+    auto middle = [](const Cmd &c, int &x, int &y) {
+        const int xs = (c[2] >> 10) & 0x7ff, ys = (c[3] >> 10) & 0x7ff;
+        const int w = (int)(c[2] & 0x1ff) + 1, h = (int)(c[3] & 0x3ff) + 1;
+        x = int(c[1] & 0x3ff) + (xs && !(xs & 0x800) ? w * 64 / xs : w) / 2;
+        y = int((c[1] >> 10) & 0x3fff) + (ys && !(ys & 0x800) ? h * 64 / ys : h) / 2;
+    };
+    auto place = [&](const std::vector<Cmd> &cs) {
+        std::vector<Placed> p(cs.size());
+        for (size_t k = 0; k < cs.size(); k++) {
+            p[k] = {0, 0, 64, 64, false, false};
+            middle(cs[k], p[k].x, p[k].y);
+        }
+        for (size_t j = 0; j < cs.size(); j++) {
+            const Cmd &b = cs[j];
+            if (((b[0] >> 29) & 7) != 5) continue;
+            const int ax = b[0] & 0x3ff, ay = (b[0] >> 10) & 0x3fff, w = (b[2] & 0x1ff) + 1, h = (b[3] & 0x3ff) + 1;
+            const int xs = (b[2] >> 10) & 0x7ff, ys = (b[3] >> 10) & 0x7ff;
+            if (xs == 0 || ys == 0 || (xs & 0x800) || (ys & 0x800)) continue;   // flipped: not followed
+            const int bx = b[1] & 0x3ff, by = (b[1] >> 10) & 0x3fff;
+            for (size_t k = 0; k < j; k++) {
+                if (p[k].copied || ((cs[k][0] >> 29) & 7) != 5) continue;
+                const int x = p[k].x, y = p[k].y;   // its middle, inside the copy's source
+                if (x < ax || x >= ax + w || y < ay || y >= ay + h) continue;
+                p[k] = {bx + (x - ax) * 64 / xs, by + (y - ay) * 64 / ys, xs, ys, true, (b[0] & 0x10000000) != 0};
+            }
+        }
+        return p;
+    };
+    const std::vector<Placed> here = place(shown.cmds), there = place(other);
     // Each object drawn is matched with the nearest of the frame before's that looks the same (its
     // size and scale, and its picture or height: a note moving off the lane gets shorter, an
     // animated one changes picture) within 16 pixels, and carried on by that move: what scrolls
     // with the frame's other moving objects along the scroll's steady line (hiraku/scroll_guess.h)
-    std::vector<Cmd> cmds = m_shown.cmds;
+    std::vector<Cmd> cmds = shown.cmds;
     std::vector<std::pair<int, int>> moves(cmds.size(), {0, 0});
     for (size_t k = 0; k < cmds.size(); k++) {
         const Cmd &c = cmds[k];
         if (((c[0] >> 29) & 7) != 5) continue;
-        const int x = c[1] & 0x3ff, y = (c[1] >> 10) & 0x3fff;
+        const int x = here[k].x, y = here[k].y;
         int best = 1 << 30;
-        for (const Cmd &b : m_shown_before) {
+        for (size_t kb = 0; kb < other.size(); kb++) {
+            const Cmd &b = other[kb];
             if (((b[0] >> 29) & 7) != 5 || (b[1] & 0xff000000) != (c[1] & 0xff000000)) continue;
             // the same width and scale, and the same picture or height (a note going off the lane
             // gets shorter, an animated one changes picture); or the same picture and height, its
             // width or horizontal scale changed (pop'n music 8's notes squash and stretch to the beat
             // as they fall: unmatched, they stood still between frames)
             if (b[2] == c[2] ? b[0] != c[0] && b[3] != c[3] : b[0] != c[0] || b[3] != c[3]) continue;
-            const int bx = b[1] & 0x3ff, by = (b[1] >> 10) & 0x3fff;
+            const int bx = there[kb].x, by = there[kb].y;
             const int d = std::abs(x - bx) + std::abs(y - by) + (b[0] != c[0] ? 8 : 0) + (b[3] != c[3] ? 8 : 0) + (b[2] != c[2] ? 4 : 0);
             if (std::abs(x - bx) > 16 || std::abs(y - by) > 16 || d >= best) continue;
-            best = d, moves[k] = {x - bx, y - by};
+            best = d, moves[k] = ahead ? std::pair<int, int>{bx - x, by - y} : std::pair<int, int>{x - bx, y - by};
         }
     }
-    m_scroll.frame(m_mark, moves);
+    m_scroll.frame(ahead ? m_mark - 1 : m_mark, moves);
     bool moved = false;
     if (m_clip_row.empty()) m_clip_row.assign(ROWS, 0);
     std::fill(m_clip_row.begin(), m_clip_row.end(), 0);
@@ -594,18 +654,27 @@ bool K057714::draw_between(uint32_t *out, int width, int height, double t) {
         Cmd &c = cmds[k];
         if (((c[0] >> 29) & 7) != 5) continue;
         const int x = c[1] & 0x3ff, y = (c[1] >> 10) & 0x3fff;
-        int ox, oy;
+        int ox, oy;   // on the screen; in VRAM through the copy's scale
         m_scroll.offset(moves[k].first, moves[k].second, t, ox, oy);
-        const int nx = x + ox, ny = y + oy;
+        const int sx = here[k].xs == 64 ? ox : (int)std::lround(ox * here[k].xs / 64.0);
+        const int sy = here[k].ys == 64 ? oy : (int)std::lround(oy * here[k].ys / 64.0);
+        const int nx = x + sx, ny = y + sy;
         if ((nx == x && ny == y) || nx < 0 || nx > 0x3ff || ny < 0 || ny > 0x3fff) continue;
         c[1] = (c[1] & ~0xffffffu) | (c[1] & 0xff000000u) | (uint32_t)ny << 10 | (uint32_t)nx;
         moved = true;
         // the rows it was drawn on and the rows it goes to: the only ones drawn again (their objects'
         // other rows stay as the frame has them)
-        if (k < m_shown.cmd_rows.size()) {
-            const auto [y0, y1] = m_shown.cmd_rows[k];
+        if (k < shown.cmd_rows.size()) {
+            const auto [y0, y1] = shown.cmd_rows[k];
             mark(y0, y1);
             mark(y0 + (ny - y), y1 + (ny - y));
+        }
+        if (here[k].copied) {   // drawn through a copy: where it shows, before and after (the copy's
+            // place relative to the frame buffer's origin, as most are: matched without it, as both
+            // buffers' frames are, but drawn there)
+            const int h = int((c[3] & 0x3ff) + 1) * 64 / here[k].ys, at = here[k].y - h / 2 + (here[k].rel ? shown_y : 0);
+            mark(at - 2, at + h + 2);
+            mark(at + oy - 2, at + oy + h + 2);
         }
     }
     if (!moved) return false;   // nothing on by a whole pixel yet: the frame as it is
@@ -616,18 +685,18 @@ bool K057714::draw_between(uint32_t *out, int width, int height, double t) {
     m_replay_mark++;
     m_restore_rows.clear();
     m_restore.clear();
-    m_span0 = std::max(0, m_shown.x0 - 32) / 2, m_span1 = std::min(1024, m_shown.x1 + 34) / 2;
+    m_span0 = std::max(0, shown.x0 - 32) / 2, m_span1 = std::min(1024, shown.x1 + 34) / 2;
     if (m_span1 <= m_span0) m_span0 = 0, m_span1 = 512;
     const size_t n = (size_t)(m_span1 - m_span0);
     m_clip = true;
-    for (size_t i = 0; i < m_shown.rows.size(); i++) {
-        const uint32_t r = m_shown.rows[i];
+    for (size_t i = 0; i < shown.rows.size(); i++) {
+        const uint32_t r = shown.rows[i];
         if (row_out((int)r)) continue;
         touch((int)r, (int)r, 0, 0);
-        std::memcpy(&m_vram[(size_t)r * 512 + m_span0], &m_shown.before[i * 512 + m_span0], n * 4);
+        std::memcpy(&m_vram[(size_t)r * 512 + m_span0], &shown.before[i * 512 + m_span0], n * 4);
     }
     const int ox = m_fb_origin_x, oy = m_fb_origin_y;
-    m_fb_origin_x = m_shown.origin_x, m_fb_origin_y = m_shown.origin_y;
+    m_fb_origin_x = shown.origin_x, m_fb_origin_y = shown.origin_y;
     // the commands that draw on a row drawn again (where they were, or where they go), or set the
     // frame buffer's origin
     std::vector<int> sum(ROWS + 1, 0);
@@ -640,9 +709,9 @@ bool K057714::draw_between(uint32_t *out, int width, int height, double t) {
     };
     for (size_t k = 0; k < cmds.size(); k++) {
         const Cmd &c = cmds[k];
-        if (k < m_shown.cmd_rows.size() && ((c[0] >> 29) & 7) != 3) {
-            const auto [y0, y1] = m_shown.cmd_rows[k];
-            const int dy = (int)((c[1] >> 10) & 0x3fff) - (int)((m_shown.cmds[k][1] >> 10) & 0x3fff);
+        if (k < shown.cmd_rows.size() && ((c[0] >> 29) & 7) != 3) {
+            const auto [y0, y1] = shown.cmd_rows[k];
+            const int dy = (int)((c[1] >> 10) & 0x3fff) - (int)((shown.cmds[k][1] >> 10) & 0x3fff);
             if (!any(y0, y1) && !any(y0 + dy, y1 + dy)) continue;
         }
         run(c.data());

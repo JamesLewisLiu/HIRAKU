@@ -103,9 +103,27 @@ the frame's commands again with each object moved on, composes the layers as the
 them, and puts the rows back as they are. Each object command is matched with the nearest of the
 frame before's with the same size, scale and flags, and either its picture or its height (a note
 going off the lane is clipped shorter; an animated one changes picture), or with the same picture
-and height and another width or horizontal scale (pop'n music 8's notes squash and stretch to the
-beat as they fall: matched only by size, they went unmatched in play, stood still between frames
-and jumped at each one, a constant stutter; owner, 2026-10-20), within 16 pixels.
+and height and another width or horizontal scale, within 16 pixels. Where an object is, for this:
+- its middle: pop'n music 8's notes squash and stretch to the beat about their middle, so their
+  left edge moves while they don't;
+- where it reaches the screen: pop'n 8 draws its notes into a strip of VRAM (x 608-760) that a
+  later object copies onto the lanes, the strip a few pixels sideways from frame to frame. An object
+  inside a later one's source rectangle is placed through that copy (its offset turned back into
+  the strip by the copy's scale), and the copy's rows on the screen are drawn again with it, at
+  the frame buffer's origin when the copy is drawn relative to it, as it is;
+- in the frame on the screen: the one whose frame buffer the first layer shows (a frame's buffer:
+  where its first command, its fb_config, puts the origin). It's the last one drawn; a game drawing
+  a frame ahead would show the one before, its objects then going towards the next one's.
+
+All three came from the owner's test (2026-10-20, pop'n music 8 at 240 Hz: "still not smooth",
+then glitches under the falling notes): in play, the notes went unmatched (squashed), or matched
+in VRAM with the strip's sideways shift as a move (so they were carried sideways, and the copy,
+not drawn again in one of the two buffers, left them where they were). Checked in the window: 30
+frames of the demo play captured with `HK_PICTURE_SNAP=FIRST-LAST,FILE`, with and without
+smooth motion; a falling note's place is 0.60 window pixels off a steady line in time with it (the
+pixels' own rounding) and 0.67 off a line in whole frames without it, as it should. (Headless
+snapshots don't show Firebeat's in-between pictures right: the frame hook comes before the
+game's flip.)
 
 Checked on pop'n music 4 (the attract demo's notes, objects moving 2 pixels a frame) and pop'n
 music 8 (the How to Play, notes and sliding arrows): halfway, only the moving objects differ, 1

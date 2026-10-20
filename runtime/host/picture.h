@@ -75,8 +75,8 @@ Mode draw(const uint32_t *rgb, int w, int h, int x, int y, int vw, int vh, int w
 void overlay(const uint32_t *argb, int w, int h, int x, int y, int dw, int dh, float alpha, int win_w, int win_h);
 void shutdown();
 
-// HK_PICTURE_SNAP=FRAME,FILE.ppm writes the window's picture at that game frame (its first draw:
-// checking a shader).
+// HK_PICTURE_SNAP=FRAME[-LAST],FILE.ppm writes the window's picture at that game frame (its first
+// draw: checking a shader; a range: FILE-<frame>.ppm each).
 // HK_PICTURE_PASSES=1 prints each pass's GPU time at exit (it reads the timers back every frame: for
 // finding a preset's costly passes, not for playing).
 

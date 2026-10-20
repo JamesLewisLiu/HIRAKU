@@ -1187,8 +1187,14 @@ the pictures themselves: in pop'n 8's play the notes squash and stretch to the b
 51, 52, 53/64 from frame to frame), and the GCU matched objects only of the same size, so almost no note matched:
 they stood still between frames (the stutter) while other parts moved (the glitches, likely). Now the same
 picture and height match with another width or scale; and the scroll is the largest group of moves within a
-pixel (falling notes stepping 2 and 3 outnumber a rising lyric), its speed their average. Left: the owner's
-eyes again.
+pixel (falling notes stepping 2 and 3 outnumber a rising lyric), its speed their average. Third test: no
+difference. Traced in the window (a 60 Hz nested KWin, smooth motion's first refresh of each frame
+captured): pop'n 8 draws its notes into a VRAM strip that a later object copies onto the lanes, the strip a few
+pixels sideways frame to frame, and the notes squash about their middle. So objects are now placed through the
+copy that shows them and by their middle, and the copy's screen rows (at the buffer's origin) are drawn again;
+the frame on the screen is chosen by the buffer its own fb_config sets. Result in the window: a falling note
+0.60 window px off a steady line in time (rounding), the plain picture 0.67 off a line in whole frames.
+`HK_PICTURE_SNAP` takes a range. Left: the owner's eyes again; IIDX 7th (Twinkle) not traced this way yet.
 
 ### Pilot: pop'n music 8 unlocks (done)
 

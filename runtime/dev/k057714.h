@@ -79,7 +79,8 @@ private:
     };
     bool m_keep = false, m_replaying = false;
     Drawn m_drawing, m_shown;
-    std::vector<Cmd> m_shown_before;                        // the commands of the frame before m_shown
+    Drawn m_shown_before;                                   // the frame before m_shown (a game drawing a frame
+                                                            // ahead shows it while m_shown waits for its flip)
     hk::ScrollGuess m_scroll;                               // in-between pictures: where what scrolls goes
     std::vector<uint32_t> m_row_mark, m_restore_rows, m_restore;
     uint32_t m_mark = 0, m_replay_mark = 0;
