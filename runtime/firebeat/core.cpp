@@ -13,12 +13,13 @@
 #include <fstream>
 #include <iterator>
 #include <map>
+#include <sstream>
+#include <memory>
 #include <vector>
 
 #include "../core/exec.h"
-#ifdef HK_EXECUTOR
-#include "ppc/analyze.h"
-#endif
+#include "ppc/analyze.h"   // the executor's functions, and any build's for code a mod changes
+#include "ppc/spec.h"
 #include "../core/runtime.h"
 #include "../core/sched.h"
 #include "../shell/core.h"
@@ -46,7 +47,7 @@ namespace hk {
 namespace {
 
 // `key = 0x...` in a game.toml's [section] (the executor build's entry and load address)
-uint32_t toml_hex(const std::string &path, const std::string &section, const std::string &key, uint32_t dflt) {
+[[maybe_unused]] uint32_t toml_hex(const std::string &path, const std::string &section, const std::string &key, uint32_t dflt) {
     std::ifstream in(path);
     bool in_section = false;
     for (std::string line; std::getline(in, line);) {
@@ -117,6 +118,7 @@ public:
 
     bool init(const Options &o) override {
         if (image_.empty()) image_ = o.root + "/dumps/" + o.game + "/program.bin";
+        root_ = o.root, game_ = o.game;
         {   // its size: the program's range in RAM (code_changed)
             std::error_code ec;
             program_bytes_ = (size_t)std::filesystem::file_size(image_, ec);
@@ -278,14 +280,16 @@ public:
     bool audio_per_frame() const override { return synth::deferred(); }
     const std::vector<uint8_t> &lamp_state() const override { return fb::lamp_state(); }
     uint64_t lamp_changes() const override { return fb::lamp_changes(); }
-    // a mod's patch (host/mods.h): the program is translated ahead of time (recompiled, or the
-    // executor's analysis), so a patch to its code changes nothing that runs; data patches do
+    // a mod's patch (host/mods.h): the program runs translated ahead of time (recompiled, or the
+    // executor's steps), so the functions a patch to its code touches run interpreted from their
+    // next call on (core/patched.cpp), reading the code as it is now; data patches need nothing
     void code_changed(uint32_t addr, uint32_t len) override {
         const uint32_t p = HK_PHYS(addr), lo = HK_PHYS(load_), hi = lo + (uint32_t)program_bytes_;
-        if (p < hi && p + len > lo && !warned_code_)
-            fprintf(stderr, "mods: a patch at 0x%08x is in the program, which Firebeat runs translated: code patches "
-                            "don't take effect on this board yet (data patches do)\n", addr);
-        warned_code_ = warned_code_ || (p < hi && p + len > lo);
+        if (!(p < hi && p + len > lo)) return;
+        const spec::Program *prog = program();
+        if (!prog) return;
+        const uint32_t va = p - lo + load_;   // the program's addresses, as its functions have them
+        hk::patch_functions(*prog, va, va + len);
     }
     int screens() const override { return fb::screens(); }
     // Keyboardmania: two 4:3 monitors turned upright (MAME ROT270), side by side: 3:2
@@ -298,10 +302,43 @@ public:
     }
 
 private:
+    // the program's functions, for code a mod changes: the executor's own; a recompiled build's
+    // spec (build/<id>/recomp.txt, what it was compiled from); else HIRAKU's analysis, as the
+    // executor makes it (a fifth of a second), once
+    const spec::Program *program() {
+        if (const spec::Program *p = exec::program()) return p;
+        if (own_ || own_failed_) return own_.get();
+        own_ = std::make_unique<spec::Program>();
+        std::string err;
+#ifdef HK_GAME_ID
+        std::ifstream recomp(std::string(HK_ROOT) + "/build/" HK_GAME_ID "/recomp.txt");
+        if (recomp) {
+            err = spec::parse(*own_, recomp, image_);
+        } else
+#endif
+        {
+            std::ifstream f(image_, std::ios::binary);
+            std::vector<uint8_t> img((std::istreambuf_iterator<char>(f)), {});
+            analyze::Options ao;
+            ao.base = load_, ao.entry = entry_, ao.image_path = image_;
+            ao.extra = toml_hex_list(root_ + "/games/" + game_ + "/game.toml", "recomp", "extra_entries");
+            std::istringstream spec(analyze::run(img, ao).spec);
+            err = img.empty() ? "cannot read " + image_ : spec::parse(*own_, spec, image_);
+        }
+        if (!err.empty()) {
+            fprintf(stderr, "mods: the program's functions: %s (code patches left out)\n", err.c_str());
+            own_.reset();
+            own_failed_ = true;
+        }
+        return own_.get();
+    }
+
+    std::unique_ptr<spec::Program> own_;
+    bool own_failed_ = false;
+    std::string root_, game_;
     std::string image_, soundfont_, spec_;
     uint32_t load_ = HK_LOAD, entry_ = HK_ENTRY;   // the executor build's, from game.toml
     size_t program_bytes_ = 0;   // the program image's size (code_changed)
-    bool warned_code_ = false;
     bool synth_stand_in_ = false;
     double bios_seconds_ = 21.65;
     AudioSink sink_;

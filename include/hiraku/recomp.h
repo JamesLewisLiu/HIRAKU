@@ -29,11 +29,19 @@ void hk_call_dyn(hk_ctx *c, uint32_t target);         /* call any guest address;
 void hk_jump(hk_ctx *c, uint32_t target);             /* tail-transfer to any guest address */
 void hk_bad_return(hk_ctx *c, uint32_t expected);     /* callee returned somewhere else */
 
+/* Functions a mod's code patch changed (runtime/core/patched.cpp): entered, they run in the
+ * interpreter until they return. A function's first poll is at its entry, so its address is
+ * an entry's only there (a loop's polls are at its branch) */
+extern int hk_patched_any;
+int hk_patched(uint32_t entry);
+void hk_interp_function(hk_ctx *c, uint32_t entry);
+
 /* Virtual time is charged per executed instruction, at what MAME charges it
  * (src/ppc/cycles.h): the recompiler emits HK_TICK(n) for every straight-line
  * run costing n cycles; polls only test. */
 #define HK_TICK(n) (hk_budget -= (n))
-#define HK_POLL(c, at, cost) do { if (__builtin_expect(hk_budget <= 0, 0)) hk_poll((c), (at)); } while (0)
+#define HK_POLL(c, at, cost) do { if (__builtin_expect(hk_budget <= 0, 0)) hk_poll((c), (at)); \
+    if (__builtin_expect(hk_patched_any, 0) && hk_patched(at)) { hk_interp_function((c), (at)); return; } } while (0)
 #define HK_RET(c) do { (c)->pc = (c)->lr & ~3u; return; } while (0)
 #define HK_CHECK(c, ret) do { if (__builtin_expect((c)->pc != (ret), 0)) hk_bad_return((c), (ret)); } while (0)
 #define HK_CALL(c, f, ret) do { (c)->lr = (ret); f(c); HK_CHECK((c), (ret)); } while (0)

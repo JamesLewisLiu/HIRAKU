@@ -16,9 +16,15 @@ hk_func lookup(uint32_t a) {
     return (it != e && it->addr == a) ? it->fn : nullptr;
 }
 
-bool has_guest(uint32_t a) { return lookup(a) != nullptr || exec::has(a); }
+// a changed function (core/patched.cpp) has no translation that's still right: the interpreter
+// goes on into it, and a dynamic call runs it interpreted
+bool has_guest(uint32_t a) { return !patched(a) && (lookup(a) != nullptr || exec::has(a)); }
 
 bool call_guest(hk_ctx *c, uint32_t a) {
+    if (patched(a)) {
+        hk_interp_function(c, a);
+        return true;
+    }
     if (hk_func fn = lookup(a)) {
         fn(c);
         return true;

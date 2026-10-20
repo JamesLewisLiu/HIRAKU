@@ -242,6 +242,7 @@ add_library(hiraku_rt STATIC
   runtime/core/state.cpp
   runtime/core/interp.cpp
   runtime/core/dispatch.cpp
+  runtime/core/patched.cpp
   runtime/core/sched.cpp
   runtime/core/cpu403.cpp
   runtime/core/glue.cpp

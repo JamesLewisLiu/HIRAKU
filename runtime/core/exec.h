@@ -14,6 +14,8 @@
 
 #include "hiraku/ppc.h"
 
+namespace hk::spec { struct Program; }
+
 namespace hk::exec {
 
 // The game's functions from `spec` (analyze/prep.py's recomp.txt) over `image` (its program.bin).
@@ -25,6 +27,8 @@ bool loaded();
 size_t count();                          // functions, secondary entries included
 
 bool has(uint32_t addr);                 // a function (or secondary entry) starts at addr
+// the functions loaded (their ranges: core/patched.cpp), nullptr before load()
+const spec::Program *program();
 bool call(hk_ctx *c, uint32_t addr);     // run it, as a recompiled function is run; false: none there
 
 }  // namespace hk::exec

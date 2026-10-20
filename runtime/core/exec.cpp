@@ -17,6 +17,7 @@
 #include "ppc/cycles.h"
 #include "ppc/decode.h"
 #include "ppc/spec.h"
+#include "runtime.h"
 
 namespace hk::exec {
 
@@ -63,6 +64,7 @@ struct Step {
 };
 
 struct Code {
+    uint32_t entry = 0;   // where it's entered (a function's entry, or a secondary one)
     std::vector<Step> steps;
     // table steps' cases, by step: (value, step to go to, or ~0u: hk_jump(c, value))
     std::vector<std::vector<std::pair<uint32_t, uint32_t>>> tables;
@@ -385,6 +387,10 @@ void run(hk_ctx *c, const Code *k) {
 #undef HK_L
         ready = true;
     }
+    if (__builtin_expect(hk_patched_any, 0) && patched(k->entry)) {   // changed by a mod: interpreted
+        hk_interp_function(c, k->entry);
+        return;
+    }
     const Step *s = k->steps.data(), *st;
 #define HK_NEXT() do { hk_budget -= st->tick; goto *handler[(int)st->k]; } while (0)
 #define HK_STEP() do { st = s++; HK_NEXT(); } while (0)
@@ -421,6 +427,10 @@ bc:
     HK_STEP();
 tail:   // f(c); return: the callee's steps instead (a sibling call, no host stack)
     k = st->fn;
+    if (__builtin_expect(hk_patched_any, 0) && patched(k->entry)) {   // changed by a mod: interpreted
+        hk_interp_function(c, k->entry);
+        return;
+    }
     HK_AT(0);
 jump:
     hk_jump(c, st->a);
@@ -433,6 +443,10 @@ call:
 call_up:
     c->lr = st->a;
     k = st->fn;
+    if (__builtin_expect(hk_patched_any, 0) && patched(k->entry)) {
+        hk_interp_function(c, k->entry);
+        return;
+    }
     HK_AT(0);
 call_dyn:
     c->lr = st->a;
@@ -532,6 +546,7 @@ std::string prepare() {
         entries.insert(entries.end(), f.entries.begin(), f.entries.end());
         for (uint32_t entry : entries) {
             auto code = std::make_unique<Code>();
+            code->entry = entry;
             Builder b(f, *code);
             b.run(entry);
             g_entry[entry] = code.get();
@@ -549,6 +564,7 @@ std::string prepare() {
 bool loaded() { return g_loaded; }
 size_t count() { return g_entry.size(); }
 bool has(uint32_t addr) { return g_entry.count(addr) != 0; }
+const spec::Program *program() { return g_loaded ? &g_p : nullptr; }
 
 bool call(hk_ctx *c, uint32_t addr) {
     auto it = g_entry.find(addr);

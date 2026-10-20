@@ -1088,8 +1088,8 @@ frame rate), pop'n music 14 as the pilot. The foundation is in:
 - **Memory** (`runtime/host/mods.cpp`): each patch put in place every frame its expected bytes
   are there (so it waits for code loaded later), or written every frame like a cheat;
   `Core::code_changed` lets a core translate again (Python: the EE recompiler's blocks cleared;
-  573/Twinkle: their write-protected code pages already catch it; Firebeat: data only, the log
-  says so for code).
+  573/Twinkle: their write-protected code pages already catch it; Firebeat: the functions a patch
+  changes run interpreted from their next call on, `runtime/core/patched.cpp`, 2026-10-20).
 - **Media** (`runtime/shell/overlay.{h,cpp}`): byte ranges of an image replaced as it's read, in
   the image layer (every HIRAKU core) and through a new `Hiraku::disk_read` hook in the Reliquary
   patch (Python 1's disk and CF card); `[[file]]` finds a file on an ISO 9660 disc (cooked or raw
@@ -1163,8 +1163,9 @@ the window at a real high-refresh display; other cores' `set_vsync_rate`.
 
 **Next, the pilot:** a translation (the pictures' `GC` format to and from PNG; the text in
 `game.bin` as `[[patch]]`es), a song added (the sound area and its table, the charts, the song
-list), smooth note scrolling. Firebeat code patches (the interpreter for patched functions) and
-Python 2's disk are later.
+list), smooth note scrolling. Python 2's disk is later. Firebeat code patches are done
+(2026-10-20): a recompiled function's entry poll, the executor's calls and the dispatch send a
+changed function to the interpreter (docs/MODS.md, Per core).
 
 ### Pilot: pop'n music 8 unlocks (done)
 

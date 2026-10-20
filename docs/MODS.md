@@ -266,7 +266,7 @@ log and does nothing.
 |---|---|---|
 | DJ Main | data and code (the 68000 is interpreted) | the hard disk |
 | System 573, Twinkle | data and code: pages of code the recompiler's blocks came from are write-protected, so a patch moves their epoch on and the blocks are checked again before they run (a patched block runs interpreted) | CDs (a cue sheet's data file), the hard disk, DVD |
-| Firebeat | data only for now: the program runs translated ahead of time (recompiled, or the executor's analysis), and a patch to it says so in the log | CDs, the SPU's disk or DVD |
+| Firebeat | data and code: the program runs translated ahead of time (recompiled, or the executor's steps), so a function a patch changes runs interpreted from its next call on (the log names it) | CDs, the SPU's disk or DVD |
 | Konami Python 1 | data and code (the EE recompiler's blocks over a patch are cleared) | the hard disk, the CF card (PCSX2 Reliquary's reads, through `Hiraku::disk_read`); files by name on pop'n music 14's disk |
 | Konami Python 2 | data and code | not yet (its disk is PCSX2's DEV9 ATA) |
 
@@ -279,6 +279,17 @@ from a copy.
 Checked (2026-10-19): pop'n music 14's `image/256_title/0.gzz` (the attract screens' small
 lettering) as a `[[file]]`, unchanged (the play case: the title loop's timing moves, the rest of
 the pictures the same) and with its bytes changed (the coin count's digits changed on screen).
+
+Firebeat code patches (checked 2026-10-20 on pop'n music 4, in its own binary and in
+`hiraku-firebeat`): a function whose code a patch changes runs in the interpreter from its next
+call on, reading the code as it is now; a call already under way finishes in the translated code,
+so a loop that never returns (a game's main loop) keeps its old code. The two binaries give the
+same run, frame for frame. Two costs: the interpreter takes interrupts between any two
+instructions where the translated code takes them at its polls, so even a patch that changes
+nothing moves the machine's timing a little (pop'n 4: the picture the same in every frame, the
+sound reaching the same total a few frames apart); and it is slower, which shows only in a
+function the game calls very often (pop'n 4's message poller, called ~3,000 times a frame: 1.1 →
+3.8 ms of host work a frame).
 
 pop'n music 13 and 14 keep their program (`ee/boot/game.bin`) encrypted on the disk, so its text
 and code are changed with `[[patch]]` once it's loaded, not on the disk.
