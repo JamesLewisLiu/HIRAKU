@@ -155,9 +155,26 @@ update is the same code in every one (`lh v1, 0x20(sN)` before `addiu a1, zero, 
 | pop'n 14 | 0x018ff668 | 0x00f898d8 | 0x01736fbc | 0x017448f0 |
 
 The play phase (a halfword the gameplay function switches on: `lh v1, X(gp)` or a `lui` base,
-then `sltiu v0, v1, 8`) is 4 while the song plays (checked on each through a play); pop'n 9 keeps
-its state elsewhere, so its rate follows the clock alone. pop'n 13 has pop'n 14's vsync routine
-(its counters patched too); 10-12's and the HUD counters outside 14 aren't found yet.
+then `sltiu v0, v1, 8`) is 4 while the song plays (checked on each through a play). pop'n 9's
+(0x0025a0f8, five states) stays 4 into the results, so its rate follows the clock alone, which
+stops with the song (frame 12783 of the play case, its ending and results then at 60).
+
+v0.5 (2026-10-20): the vsync routine's three counters and the HUD's counter in every version:
+
+| game | vsync routine (its +1, +1, -1) | the play screen's counter | its increment |
+|---|---|---|---|
+| pop'n 9 | 0x00100848 (0x00100854, 0x00100864, 0x00100870) | 0x0025a0f0 (64-bit) | 0x0010bca8 |
+| pop'n 10 | 0x00100830 (0x0010083c, 0x0010084c, 0x00100858) | none: the HUD's time is the vsync routine's | — |
+| pop'n 11 | 0x00100840 (0x0010084c, 0x0010085c, 0x00100868) | 0x0034e844 | 0x0011bf1c |
+| pop'n 12 | 0x00100840 (0x0010084c, 0x0010085c, 0x00100868) | 0x0035add4 | 0x0011c5e8 |
+| pop'n 13 | 0x0173dc60 (in v0.4) | 0x00faae1c | 0x0175b0ac |
+| pop'n 14 | 0x0172f360 (in v0.4) | 0x00f8b63c | 0x0174ce7c |
+
+Found from two RAM dumps 10 frames apart during a song (`HK_PY_EE_DUMP=8000-8010:FILE`): the
+words that grew by exactly 10, then the code that loads, adds 1 to and stores each one (through a
+register's `lui`, or gp: 0x0025da70, 0x003776f0, 0x003500f0, 0x0035d0f0 for 9-12, from the
+vsync routine's and the phase's accesses). Checked at 119.88 Hz on each: every one of them changes
+500 times in 1,000 vsyncs of the song.
 
 Checked on each at 119.88 Hz: the rate on from the song's start, a new picture on every vsync,
 the clock at 8.34 ms a vsync; on pop'n 12 an object's frame counter at the cabinet's pace (500

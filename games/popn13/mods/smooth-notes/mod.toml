@@ -1,5 +1,5 @@
 name = "Smooth notes (high frame rate)"
-version = "0.4"
+version = "0.5"
 game = "popn13"
 description = "While a song plays, the machine's vsync follows the display's refresh rate (120, 144, 240 Hz...): the game draws its notes from its song clock, so they move at the display's rate, and judges as before. The animated objects (characters, hit effects) keep the cabinet's pace. The same engine as pop'n music 14's mod (games/popn14/mods/smooth-notes)."
 
@@ -47,6 +47,12 @@ between_ticks = true
 
 [[patch]]                      # an effect's counter (a halfword, counting while not 0)
 address = 0x01766720           # (addiu v0, v0, 1 -> addiu v0, v0, 0, in a delay slot)
+original = "01004224"
+replace = "00004224"
+between_ticks = true
+
+[[patch]]                      # the play screen's own frame counter (0x00faae1c): the HUD's animations
+address = 0x0175b0ac           # (the difficulty name...) take their time from it (addiu v0, v0, 1 -> 0)
 original = "01004224"
 replace = "00004224"
 between_ticks = true
