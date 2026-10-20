@@ -36,6 +36,11 @@ if(NOT WIN32)
   add_test(NAME bio2_board COMMAND test_bio2)
 endif()
 
+# A pop'n music cabinet's USB I/O board (runtime/host/popnio.h) against a pretend board and a pretend machine
+add_executable(test_popnio popnio/test_popnio.cpp)
+target_link_libraries(test_popnio PRIVATE hiraku_shell)
+add_test(NAME popn_io_board COMMAND test_popnio)
+
 # ATA security (SECURITY UNLOCK) on a hard disk, as MAME does it (DJ Main complete MIX on)
 add_executable(test_ata_security ata/test_ata_security.cpp)
 target_link_libraries(test_ata_security PRIVATE hiraku_ata)

@@ -28,4 +28,6 @@ private:
     QComboBox *m_reader[2];                 // serial card readers (runtime/host/readers.h)
     QCheckBox *m_scard, *m_cardio;
     QComboBox *m_bio2;                      // beatmania IIDX's BIO2 board (runtime/host/bio2.h)
+    QComboBox *m_popnio = nullptr;          // pop'n music's USB I/O board (runtime/host/popnio.h); Linux
+    QLineEdit *m_popnioFirmware = nullptr;
 };

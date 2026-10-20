@@ -210,6 +210,22 @@ The first reader of each kind is player 1's, the second player 2's. A card held 
 
 `--bio2 PATH` (**Settings > Cabinet I/O**) takes a real IIDX cabinet's BIO2 board, as IIDX 25 and 26 drive it (its BI2A firmware), on its USB serial port. Its keys, turntables, start, EFFECT, VEFX, TEST, SERVICE, effector sliders and coin become the game's controls, and the game's lamps light its key lamps, panel, spotlights and neon, with the ticker showing beatmania IIDX's 16-segment display. It's for the beatmania games: IIDX on Twinkle uses everything, and III and the DJ Main games use what their cabinets have. A board with IIDX 27's BI2X firmware speaks Konami's newer ACIO2, which HIRAKU doesn't yet; it says so. The layout is spice2x's, not yet checked on a board: if the turntables turn the wrong way or a control is missing, `HK_ACIO_LOG=1` shows the board's packets.
 
+### Cabinet I/O: pop'n music's USB I/O board
+
+`--popn-io auto` (**Settings > Cabinet I/O**, Linux) takes the USB I/O board of a pop'n music cabinet that runs pop'n music 15 or later, the one those games drive through their `ezusb.dll`. Its nine buttons, TEST, SERVICE and coin become the game's controls, and the game's button, top and side lamps light the cabinet's. It works for every pop'n music game: the DJ Main ones (1–3), Firebeat (4–8) and Python (9–14). `auto` takes the first board it finds. If there's more than one, give the board's USB port as Linux names it in `/sys/bus/usb/devices` (for example `--popn-io 3-2.1`).
+
+The board keeps no firmware of its own. The game loads it into the board's memory at every start, and it's gone at power-off. A board that comes up without it gets it from `--popn-io-firmware FILE`, the `ezusb.dll` of your pop'n music 15 or later. HIRAKU reads the firmware from that file and loads it the way the game does. The board then leaves and comes back with its firmware, which takes a few seconds. The firmware only goes into the board's memory: HIRAKU never writes the board's EEPROM or its security chip. A board that copies Konami's with firmware of its own, such as PopnIO in its REALIO mode, is used as it is (without PopnIO's enhanced polling). Details: [POPN-IO.md](POPN-IO.md).
+
+Only root can open a USB device directly by default. A udev rule lets you, in `/etc/udev/rules.d/70-popn-io.rules`:
+
+```
+SUBSYSTEM=="usb", ATTRS{idVendor}=="04b4", ATTRS{idProduct}=="8613", TAG+="uaccess"
+```
+
+Then run `sudo udevadm control --reload` and plug the board in again. 04b4:8613 is the ID of every Cypress FX2LP chip, the board's included, before and after its firmware. A bare FX2LP chip from something else (some logic analysers) has the same ID, so unplug those when you use `auto`, or give the board's port. This hasn't been checked on a board yet. `HK_POPNIO_LOG=1` shows its packets.
+
+An UltimatePopnController (CrazyRedMachine's, in its HID mode) needs none of this: its buttons are a game controller's (**Controls**), and its lamps are named HID outputs that a lights file drives ([LIGHTS.md](LIGHTS.md)).
+
 ## Latency
 
 **In the game:** HIRAKU measures it as the time from a key press to the RF5C400 starting the keysound. beatmania III scans its keys once per video frame (59.94 Hz), so this is **2–20 ms, mean about 9.5 ms**, exactly as on a real cabinet. Everything above that is the PC.

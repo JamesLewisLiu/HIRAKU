@@ -42,7 +42,8 @@
 namespace {
 
 // A line edit with a "Browse…" button
-QWidget *withBrowse(QLineEdit *e, bool directory, QWidget *parent) {
+QWidget *withBrowse(QLineEdit *e, bool directory, QWidget *parent, const QString &title = "Choose a SoundFont",
+                    const QString &filter = "SoundFonts (*.sf2 *.sf3);;All files (*)") {
     auto *w = new QWidget(parent);
     auto *h = new QHBoxLayout(w);
     h->setContentsMargins(0, 0, 0, 0);
@@ -50,9 +51,9 @@ QWidget *withBrowse(QLineEdit *e, bool directory, QWidget *parent) {
     auto *b = new QPushButton("Browse…");
     b->setAutoDefault(false);
     h->addWidget(b);
-    QObject::connect(b, &QPushButton::clicked, w, [e, directory, parent] {
+    QObject::connect(b, &QPushButton::clicked, w, [e, directory, parent, title, filter] {
         QString p = directory ? QFileDialog::getExistingDirectory(parent, "Choose a folder", e->text())
-                              : QFileDialog::getOpenFileName(parent, "Choose a SoundFont", e->text(), "SoundFonts (*.sf2 *.sf3);;All files (*)");
+                              : QFileDialog::getOpenFileName(parent, title, e->text(), filter);
         if (!p.isEmpty()) e->setText(p);
     });
     return w;
@@ -408,7 +409,7 @@ SettingsDialog::SettingsDialog(QWidget *parent) : QDialog(parent) {
     fr->addRow("", m_cardio);
     v->addWidget(rd);
 
-    auto *cab = new QGroupBox("Cabinet I/O (the beatmania games)");
+    auto *cab = new QGroupBox("Cabinet I/O");
     auto *fc = new QFormLayout(cab);
     m_bio2 = new QComboBox;
     m_bio2->setEditable(true);
@@ -420,6 +421,24 @@ SettingsDialog::SettingsDialog(QWidget *parent) : QDialog(parent) {
                        "the cabinet's keys, turntables, buttons, effector and coin, and its lamps and ticker, for "
                        "beatmania IIDX, III and the DJ Main games.");
     fc->addRow("IIDX BIO2 board:", m_bio2);
+#ifndef Q_OS_WIN
+    m_popnio = new QComboBox;
+    m_popnio->setEditable(true);
+    m_popnio->addItems({"", "auto"});
+    m_popnio->setCurrentText(s.value("cabinet/popnio").toString());
+    m_popnio->lineEdit()->setPlaceholderText("none");
+    m_popnio->setToolTip("--popn-io: a pop'n music cabinet's USB I/O board (the one pop'n music 15 and later drive through "
+                         "ezusb.dll, or a board that copies it, such as PopnIO): its buttons, TEST, SERVICE and coin, and its "
+                         "button, top and side lamps, for every pop'n music game. auto takes the first; a USB port "
+                         "(as in /sys/bus/usb/devices, e.g. 3-2.1) chooses one.");
+    fc->addRow("pop'n music I/O board:", m_popnio);
+    m_popnioFirmware = new QLineEdit(s.value("cabinet/popnioFirmware").toString());
+    m_popnioFirmware->setPlaceholderText("only for a board with no firmware: the game's ezusb.dll");
+    m_popnioFirmware->setToolTip("--popn-io-firmware: Konami's board keeps no firmware; the game loads it at every start "
+                                 "from its ezusb.dll (pop'n music 15 or later), and HIRAKU does the same from this file.");
+    fc->addRow("  its firmware:", withBrowse(m_popnioFirmware, false, this, "Choose the game's ezusb.dll",
+                                             "ezusb.dll (ezusb*.dll);;All files (*)"));
+#endif
     v->addWidget(cab);
 
     auto *paths = new QGroupBox("Folders");
@@ -517,6 +536,10 @@ void SettingsDialog::accept() {
     s.setValue("readers/scard", m_scard->isChecked());
     s.setValue("readers/cardio", m_cardio->isChecked());
     s.setValue("cabinet/bio2", m_bio2->currentText().trimmed());
+    if (m_popnio) {
+        s.setValue("cabinet/popnio", m_popnio->currentText().trimmed());
+        s.setValue("cabinet/popnioFirmware", m_popnioFirmware->text().trimmed());
+    }
     s.sync();
     QDialog::accept();
 }

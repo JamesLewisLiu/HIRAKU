@@ -613,6 +613,10 @@ QStringList MainWindow::arguments(const Game &g) const {
     }
     if (QString b = s.value("cabinet/bio2").toString(); !b.isEmpty() && cfg::controlsSet(g.family) == "beatmania")
         a << "--bio2" << b;   // the IIDX cabinet's controls and lamps (runtime/host/bio2.h)
+    if (QString b = s.value("cabinet/popnio").toString(); !b.isEmpty() && cfg::controlsSet(g.family) == "popn") {
+        a << "--popn-io" << b;   // the pop'n cabinet's buttons and lamps (runtime/host/popnio.h)
+        if (QString f = s.value("cabinet/popnioFirmware").toString(); !f.isEmpty()) a << "--popn-io-firmware" << f;
+    }
     // mods (docs/MODS.md): each folder in order, and the saves of their own (cfg::saveDir)
     const QStringList mods = cfg::modsOn(g.id);
     for (const QString &m : mods) a << "--mod" << cfg::modPath(g.id, m);

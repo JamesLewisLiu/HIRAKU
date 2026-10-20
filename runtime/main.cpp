@@ -60,6 +60,8 @@
 //                       runtime/host/readers.h)
 //     --bio2 PATH       beatmania IIDX's BIO2 I/O board as the cabinet's controls and lamps, with
 //                       --window (runtime/host/bio2.h)
+//     --popn-io WHERE, --popn-io-firmware FILE  a pop'n music cabinet's USB I/O board as its buttons
+//                       and lamps, with --window (runtime/host/popnio.h)
 //     --audio-ms N      initial audio queue target (default 8); grows by 1 ms per underrun (the device
 //                       asking for more than is queued; not in the first 10 s), up to 30
 //     --audio-device D  the sound card itself, through ALSA, with no sound server in between: an ALSA
@@ -113,6 +115,7 @@
 #ifdef HK_WITH_SDL
 #include "host/lights.h"
 #include "host/bio2.h"
+#include "host/popnio.h"
 #include "host/readers.h"
 #include "host/notice.h"
 #include "host/window.h"
@@ -321,10 +324,11 @@ int main(int argc, char **argv) {
         else if (a == "--window") window_scale = (k + 1 < argc && argv[k + 1][0] != '-') ? std::stoi(val()) : 2;
         else if (a == "--help" || a == "-h") {
             printf("hiraku-%s [options]: see runtime/main.cpp for the common options. This core also takes:\n%s%s",
-                   game.c_str(), machine.options_help().c_str(), (host::readers_help() + host::bio2_help()).c_str());
+                   game.c_str(), machine.options_help().c_str(), (host::readers_help() + host::bio2_help() + host::popnio_help()).c_str());
             return 0;
         }
         else if (host::bio2_option(a, val)) {}
+        else if (host::popnio_option(a, val)) {}
         else if (std::string error; host::readers_option(a, val, &error)) {
             if (!error.empty()) { fprintf(stderr, "%s\n", error.c_str()); return 2; }
         }
@@ -470,6 +474,7 @@ int main(int argc, char **argv) {
 #endif
         host::readers_start();
         host::bio2_start();
+        host::popnio_start();
     }
     if (!script_path.empty() && !script::load(script_path, out)) return 2;
     if (!macro::load(opt.root + "/games/" + game + "/macros.txt")) return 2;
@@ -540,6 +545,7 @@ int main(int argc, char **argv) {
         host::readers_frame([&](int p, const std::string &n) { return machine.card_read(p, n); },
                             [&](const std::string &name, int v) { return machine.set_input(name, v); });
         host::bio2_frame(machine);
+        host::popnio_frame(machine);
         if (snap_every && f >= snap_from && f % snap_every == 0) {
             char name[64];
             snprintf(name, sizeof name, "/frame%06llu.ppm", (unsigned long long)f);
