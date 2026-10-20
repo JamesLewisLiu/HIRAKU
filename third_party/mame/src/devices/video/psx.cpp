@@ -3996,20 +3996,25 @@ bool psxgpu_device::hk_between( double t, screen_device &screen, bitmap_rgb32 &b
 		return n;
 	};
 
-	// Each primitive drawn is matched with the nearest of the frame before's (its first vertex, within
-	// 16 pixels) with the same command: a rectangle or sprite with the same colour and at most one
-	// other word of its packet different (its size: a note clipped shorter going off the lane; its
-	// texture: an animated one); a polygon or line with the same texture (a shaded one's colours
-	// change with its light).
+	// Each primitive drawn is matched with one of the frame before's (its first vertex within
+	// ScrollGuess::REACH pixels) with the same command: a rectangle or sprite with the same colour and
+	// at most one other word of its packet different (its size: a note clipped shorter going off the
+	// lane; its texture: an animated one); a polygon or line with the same texture (a shaded one's
+	// colours change with its light). The scroll is voted first (hiraku/scroll_guess.h, pair: what
+	// is fast may be further than 16 pixels on).
 	std::vector<uint32_t> items = m_hk_shown;
 	bool moved = false;
-	struct hk_move { size_t i; int dx, dy; };
-	std::vector<hk_move> moves; // what moved whole, and by how much
+	struct hk_move { size_t i; int n, dx, dy; };
+	std::vector<hk_move> moves; // what moved whole, and by how much (its item, and its number among them)
 	std::vector<const uint32_t *> before;
 	for( size_t i = 0; i < m_hk_shown_before.size(); i += m_hk_shown_before[ i + 1 ] )
 		before.push_back( &m_hk_shown_before[ i ] );
 	auto packet = []( const uint32_t *item ) { return reinterpret_cast<const draw_state *>( &item[ 2 ] )->m_packet.n_entry; };
-	for( size_t i = 0; i < items.size(); i += items[ i + 1 ] )
+	std::vector<size_t> objects; // each candidate's object: its item
+	std::vector<int> number; // ... and its number among the items (as the frame before's are in before)
+	int items_n = 0;
+	std::vector<hk::ScrollGuess::Candidate> cands;
+	for( size_t i = 0; i < items.size(); i += items[ i + 1 ], items_n++ )
 	{
 		uint32_t *item = &items[ i ];
 		int at[ 4 ];
@@ -4034,13 +4039,15 @@ bool psxgpu_device::hk_between( double t, screen_device &screen, bitmap_rgb32 &b
 		}
 		const int words = at[ n - 1 ] + 4 > 12 ? 12 : at[ n - 1 ] + 4; // the packet's words, and a few after
 		const int x = (int16_t)( c[ at[ 0 ] ] & 0xffff ), y = (int16_t)( c[ at[ 0 ] ] >> 16 );
-		int best = 1 << 30;
-		const uint32_t *match = nullptr;
 		const uint32_t op = item[ 0 ] & 0xff;
 		const bool gouraud = op == HK_GouraudPolygon || op == HK_GouraudTexturedPolygon || op == HK_GouraudLine;
 		const bool textured = op == HK_FlatTexturedPolygon || op == HK_GouraudTexturedPolygon;
-		for( const uint32_t *b : before )
+		const int obj = (int)objects.size();
+		objects.push_back( i );
+		number.push_back( items_n );
+		for( size_t kb = 0; kb < before.size(); kb++ )
 		{
+			const uint32_t *b = before[ kb ];
 			if( b[ 0 ] != item[ 0 ] ) // the same primitive, with as many points
 				continue;
 			const uint32_t *p = packet( b );
@@ -4069,47 +4076,51 @@ bool psxgpu_device::hk_between( double t, screen_device &screen, bitmap_rgb32 &b
 			if( other > 1 )
 				continue;
 			const int bx = (int16_t)( p[ at[ 0 ] ] & 0xffff ), by = (int16_t)( p[ at[ 0 ] ] >> 16 );
-			if( std::abs( x - bx ) > 16 || std::abs( y - by ) > 16 )
+			if( std::abs( x - bx ) > hk::ScrollGuess::REACH || std::abs( y - by ) > hk::ScrollGuess::REACH )
 				continue;
-			// the one whose every vertex moved least (a model's polygons crowd each other; the same
-			// polygon keeps its shape), a shaded one's colours closest
-			int d = 8 * other;
-			for( int v = 0; v < n && d < best; v++ )
+			// the one whose other vertices moved most as the first did (a model's polygons crowd each
+			// other; the same polygon keeps its shape), a shaded one's colours closest; carried on
+			// only if it moved whole, every vertex by the same step (within a pixel): what changes
+			// shape (grows, turns) stays as the game drew it
+			const int dx = x - bx, dy = y - by;
+			int cost = 8 * other;
+			bool whole = true;
+			for( int v = 0; v < n; v++ )
 			{
-				d += std::abs( (int16_t)( c[ at[ v ] ] & 0xffff ) - (int16_t)( p[ at[ v ] ] & 0xffff ) );
-				d += std::abs( (int16_t)( c[ at[ v ] ] >> 16 ) - (int16_t)( p[ at[ v ] ] >> 16 ) );
+				const int ex = (int16_t)( c[ at[ v ] ] & 0xffff ) - (int16_t)( p[ at[ v ] ] & 0xffff ) - dx;
+				const int ey = (int16_t)( c[ at[ v ] ] >> 16 ) - (int16_t)( p[ at[ v ] ] >> 16 ) - dy;
+				cost += std::abs( ex ) + std::abs( ey );
+				whole = whole && std::abs( ex ) <= 1 && std::abs( ey ) <= 1;
 				for( int k = 0; gouraud && k < 24; k += 8 )
-					d += std::abs( int( ( c[ at[ v ] - 1 ] >> k ) & 0xff ) - int( ( p[ at[ v ] - 1 ] >> k ) & 0xff ) ) / 16;
+					cost += std::abs( int( ( c[ at[ v ] - 1 ] >> k ) & 0xff ) - int( ( p[ at[ v ] - 1 ] >> k ) & 0xff ) ) / 16;
 			}
-			if( d >= best )
-				continue;
-			best = d, match = p;
+			cands.push_back( { obj, (int)kb, dx, dy, cost, whole } );
 		}
-		if( match == nullptr )
+	}
+	const std::vector<int> paired = m_hk_scroll.pair( m_hk_frames, (int)objects.size(), cands );
+	// each item's move and its number in the frame before (its own track), by its number
+	std::vector<std::pair<int, int>> steps( items_n, { 0, 0 } );
+	std::vector<int> was( items_n, -1 );
+	for( size_t o = 0; o < objects.size(); o++ )
+	{
+		if( paired[ o ] < 0 )
 			continue;
-		// carried on only if it moved whole, every vertex by the same step (within a pixel): what
-		// changes shape (grows, turns) stays as the game drew it
-		const int dx = (int16_t)( c[ at[ 0 ] ] & 0xffff ) - (int16_t)( match[ at[ 0 ] ] & 0xffff );
-		const int dy = (int16_t)( c[ at[ 0 ] ] >> 16 ) - (int16_t)( match[ at[ 0 ] ] >> 16 );
-		bool whole = dx != 0 || dy != 0;
-		for( int v = 1; v < n && whole; v++ )
-			whole = std::abs( (int16_t)( c[ at[ v ] ] & 0xffff ) - (int16_t)( match[ at[ v ] ] & 0xffff ) - dx ) <= 1 &&
-				std::abs( (int16_t)( c[ at[ v ] ] >> 16 ) - (int16_t)( match[ at[ v ] ] >> 16 ) - dy ) <= 1;
-		if( !whole )
+		const hk::ScrollGuess::Candidate &m = cands[ (size_t)paired[ o ] ];
+		if( !m.whole )
 			continue;
-		moves.push_back( { i, dx, dy } );
+		was[ number[ o ] ] = m.from;
+		steps[ number[ o ] ] = { m.dx, m.dy };
+		if( m.dx != 0 || m.dy != 0 )
+			moves.push_back( { objects[ o ], number[ o ], m.dx, m.dy } );
 	}
 	// carried on: what scrolls with the frame's other moving items along the scroll's steady line
 	// (hiraku/scroll_guess.h: notes step whole pixels, and carried on by their last step they
-	// judder), the rest by its last move
-	std::vector<std::pair<int, int>> steps;
-	for( const auto &m : moves )
-		steps.push_back( { m.dx, m.dy } );
-	m_hk_scroll.frame( m_hk_frames, steps );
+	// judder), the rest along its own track's, else by its last move
+	m_hk_scroll.frame( m_hk_frames, steps, was );
 	for( const auto &m : moves )
 	{
 		int mx, my;
-		m_hk_scroll.offset( m.dx, m.dy, on, mx, my );
+		m_hk_scroll.offset( m.dx, m.dy, on, mx, my, m.n );
 		if( mx == 0 && my == 0 )
 			continue;
 		moved = true;

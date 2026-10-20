@@ -822,11 +822,12 @@ uint64_t frame_count() { return g_frame; }
 // In-between pictures (a display faster than the board): the last frame, each sprite that moved
 // since the frame before drawn `t` of a frame further along that move. The game rebuilds its
 // sprite list every frame, slots in another order (pop'n music: a note's slot changes as notes
-// come and go), so a sprite is matched to the nearest one of the frame before with the same tile,
-// within 16 pixels each way; one without a match, or that hasn't moved, stays where it is. The
-// tilemaps are as they are. A sprite that stops or turns overshoots for less than a frame. What
-// scrolls with the frame's other moving sprites goes along the scroll's steady line
-// (hiraku/scroll_guess.h): notes step whole pixels, and carried on by their last step they judder.
+// come and go), so a sprite is matched to one of the frame before with the same tile, the scroll
+// voted first (hiraku/scroll_guess.h, pair: what is fast may be further than 16 pixels on);
+// one without a match, or that hasn't moved, stays where it is. The tilemaps are as they are. A
+// sprite that stops or turns overshoots for less than a frame. What scrolls with the frame's other
+// moving sprites goes along the scroll's steady line (hiraku/scroll_guess.h): notes step whole
+// pixels, and carried on by their last step they judder.
 hk::ScrollGuess g_scroll;
 const uint32_t *render_between(double t) {
     if (g_shown_objram.size() != g_objram.size() || g_prev_objram.size() != g_objram.size()) return nullptr;
@@ -841,27 +842,26 @@ const uint32_t *render_between(double t) {
     };
     const std::vector<Spr> cur = list(g_shown_objram), prev = list(g_prev_objram);
     std::vector<uint8_t> moved = g_shown_objram;
-    std::vector<bool> taken(128, false);
     std::vector<std::pair<int, int>> moves(128, {0, 0});
+    std::vector<hk::ScrollGuess::Candidate> cands;
     for (int i = 0; i < 128; i++) {
         const Spr &c = cur[i];
         if (c.code < 0) continue;
-        int best = -1, best_d = 33;
         for (int j = 0; j < 128; j++) {
             const Spr &p = prev[j];
-            if (taken[j] || p.code != c.code || std::abs(c.x - p.x) > 16 || std::abs(c.y - p.y) > 16) continue;
-            const int d = std::abs(c.x - p.x) + std::abs(c.y - p.y);
-            if (d < best_d) best = j, best_d = d;
+            if (p.code != c.code || std::abs(c.x - p.x) > hk::ScrollGuess::REACH || std::abs(c.y - p.y) > hk::ScrollGuess::REACH) continue;
+            cands.push_back({i, j, c.x - p.x, c.y - p.y, 0, true});
         }
-        if (best < 0 || best_d == 0) continue;
-        taken[best] = true;
-        moves[i] = {c.x - prev[best].x, c.y - prev[best].y};
     }
-    g_scroll.frame(g_frame, moves);
+    const std::vector<int> paired = g_scroll.pair(g_frame, 128, cands, true);
+    std::vector<int> from(128, -1);   // each sprite's own track: its slot in the frame before
+    for (int i = 0; i < 128; i++)
+        if (paired[i] >= 0) moves[i] = {cands[(size_t)paired[i]].dx, cands[(size_t)paired[i]].dy}, from[i] = cands[(size_t)paired[i]].from;
+    g_scroll.frame(g_frame, moves, from);
     for (int i = 0; i < 128; i++) {
         if (!moves[i].first && !moves[i].second) continue;
         int ox, oy;
-        g_scroll.offset(moves[i].first, moves[i].second, t, ox, oy);
+        g_scroll.offset(moves[i].first, moves[i].second, t, ox, oy, i);
         if (!ox && !oy) continue;
         const int x = cur[i].x + ox, y = cur[i].y + oy;
         put_be32(moved, (uint32_t)i * 16 + 4, (uint32_t)(uint16_t)x | (uint32_t)(uint16_t)y << 16, 0xffffffffu);

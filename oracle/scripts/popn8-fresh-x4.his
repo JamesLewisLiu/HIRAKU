@@ -1,0 +1,27 @@
+# pop'n music 8: CHALLENGE, FRESH (176 BPM) at HI-SPEED x4 (704): smooth motion at hi-speed
+# (docs/SMOOTH.md). From a save whose music select starts on Can't Stop My Love (FRESH seven on).
+# The song starts about frame 6800; add `at F quit`. Hi-speed: at the 1st STAGE screen both
+# yellows open the option select, blue steps x2, x3, x4, red starts.
+game popn8
+at 4431 press "Coin 1" 6
+at 4471 press "Coin 1" 6
+at 4591 press "P1 Button 5" 4     # start
+at 4791 press "P1 Button 4" 4     # mode select: left to CHALLENGE
+at 4831 press "P1 Button 5" 4
+at 5131 press "P1 Button 5" 4     # button select: 9 buttons
+at 5481 press "P1 Button 5" 4
+at 5700 press "P1 Button 6" 4     # music select: seven on, FRESH
+at 5740 press "P1 Button 6" 4
+at 5780 press "P1 Button 6" 4
+at 5820 press "P1 Button 6" 4
+at 5860 press "P1 Button 6" 4
+at 5900 press "P1 Button 6" 4
+at 5940 press "P1 Button 6" 4
+at 5990 press "P1 Button 5" 4
+at 6160 press "P1 Button 5" 4     # norma
+at 6560 press "P1 Button 2" 6     # option select: both yellows, blue three times (HI-SPEED x4), red
+at 6560 press "P1 Button 8" 6
+at 6590 press "P1 Button 4" 4
+at 6605 press "P1 Button 4" 4
+at 6620 press "P1 Button 4" 4
+at 6650 press "P1 Button 5" 4     # start the song

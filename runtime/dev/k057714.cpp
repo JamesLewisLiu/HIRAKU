@@ -618,32 +618,40 @@ bool K057714::draw_between(uint32_t *out, int width, int height, double t) {
         return p;
     };
     const std::vector<Placed> here = place(shown.cmds), there = place(other);
-    // Each object drawn is matched with the nearest of the frame before's that looks the same (its
-    // size and scale, and its picture or height: a note moving off the lane gets shorter, an
-    // animated one changes picture) within 16 pixels, and carried on by that move: what scrolls
-    // with the frame's other moving objects along the scroll's steady line (hiraku/scroll_guess.h)
+    // Each object drawn is matched with one of the frame before's that looks the same (below), the
+    // scroll voted first (hiraku/scroll_guess.h, pair: what is fast may be further than 16 pixels
+    // on), and carried on: what scrolls with the frame's other moving objects along the scroll's
+    // steady line, the rest along its own (a note or two alone at hi-speed), else by its last move
     std::vector<Cmd> cmds = shown.cmds;
     std::vector<std::pair<int, int>> moves(cmds.size(), {0, 0});
+    std::vector<hk::ScrollGuess::Candidate> cands;
     for (size_t k = 0; k < cmds.size(); k++) {
         const Cmd &c = cmds[k];
         if (((c[0] >> 29) & 7) != 5) continue;
         const int x = here[k].x, y = here[k].y;
-        int best = 1 << 30;
         for (size_t kb = 0; kb < other.size(); kb++) {
             const Cmd &b = other[kb];
             if (((b[0] >> 29) & 7) != 5 || (b[1] & 0xff000000) != (c[1] & 0xff000000)) continue;
-            // the same width and scale, and the same picture or height (a note going off the lane
-            // gets shorter, an animated one changes picture); or the same picture and height, its
-            // width or horizontal scale changed (pop'n music 8's notes squash and stretch to the beat
-            // as they fall: unmatched, they stood still between frames)
-            if (b[2] == c[2] ? b[0] != c[0] && b[3] != c[3] : b[0] != c[0] || b[3] != c[3]) continue;
+            // the same picture or height (a note going off the lane gets shorter, an animated one
+            // changes picture), whatever its width and horizontal scale (pop'n music 8's notes
+            // squash and stretch to the beat as they fall, a pixel narrower or wider, and change
+            // picture too: at x4 one in a few frames did both, unmatched, and stood still for a frame)
+            if (b[0] != c[0] && b[3] != c[3]) continue;
             const int bx = there[kb].x, by = there[kb].y;
-            const int d = std::abs(x - bx) + std::abs(y - by) + (b[0] != c[0] ? 8 : 0) + (b[3] != c[3] ? 8 : 0) + (b[2] != c[2] ? 4 : 0);
-            if (std::abs(x - bx) > 16 || std::abs(y - by) > 16 || d >= best) continue;
-            best = d, moves[k] = ahead ? std::pair<int, int>{bx - x, by - y} : std::pair<int, int>{x - bx, y - by};
+            if (std::abs(x - bx) > hk::ScrollGuess::REACH || std::abs(y - by) > hk::ScrollGuess::REACH) continue;
+            const int dx = ahead ? bx - x : x - bx, dy = ahead ? by - y : y - by;
+            cands.push_back({(int)k, (int)kb, dx, dy, (b[0] != c[0] ? 8 : 0) + (b[3] != c[3] ? 8 : 0) + (b[2] != c[2] ? 4 : 0), true});
         }
     }
-    m_scroll.frame(ahead ? m_mark - 1 : m_mark, moves);
+    const uint64_t id = ahead ? m_mark - 1 : m_mark;
+    const std::vector<int> paired = m_scroll.pair(id, (int)cmds.size(), cands);
+    std::vector<int> from(cmds.size(), -1);   // each object's own track: the frame before's, as numbered (not when ahead)
+    for (size_t k = 0; k < cmds.size(); k++)
+        if (paired[k] >= 0) {
+            moves[k] = {cands[(size_t)paired[k]].dx, cands[(size_t)paired[k]].dy};
+            if (!ahead) from[k] = cands[(size_t)paired[k]].from;
+        }
+    m_scroll.frame(id, moves, from);
     bool moved = false;
     if (m_clip_row.empty()) m_clip_row.assign(ROWS, 0);
     std::fill(m_clip_row.begin(), m_clip_row.end(), 0);
@@ -655,7 +663,7 @@ bool K057714::draw_between(uint32_t *out, int width, int height, double t) {
         if (((c[0] >> 29) & 7) != 5) continue;
         const int x = c[1] & 0x3ff, y = (c[1] >> 10) & 0x3fff;
         int ox, oy;   // on the screen; in VRAM through the copy's scale
-        m_scroll.offset(moves[k].first, moves[k].second, t, ox, oy);
+        m_scroll.offset(moves[k].first, moves[k].second, t, ox, oy, (int)k);
         const int sx = here[k].xs == 64 ? ox : (int)std::lround(ox * here[k].xs / 64.0);
         const int sy = here[k].ys == 64 ? oy : (int)std::lround(oy * here[k].ys / 64.0);
         const int nx = x + sx, ny = y + sy;
@@ -687,7 +695,11 @@ bool K057714::draw_between(uint32_t *out, int width, int height, double t) {
         for (const Placed &p : here)
             if (p.via >= 0) is_copy[(size_t)p.via] = true;
         auto marked = [&](int y) { return y >= 0 && m_clip_row[(uint32_t)y & (ROWS - 1)] != 0; };
-        for (int pass = 0; pass < 2; pass++)
+        // until nothing changes: in a buffer at row 0 the strip's rows are also screen rows (pop'n
+        // music 8: the strip's rows 0-316 go to rows 29-345), each row drawn again another's source,
+        // a chain 29 rows a link (two passes left its last links' sources as they were: notes split)
+        for (bool more = true; more;) {
+            more = false;
             for (size_t j = 0; j < shown.cmds.size(); j++) {
                 if (!is_copy[j]) continue;
                 const Cmd &b = shown.cmds[j];
@@ -696,18 +708,19 @@ bool K057714::draw_between(uint32_t *out, int width, int height, double t) {
                 const int dh = h * 64 / ys;
                 for (int r = 0; r < dh; r++) {
                     const int dst = by + r, src = ay + r * ys / 64;
-                    if (marked(dst) != marked(src)) mark(dst, dst), mark(src, src);
+                    if (marked(dst) != marked(src)) mark(dst, dst), mark(src, src), more = true;
                 }
             }
+        }
     }
     // The rows back as they were before the frame was drawn, the frame drawn again, composed, and
-    // VRAM and the frame buffer origin put back: of each row, the columns the frame drew on and 32
-    // pixels each side (what moves is carried on by at most 16 a frame)
+    // VRAM and the frame buffer origin put back: of each row, the columns the frame drew on and as
+    // far each side as what moves is carried on (at most ScrollGuess::REACH a frame)
     m_replaying = true;
     m_replay_mark++;
     m_restore_rows.clear();
     m_restore.clear();
-    m_span0 = std::max(0, shown.x0 - 32) / 2, m_span1 = std::min(1024, shown.x1 + 34) / 2;
+    m_span0 = std::max(0, shown.x0 - hk::ScrollGuess::REACH) / 2, m_span1 = std::min(1024, shown.x1 + hk::ScrollGuess::REACH + 2) / 2;
     if (m_span1 <= m_span0) m_span0 = 0, m_span1 = 512;
     const size_t n = (size_t)(m_span1 - m_span0);
     m_clip = true;

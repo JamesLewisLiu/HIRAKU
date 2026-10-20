@@ -14,10 +14,26 @@
 // Simulated at 240 and 144 Hz for 1, 2.67, 3.5 and 4.6 pixels a frame: 0.29 px off the line (the
 // whole pixels' own rounding), no step back. Everything else keeps its last move.
 //
+// Which object was which in the frame before (pair): each core lists, for each object, those of the
+// frame before that look the same within REACH pixels. The first pairing took the nearest within 16
+// pixels; something fast can be further on, and nearer another look-alike's last place. So the
+// scroll is voted first, every object counted once near each move it could have made, and each
+// object then takes the look-alike nearest to standing still or to the scroll's move (within NEAR
+// of either).
+//
+// At hi-speed a note or two may be all that scrolls, and slower objects outnumber them
+// (pop'n music 8 at x4, FRESH: one note at 8.4 pixels a frame against three at 2, which became
+// the scroll); the notes then went by their last step, which jitters (8, 10, 8, 8, 10, 8, 7: the
+// game's own positions), 1 pixel off their line in the window's pictures. So each object also keeps
+// its own track, by the pairing (frame's `from`): the least-squares line through its positions
+// since it appeared (Track), along which it goes when it isn't with the scroll: 0.35 pixels off
+// (whole pixels alone: 0.29).
+//
 // Header-only: the Firebeat GCU (runtime/dev/k057714.cpp), DJ Main (runtime/djmain/board.cpp) and
 // the PlayStation GPU of Twinkle and System 573 (third_party/mame/hiraku-edits.py) use it.
 #pragma once
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
@@ -30,12 +46,107 @@ namespace hk {
 class ScrollGuess {
 public:
     static constexpr int N = 6;   // frames the line goes through
+    static constexpr int REACH = 64;   // the furthest an object is looked for, each way, in the frame before
+    static constexpr int NEAR = 16;    // ... and taken: this near standing still or the scroll's move
+
+    // That object `obj` of this frame may be `from` of the frame before, moved (dx, dy); `cost`, how
+    // different it looks (0: the same); `whole`, whether it moved as one piece (only those vote).
+    // A core lists each object's candidates together, objects in order
+    struct Candidate { int obj, from, dx, dy, cost; bool whole; };
+
+    // Each object's candidate (an index into `cands`), or -1; `unique`: each of the frame before's
+    // objects taken once (in object order). The same for every picture of a frame (`frame`)
+    std::vector<int> pair(uint64_t frame, int objects, const std::vector<Candidate> &cands, bool unique = false) {
+        if (frame != m_pair_frame) {   // the frame before's scroll, a hint when two moves tie
+            m_pair_frame = frame;
+            m_hint_x = m_cx, m_hint_y = m_cy;
+        }
+        // votes: for each move, the objects with a candidate within a pixel of it
+        std::map<std::pair<int, int>, std::pair<int, int>> votes;   // move -> (objects, the last one counted + 1)
+        for (const Candidate &c : cands) {
+            if (!c.whole || (!c.dx && !c.dy)) continue;
+            for (int ex = -1; ex <= 1; ex++)
+                for (int ey = -1; ey <= 1; ey++) {
+                    auto &v = votes[{c.dx + ex, c.dy + ey}];
+                    if (v.second != c.obj + 1) v.first++, v.second = c.obj + 1;
+                }
+        }
+        int best = 0;
+        for (const auto &[m, v] : votes) best = std::max(best, v.first);
+        bool scroll = best >= 2;
+        int sx = 0, sy = 0;
+        if (scroll) {
+            // of the moves with the most, the one nearest the frame before's scroll, else the smallest;
+            // the frame before's own kept while it has two thirds of the most (a stream of notes
+            // evenly spaced also votes for each note having taken the place of the one ahead)
+            const bool hint = m_hint_x || m_hint_y;
+            auto far = [&](const std::pair<int, int> &m) {
+                return hint ? std::fabs(m.first - m_hint_x) + std::fabs(m.second - m_hint_y) : std::abs(m.first) + std::abs(m.second) + 0.0;
+            };
+            const std::pair<int, int> *pick = nullptr, *kept = nullptr;
+            for (const auto &[m, v] : votes) {
+                if (v.first == best && (!pick || far(m) < far(*pick))) pick = &m;
+                if (hint && std::fabs(m.first - m_hint_x) <= 1.5 && std::fabs(m.second - m_hint_y) <= 1.5 && v.first >= 2 &&
+                    v.first * 3 >= best * 2 && (!kept || votes[*kept].first < v.first || (votes[*kept].first == v.first && far(m) < far(*kept))))
+                    kept = &m;
+            }
+            if (kept) pick = kept;
+            sx = pick->first, sy = pick->second;
+        }
+        std::vector<int> out((size_t)objects, -1);
+        std::vector<int> score((size_t)objects, 1 << 30);
+        auto rate = [&](const Candidate &c) {
+            const int still = std::max(std::abs(c.dx), std::abs(c.dy));
+            const int along = scroll ? std::max(std::abs(c.dx - sx), std::abs(c.dy - sy)) : 1 << 20;
+            if (still > NEAR && along > NEAR) return -1;
+            return c.cost + std::min(std::abs(c.dx) + std::abs(c.dy), scroll ? std::abs(c.dx - sx) + std::abs(c.dy - sy) : 1 << 20);
+        };
+        if (!unique) {
+            for (size_t i = 0; i < cands.size(); i++) {
+                const int r = rate(cands[i]);
+                const int o = cands[i].obj;
+                if (r >= 0 && r < score[(size_t)o]) score[(size_t)o] = r, out[(size_t)o] = (int)i;
+            }
+            return out;
+        }
+        std::vector<bool> taken;
+        for (size_t i = 0; i < cands.size();) {   // an object's candidates, the best not yet taken
+            size_t e = i;
+            int at = -1, r_at = 1 << 30;
+            for (; e < cands.size() && cands[e].obj == cands[i].obj; e++) {
+                const int f = cands[e].from;
+                if (f >= 0 && (size_t)f < taken.size() && taken[(size_t)f]) continue;
+                const int r = rate(cands[e]);
+                if (r >= 0 && r < r_at) r_at = r, at = (int)e;
+            }
+            if (at >= 0) {
+                const int f = cands[(size_t)at].from;
+                if (f >= 0) {
+                    if ((size_t)f >= taken.size()) taken.resize((size_t)f + 1, false);
+                    taken[(size_t)f] = true;
+                }
+                out[(size_t)cands[i].obj] = at;
+            }
+            i = e;
+        }
+        return out;
+    }
 
     // A frame's objects' last moves (those that moved), before its in-between pictures; `frame`
-    // tells a new frame from another picture of the same one (the scroll is counted once a frame)
-    void frame(uint64_t frame, const std::vector<std::pair<int, int>> &moves) {
+    // tells a new frame from another picture of the same one (the scroll is counted once a frame).
+    // `from`: each object's index in the frame before (-1: unpaired), by which each keeps its own
+    // track; the same numbering the next frame's `from` uses (empty: no tracks)
+    void frame(uint64_t frame, const std::vector<std::pair<int, int>> &moves, const std::vector<int> &from = {}) {
         if (frame == m_frame) return;
+        const bool next = frame == m_frame + 1;
         m_frame = frame;
+        std::vector<Track> tracks(from.size() == moves.size() ? moves.size() : 0);
+        for (size_t k = 0; k < tracks.size(); k++) {
+            if (from[k] < 0) continue;
+            if (next && (size_t)from[k] < m_tracks.size()) tracks[k] = m_tracks[(size_t)from[k]];
+            tracks[k].add(moves[k].first, moves[k].second);
+        }
+        m_tracks.swap(tracks);
         std::map<std::pair<int, int>, int> count;
         for (const auto &m : moves)
             if (m.first || m.second) count[m]++;
@@ -69,11 +180,22 @@ public:
     }
 
     // Where an object whose last move was (dx, dy) goes, `t` of a frame on (t from 0; a frame shown
-    // for two vblanks: the fraction of its move): (ox, oy) from its place in the frame
-    void offset(int dx, int dy, double t, int &ox, int &oy) const {
+    // for two vblanks: the fraction of its move): (ox, oy) from its place in the frame. `obj`: its
+    // index in frame()'s moves, for its own track
+    void offset(int dx, int dy, double t, int &ox, int &oy, int obj = -1) const {
         const bool scrolls = (dx || dy) && m_pos.size() >= 3 && std::fabs(dx - m_cx) <= 1.5 && std::fabs(dy - m_cy) <= 1.5 &&
                              dx * m_cx + dy * m_cy > 0;
         if (!scrolls) {
+            // not with the scroll: along its own track's steady line (Track), else by its last move.
+            // At hi-speed a note or two may be all that scroll (pop'n music 8 at x4 had three slower
+            // objects outnumber them: the notes then went by their last step)
+            if ((dx || dy) && obj >= 0 && (size_t)obj < m_tracks.size()) {
+                double lx, ly, vx, vy;
+                if (m_tracks[(size_t)obj].line(lx, ly, vx, vy) && vx * dx + vy * dy > 0) {
+                    ox = (int)std::lround(lx + vx * t), oy = (int)std::lround(ly + vy * t);
+                    return;
+                }
+            }
             ox = (int)std::lround(dx * t), oy = (int)std::lround(dy * t);
             return;
         }
@@ -88,9 +210,57 @@ public:
     }
 
 private:
-    uint64_t m_frame = UINT64_MAX;
+    // An object's own steady line: the least-squares line through its positions since it appeared,
+    // the older ones counted less (FORGET a frame: a speed change is followed within a few frames),
+    // started again when a position is off by more than OFF. A game's own positions jitter at
+    // hi-speed (pop'n music 8's notes at x4 step 8, 10, 8, 8, 10, 8, 7: up to 2 pixels off their
+    // line); a line through the last six positions only moved with them, each frame's pictures
+    // starting up to 2 pixels off the last's
+    static constexpr double FORGET = 0.9, OFF = 4.0;
+    struct Track {
+        int n = 0;                                        // positions
+        double w = 0, st = 0, stt = 0, sx = 0, stx = 0, sy = 0, sty = 0;   // their weighted sums (t: 0, 1...)
+        double px = 0, py = 0;                            // the last position (the first at 0)
+        void put(double t, double x, double y) {
+            w = w * FORGET + 1, st = st * FORGET + t, stt = stt * FORGET + t * t;
+            sx = sx * FORGET + x, stx = stx * FORGET + t * x, sy = sy * FORGET + y, sty = sty * FORGET + t * y;
+            n++;
+        }
+        bool fit(double t, double &x, double &y, double &vx, double &vy) const {
+            const double d = w * stt - st * st;
+            if (n < 4 || d <= 1e-9) return false;   // three moves at least
+            vx = (w * stx - st * sx) / d, vy = (w * sty - st * sy) / d;
+            x = (sx - vx * st) / w + vx * t, y = (sy - vy * st) / w + vy * t;
+            return true;
+        }
+        void add(int dx, int dy) {
+            if (n == 0) put(0, 0, 0);   // where it was the frame before
+            const double t = n, x = px + dx, y = py + dy;
+            double lx, ly, vx, vy;
+            if (fit(t, lx, ly, vx, vy) && (std::fabs(x - lx) > OFF || std::fabs(y - ly) > OFF)) {
+                *this = Track{};   // off its line (it turned, or changed speed): from its last two positions
+                put(0, 0, 0);
+                put(1, dx, dy);
+                px = dx, py = dy;
+                return;
+            }
+            put(t, x, y);
+            px = x, py = y;
+        }
+        // where its line puts it now, from its own position, and its speed
+        bool line(double &ox, double &oy, double &vx, double &vy) const {
+            double x, y;
+            if (!fit(n - 1, x, y, vx, vy)) return false;
+            ox = x - px, oy = y - py;
+            return true;
+        }
+    };
+
+    uint64_t m_frame = UINT64_MAX, m_pair_frame = UINT64_MAX;
+    double m_hint_x = 0, m_hint_y = 0;              // the frame before's scroll, for pair()
     double m_cx = 0, m_cy = 0;                     // the scroll's move this frame (its objects' average)
     std::vector<std::pair<double, double>> m_pos;   // the scroll's position, frame by frame (the last: this frame)
+    std::vector<Track> m_tracks;   // each object's own line (frame()'s `from`)
 };
 
 }  // namespace hk

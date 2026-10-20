@@ -1195,6 +1195,16 @@ copy that shows them and by their middle, and the copy's screen rows (at the buf
 the frame on the screen is chosen by the buffer its own fb_config sets. Result in the window: a falling note
 0.60 window px off a steady line in time (rounding), the plain picture 0.67 off a line in whole frames.
 `HK_PICTURE_SNAP` takes a range. Left: the owner's eyes again; IIDX 7th (Twinkle) not traced this way yet.
+Fourth test: the glitch gone, the scrolling still not smooth, at hi-speed (x4, about 700). Played that way in the
+window (a script: CHALLENGE, FRESH 176 BPM, both yellows and blue three times at the option select; every frame's
+quarter pictures saved): the one note on screen falls 8.4 px a frame while three objects move 2, and those became
+the scroll, so the note went by its last step, which jitters (8, 10, 8, 8, 10, 8, 7); 1.00 px off its line, steps
+of 0 or 4 at each frame's start. Now each object keeps its own line through the frames (by the pairing; least
+squares, older positions counting less) and goes along it when not with the scroll; the pairing votes the scroll
+first and looks 64 px away (it took the nearest within 16); pop'n 8's notes pair whatever their width (a squash a
+pixel narrower with a new picture left them unpaired for a frame); the copy's rows are coupled until nothing
+changes (at buffer row 0 the strip's rows are screen rows too: notes split). Result: 0.35 px off, none back
+(whole pixels alone: 0.29). IIDX's and DJ Main's pairing changed the same way, not traced at hi-speed.
 
 ### Pilot: pop'n music 8 unlocks (done)
 

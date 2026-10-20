@@ -68,6 +68,23 @@ doesn't move with the scroll still goes by its last move: where something stops,
 appears, its in-between pictures carry it on up to a frame too far (at most a refresh's worth of
 time) before the next frame puts it right.
 
+At hi-speed (owner, 2026-10-20: pop'n music 8 at x4, about 700) a note or two may be all that
+scrolls, and slower objects outnumber them: in FRESH at x4 (176 BPM) one note falls 8.4 pixels a
+frame while three objects move 2, and those became the scroll. The note then went by its last
+step, which jitters with the game's own positions (8, 10, 8, 8, 10, 8, 7), so each frame's pictures
+started up to 2 pixels off the last's. So every object also keeps its own track through the
+frames, by the pairing below: the least-squares line through its positions since it appeared,
+older ones counting less (a tempo change is followed within a few frames), started again where
+it leaves it by more than 4 pixels. What doesn't move with the scroll goes along its own line.
+Measured in the window (quarter-frame pictures of 120 frames of FRESH at x4, every note followed):
+0.35 px off its line, none back (it was 1.00 px, five back).
+
+Which object was which in the frame before is a pairing of look-alikes. The first took the nearest
+within 16 pixels; something fast can be further on, or nearer another look-alike's last place. So
+each object's look-alikes within 64 pixels are listed, the scroll is voted first (every object
+counted once near each move it could have made), and each object takes the look-alike nearest to
+standing still or to the scroll's move, within 16 of either.
+
 A game's resolution still sets the steps: beatmania IIDX draws 240 lines, and at normal speed its
 notes move one line a frame, so there's no place between; the guess then puts that line's step at
 the same point of every frame. The faster the notes (hi-speed), the more the in-between pictures
@@ -79,8 +96,8 @@ the game seeing it.
 
 The 68020 builds a sprite list in object RAM each frame (the K055555 mixer shows it with the
 K056832's tilemaps). The list is rebuilt each frame, with sprites in different slots from one
-frame to the next. So each sprite is matched with the nearest one of the frame before that uses
-the same tile, within 16 pixels, and moved on by that step. The picture is drawn from a copy of
+frame to the next. So each sprite is paired with one of the frame before that uses the same tile
+(the pairing above), and moved on by that step. The picture is drawn from a copy of
 object RAM and into a buffer of its own, so the machine is never touched. Checked on pop'n music
 1 (notes are sprites moving 2 pixels a frame): halfway, the notes are 1 pixel on, nothing else
 moved. beatmania (1st mix's "u gotta groove"): the notes, the bar lines and the FREE ZONE panel
@@ -100,10 +117,12 @@ frame:
 
 An in-between picture then puts those rows back as they were before the frame was drawn, runs
 the frame's commands again with each object moved on, composes the layers as the display shows
-them, and puts the rows back as they are. Each object command is matched with the nearest of the
-frame before's with the same size, scale and flags, and either its picture or its height (a note
-going off the lane is clipped shorter; an animated one changes picture), or with the same picture
-and height and another width or horizontal scale, within 16 pixels. Where an object is, for this:
+them, and puts the rows back as they are. Each object command is paired (above) with one of the
+frame before's with the same flags and either its picture or its height (a note going off the lane
+is clipped shorter; an animated one changes picture), whatever its width and horizontal scale
+(pop'n 8's notes squash and stretch to the beat, a pixel narrower or wider, and at x4 one in a
+few frames changed picture as well: unpaired, it stood still for a frame). Where an object is, for
+this:
 - its middle: pop'n music 8's notes squash and stretch to the beat about their middle, so their
   left edge moves while they don't;
 - where it reaches the screen: pop'n 8 draws its notes into a strip of VRAM (x 608-760) that a
@@ -113,7 +132,9 @@ and height and another width or horizontal scale, within 16 pixels. Where an obj
   the frame buffer's origin when the copy is drawn relative to it, as it is. A copy's two sides
   are drawn again together, row for row: a screen row it writes needs the strip row it reads (else
   it copies the strip as the frame left it, and a slice of the note at its old place shows under
-  the moved one: the owner's "glitch under every note");
+  the moved one: the owner's "glitch under every note"), until nothing changes: in the buffer at
+  row 0 the strip's rows are screen rows too (rows 0-316 go to 29-345), a chain 29 rows a link,
+  and two passes left the chain's end as it was (notes split across, at x4);
 - in the frame on the screen: the one whose frame buffer the first layer shows (a frame's buffer:
   where its first command, its fb_config, puts the origin). It's the last one drawn; a game drawing
   a frame ahead would show the one before, its objects then going towards the next one's.
