@@ -8,7 +8,8 @@
 
 namespace hk::mods {
 
-// Each folder's mod.toml, for `game`, in order (a later mod wins where two touch the same place).
+// Each folder's mod.toml and the game's files at their paths in it (as ifs_layeredfs), for `game`,
+// in order: the first mod wins where two touch the same place.
 // root is the HIRAKU folder (dumps/<game>/machine.txt names the media). false, with a message in
 // err, when a mod can't be used as it is.
 bool load(const std::vector<std::string> &dirs, const std::string &game, const std::string &root, std::string &err);

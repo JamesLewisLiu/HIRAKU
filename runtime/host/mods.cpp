@@ -5,11 +5,14 @@
 #include <cctype>
 #include <cstdio>
 #include <cstring>
+#include <filesystem>
 #include <fstream>
+#include <set>
 #include <map>
 #include <sstream>
 #include <stdexcept>
 
+#include "host/png.h"
 #include "host/pythondisk.h"
 #include "shell/core.h"
 #include "shell/overlay.h"
@@ -168,7 +171,8 @@ std::map<std::string, std::string> media(const std::string &root, const std::str
 // The data track's sectors are told from where the volume descriptor is: 2048 bytes of data
 // each (a cooked image), or 2352 with a 16-byte (mode 1) or 24-byte (mode 2 form 1) header.
 // false when the image has no ISO 9660 volume.
-bool iso_file(const std::string &image, const std::string &name, std::vector<uint8_t> data, const std::string &label) {
+bool iso_file(const std::string &image, const std::string &name, std::vector<uint8_t> data, const std::string &label,
+              bool quiet = false) {
     struct Layout { uint64_t sector, header; };
     const Layout layouts[] = {{2048, 0}, {2352, 16}, {2352, 24}};
     const Layout *lay = nullptr;
@@ -212,9 +216,15 @@ bool iso_file(const std::string &image, const std::string &name, std::vector<uin
                 at += r[0];
             }
         }
-        if (!found) throw std::runtime_error(image + ": no " + name + " on the disc");
+        if (!found) {
+            if (quiet) return false;   // a mod's mirrored file that isn't on this disc
+            throw std::runtime_error(image + ": no " + name + " on the disc");
+        }
     }
-    if (dir) throw std::runtime_error(image + ": " + name + " is a directory");
+    if (dir) {
+        if (quiet) return false;
+        throw std::runtime_error(image + ": " + name + " is a directory");
+    }
     if (data.size() > size)
         throw std::runtime_error(name + ": the mod's file is " + std::to_string(data.size()) + " bytes, the disc's " +
                                  std::to_string(size) + " (a file can't grow yet)");
@@ -231,18 +241,104 @@ bool iso_file(const std::string &image, const std::string &name, std::vector<uin
     return true;
 }
 
+// paths as UTF-8 std::strings, whatever the platform's (C++20's u8string is char8_t)
+std::filesystem::path fs_path(const std::string &s) { return std::filesystem::path(std::u8string(s.begin(), s.end())); }
+std::string utf8(const std::filesystem::path &p, bool generic = false) {
+    const std::u8string s = generic ? p.generic_u8string() : p.u8string();
+    return std::string(s.begin(), s.end());
+}
+
+// A mod folder's files laid over the game's media by their paths, as ifs_layeredfs lays a mod's
+// folder over a PC game's data: a file at image/kc/kc_001.gzz in the folder is that file on the
+// game's disk (or a disc's DATA/TITLE.BIN on an ISO 9660 disc), and a PNG at image/kc/kc_001.png
+// is that picture, converted (the size and kind of the game's own, 8-bit ones to its folder's
+// palette). What isn't on any medium of the game's is left out (said once).
+void lay_files(const std::string &dir, const std::string &name, const std::set<std::string> &named,
+               const std::map<std::string, std::string> &medium_paths,
+               std::map<std::string, std::unique_ptr<pythondisk::Files>> &python_disks) {
+    namespace fs = std::filesystem;
+    std::vector<std::string> files;
+    const fs::path root = fs_path(dir);
+    for (auto it = fs::recursive_directory_iterator(root); it != fs::recursive_directory_iterator(); ++it) {
+        const std::string leaf = utf8(it->path().filename());
+        if (!leaf.empty() && leaf[0] == '.') {   // hidden: skipped, folders and all
+            if (it->is_directory()) it.disable_recursion_pending();
+            continue;
+        }
+        if (!it->is_regular_file()) continue;
+        std::string rel = utf8(fs::relative(it->path(), root), true);
+        if (rel == "mod.toml" || named.count(rel)) continue;
+        files.push_back(rel);
+    }
+    if (files.empty()) return;
+    std::sort(files.begin(), files.end());
+    // the game's media this can lay files over: Konami Python disks and ISO 9660 discs
+    std::set<std::string> images;
+    for (const auto &[key, path] : medium_paths) images.insert(path);
+    for (const std::string &image : images)
+        if (!python_disks.count(image))
+            if (auto disk = pythondisk::Files::open(image)) python_disks[image] = std::move(disk);
+    int left_out = 0;
+    std::string first_left_out;
+    for (const std::string &rel : files) {
+        const std::string label = name + ": " + rel;
+        const std::string data = read_file(dir + "/" + rel);
+        std::vector<uint8_t> bytes(data.begin(), data.end());
+        bool laid = false;
+        const bool is_png = rel.size() > 4 && (rel.substr(rel.size() - 4) == ".png" || rel.substr(rel.size() - 4) == ".PNG");
+        for (auto &[image, disk] : python_disks) {
+            if (is_png) {   // a picture: the .gzz of the same name
+                const std::string target = rel.substr(0, rel.size() - 4) + ".gzz";
+                if (!disk->has(target)) continue;
+                int w, h;
+                std::vector<uint8_t> rgba;
+                std::string err;
+                if (!png::decode(bytes, w, h, rgba, err)) throw std::runtime_error(dir + "/" + rel + ": " + err);
+                const std::vector<uint8_t> like = disk->get(target);
+                const size_t slash = target.find_last_of('/');
+                const std::vector<uint8_t> idx = slash == std::string::npos ? std::vector<uint8_t>() : disk->get(target.substr(0, slash) + "/system.idx");
+                try {
+                    disk->put(target, pythondisk::picture(like, rgba.data(), w, h, idx), name + ": " + target + " (from " + rel + ")");
+                } catch (const std::exception &e) {
+                    throw std::runtime_error(dir + "/" + rel + ": " + e.what());
+                }
+                laid = true;
+                break;
+            }
+            if (disk->has(rel)) {
+                disk->put(rel, bytes, label);
+                laid = true;
+                break;
+            }
+        }
+        for (const std::string &image : images) {
+            if (laid || python_disks.count(image)) break;
+            laid = iso_file(image, rel, bytes, label, true);
+        }
+        if (!laid && !left_out++) first_left_out = rel;
+    }
+    if (left_out)
+        fprintf(stderr, "mods: %s: %d file%s on none of the game's media, left out (%s%s)\n", name.c_str(), left_out,
+                left_out == 1 ? "" : "s", first_left_out.c_str(), left_out > 1 ? ", ..." : "");
+}
+
 }  // namespace
 
 bool load(const std::vector<std::string> &dirs, const std::string &game, const std::string &root, std::string &err) {
     try {
         const auto medium_paths = media(root, game);
         std::map<std::string, std::unique_ptr<pythondisk::Files>> python_disks;   // [[file]]s on Konami Python disks
-        for (const std::string &dir : dirs) {
+        // The first mod in the list wins where two change the same thing, as with ifs_layeredfs: a
+        // later range, file or patch wins, so the list is laid on from its last mod to its first
+        for (auto d = dirs.rbegin(); d != dirs.rend(); ++d) {
+            const std::string &dir = *d;
+            if (!std::filesystem::is_directory(fs_path(dir))) throw std::runtime_error(dir + ": no such mod folder");
             const std::string file = dir + "/mod.toml";
             const std::string text = read_file(file);
-            if (text.empty()) throw std::runtime_error(file + ": not found (or empty)");
-            const std::vector<Table> tables = parse(text, file);
-            Mod mod{dir, "", ""};
+            // no mod.toml: a folder of files laid over the game's (below), named after the folder
+            const std::vector<Table> tables = text.empty() ? std::vector<Table>(1) : parse(text, file);
+            Mod mod{dir, utf8(fs_path(dir).filename()), ""};
+            std::set<std::string> named;   // the files its tables name (not laid over the game's)
             for (const Table &t : tables) {
                 const std::string where = file + (t.line ? ":" + std::to_string(t.line) : std::string());
                 auto fail = [&](const std::string &why) { throw std::runtime_error(where + ": " + why); };
@@ -301,11 +397,13 @@ bool load(const std::vector<std::string> &dirs, const std::string &game, const s
                 auto from = [&]() {
                     const std::string f = str("from", true);
                     if (f.find("..") != std::string::npos) fail("'from' is a file inside the mod's folder");
+                    named.insert(f);
                     std::string data = read_file(dir + "/" + f);
                     if (data.empty()) fail("'from' file " + f + " not found (or empty)");
                     return std::vector<uint8_t>(data.begin(), data.end());
                 };
                 if (t.kind.empty()) {
+                    if (text.empty()) continue;
                     known({"name", "version", "game", "author", "description"});
                     mod.name = str("name", true);
                     mod.version = str("version", false);
@@ -372,7 +470,8 @@ bool load(const std::vector<std::string> &dirs, const std::string &game, const s
                     fail("unknown table [[" + t.kind + "]]");
                 }
             }
-            g_mods.push_back(mod);
+            lay_files(dir, mod.name, named, medium_paths, python_disks);
+            g_mods.insert(g_mods.begin(), mod);   // in the list's order
         }
         for (auto &d : python_disks) d.second->finish();
     } catch (const std::exception &e) {

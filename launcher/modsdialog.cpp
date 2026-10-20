@@ -47,7 +47,8 @@ ModsDialog::ModsDialog(const QString &game, const QString &title, QWidget *paren
     setWindowTitle("Mods for " + title);
     auto *v = new QVBoxLayout(this);
     auto *head = new QLabel("Mods change the game as it runs, without changing its data. The ones ticked run, in this "
-                            "order (a later one wins where two change the same thing). With any on, the game keeps "
+                            "order (the first one wins where two change the same thing, as with ifs_layeredfs). With "
+                            "any on, the game keeps "
                             "its saves apart from the clean game's (started from a copy of them).");
     head->setWordWrap(true);
     v->addWidget(head);
@@ -95,7 +96,7 @@ void ModsDialog::fill() {
     QStringList folders = on;
     for (const QString &dir : {cfg::modsDir(m_game), cfg::bundledModsDir(m_game)})
         for (const QString &f : QDir(dir).entryList(QDir::Dirs | QDir::NoDotAndDotDot, QDir::Name))
-            if (!folders.contains(f) && QFileInfo::exists(dir + "/" + f + "/mod.toml")) folders << f;
+            if (!folders.contains(f)) folders << f;   // any folder: a mod.toml, or files laid over the game's
     for (const QString &f : folders) {
         const QString path = cfg::modPath(m_game, f);
         const Info i = read(path);
@@ -109,8 +110,8 @@ void ModsDialog::fill() {
         m_list->addItem(it);
     }
     if (m_list->count() == 0)
-        m_about->setText("No mods for this game yet: put each in a folder of its own, with its mod.toml, in " +
-                         cfg::modsDir(m_game) + " (docs/MODS.md).");
+        m_about->setText("No mods for this game yet: put each in a folder of its own in " + cfg::modsDir(m_game) +
+                         ": its mod.toml, or the game's files at their own paths, pictures as PNG (docs/MODS.md).");
     else if (m_list->currentRow() < 0)
         m_list->setCurrentRow(0);
 }

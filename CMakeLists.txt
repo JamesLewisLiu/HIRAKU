@@ -157,11 +157,12 @@ target_link_libraries(hiraku_cabinet PUBLIC hiraku_sys)
 
 # --- the shell: what every machine core shares (runtime/shell/core.h) --------------
 # Input scripts; the host front end below. Cores provide hk::core().
-add_library(hiraku_shell STATIC runtime/host/script.cpp runtime/host/macro.cpp runtime/host/mods.cpp runtime/host/pythondisk.cpp runtime/host/acio.cpp runtime/host/readers.cpp
-            runtime/host/bio2.cpp)
+add_library(hiraku_shell STATIC runtime/host/script.cpp runtime/host/macro.cpp runtime/host/mods.cpp runtime/host/pythondisk.cpp runtime/host/png.cpp
+            runtime/host/acio.cpp runtime/host/readers.cpp runtime/host/bio2.cpp)
 target_include_directories(hiraku_shell PUBLIC runtime)
 find_package(Threads REQUIRED)
-target_link_libraries(hiraku_shell PUBLIC hiraku_cabinet Threads::Threads)
+find_package(ZLIB REQUIRED)   # mods' PNG pictures (runtime/host/png.h)
+target_link_libraries(hiraku_shell PUBLIC hiraku_cabinet Threads::Threads ZLIB::ZLIB)
 # NFC card readers through PC/SC (runtime/host/readers.h, --scard): optional
 find_package(PkgConfig QUIET)
 if(PkgConfig_FOUND)

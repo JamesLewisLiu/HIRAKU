@@ -1,0 +1,14 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+#pragma once
+// PNG pictures read for mods (docs/MODS.md: a picture of the game's given as a PNG): 8- and 16-bit
+// greyscale, RGB, palette (with tRNS) and alpha, not interlaced; through zlib.
+#include <cstdint>
+#include <string>
+#include <vector>
+
+namespace hk::png {
+
+// The picture in `file` as RGBA (width x height x 4); false with a message in err
+bool decode(const std::vector<uint8_t> &file, int &width, int &height, std::vector<uint8_t> &rgba, std::string &err);
+
+}  // namespace hk::png

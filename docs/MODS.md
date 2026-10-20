@@ -21,11 +21,51 @@ to the game they were made for.
 ## Where mods live
 
 `<saves>/mods/<game>/<mod>/` (the saves' folder: `user/data` in a portable package, else
-`~/.local/share/hiraku`, `%LOCALAPPDATA%\hiraku` on Windows), one folder per mod with its
-`mod.toml` and the files it names. Mods that come with HIRAKU are in `games/<game>/mods/<mod>/`
-(pop'n music 9-14's `smooth-notes`); a folder of the player's with the same name wins. The
-launcher lists both under a game's **Mods…** (right-click the game), in order; the command line takes `--mod FOLDER`, several in order (a later mod's bytes
-win where two touch the same place).
+`~/.local/share/hiraku`, `%LOCALAPPDATA%\hiraku` on Windows), one folder per mod: its `mod.toml`
+and the files it names, or the game's files at their own paths (below), or both. Mods that come
+with HIRAKU are in `games/<game>/mods/<mod>/` (pop'n music 9-14's `smooth-notes`); a folder of the
+player's with the same name wins. The launcher lists both under a game's **Mods…** (right-click
+the game), in order; the command line takes `--mod FOLDER`, several in order. Where two mods
+change the same thing, the first one wins, as with ifs_layeredfs (whose mods are listed by name).
+
+## The game's files at their own paths (as ifs_layeredfs)
+
+The PC-based BEMANI games are modded with [ifs_layeredfs](https://github.com/mon/ifs_layeredfs):
+a mod is a folder of the game's files at the paths the game has them, laid over its data, and a
+picture inside one of the game's archives can be a plain PNG named after it, which ifs_layeredfs
+converts. HIRAKU's mods do the same on the arcade boards' discs and disks:
+- a file in a mod's folder at the path of one of the game's files is that file: on a Konami
+  Python disk (pop'n music 14's `image/256_title/system.idx`), or on an ISO 9660 disc
+  (`DATA/TITLE.BIN`, case doesn't count). No mod.toml is needed: a folder of files is a mod,
+  named after the folder;
+- a PNG at a picture's path with `.png` for its own extension is that picture
+  (`image/kc/kc_001.png` for `image/kc/kc_001.gzz`): converted as the mod loads, to the game's
+  picture of the same size and kind (pop'n music 14's 16-bit pictures as they are, its 8-bit
+  ones to the nearest colours of their folder's palette, which stays the game's). The PNG must
+  be the picture's size; any PNG that isn't interlaced will do;
+- the mod's `mod.toml`, the files its tables name, and hidden files and folders (a dot first)
+  are left out, and so is anything that matches none of the game's files (the log says how
+  many, and the first).
+
+Getting the files out to start from: `tools/popnfs.py IMAGE pngs [FOLDER...] OUT` writes the
+pictures (all, or a folder's: `image/256_title`) as PNGs at their paths in OUT; copy the ones
+edited into a mod's folder at the same paths. `tools/popnfs.py IMAGE extract NAME... OUT` writes
+other files as the game uses them. What ifs_layeredfs has that isn't here: `.merged.xml` (the
+arcade games' data isn't XML), the `_ifs` folders (their archives aren't IFS), and the allow and
+block lists (the launcher's ticks do that).
+
+## Text
+
+A game's text in its program is changed by `[[patch]]` at its address. `tools/modtext.py`
+writes them: `tools/modtext.py strings DUMP [LO HI] > text.tsv` lists the strings in a RAM dump
+(the Python core's `HK_PY_EE_DUMP=FRAME:FILE`; any core's memory saved from address 0) with their
+room (the string, its zero and the zeros after it), Japanese or ASCII with a space unless `--all`;
+give the lines to translate a fourth column, and `tools/modtext.py mod GAME text.tsv > mod.toml`
+makes the patches, in the game's Shift-JIS, padded with zeros. A translation that doesn't fit its
+room is refused. The screen's font must have the characters: pop'n music 14's boot checks
+(`PCB CHECK` at 0x01904cc0) are drawn in an ASCII-only font, its game screens in a Japanese one.
+Much of what a player reads on pop'n music 14 is pictures (the menus' lettering), changed as
+above.
 
 A game with mods on keeps its saves in a folder of its own, named after the mods
 (`<game>+<mod>+<mod>`), started as a copy of the clean game's saves the first time.
@@ -251,9 +291,10 @@ game uses them (decrypted with the keys in the disk's own loader, unpacked). Wha
 `image/<folder>/` holds the pictures (`.gzz`: a `GC` header, then the picture), each folder with
 its `system.idx` listing them; `iop/modules/` the IOP's drivers; `ee/boot/game.bin` the program.
 
-A picture, for a mod: `tools/popnfs.py IMAGE topng image/256_title/1.gzz title1.png`, edit the PNG
-(same size), then `tools/popnfs.py IMAGE frompng image/256_title/1.gzz title1.png files/1.gzz`
-and name `files/1.gzz` in a `[[file]]`. 16-bit pictures (song banners `kc/`, backgrounds,
+A picture, for a mod: export it (`tools/popnfs.py IMAGE pngs image/256_title OUT`), edit the PNG
+(same size) and put it in the mod's folder at its path (`image/256_title/1.png`); or convert it
+yourself (`tools/popnfs.py IMAGE frompng image/256_title/1.gzz title1.png files/1.gzz`) and name
+`files/1.gzz` in a `[[file]]`. 16-bit pictures (song banners `kc/`, backgrounds,
 characters) take any colour; the 8-bit ones (the `256_*` folders: the menus' lettering and
 parts) share their folder's 256-colour palette, so the PNG's colours become the nearest of it.
 The songs are not in these files: each has a 20 MB slot after them, its parts scrambled with

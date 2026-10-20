@@ -9,6 +9,10 @@ and its pictures to and from PNG (for mods: docs/MODS.md).
     tools/popnfs.py IMAGE topng NAME OUT.png     a picture (.gzz) as a PNG
     tools/popnfs.py IMAGE frompng NAME IN.png OUT   a PNG (edited from topng's) made into that
                                                  picture, ready for a mod's [[file]] (needs Pillow)
+    tools/popnfs.py IMAGE pngs [FOLDER...] OUT   every picture (or a folder's: image/kc) as a PNG
+                                                 at the game's path in OUT (image/kc/kc_001.png):
+                                                 edit some and copy them into a mod's folder at the
+                                                 same paths, and HIRAKU converts them (docs/MODS.md)
 
 IMAGE: the disk (a CHD or raw image; tools/pythonfs.py opens it). NAME: a path as the game names
 it (image/kc/kc_001.gzz), or #hash for a file whose name isn't known.
@@ -335,7 +339,7 @@ def rgba_to_gc(like, rgba, idx=None):
 
 def main():
     a = sys.argv[1:]
-    if len(a) < 2 or a[1] not in ("list", "extract", "topng", "frompng"):
+    if len(a) < 2 or a[1] not in ("list", "extract", "topng", "frompng", "pngs"):
         sys.exit(__doc__)
     disk = Disk(a[0])
     if a[1] in ("topng", "frompng"):
@@ -358,6 +362,32 @@ def main():
         return
     names = disk.find_names()
     label = lambda e: names.get(e[0], "#%08x" % e[0])
+    if a[1] == "pngs":
+        if len(a) < 3:
+            sys.exit(__doc__)
+        from PIL import Image
+        out, folders = a[-1], [f.strip("/") + "/" for f in a[2:-1]]
+        done = 0
+        idx_of = {}
+        for e in disk.entries:
+            n = names.get(e[0])
+            if not n or not n.endswith(".gzz") or (folders and not any(n.startswith(f) for f in folders)):
+                continue
+            folder = n.rsplit("/", 1)[0]
+            if folder not in idx_of:
+                ie = disk.lookup(folder + "/system.idx")
+                idx_of[folder] = disk.file(ie) if ie else None
+            try:
+                w, h, rgba = gc_to_rgba(disk.file(e), idx_of[folder])
+            except (ValueError, IndexError, struct.error) as x:
+                print("%s: %s" % (n, x), file=sys.stderr)
+                continue
+            path = os.path.join(out, *(n[:-4] + ".png").split("/"))
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            Image.frombytes("RGBA", (w, h), rgba).save(path)
+            done += 1
+        print("%d pictures to %s" % (done, out), file=sys.stderr)
+        return
     if a[1] == "list":
         rows = sorted(disk.entries, key=lambda e: (e[0] not in names, label(e)))
         for e in rows:

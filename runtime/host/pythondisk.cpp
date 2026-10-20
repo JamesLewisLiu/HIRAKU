@@ -5,6 +5,7 @@
 #include <cctype>
 #include <cstdio>
 #include <cstring>
+#include <map>
 #include <stdexcept>
 
 #include "shell/overlay.h"
@@ -104,6 +105,92 @@ std::vector<uint8_t> lzss_pack(const uint8_t *in_, size_t n_) {
     return out;
 }
 
+std::vector<uint8_t> lzss_unpack(const uint8_t *in, size_t n_in, size_t n) {
+    std::vector<uint8_t> out;
+    out.reserve(n);
+    uint8_t win[4096] = {};
+    size_t r = 0xfee, i = 0;
+    unsigned flags = 0;
+    while (out.size() < n) {
+        flags >>= 1;
+        if (!(flags & 0x100)) {
+            if (i >= n_in) break;
+            flags = in[i++] | 0xff00;
+        }
+        if (flags & 1) {
+            if (i >= n_in) break;
+            const uint8_t c = in[i++];
+            out.push_back(c);
+            win[r] = c, r = (r + 1) & 0xfff;
+        } else {
+            if (i + 1 >= n_in) break;
+            const size_t o = in[i] | (in[i + 1] & 0xf0) << 4, len = (in[i + 1] & 0x0f) + 3;
+            i += 2;
+            for (size_t k = 0; k < len && out.size() < n; k++) {
+                const uint8_t c = win[(o + k) & 0xfff];
+                out.push_back(c);
+                win[r] = c, r = (r + 1) & 0xfff;
+            }
+        }
+    }
+    out.resize(n, 0);
+    return out;
+}
+
+std::vector<uint8_t> picture(const std::vector<uint8_t> &like, const uint8_t *rgba, int width, int height,
+                             const std::vector<uint8_t> &idx) {
+    auto be16 = [&](size_t at) { return (uint32_t)like[at] << 8 | like[at + 1]; };
+    if (like.size() < 24 || memcmp(like.data(), "GC\0\0", 4)) throw std::runtime_error("not a GC picture");
+    const int w = (int)be16(12), h = (int)be16(14);
+    const uint32_t size = be16(20) << 16 | be16(22);
+    const int bits = size == (uint32_t)(w * h * 2) ? 16 : size == (uint32_t)(w * h) ? 8 : 0;
+    if (!bits) throw std::runtime_error("a GC picture of a kind HIRAKU doesn't know");
+    if (width != w || height != h)
+        throw std::runtime_error("the picture is " + std::to_string(w) + "x" + std::to_string(h) + ", the PNG " +
+                                 std::to_string(width) + "x" + std::to_string(height));
+    std::vector<uint8_t> out(like.begin(), like.begin() + 24);
+    if (bits == 16) {
+        for (int k = 0; k < w * h; k++) {
+            const uint8_t *c = rgba + 4 * k;
+            const uint32_t p = (c[0] * 31 + 127) / 255 | (c[1] * 31 + 127) / 255 << 5 | (c[2] * 31 + 127) / 255 << 10 |
+                               (c[3] >= 128 ? 0x8000u : 0);
+            out.push_back((uint8_t)p), out.push_back((uint8_t)(p >> 8));
+        }
+        return out;
+    }
+    if (idx.size() < 1024) throw std::runtime_error("an 8-bit picture: its colours are in its folder's system.idx");
+    int pal[256][4];
+    const uint8_t *src = idx.data() + idx.size() - 1024;
+    for (int i = 0; i < 256; i++) {   // the GS's order: in every 32, entries 8-15 and 16-23 swapped
+        const int j = (i & ~0x18) | ((i & 8) << 1) | ((i & 16) >> 1);
+        for (int c = 0; c < 3; c++) pal[i][c] = src[4 * j + c];
+        pal[i][3] = std::min(255, src[4 * j + 3] * 255 / 128);
+    }
+    std::map<uint32_t, uint8_t> memo;
+    for (int k = 0; k < w * h; k++) {
+        const uint8_t *c = rgba + 4 * k;
+        uint32_t key;
+        memcpy(&key, c, 4);
+        auto it = memo.find(key);
+        if (it == memo.end()) {
+            int best = 0;
+            long bd = -1;
+            for (int v = 0; v < 256; v++) {
+                long d;
+                if (c[3] < 8) d = (long)pal[v][3] * 256 + v;   // transparent: the palette's most transparent colour
+                else {
+                    const long dr = pal[v][0] - c[0], dg = pal[v][1] - c[1], db = pal[v][2] - c[2], da = pal[v][3] - c[3];
+                    d = dr * dr * 3 + dg * dg * 4 + db * db * 2 + da * da * 3;
+                }
+                if (bd < 0 || d < bd) bd = d, best = v;
+            }
+            it = memo.emplace(key, (uint8_t)best).first;
+        }
+        out.push_back(it->second);
+    }
+    return out;
+}
+
 std::unique_ptr<Files> Files::open(const std::string &image) {
     std::vector<uint8_t> d((size_t)kDirSectors * 512);
     if (!overlay::read(image, (uint64_t)kDirSector * 512, d.data(), d.size())) return nullptr;
@@ -123,6 +210,7 @@ std::unique_ptr<Files> Files::open(const std::string &image) {
         }
         for (int i = 0; i < 24; i++) sum += p[i];
         f->entries_.push_back(e);
+        f->disk_.push_back(e);
     }
     return nullptr;
 }
@@ -137,13 +225,13 @@ void Files::put(const std::string &name, const std::vector<uint8_t> &content, co
     Entry *e = nullptr;
     for (Entry &x : entries_)
         if (x.hash == hash) e = &x;
-    // how the game reads it: the one there's form, or for a new file its name's kind
+    // how the game reads it: the one there's form (as on the disk), or for a new file its name's kind
     enum { Lzss, Stored, Raw } form = Lzss;
-    if (e) {
+    if (const Entry *d = find(name); e && d) {
         uint8_t head[8] = {};
-        if (!overlay::read(image_, (uint64_t)e->sector * 512, head, sizeof head)) throw std::runtime_error(image_ + ": can't read " + name);
+        if (!overlay::read(image_, (uint64_t)d->sector * 512, head, sizeof head)) throw std::runtime_error(image_ + ": can't read " + name);
         if (!memcmp(head, "13P0", 4)) throw std::runtime_error(name + " is the game's program: change it with [[patch]]");
-        form = tagged(head) ? Lzss : u32(head) == e->size - 4 ? Stored : Raw;
+        form = tagged(head) ? Lzss : u32(head) == d->size - 4 ? Stored : Raw;
     } else if (name[0] == '#') {
         throw std::runtime_error(name + ": no file with that hash on the disk");
     } else {
@@ -193,6 +281,130 @@ void Files::put(const std::string &name, const std::vector<uint8_t> &content, co
     e->sum = sum;
     changed_ = true;
     if (labels_.find(label) == std::string::npos) labels_ += (labels_.empty() ? "" : ", ") + label;
+}
+
+const Files::Entry *Files::find(const std::string &name) const {
+    const uint32_t hash = !name.empty() && name[0] == '#' ? (uint32_t)strtoul(name.c_str() + 1, nullptr, 16) : name_hash(name);
+    const Entry *e = nullptr;
+    for (const Entry &x : disk_)
+        if (x.hash == hash) e = &x;
+    return e;
+}
+
+// The loader (boot record C of the boot header: sector 0, or its copy at 0x200 or 0x400; packed
+// with its own LZ) holds the keys: a table of 40 tags ("13G0", "13S0"...), their keys and IVs, and
+// Blowfish's starting tables, each word in 8 bytes (tools/popnfs.py, tools/pythonfs.py)
+const Files::Keys &Files::keys() const {
+    if (keys_) return *keys_;
+    keys_ = std::make_unique<Keys>();
+    static const uint8_t magic[8] = {0x1e, 0xb3, 0xf7, 0x08, 0x3f, 0x6a, 0xd6, 0x0c};
+    uint8_t h[0x200];
+    bool found = false;
+    for (uint64_t at : {0x0, 0x200, 0x400})
+        if (overlay::read(image_, at, h, sizeof h) && !memcmp(h, magic, 8)) {
+            found = true;
+            break;
+        }
+    if (!found) throw std::runtime_error(image_ + ": no boot header (for the loader's keys)");
+    const uint64_t off = (uint64_t)u32(h + 0x100) * 256;
+    const uint32_t size = u32(h + 0x100 + 16);
+    std::vector<uint8_t> comp(size);
+    if (!overlay::read(image_, off, comp.data(), size)) throw std::runtime_error(image_ + ": can't read the loader");
+    std::vector<uint8_t> ldr;
+    for (size_t pos = 0, cnt = 0, flags = 0; pos < comp.size() && ldr.size() < (1u << 26);) {
+        if (!cnt) {
+            flags = comp[pos++], cnt = 8;
+            continue;
+        }
+        const bool lit = flags & 1;
+        flags >>= 1, cnt--;
+        if (lit) ldr.push_back(comp[pos++]);
+        else {
+            if (pos + 1 >= comp.size()) break;
+            const size_t len = (comp[pos] & 0x0f) + 3, d = (size_t)(comp[pos] >> 4) << 8 | comp[pos + 1];
+            pos += 2;
+            for (size_t k = 0; k < len; k++) ldr.push_back(d && d <= ldr.size() ? ldr[ldr.size() - d] : 0);
+        }
+    }
+    auto find = [&](const void *what, size_t n) -> size_t {
+        auto it = std::search(ldr.begin(), ldr.end(), (const uint8_t *)what, (const uint8_t *)what + n);
+        if (it == ldr.end()) throw std::runtime_error(image_ + ": no key table in the loader");
+        return (size_t)(it - ldr.begin());
+    };
+    const size_t t = find("13G0\0" "13S0\0", 10);
+    if (t + 0x28f0 + 8 * 40 > ldr.size()) throw std::runtime_error(image_ + ": the loader's key table is cut short");
+    for (int i = 0; i < 40; i++) {
+        const std::string tag((const char *)&ldr[t + 5 * i], 4);
+        const char *k = (const char *)&ldr[t + 0xc8 + 0x101 * i];
+        const std::string key(k, strnlen(k, 0x101));
+        const uint8_t *iv = &ldr[t + 0x28f0 + 8 * i];
+        const std::string ivs = {(char)iv[3], (char)iv[2], (char)iv[1], (char)iv[0], (char)iv[7], (char)iv[6], (char)iv[5], (char)iv[4]};
+        keys_->tags.push_back({tag, {key, ivs}});
+    }
+    const uint32_t p0w = 0x243f6a88, s0w = 0xd1310ba6;
+    const size_t p0 = find(&p0w, 4), s0 = find(&s0w, 4);
+    if (p0 + 8 * 18 > ldr.size() || s0 + 8 * 1024 > ldr.size()) throw std::runtime_error(image_ + ": the loader's Blowfish tables are cut short");
+    for (int i = 0; i < 18; i++) keys_->p.push_back(u32(&ldr[p0 + 8 * i]));
+    for (int i = 0; i < 1024; i++) keys_->s.push_back(u32(&ldr[s0 + 8 * i]));
+    return *keys_;
+}
+
+// Blowfish in CBC mode, the key's tables made from the loader's starting ones; every whole block
+std::vector<uint8_t> Files::decrypt(const std::vector<uint8_t> &b) const {
+    const Keys &k = keys();
+    const std::string tag((const char *)b.data(), 4);
+    const std::pair<std::string, std::string> *kv = nullptr;
+    for (const auto &t : k.tags)
+        if (t.first == tag) kv = &t.second;
+    if (!kv) return b;
+    std::vector<uint32_t> P = k.p, S = k.s;
+    const std::string &key = kv->first;
+    for (int i = 0; i < 18; i++) {
+        uint32_t x = 0;
+        for (int j = 0; j < 4; j++) x = x << 8 | (uint8_t)key[(size_t)(i * 4 + j) % key.size()];
+        P[i] ^= x;
+    }
+    auto F = [&](uint32_t x) { return ((S[x >> 24] + S[256 + ((x >> 16) & 255)]) ^ S[512 + ((x >> 8) & 255)]) + S[768 + (x & 255)]; };
+    auto enc = [&](uint32_t &l, uint32_t &r) {
+        for (int i = 0; i < 16; i++) l ^= P[i], r ^= F(l), std::swap(l, r);
+        std::swap(l, r);
+        r ^= P[16], l ^= P[17];
+    };
+    uint32_t l = 0, r = 0;
+    for (int i = 0; i < 18; i += 2) enc(l, r), P[i] = l, P[i + 1] = r;
+    for (int i = 0; i < 1024; i += 2) enc(l, r), S[i] = l, S[i + 1] = r;
+    auto be = [](const uint8_t *p) { return (uint32_t)p[0] << 24 | (uint32_t)p[1] << 16 | (uint32_t)p[2] << 8 | p[3]; };
+    uint32_t pl = be((const uint8_t *)kv->second.data()), pr = be((const uint8_t *)kv->second.data() + 4);
+    std::vector<uint8_t> out;
+    for (size_t at = 8; at + 8 <= b.size(); at += 8) {
+        const uint32_t cl = be(&b[at]), cr = be(&b[at + 4]);
+        uint32_t x = cl, y = cr;
+        for (int i = 17; i > 1; i--) x ^= P[i], y ^= F(x), std::swap(x, y);
+        std::swap(x, y);
+        y ^= P[1], x ^= P[0];
+        x ^= pl, y ^= pr;
+        for (uint32_t w : {x, y})
+            for (int s = 24; s >= 0; s -= 8) out.push_back((uint8_t)(w >> s));
+        pl = cl, pr = cr;
+    }
+    return out;
+}
+
+std::vector<uint8_t> Files::get(const std::string &name) const {
+    const Entry *e = find(name);
+    if (!e || !e->size) return {};
+    std::vector<uint8_t> raw(e->size);
+    if (!overlay::read(image_, (uint64_t)e->sector * 512, raw.data(), raw.size())) throw std::runtime_error(image_ + ": can't read " + name);
+    if (raw.size() < 8) return raw;
+    if (tagged(raw.data())) {   // encrypted, then packed (the game unpacks from every block)
+        const std::vector<uint8_t> plain = decrypt(raw);
+        if (plain.size() < 4) return {};
+        return lzss_unpack(plain.data() + 4, plain.size() - 4, u32(plain.data()));
+    }
+    if (u32(raw.data()) == e->size - 4) return std::vector<uint8_t>(raw.begin() + 4, raw.end());   // stored
+    if (name.size() > 4 && name.substr(name.size() - 4) == ".gzz")
+        return lzss_unpack(raw.data() + 4, raw.size() - 4, u32(raw.data()));
+    return raw;
 }
 
 void Files::finish() {
