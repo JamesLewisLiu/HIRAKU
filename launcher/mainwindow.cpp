@@ -569,7 +569,9 @@ QStringList MainWindow::arguments(const Game &g) const {
 #endif
     }
     if (int f = s.value("audio/buffer", 0).toInt(); f > 0) a << "--audio-buffer" << QString::number(f);
-    if ((g.core == "sys573" || g.core == "twinkle") && s.value("audio/fineSound", false).toBool()) a << "--fine-sound";
+    // every millisecond is the cores' default (2026-10-20); the key is new, so that the old one's
+    // stored "off" (saved by any OK in Settings) doesn't keep it off
+    if ((g.core == "sys573" || g.core == "twinkle") && !s.value("audio/soundEveryMs", true).toBool()) a << "--mame-sound";
     QString controls = cfg::controlsFile(g.family), lights = cfg::lightsFile(g.family);
     if (QFileInfo::exists(controls)) a << "--bindings" << controls;
     if (lightsFileUsed(lights)) a << "--lights" << lights;

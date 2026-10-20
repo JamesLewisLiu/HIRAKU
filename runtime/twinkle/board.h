@@ -38,10 +38,10 @@ struct Config {
     // full scale on loud stretches (1.07 in bmiidx3-play) and clips; 0.8 keeps MAME's balance with
     // headroom. 1.0 (--mame-mix) is MAME's output, for comparing with its WAV.
     float mix_gain = 0.8f;
-    // --fine-sound: the sound for the host every millisecond of machine time, not at MAME's 50 Hz
-    // stream updates; the RF5C400's keysounds then start when the game triggers them (board.cpp,
-    // run()). Off is MAME's.
-    bool fine_sound = false;
+    // The sound for the host every millisecond of machine time, not at MAME's 50 Hz stream updates;
+    // the RF5C400's keysounds then start when the game triggers them (board.cpp, run()): the
+    // default. Off (--mame-sound) is MAME's, which regress compares with.
+    bool fine_sound = true;
     // The program CD's read speed, in sectors a second: the XM-5401 is a 4x drive (300). A READ's
     // data then comes a sector at a time, as the drive reads it. MAME's drive has no read time,
     // every byte at the SCSI bus's pace, ~3 MB/s, a burst of events that made a load ~17 ms of host

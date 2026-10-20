@@ -261,11 +261,12 @@ SettingsDialog::SettingsDialog(QWidget *parent) : QDialog(parent) {
                               "sooner, until it crackles; the queue above grows by itself after a crackle. Times at 48 kHz.");
     fa->addRow("Device buffer:", m_audioBuffer);
     m_fineSound = new QCheckBox("Sound every millisecond on System 573 and Twinkle (not MAME's)");
-    m_fineSound->setChecked(s.value("audio/fineSound", false).toBool());
+    m_fineSound->setChecked(s.value("audio/soundEveryMs", true).toBool());
     m_fineSound->setToolTip("MAME hands these machines' sound on 50 times a second, which adds up to 20 ms of "
                             "latency, uneven from moment to moment. Every millisecond is lower and steadier. On "
                             "Twinkle (beatmania IIDX) the keysounds then start when the game triggers them, so the "
-                            "sound no longer matches MAME's (--fine-sound; docs/PLAY.md, Latency).");
+                            "sound no longer matches MAME's. On by default; off is MAME's timing (--mame-sound; "
+                            "docs/PLAY.md, Latency).");
     fa->addRow("", m_fineSound);
     m_soundfont = new QLineEdit(s.value("audio/soundfont").toString());
     m_soundfont->setPlaceholderText("default: the system's General MIDI SoundFont");
@@ -452,7 +453,7 @@ void SettingsDialog::accept() {
     s.setValue("video/picture", m_picture->currentData().toString());
     s.setValue("audio/ms", m_audioMs->value());
     s.setValue("audio/volumeDb", m_volume->value());
-    s.setValue("audio/fineSound", m_fineSound->isChecked());
+    s.setValue("audio/soundEveryMs", m_fineSound->isChecked());
     s.setValue("audio/device", m_audioDevice->currentData().toString());
     if (m_audioExclusive) s.setValue("audio/exclusive", m_audioExclusive->isChecked());
     s.setValue("audio/buffer", m_audioBuffer->currentData().toInt());

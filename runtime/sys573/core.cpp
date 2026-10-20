@@ -32,7 +32,8 @@ public:
     bool option(const std::string &name, const std::function<std::string()> &value) override {
         if (name == "--rtc") { rtc_ = std::stoll(value()); return true; }
         if (name == "--mame-mix") { mame_mix_ = true; return true; }
-        if (name == "--fine-sound") { fine_sound_ = true; return true; }
+        if (name == "--fine-sound") { fine_sound_ = true; return true; }   // the default now
+        if (name == "--mame-sound") { fine_sound_ = false; return true; }
         if (name == "--cassette") { cassette_slot_ = value(); return true; }
         if (name == "--npu") { npu_ = true; return true; }
         if (name == "--session-host") { session_host_ = value(); return true; }
@@ -49,9 +50,8 @@ public:
         return "  --rtc SECONDS     the timekeeper's time at power-on (default: now), seconds since 1970\n"
                "  --mame-mix        sound at MAME's level: the SPU and CD audio summed at full gain, clipping\n"
                "                    where they add up past full scale (default: half, which never clips)\n"
-               "  --fine-sound      hand the sound to the host every millisecond, not at MAME's 50 Hz stream\n"
-               "                    updates: lower, steadier latency (the MP3 decoded ahead of its update)\n"
-               "  --cassette install  boot with the install cassette (first boot of games that install from CD\n"
+               "  --mame-sound      hand the sound to the host at MAME's 50 Hz stream updates, as MAME does\n"
+               "                    (default: every millisecond, lower and steadier latency; regress uses this)\n"               "  --cassette install  boot with the install cassette (first boot of games that install from CD\n"
                "                    with one, ddr3mj: when it says so, power off and boot again without)\n"
                "  --npu             fit the network PCB unit (e-AMUSEMENT GuitarFreaks and DrumMania): its hard\n"
                "                    disk is the save folder's npu_hdd/\n"
@@ -204,7 +204,7 @@ private:
     std::function<void()> on_fatal_;
     long long rtc_ = -1;
     bool mame_mix_ = false;
-    bool fine_sound_ = false;
+    bool fine_sound_ = true;
     std::string cassette_slot_;
     bool npu_ = false;
     std::string eamuse_ = "local";

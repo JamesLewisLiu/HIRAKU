@@ -254,12 +254,12 @@ short. HIRAKU declares the ASIO driver interface itself, from the specification 
 is GPLv3 since October 2025 too, but isn't needed). Checked under Wine with pwasio (PipeWire's
 ASIO driver for Wine): float, 48 kHz, 64-frame buffers, 99.97 % of the rate; and on real Windows.
 
-**System 573 and Twinkle: `--fine-sound`** (launcher: Settings > Audio > "Sound every millisecond"). These cores run MAME's devices, and MAME hands their sound on 50 times a second. So by default the sound reaches the PC in 20 ms pieces, which adds up to 20 ms of latency, uneven from moment to moment, and the controls are read once per piece. `--fine-sound` hands it on every millisecond instead:
+**System 573 and Twinkle: sound every millisecond** (the default; launcher: Settings > Audio > "Sound every millisecond"; `--mame-sound` turns it off). These cores run MAME's devices, and MAME hands their sound on 50 times a second: the sound would reach the PC in 20 ms pieces, which adds up to 20 ms of latency, uneven from moment to moment, and the controls would be read once per piece. HIRAKU hands it on every millisecond instead. Measured on beatmania IIDX 3rd style (the exit report's "from a frame starting ... to that moment's sound entering the device"): 9.9 ms every millisecond, 30.1 ms in MAME's pieces.
 - The machine runs the same (the regress cases show the same pictures).
 - On beatmania IIDX the keysounds then start when the game triggers them. MAME's RF5C400 starts them at its previous update, up to 20 ms early, so the sound no longer matches MAME's recordings.
 - On the digital board (DDR 3rd Mix on, DrumMania, GuitarFreaks) the MP3 decoders must still update at MAME's 50 Hz: the game sees each update's request for data. Their sound up to now is decoded ahead of the update on a copy of the decoder, and checked when the update comes. Almost always it's the same (all but 220 of 11 million samples in ddr3mj-play): the few that differ are a song's first or last milliseconds, played as worked out. It costs ~0.1 ms a frame on DrumMania (five decoders).
 
-It's off by default, which keeps MAME's sound for comparing with it.
+`--mame-sound` keeps MAME's sound, for comparing with it: the regress cases use it.
 
 ## Frame pacing
 

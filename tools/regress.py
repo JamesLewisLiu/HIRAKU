@@ -339,6 +339,15 @@ def partner_of(case):
     return CASES[case][4] if len(CASES[case]) > 4 else None
 
 
+def game_core(game):
+    """the game's core, as games/<game>/game.toml names it ("" when it doesn't: Firebeat)"""
+    try:
+        with open(os.path.join(ROOT, "games", game, "game.toml")) as f:
+            return next((ln.split('"')[1] for ln in f if ln.startswith("core")), "")
+    except OSError:
+        return ""
+
+
 def game_binary(game):
     """(binary, its first arguments): the game's own hiraku-<id>, else its core's (a release's build,
     HK_GAME_BINARIES off: hiraku-djmain, hiraku-sys573, hiraku-twinkle, hiraku-firebeat, told the
@@ -378,6 +387,8 @@ def run(case, digest_path, take=False, nice=0, src=None):
     work = os.path.join(OUT, "work", case)
     os.makedirs(work, exist_ok=True)
     cmd = [exe] + pre + ["--frames", str(frames), "--out", work] + extra
+    if game_core(game) in ("sys573", "twinkle"):
+        cmd += ["--mame-sound"]   # MAME's 50 Hz sound updates, as the baselines (the cores' default: every ms)
     if after_of(case) or any(after_of(c) == case for c in CASES):
         # its own NVRAM directory: fresh, or what the case it comes after left
         nv = os.path.join(work, "nvram")

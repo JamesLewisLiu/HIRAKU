@@ -32,7 +32,8 @@ public:
     bool option(const std::string &name, const std::function<std::string()> &value) override {
         if (name == "--rtc") { rtc_ = std::stoll(value()); return true; }
         if (name == "--mame-mix") { mame_mix_ = true; return true; }
-        if (name == "--fine-sound") { fine_sound_ = true; return true; }
+        if (name == "--fine-sound") { fine_sound_ = true; return true; }   // the default now
+        if (name == "--mame-sound") { fine_sound_ = false; return true; }
         if (name == "--mame-cd") { mame_cd_ = true; return true; }
         if (name == "--session-host") { session_host_ = value(); return true; }
         if (name == "--session-join") { session_join_ = value(); return true; }
@@ -48,9 +49,8 @@ public:
     std::string options_help() const override {
         return "  --rtc SECONDS     the RTC's time at power-on (default: now), seconds since 1970\n"
                "  --mame-mix        sound at MAME's level (it can clip on loud stretches; default: 0.8 of it)\n"
-               "  --fine-sound      hand the sound to the host every millisecond, not at MAME's 50 Hz stream\n"
-               "                    updates: lower, steadier latency, and keysounds start when the game triggers\n"
-               "                    them (MAME's RF5C400 starts them at its previous update, up to 20 ms early)\n"
+               "  --mame-sound      hand the sound to the host at MAME's 50 Hz stream updates, as MAME does\n"
+               "                    (default: every millisecond, lower and steadier latency; regress uses this)\n"               "                    them (MAME's RF5C400 starts them at its previous update, up to 20 ms early)\n"
                "  --video on|off    the background video from the Video CD (default on; MAME shows none)\n"
                "  --mame-cd         MAME's program CD drive: no read time, every byte at the SCSI bus's pace\n"
                "                    (default: the XM-5401's 4x, a sector at a time as the drive reads it)\n"
@@ -143,7 +143,7 @@ private:
     std::function<void()> on_fatal_;
     long long rtc_ = -1;
     bool mame_mix_ = false;
-    bool fine_sound_ = false;
+    bool fine_sound_ = true;
     bool mame_cd_ = false;
     bool video_ = true;
     std::string session_host_, session_join_;
