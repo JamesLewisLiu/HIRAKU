@@ -1175,8 +1175,10 @@ private:
             p1io_polls_logged_ = p1io_polls_;
             fflush(p1io_log_);
         }
+        // the machine's time at this vsync: none at the first (the machine has run no cycles yet: its
+        // sound up to here is what the SPU2 made, and the frame hook's time must match it)
+        if (frame_) seconds_ += 1.0 / rate_;
         frame_++;
-        seconds_ += 1.0 / rate_;
         if (want_rate_ != rate_) {
             rate_ = want_rate_;
             EmuConfig.GS.FramerateNTSC = (float)rate_;
