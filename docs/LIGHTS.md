@@ -16,6 +16,8 @@ Press **F9** in a game, or start it with `--lights-overlay` (launcher: Settings 
 
 It's for seeing what a game does with its lights: which output is which lamp, when each comes on, what a test mode's lamp check drives. Dance Maniax, for example: the 12 hand sensors' blue and red lamps (outputs 0–23, two per sensor), the three spotlights (28, 29, 31), the side lamps and the Start lamps (32–37, the LAMPS port). The panel goes on top of in-between pictures too (smooth motion), and changes nothing in the game.
 
+**A log of every change:** `--lights-log FILE` (or `-` for the console) writes a line per lamp change, with or without a window: the frame, the machine's time in seconds, the lamp with its output number, and on or off (`f10233 170.6402 Spot Light Pink [31] on`). With a script (`--script`), the same moments come out on every run, so a lamp's pattern can be matched to what the game shows on those frames (`--snap-every`).
+
 The easiest way to set this up is the launcher (`hiraku`, **Lights**). This page covers what the launcher writes and what it does under the hood.
 
 ## Lamps per cabinet

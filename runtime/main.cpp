@@ -43,6 +43,9 @@
 //     --bindings FILE   controls (see runtime/host/input.h)
 //     --lights FILE     drive HID controller LEDs from the cabinet lamps (see runtime/host/lights.h)
 //     --lights-socket P publish the lamps on a UNIX socket at path P, or on TCP at HOST:PORT (docs/LIGHTS.md)
+//     --lights-log FILE every lamp change, a line each: the frame, the machine's time, the lamp (its
+//                       output number, as the F9 overlay shows it) and on or off; FILE "-" is the
+//                       console (stderr). Headless too
 //     --reader PATH, --scard, --cardio  real e-AMUSEMENT card readers, with --window (see
 //                       runtime/host/readers.h)
 //     --bio2 PATH       beatmania IIDX's BIO2 I/O board as the cabinet's controls and lamps, with
@@ -93,6 +96,7 @@
 #include "host/macro.h"
 #include "host/mods.h"
 #include "host/script.h"
+#include "shell/cabinet.h"
 #include "shell/core.h"
 #include "shell/userdir.h"
 #include "shell/sys.h"
@@ -250,6 +254,7 @@ int main(int argc, char **argv) {
     std::vector<std::string> picture_config;
     std::vector<std::string> macro_specs;
     bool display_sync = true, smooth_motion = false, lights_overlay = false;
+    std::string lights_log_path;
     bool nvram_given = false;
     int audio_ms = 8, audio_buffer = 0;
     std::string audio_device;
@@ -287,6 +292,7 @@ int main(int argc, char **argv) {
         else if (a == "--display-sync") display_sync = val() != "off";
         else if (a == "--smooth-motion") smooth_motion = true;
         else if (a == "--lights-overlay") lights_overlay = true;
+        else if (a == "--lights-log") lights_log_path = val();
         else if (a == "--nvram") { nvram_dir = val(); nvram_given = true; }
         else if (a == "--audio-ms") audio_ms = std::stoi(val());
         else if (a == "--audio-device") audio_device = val();
@@ -386,6 +392,30 @@ int main(int argc, char **argv) {
         if (window_scale) printf("%s\n", host::audio_describe().c_str());
 #endif
     };
+    // --lights-log: each lamp's changes, as the frame hook sees them (lamps all off at first)
+    std::function<void(uint64_t)> lights_log;
+    if (!lights_log_path.empty()) {
+        FILE *lf = lights_log_path == "-" ? stderr : fopen(lights_log_path.c_str(), "w");
+        if (!lf) {
+            fprintf(stderr, "cannot write %s\n", lights_log_path.c_str());
+            return 1;
+        }
+        lights_log = [&machine, lf, seen = std::vector<uint8_t>(), changes = ~0ull](uint64_t f) mutable {
+            if (machine.lamp_changes() == changes) return;
+            changes = machine.lamp_changes();
+            const std::vector<uint8_t> &now = machine.lamp_state();
+            const std::vector<cab::Lamp> &defs = cab::lamps(machine.family());
+            seen.resize(now.size(), 0);
+            for (size_t i = 0; i < now.size() && i < defs.size(); i++) {
+                if (now[i] == seen[i]) continue;
+                const cab::Lamp &l = defs[i];
+                fprintf(lf, "f%llu %.4f %s [%s%d] %s\n", (unsigned long long)f, machine.seconds(), l.name.c_str(),
+                        l.reg ? (std::to_string(l.reg) + ".").c_str() : "", l.bit, now[i] ? "on" : "off");
+            }
+            seen = now;
+            fflush(lf);
+        };
+    }
     auto lights_off = []() {
 #ifdef HK_WITH_SDL
         host::lights_close();
@@ -485,6 +515,7 @@ int main(int argc, char **argv) {
         }
 #endif
         if (debug_every && f % debug_every == 0) machine.debug_line(f);
+        if (lights_log) lights_log(f);
 #ifdef HK_WITH_SDL
         host::lights_frame();
 #endif
