@@ -12,6 +12,9 @@
 #include <vector>
 
 #include "../core/prof.h"
+#ifdef _WIN32
+#include "dwm.h"
+#endif
 
 #ifdef HK_WITH_WAYLAND
 #include <poll.h>
@@ -27,7 +30,8 @@ namespace hk::host::pacing {
 namespace {
 
 bool g_smooth_motion = false;  // set_smooth_motion: the game at its own speed, every refresh a picture (fifo)
-bool g_exact = false;          // ... and in use (fifo-v1 and presentation-time there)
+bool g_exact = false;          // ... and in use (fifo-v1 and presentation-time there, or DWM's vblank)
+bool g_dwm = false;            // Windows: DWM says when the display refreshes (dwm.h)
 double g_frame_at = 0;         // exact speed: when the current frame's moment is, on the steady clock (ns)
 double g_period_ns = 0;        // exact speed: the game's frame period (ns), the last one seen
 double g_max_skew = 0.03;   // the most the game's speed may change (pop'n at 60 Hz: 2.6 %); HK_DISPLAY_SYNC_SKEW
@@ -268,6 +272,10 @@ void init(SDL_Window *win, bool enabled) {
 #ifdef HK_WITH_WAYLAND
     wayland_init();   // with display sync off too: the content type, and whether frames go out directly
 #endif
+#ifdef _WIN32
+    int64_t v, p;
+    if (enabled && dwm::vblank(v, p)) g_dwm = true, g_T = p, g_T_exact = true;
+#endif
     if (!enabled) announce("disabled", "off (--display-sync off): frames are shown as they come");
 }
 
@@ -372,6 +380,15 @@ bool frame(double period) {
 #ifdef HK_WITH_WAYLAND
     g_exact = g_smooth_motion && g_fifo && g_pres;
 #endif
+#ifdef _WIN32
+    // DWM's vblank: the refresh period, and the grid's phase (the commits' targets on it)
+    if (int64_t v, p; g_dwm && dwm::vblank(v, p)) {
+        g_T = p;
+        if (g_target > 0) g_target -= (g_target - v) - std::llround((double)(g_target - v) / (double)p) * p;
+        else g_target = v;
+    }
+    g_exact = g_smooth_motion && g_dwm;
+#endif
     if (g_exact) return frame_exact(period, hz);
     if (std::fabs(f - 1.0) > g_max_skew) {
         if (g_active) g_active = false;
@@ -472,20 +489,25 @@ double phase(int i) {
 bool can_fill_refreshes() {
 #ifdef HK_WITH_WAYLAND
     return g_active && g_fifo != nullptr;
+#elif defined(_WIN32)
+    return g_active && g_dwm;   // each refresh's picture committed at its own time (commit_extra)
 #else
     return false;
 #endif
 }
 
-// before a picture of the frame's own for one of its other refreshes: shown no sooner than the
-// refresh after the last one's (the swap that follows commits it)
-void commit_extra() {
+// before a picture of the frame's own for its refresh i (1 to k - 1): shown no sooner than the
+// refresh after the last one's (the swap that follows commits it). With fifo-v1 the compositor
+// holds it; with DWM's vblank (Windows) this waits for that refresh's commit time
+void commit_extra(int i) {
 #ifdef HK_WITH_WAYLAND
     if (g_fifo) {
         wp_fifo_v1_set_barrier(g_fifo);
         wp_fifo_v1_wait_barrier(g_fifo);
+        return;
     }
 #endif
+    if (g_dwm) sleep_until(g_target + (int64_t)i * g_T - g_lead);
 }
 
 void wait_next() {
@@ -529,6 +551,8 @@ std::string describe() {
              g_active ? "on" : "was on",
 #ifdef HK_WITH_WAYLAND
              g_fifo ? " (fifo)" : "",
+#elif defined(_WIN32)
+             g_dwm ? " (DWM's vblank)" : "",
 #else
              "",
 #endif

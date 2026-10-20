@@ -296,7 +296,7 @@ if(SDL3_FOUND)
     target_compile_definitions(hiraku_shell PRIVATE HK_WITH_SDL=1)
   endif()
   if(WIN32)   # WASAPI exclusive mode and ASIO (--audio-exclusive, --audio-asio: runtime/host/wasapi.h, asio.h)
-    target_sources(hiraku_host PRIVATE runtime/host/wasapi.cpp runtime/host/asio.cpp)
+    target_sources(hiraku_host PRIVATE runtime/host/wasapi.cpp runtime/host/asio.cpp runtime/host/dwm.cpp)
     target_link_libraries(hiraku_host PRIVATE ole32 avrt uuid)
   endif()
   # Wayland: the compositor's presentation times and fifo, for display pacing (runtime/host/pacing.h).

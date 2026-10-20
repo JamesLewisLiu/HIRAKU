@@ -884,7 +884,7 @@ void window_present(const uint32_t *rgb, int w, int h, double vsec) {
             if (i > 1 && !(between = core().render_between(pacing::phase(i), bw, bh))) between = rgb, bw = w, bh = h;
             picture::draw(between, bw, bh, (ww - vw) / 2, (wh - vh) / 2, vw, vh, ww, wh, g_mode);
             draw_overlays(ww, wh);
-            pacing::commit_extra();
+            pacing::commit_extra(i);
             SDL_GL_SwapWindow(g_win);
             g_in_between++;
         }

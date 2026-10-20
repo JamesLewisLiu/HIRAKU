@@ -23,6 +23,9 @@
 //   the frame's commit and k-1 empty ones, each waiting for the one before. Without it, KWin
 //   showed 1-10 % of frames a refresh early or late (its deadline wanders with its render-time
 //   estimate); with it, 0.03 % at 144 Hz (2 refreshes per frame) and 0.17 % at 240 Hz (4).
+// On Windows, DWM's composition timing (dwm.h) gives the refresh period and the last vblank: the
+// grid's phase each frame. There's no feedback on when a frame reached the screen, so the lead stays
+// half a refresh; smooth motion commits each refresh's picture at its own commit time.
 // Elsewhere (X11) the grid runs on the display mode's refresh rate, with an unknown phase.
 //
 // Off when the display doesn't fit (144 Hz for 58.49 Hz games), with fast-forward, or with
@@ -56,17 +59,18 @@ void wait_commit();
 void commit();
 void committed(bool hold = true);   // hold: the frame's other refreshes empty (it stays up)
 // Display pacing: refreshes per frame (k), and whether each refresh can be given a picture of
-// its own (fifo-v1: commit_extra() before each of the frame's k - 1 others, then committed(false))
+// its own (fifo-v1, or DWM's vblank on Windows: commit_extra(i) before each of the frame's k - 1
+// others, then committed(false))
 int refreshes_per_frame();
 bool can_fill_refreshes();
-// --smooth-motion: with fifo-v1, display pacing keeps the game at its own speed on any display and
+// --smooth-motion: with fifo-v1 (or DWM's vblank on Windows), display pacing keeps the game at its own speed on any display and
 // every refresh gets a picture (frame()'s refreshes_per_frame() varies: 2 or 3 at 144 Hz for a
 // 58 Hz game; 0: the frame isn't shown); exact_speed() says it's so, and phase(i) is refresh i's
 // moment in frames after the frame's (0 <= phase, the next frame's moment at 1)
 void set_smooth_motion(bool on);
 bool exact_speed();
 double phase(int i);
-void commit_extra();
+void commit_extra(int i);
 // Display pacing, after the swap: wait until the next frame's burst should start.
 void wait_next();
 // Read the compositor's presentation events (after SDL's event pump).

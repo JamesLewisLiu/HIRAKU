@@ -45,7 +45,7 @@ target_include_directories(hk_python_shell PUBLIC ${HK}/runtime ${HK}/include)
 target_compile_definitions(hk_python_shell PUBLIC HK_WITH_SDL=1)
 target_link_libraries(hk_python_shell PUBLIC SDL3::SDL3)
 if(WIN32)   # as HIRAKU's own build: Winsock (shell/net.h); WASAPI exclusive mode and ASIO (host/wasapi.h, asio.h)
-	target_sources(hk_python_shell PRIVATE ${HK}/runtime/host/wasapi.cpp ${HK}/runtime/host/asio.cpp)
+	target_sources(hk_python_shell PRIVATE ${HK}/runtime/host/wasapi.cpp ${HK}/runtime/host/asio.cpp ${HK}/runtime/host/dwm.cpp)
 	target_link_libraries(hk_python_shell PUBLIC ws2_32 PRIVATE ole32 avrt uuid)
 	# MSVC's <windows.h> has min and max macros in C++ too (mingw's only in C): asio.cpp and
 	# wasapi.cpp call std::max

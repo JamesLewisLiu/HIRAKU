@@ -174,8 +174,8 @@ SettingsDialog::SettingsDialog(QWidget *parent) : QDialog(parent) {
     m_smoothMotion->setChecked(s.value("video/smoothMotion", false).toBool());
     m_smoothMotion->setToolTip("With smooth frames on: the game at its exact speed on any display (60, 144, 240 Hz), "
                                "and every refresh a picture of its own moment, the notes and other moving objects "
-                               "carried on along their move. Best on a fast display. Wayland with the fifo protocol "
-                               "(KWin 6.7) only.");
+                               "carried on along their move. Best on a fast display. Windows, or Wayland with the "
+                               "fifo protocol (KWin 6.7).");
     fv->addRow("", m_smoothMotion);
     m_picture = new QComboBox;
     m_picture->addItem("Off: sharp pixels", "off");

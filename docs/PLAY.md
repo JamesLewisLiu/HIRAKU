@@ -290,7 +290,7 @@ runs the game on the display's refreshes:
 `--smooth-motion`): the game runs at its exact speed on any display (144 Hz too), and every
 refresh shows the notes and other moving things where they are at that refresh's moment, carried
 on along their move, instead of a frame held for 2 or 3 refreshes unevenly. Needs Wayland with
-the fifo protocol (KWin 6.7). See docs/SMOOTH.md.
+the fifo protocol (KWin 6.7), or Windows (new, checked under Wine only). See docs/SMOOTH.md.
 
 **When it's off:**
 - **A display that doesn't fit**, such as 144 Hz (58.49 × 2 = 117, × 3 = 175): frames are shown as

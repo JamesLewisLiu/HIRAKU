@@ -33,7 +33,12 @@ refresh):
   (runtime/host/pacing.cpp: `frame_exact` gives the frame's refreshes, `phase(i)` each one's
   moment, `commit_extra` commits it). The rest is display sync's (the commit's lead, the burst
   budget, the grid kept on the compositor's vblanks; the sound steered to its queue at speed 1).
-  Without fifo-v1 (KWin 6.7), or with display sync off, nothing changes;
+  On Windows there's no fifo: DWM's composition timing (runtime/host/dwm.cpp) gives the last
+  vblank and the refresh period, and each refresh's picture is committed at its own commit time
+  (half a refresh before its vblank; Windows says nothing of when a frame reached the screen, so
+  the lead isn't tuned as on Wayland). Checked under Wine only (pop'n music 4, beatmania: exact
+  speed, the in-between pictures counted as expected); on real Windows, not yet. Elsewhere (X11,
+  or Wayland without fifo-v1), or with display sync off, nothing changes;
 - the exit report says how many it showed (`video: smooth motion: N in-between pictures shown`).
 
 Use it: `--smooth-motion` (display sync on, the default), or the launcher's Settings > "Smooth

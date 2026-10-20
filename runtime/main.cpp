@@ -29,7 +29,8 @@
 //                       GCU's objects, the PlayStation GPU's primitives on Twinkle and System
 //                       573) instead of frames held for
 //                       uneven numbers of refreshes.
-//                       Needs the compositor's fifo-v1 (KWin 6.7). docs/SMOOTH.md
+//                       Needs the compositor's fifo-v1 (KWin 6.7), or Windows (DWM's vblank).
+//                       docs/SMOOTH.md
 //     --lights-overlay  the game's lights over its picture: every lamp the core decodes, lit or not
 //                       as the game drives it, and how often they change (F9 shows or hides it)
 //     --macro NAME[@F]  run one of the game's code macros (games/<game>/macros.txt) at frame F, or
