@@ -3945,6 +3945,7 @@ void psxgpu_device::hk_new_frame( uint32_t vblanks )
 	m_hk_drawing.clear();
 	m_hk_frame_vblanks = std::clamp<uint32_t>( vblanks, 1, 4 );
 	m_hk_vblanks = 0;
+	m_hk_frames++;
 	m_hk_frame_at.store( m_hk_write, std::memory_order_release );
 }
 
@@ -4002,6 +4003,8 @@ bool psxgpu_device::hk_between( double t, screen_device &screen, bitmap_rgb32 &b
 	// change with its light).
 	std::vector<uint32_t> items = m_hk_shown;
 	bool moved = false;
+	struct hk_move { size_t i; int dx, dy; };
+	std::vector<hk_move> moves; // what moved whole, and by how much
 	std::vector<const uint32_t *> before;
 	for( size_t i = 0; i < m_hk_shown_before.size(); i += m_hk_shown_before[ i + 1 ] )
 		before.push_back( &m_hk_shown_before[ i ] );
@@ -4094,10 +4097,26 @@ bool psxgpu_device::hk_between( double t, screen_device &screen, bitmap_rgb32 &b
 				std::abs( (int16_t)( c[ at[ v ] ] >> 16 ) - (int16_t)( match[ at[ v ] ] >> 16 ) - dy ) <= 1;
 		if( !whole )
 			continue;
-		const int mx = (int)std::lround( dx * on ), my = (int)std::lround( dy * on );
+		moves.push_back( { i, dx, dy } );
+	}
+	// carried on: what scrolls with the frame's other moving items along the scroll's steady line
+	// (hiraku/scroll_guess.h: notes step whole pixels, and carried on by their last step they
+	// judder), the rest by its last move
+	std::vector<std::pair<int, int>> steps;
+	for( const auto &m : moves )
+		steps.push_back( { m.dx, m.dy } );
+	m_hk_scroll.frame( m_hk_frames, steps );
+	for( const auto &m : moves )
+	{
+		int mx, my;
+		m_hk_scroll.offset( m.dx, m.dy, on, mx, my );
 		if( mx == 0 && my == 0 )
 			continue;
 		moved = true;
+		uint32_t *item = &items[ m.i ];
+		int at[ 4 ];
+		const int n = vertices( item[ 0 ] & 0xff, item[ 0 ] >> 8, at );
+		uint32_t *c = reinterpret_cast<draw_state *>( &item[ 2 ] )->m_packet.n_entry;
 		for( int v = 0; v < n; v++ )
 		{
 			const uint32_t w = c[ at[ v ] ];

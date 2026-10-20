@@ -20,6 +20,8 @@
 #include <thread>
 #include <vector>
 
+#include "hiraku/scroll_guess.h"
+
 #define PSXGPU_DEBUG_VIEWER ( 0 )
 
 DECLARE_DEVICE_TYPE(CXD8514Q,  cxd8514q_device)
@@ -321,6 +323,8 @@ private:
 	uint32_t m_hk_vblanks = 0;      // VBLANKs since the last frame began to show
 	uint32_t m_hk_frame_vblanks = 1; // ... and how many the frame before it showed for
 	uint32_t m_hk_no_flip = 1000;   // VBLANKs since the last flip
+	uint64_t m_hk_frames = 0;       // frames shown (hk_new_frame): the scroll guess counts once a frame
+	hk::ScrollGuess m_hk_scroll;    // what scrolls with the frame's other moving items: its steady line
 	// what the uploads (CPU-to-VRAM, MoveImage, fills) wrote over, kept by the drawing thread from the
 	// queue's position where the frame after the one on show begins: the textures and palettes that
 	// frame changes (the game prepares it while this one shows) put back while this one is drawn again

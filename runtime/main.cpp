@@ -8,6 +8,9 @@
 //   hiraku-<core> --game ID [options]   (a release's djmain, sys573, twinkle: one binary per core)
 //     --frames N        stop after N video frames (default: run until killed)
 //     --snap-every N    write every Nth frame as PPM into --out (default off)
+//     --snap-from F     ... from frame F on
+//     --snap-between N  with --smooth-motion, each snapshot's in-between pictures at 1/N, 2/N...
+//                       of a frame (default: halfway only)
 //     --out DIR         output directory for snapshots/trace (default out/run/<game>)
 //     --trace           write an oracle-format MMIO trace (out/mmio.bin), see oracle/
 //     --ata-log         log ATA/ATAPI commands
@@ -253,7 +256,7 @@ int main(int argc, char **argv) {
 #endif
     const std::string &game = opt.game;
     std::string out = opt.root + "/out/run/" + game;
-    uint64_t frames = 0, snap_every = 0, debug_every = 0;
+    uint64_t frames = 0, snap_every = 0, snap_from = 0, snap_between = 0, debug_every = 0;
     int window_scale = 0;
     std::string wav_path, digest_path, script_path, bindings, nvram_dir, lights_file, lights_socket;
     bool fullscreen = false;
@@ -282,6 +285,8 @@ int main(int argc, char **argv) {
         if (a == "--game") val();   // read above
         else if (a == "--frames") frames = std::stoull(val());
         else if (a == "--snap-every") snap_every = std::stoull(val());
+        else if (a == "--snap-from") snap_from = std::stoull(val());
+        else if (a == "--snap-between") snap_between = std::stoull(val());
         else if (a == "--out") out = val();
         else if (a == "--trace") opt.trace = true;
         else if (a == "--ata-log") opt.ata_log = true;
@@ -535,15 +540,20 @@ int main(int argc, char **argv) {
         host::readers_frame([&](int p, const std::string &n) { return machine.card_read(p, n); },
                             [&](const std::string &name, int v) { return machine.set_input(name, v); });
         host::bio2_frame(machine);
-        if (snap_every && f % snap_every == 0) {
+        if (snap_every && f >= snap_from && f % snap_every == 0) {
             char name[64];
             snprintf(name, sizeof name, "/frame%06llu.ppm", (unsigned long long)f);
             write_ppm(out + name, rgb, w, h);
-            // and with --smooth-motion, the picture halfway to the next frame (DJ Main: Firebeat's go
-            // with the window's picture, at the end of vblank after the game's flip, not this one)
-            int bw = w, bh = h;
-            if (const uint32_t *b = smooth_motion ? machine.render_between(0.5, bw, bh) : nullptr) {
-                snprintf(name, sizeof name, "/frame%06llu-half.ppm", (unsigned long long)f);
+            // and with --smooth-motion, the in-between pictures: halfway to the next frame, or with
+            // --snap-between N at 1/N, 2/N... (DJ Main: Firebeat's go with the window's picture, at
+            // the end of vblank after the game's flip, not this one)
+            for (uint64_t i = 1; smooth_motion && i < std::max<uint64_t>(snap_between, 2); i++) {
+                const double t = snap_between ? (double)i / (double)snap_between : 0.5;
+                int bw = w, bh = h;
+                const uint32_t *b = machine.render_between(t, bw, bh);
+                if (!b) b = rgb, bw = w, bh = h;   // nothing moved a whole pixel yet: the frame
+                if (snap_between) snprintf(name, sizeof name, "/frame%06llu-%03d.ppm", (unsigned long long)f, (int)(t * 1000 + 0.5));
+                else snprintf(name, sizeof name, "/frame%06llu-half.ppm", (unsigned long long)f);
                 write_ppm(out + name, b, bw, bh);
             }
         }

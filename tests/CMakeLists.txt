@@ -50,3 +50,8 @@ if(TARGET hiraku_host)
   add_test(NAME picture_engine COMMAND test_picture)
   set_tests_properties(picture_engine PROPERTIES SKIP_RETURN_CODE 77)
 endif()
+
+# Smooth motion's in-between pictures: the scroll guess (include/hiraku/scroll_guess.h)
+add_executable(test_scroll_guess smooth/test_scroll_guess.cpp)
+target_include_directories(test_scroll_guess PRIVATE ${CMAKE_SOURCE_DIR}/include)
+add_test(NAME scroll_guess COMMAND test_scroll_guess)

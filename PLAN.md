@@ -1169,6 +1169,20 @@ milestone now (M17). Python 2's disk is later. Firebeat code patches are done
 (2026-10-20): a recompiled function's entry poll, the executor's calls and the dispatch send a
 changed function to the interpreter (docs/MODS.md, Per core).
 
+### Smooth motion: the scroll guess (2026-10-20)
+
+The owner saw a lot of judder in the notes with smooth motion (pop'n music 8, beatmania IIDX 7th style, 240 Hz).
+The in-between pictures carried each object on by its last move, but notes scroll in whole pixels (pop'n 8: 2, 3,
+3...), so after a 3 they went 3 on, the next frame moved them 2, and they stepped back: one refresh in twenty at
+240 Hz, 0.57 px off a steady line. Now each core (Firebeat GCU, DJ Main, the PlayStation GPU) takes the move most
+of a frame's moving objects share as the scroll and carries what moves with it along the steady line through its
+last six positions (include/hiraku/scroll_guess.h; the frame's first refresh drawn too): 0.29 px, the pixels' own
+rounding, no step back (tests/smooth; pop'n 8's How to Play logged: falling notes on the line, rising arrows on
+their own). IIDX at normal speed moves a line a frame of 240: nothing between to show; the step now falls at the
+same point each frame. Regress identical (the guess runs only for in-between pictures). `--snap-from`,
+`--snap-between N` write in-between pictures headless (Firebeat's belong to the window's picture, so compare
+them among themselves). Left: the owner's eyes again.
+
 ### Pilot: pop'n music 8 unlocks (done)
 
 - **What the phase is:** the event phase is one byte of the RTC NVRAM, kept three times
@@ -2365,7 +2379,13 @@ outside the repo) is where the lessons in "What carries over" come from.
    monitors (`Core::monitor_turned`) sweep left to right. Not with split windows, nor the Python core.
    `tests/picture` checks each refresh against the formula and that the refreshes' light adds up to the frames'
    times the gain (4, 2.4, 4.004 refreshes a frame); in a nested KWin (60 Hz) games run with it and say why it's
-   off. Left: the owner's eyes on 240 and 144 Hz displays (gamma, gain, banding, any flicker from late refreshes).
+   off. **Owner's test (2026-10-20):** Lola Retro "perfect"; the beam showed a slow, wavy change of brightness.
+   The cause: the original's curve (the sRGB formula with its exponent replaced: sRGB at its default 2.4, but at
+   2.2 a curve no display has, 5-10 % off a 2.2 display) and, at exact speed, the light's split over the refreshes
+   drifting (4.004 refreshes a frame: a cycle every 4 s), which turns any mismatch into a wave (simulated: 2-16 %
+   swings at 4.004, none at 4.0). Fixed: plain power curves, and the beam takes whole refreshes where the display
+   is within 0.5 % (`pacing::set_whole_refreshes`: 59.94 Hz games at 120/240 Hz, 0.1 % faster). Left: the
+   owner's eyes again, and pop'n music / DJ Main (58.49, 58 Hz) still drift.
 4. **Not first:** the Python core (pop'n 9-14 draw through Reliquary's GS, and smooth notes run those games at the
    display's rate, where a beam simulation doesn't apply); HDR output.
 5. **Check:** offline, the beam pass's output summed over a game frame's refreshes equals the frame in linear light

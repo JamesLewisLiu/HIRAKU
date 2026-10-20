@@ -12,6 +12,8 @@
 #include <memory>
 #include <vector>
 
+#include "hiraku/scroll_guess.h"
+
 namespace hk {
 
 class K057714 {
@@ -78,6 +80,7 @@ private:
     bool m_keep = false, m_replaying = false;
     Drawn m_drawing, m_shown;
     std::vector<Cmd> m_shown_before;                        // the commands of the frame before m_shown
+    hk::ScrollGuess m_scroll;                               // in-between pictures: where what scrolls goes
     std::vector<uint32_t> m_row_mark, m_restore_rows, m_restore;
     uint32_t m_mark = 0, m_replay_mark = 0;
     int m_span0 = 0, m_span1 = 512;                         // a replay: the words of each row it keeps

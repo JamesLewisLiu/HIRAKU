@@ -3,7 +3,8 @@
 // HIRAKU's changes: the source frames are the game's own two latest pictures (the one the beam is
 // drawing, and the one before it fading), not a demo's scrolled copies; the beam's place comes from
 // the refresh's real moment in the game's frame (pacing::phase), not a refresh counter, so any
-// display/game ratio works without the LCD-inversion slew; the frame the beam starts after this
+// display/game ratio works without the LCD-inversion slew; plain power curves for the display's
+// response (the original's sRGB-shaped one matches no display at gamma 2.2); the frame the beam starts after this
 // one isn't there yet, so a refresh that crosses into it draws this one's again there (the light
 // stays the same); the scan can run left to right in each of several tubes (monitors turned on
 // their side).
@@ -53,18 +54,12 @@ uniform float Gain;          // brightness against motion blur (GAIN_VS_BLUR)
 uniform int Scan;            // 1: top to bottom; 3: left to right in each tube
 uniform float Tubes;         // tubes side by side (Scan 3)
 
-// sRGB with the display's gamma, as the original (whose clamp(x, lo, hi) has lo above hi for most
-// values, which GLSL leaves undefined: written here as the min(max()) drivers do)
-float linear2srgb(float c) {
-    vec3 j = vec3(0.0031308 * 12.92, 12.92, 1.0 / Gamma);
-    vec2 k = vec2(1.055, -0.055);
-    return min(max(j.x, c * j.y), pow(c, j.z) * k.x + k.y);
-}
-float srgb2linear(float c) {
-    vec3 j = vec3(0.04045, 1.0 / 12.92, Gamma);
-    vec2 k = vec2(1.0 / 1.055, 0.055 / 1.055);
-    return c > j.x ? pow(c * k.x + k.y, j.z) : c * j.y;
-}
+// The display's response, a power curve: what "gamma 2.2" means for a display. (The original
+// writes the sRGB formula with its exponent replaced, which is sRGB itself at 2.4 but no display's
+// curve at 2.2: the mismatch, 5-10 %, came out as a slow wave of brightness when the light's split
+// over the refreshes drifts, as it does at exact speed.)
+float linear2srgb(float c) { return pow(max(c, 0.0), 1.0 / Gamma); }
+float srgb2linear(float c) { return pow(c, Gamma); }
 vec3 linear(vec3 c) { return vec3(srgb2linear(c.r), srgb2linear(c.g), srgb2linear(c.b)); }
 
 #define OVERLAP(a0, a1, b0, b1) max(0.0, min(a1, b1) - max(a0, b0))

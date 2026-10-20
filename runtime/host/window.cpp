@@ -214,6 +214,7 @@ void window_set_smooth_motion(bool on) { g_smooth_motion = on, pacing::set_smoot
 void window_set_beam(bool on, float gamma, float gain) {
     g_beam = on, g_beam_gamma = gamma, g_beam_gain = gain;
     pacing::set_smooth_motion(on || g_smooth_motion);   // the game at its own speed, every refresh a picture
+    pacing::set_whole_refreshes(on);                     // ... the same refreshes every frame where it nearly fits
 }
 
 void window_set_audio_output(const std::string &device, int frames, bool exclusive) {
@@ -889,7 +890,9 @@ void window_present(const uint32_t *rgb, int w, int h, double vsec) {
         const bool exact = !beam && sync && g_smooth_motion && !g_split && pacing::exact_speed();
         const uint32_t *first = rgb;
         int fw = w, fh = h;
-        if (exact && pacing::phase(0) > 0.01)
+        // (at its moment too: what scrolls is drawn on the scroll's steady line, up to a pixel off
+        // the frame's own place: hiraku/scroll_guess.h)
+        if (exact)
             if (const uint32_t *b = core().render_between(pacing::phase(0), fw, fh)) first = b;
         // the game's frame number: the shaders' FrameCount, and what makes the in-between pictures
         // below refreshes of this frame for them (picture.h)

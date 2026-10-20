@@ -74,8 +74,8 @@ void expect(const char *what, const int got[3], int r, int g, int b) {
 // The beam's formula (beam_shader.h) in C++: the window's value (0-1) at tube position `tube` (0
 // top), for this refresh, from the two latest pictures' values
 double beam_ref(double now, double before, double tube, double phase, double fph, double gamma, double gain) {
-    auto lin = [&](double c) { return c > 0.04045 ? std::pow(c / 1.055 + 0.055 / 1.055, gamma) : c / 12.92; };
-    auto enc = [&](double c) { return std::min(std::max(0.04045, c * 12.92), std::pow(c, 1.0 / gamma) * 1.055 - 0.055); };
+    auto lin = [&](double c) { return std::pow(c, gamma); };
+    auto enc = [&](double c) { return std::pow(std::max(c, 0.0), 1.0 / gamma); };
     auto ov = [](double a0, double a1, double b0, double b1) { return std::max(0.0, std::min(a1, b1) - std::max(a0, b0)); };
     const double b = lin(before) * fph * gain, n = lin(now) * fph * gain, t = tube * fph, f0 = phase * fph, f1 = f0 + 1;
     return std::clamp(enc(ov(t - fph, t - fph + b, f0, f1) + ov(t, t + n, f0, f1) + ov(t + fph, t + fph + n, f0, f1)), 0.0, 1.0);
@@ -198,7 +198,7 @@ void main() { FragColor = vec4(texture(PassFeedback0, vTex).r + 1.0 / 255.0, tex
     // linear terms, is the frames' times the gain (the "photon budget"; the run's ends shift it by
     // less than a frame's)
     const double gamma = 2.2, gain = 0.7;
-    auto lin = [&](double c) { return c > 0.04045 ? std::pow(c / 1.055 + 0.055 / 1.055, gamma) : c / 12.92; };
+    auto lin = [&](double c) { return std::pow(c, gamma); };   // the display's response, as the beam takes it
     for (double fph : {4.0, 2.4, 4.004}) {
         start();   // nothing kept: the frame before the first is black
         if (!hk::host::picture::set_beam(true, {(float)gamma, (float)gain, false, 1})) {

@@ -31,6 +31,7 @@ namespace {
 
 bool g_smooth_motion = false;  // set_smooth_motion: the game at its own speed, every refresh a picture (fifo)
 bool g_exact = false;          // ... and in use (fifo-v1 and presentation-time there, or DWM's vblank)
+bool g_whole = false;          // set_whole_refreshes: a whole number of refreshes a frame where it nearly fits
 bool g_dwm = false;            // Windows: DWM says when the display refreshes (dwm.h)
 double g_frame_at = 0;         // exact speed: when the current frame's moment is, on the steady clock (ns)
 double g_period_ns = 0;        // exact speed: the game's frame period (ns), the last one seen
@@ -309,6 +310,7 @@ void pump() {
 }
 
 void set_smooth_motion(bool on) { g_smooth_motion = on; }
+void set_whole_refreshes(bool on) { g_whole = on; }
 
 // --smooth-motion: the game at its own speed. Each frame has a moment on the steady clock, one
 // period after the last; it gets the refreshes from the first at or after its moment up to the
@@ -389,6 +391,11 @@ bool frame(double period) {
     }
     g_exact = g_smooth_motion && g_dwm;
 #endif
+    // the CRT beam: the same refreshes every frame where the display is within 0.5 % of a whole
+    // number of them (59.94 Hz games at 120 or 240 Hz: the game 0.1 % faster); at exact speed the
+    // light's split over the refreshes drifts, and any mismatch with the display's response shows
+    // as a slow wave of brightness
+    if (g_exact && g_whole && k >= 2 && std::fabs(f - 1.0) <= 0.005) g_exact = false;
     if (g_exact) return frame_exact(period, hz);
     if (std::fabs(f - 1.0) > g_max_skew) {
         if (g_active) g_active = false;

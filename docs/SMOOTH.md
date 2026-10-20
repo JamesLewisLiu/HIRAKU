@@ -52,10 +52,25 @@ smoother; at 60 Hz it mostly evens out the frame that would be held twice every 
 Checked in a virtual KWin (60 Hz): pop'n 3 and pop'n 4 at their own 58.00 and 58.49 Hz, every
 refresh on time, each refresh's moment 1/30 of a frame on from the last's (60 against 58 Hz).
 
-It's a guess one frame ahead: a note's next position is where its last move takes it. Notes
-scroll at a steady speed, so the guess is right while they keep moving; where something stops,
-turns or appears, its in-between pictures carry it on up to a frame too far (at most a
-refresh's worth of time) before the next frame puts it right. The judgement, the sound and
+It's a guess one frame ahead. Notes scroll at a steady speed, but in whole pixels: pop'n music 8's
+step 2, 3, 3, 2, 3, 3 pixels a frame. Carried on by its last step, a note went 3 on after a 3, the
+next frame moved it 2, and it stepped back a pixel: at 240 Hz one refresh in twenty went back, and
+the notes were 0.57 px (sd) off a steady line, which showed as judder (owner, 2026-10-20, pop'n
+music 8 and beatmania IIDX 7th style). So each core takes the move most of a frame's moving
+objects share as the scroll, keeps its position over the last six frames, and carries what moves
+with it along the steady line through them (include/hiraku/scroll_guess.h): the average speed,
+from where the line puts this frame, up to a pixel off the frame's own place (so the frame's first
+refresh is drawn too, not shown as it is). The notes are then 0.29 px off the line (the whole
+pixels' own rounding) and never step back (tests/smooth, at 1 to 4.6 pixels a frame, 144 and 240
+Hz; pop'n 8's How to Play: the falling notes on the line, the rising arrows on their own). What
+doesn't move with the scroll still goes by its last move: where something stops, turns or
+appears, its in-between pictures carry it on up to a frame too far (at most a refresh's worth of
+time) before the next frame puts it right.
+
+A game's resolution still sets the steps: beatmania IIDX draws 240 lines, and at normal speed its
+notes move one line a frame, so there's no place between; the guess then puts that line's step at
+the same point of every frame. The faster the notes (hi-speed), the more the in-between pictures
+add. The judgement, the sound and
 the latency are the game's own: the in-between pictures add nothing between pressing a button and
 the game seeing it.
 
@@ -191,9 +206,17 @@ more, so the picture keeps most of its brightness).
   with fifo-v1, KWin 6.7) and a display at least twice the game's rate: 120 Hz and up, best at 240
   (four refreshes a 60 Hz frame). Below that, or without those, the game says why at exit
   ("CRT beam: ... without (...)").
-- **The display:** SDR, its gamma set to match (2.2 by default; 2.4 if the display is set so: a
-  mismatch shows as horizontal bands and washed-out colour), its ABL/APL and its own strobing or
-  black frame insertion off. HDR modes and local dimming fight the per-refresh brightness.
+- **The display:** SDR, its gamma set to match (2.2 by default, as most displays and KDE Plasma's
+  SDR output; 2.4 if the display is set so: a mismatch shows as bands, washed-out colour, or a slow
+  wave of brightness), its ABL/APL and its own strobing or black frame insertion off. HDR modes and
+  local dimming fight the per-refresh brightness.
+- **The same refreshes every frame where possible:** where the display is within 0.5 % of a whole
+  number of refreshes a frame (59.94 Hz games at 120 or 240 Hz), the game runs that much faster
+  (0.1 %) and every frame gets the same refreshes. At the game's exact speed the light's split over
+  the refreshes drifts (4.004 refreshes a frame: a cycle every 4 s), and then any difference
+  between the display's response and the gamma setting comes out as a slow, wavy change of
+  brightness (owner, 2026-10-20: "a slow strobe"). Other games (pop'n music's 58.49 Hz, DJ Main's
+  58) keep their exact speed, and the drift with it.
 - **Brightness** (`gain`, 0.7): lower is sharper and darker; about 0.5 at 120 Hz.
 - **Any picture mode:** the mode (sharp, light, full, analog) draws each frame once into a picture
   at the window's size; the beam's pass, every refresh, reads the frame's picture and the one
@@ -201,6 +224,9 @@ more, so the picture keeps most of its brightness).
 
 How HIRAKU runs it (runtime/host/beam_shader.h, picture.cpp, window.cpp):
 
+- The display's response is a power curve (`Gamma`). The original writes the sRGB formula with its
+  exponent replaced: sRGB itself at 2.4, its default, but at 2.2 a curve no display has, 5-10 %
+  off a 2.2 display, which with the drift above made the slow wave.
 - The beam's place comes from time, not a counter: display pacing at the game's own speed
   (`pacing::phase(i)`, the same moments as the in-between pictures) gives each refresh's moment in
   the frame, and `pacing::refreshes_in_frame()` the display's refreshes per frame (2.4 for a 60 Hz

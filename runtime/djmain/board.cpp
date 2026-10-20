@@ -14,6 +14,7 @@
 #include <memory>
 
 #include "../core/prof.h"
+#include "hiraku/scroll_guess.h"
 #include "../dev/ata.h"
 #include "../shell/cabinet.h"
 #include "k054539.h"
@@ -823,7 +824,10 @@ uint64_t frame_count() { return g_frame; }
 // sprite list every frame, slots in another order (pop'n music: a note's slot changes as notes
 // come and go), so a sprite is matched to the nearest one of the frame before with the same tile,
 // within 16 pixels each way; one without a match, or that hasn't moved, stays where it is. The
-// tilemaps are as they are. A sprite that stops or turns overshoots for less than a frame.
+// tilemaps are as they are. A sprite that stops or turns overshoots for less than a frame. What
+// scrolls with the frame's other moving sprites goes along the scroll's steady line
+// (hiraku/scroll_guess.h): notes step whole pixels, and carried on by their last step they judder.
+hk::ScrollGuess g_scroll;
 const uint32_t *render_between(double t) {
     if (g_shown_objram.size() != g_objram.size() || g_prev_objram.size() != g_objram.size()) return nullptr;
     struct Spr { int code, x, y; };
@@ -838,6 +842,7 @@ const uint32_t *render_between(double t) {
     const std::vector<Spr> cur = list(g_shown_objram), prev = list(g_prev_objram);
     std::vector<uint8_t> moved = g_shown_objram;
     std::vector<bool> taken(128, false);
+    std::vector<std::pair<int, int>> moves(128, {0, 0});
     for (int i = 0; i < 128; i++) {
         const Spr &c = cur[i];
         if (c.code < 0) continue;
@@ -850,7 +855,15 @@ const uint32_t *render_between(double t) {
         }
         if (best < 0 || best_d == 0) continue;
         taken[best] = true;
-        const int x = c.x + (int)std::lround((c.x - prev[best].x) * t), y = c.y + (int)std::lround((c.y - prev[best].y) * t);
+        moves[i] = {c.x - prev[best].x, c.y - prev[best].y};
+    }
+    g_scroll.frame(g_frame, moves);
+    for (int i = 0; i < 128; i++) {
+        if (!moves[i].first && !moves[i].second) continue;
+        int ox, oy;
+        g_scroll.offset(moves[i].first, moves[i].second, t, ox, oy);
+        if (!ox && !oy) continue;
+        const int x = cur[i].x + ox, y = cur[i].y + oy;
         put_be32(moved, (uint32_t)i * 16 + 4, (uint32_t)(uint16_t)x | (uint32_t)(uint16_t)y << 16, 0xffffffffu);
     }
     // drawn as screen_update() draws, into g_between, the machine's own state untouched

@@ -561,8 +561,25 @@ bool K057714::draw_between(uint32_t *out, int width, int height, double t) {
     if (m_shown.cmds.empty() || m_shown_before.empty()) return false;
     // Each object drawn is matched with the nearest of the frame before's that looks the same (its
     // size and scale, and its picture or height: a note moving off the lane gets shorter, an
-    // animated one changes picture) within 16 pixels, and carried on by that move
+    // animated one changes picture) within 16 pixels, and carried on by that move: what scrolls
+    // with the frame's other moving objects along the scroll's steady line (hiraku/scroll_guess.h)
     std::vector<Cmd> cmds = m_shown.cmds;
+    std::vector<std::pair<int, int>> moves(cmds.size(), {0, 0});
+    for (size_t k = 0; k < cmds.size(); k++) {
+        const Cmd &c = cmds[k];
+        if (((c[0] >> 29) & 7) != 5) continue;
+        const int x = c[1] & 0x3ff, y = (c[1] >> 10) & 0x3fff;
+        int best = 1 << 30;
+        for (const Cmd &b : m_shown_before) {
+            if (((b[0] >> 29) & 7) != 5 || b[2] != c[2] || (b[1] & 0xff000000) != (c[1] & 0xff000000)) continue;
+            if (b[0] != c[0] && b[3] != c[3]) continue;
+            const int bx = b[1] & 0x3ff, by = (b[1] >> 10) & 0x3fff;
+            const int d = std::abs(x - bx) + std::abs(y - by) + (b[0] != c[0] ? 8 : 0) + (b[3] != c[3] ? 8 : 0);
+            if (std::abs(x - bx) > 16 || std::abs(y - by) > 16 || d >= best) continue;
+            best = d, moves[k] = {x - bx, y - by};
+        }
+    }
+    m_scroll.frame(m_mark, moves);
     bool moved = false;
     if (m_clip_row.empty()) m_clip_row.assign(ROWS, 0);
     std::fill(m_clip_row.begin(), m_clip_row.end(), 0);
@@ -573,16 +590,9 @@ bool K057714::draw_between(uint32_t *out, int width, int height, double t) {
         Cmd &c = cmds[k];
         if (((c[0] >> 29) & 7) != 5) continue;
         const int x = c[1] & 0x3ff, y = (c[1] >> 10) & 0x3fff;
-        int best = 1 << 30, dx = 0, dy = 0;
-        for (const Cmd &b : m_shown_before) {
-            if (((b[0] >> 29) & 7) != 5 || b[2] != c[2] || (b[1] & 0xff000000) != (c[1] & 0xff000000)) continue;
-            if (b[0] != c[0] && b[3] != c[3]) continue;
-            const int bx = b[1] & 0x3ff, by = (b[1] >> 10) & 0x3fff;
-            const int d = std::abs(x - bx) + std::abs(y - by) + (b[0] != c[0] ? 8 : 0) + (b[3] != c[3] ? 8 : 0);
-            if (std::abs(x - bx) > 16 || std::abs(y - by) > 16 || d >= best) continue;
-            best = d, dx = x - bx, dy = y - by;
-        }
-        const int nx = x + (int)std::lround(dx * t), ny = y + (int)std::lround(dy * t);
+        int ox, oy;
+        m_scroll.offset(moves[k].first, moves[k].second, t, ox, oy);
+        const int nx = x + ox, ny = y + oy;
         if ((nx == x && ny == y) || nx < 0 || nx > 0x3ff || ny < 0 || ny > 0x3fff) continue;
         c[1] = (c[1] & ~0xffffffu) | (c[1] & 0xff000000u) | (uint32_t)ny << 10 | (uint32_t)nx;
         moved = true;
