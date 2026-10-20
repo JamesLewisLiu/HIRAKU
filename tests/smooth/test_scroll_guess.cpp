@@ -184,6 +184,50 @@ int main() {
                wrong, paired, frames);
         if (wrong) fail++;
     }
+    // A row of identical sprites 20 pixels apart whose picture flickers each frame (beatmania
+    // IIDX's gauge): each could have stood still (its picture changed) or taken its neighbour's
+    // place (the same picture); it stands still, no scroll sideways
+    {
+        hk::ScrollGuess g;
+        int wrong = 0;
+        for (int f = 1; f < 10; f++) {
+            std::vector<hk::ScrollGuess::Candidate> cands;
+            for (int i = 0; i < 12; i++)
+                for (int j = std::max(0, i - 3); j <= std::min(11, i + 3); j++)   // within REACH: 3 each side
+                    cands.push_back({i, j, (i - j) * 20, 0, i == j ? 8 : 0, true});
+            const std::vector<int> pick = g.pair((uint64_t)f, 12, cands);
+            std::vector<std::pair<int, int>> moves(12, {0, 0});
+            for (int i = 0; i < 12; i++) {
+                if (pick[(size_t)i] >= 0) moves[(size_t)i] = {cands[(size_t)pick[(size_t)i]].dx, cands[(size_t)pick[(size_t)i]].dy};
+                if (moves[(size_t)i] != std::pair<int, int>{0, 0}) wrong++;
+            }
+            g.frame((uint64_t)f, moves);
+        }
+        printf("a flickering row of look-alikes 20 apart: %d paired with a neighbour\n", wrong);
+        if (wrong) fail++;
+    }
+    // A key flash lit in one lane for 9 frames, then in the next, 16 pixels on (beatmania IIDX, keys
+    // played in turn): a jump, not a move (paired, it was drawn between the lanes); notes falling 1
+    // a frame beside it still move
+    {
+        hk::ScrollGuess g;
+        int jumped = 0, notes = 0;
+        for (int f = 1; f < 40; f++) {
+            const int lane = f / 9, was_lane = (f - 1) / 9;
+            // object 0: the flash (it was object 0 too), objects 1-2: notes falling 1 a frame
+            std::vector<hk::ScrollGuess::Candidate> cands = {{0, 0, (lane - was_lane) * 16, 0, 0, true},
+                                                             {1, 1, 0, 1, 0, true}, {2, 2, 0, 1, 0, true}};
+            const std::vector<int> pick = g.pair((uint64_t)f, 3, cands);
+            std::vector<std::pair<int, int>> moves(3, {0, 0});
+            for (int i = 0; i < 3; i++)
+                if (pick[(size_t)i] >= 0) moves[(size_t)i] = {cands[(size_t)pick[(size_t)i]].dx, cands[(size_t)pick[(size_t)i]].dy};
+            if (moves[0].first) jumped++;
+            if (moves[1].second == 1 && moves[2].second == 1) notes++;
+            g.frame((uint64_t)f, moves, {pick[0] >= 0 ? 0 : -1, 1, 2});
+        }
+        printf("a key flash lit in the next lane: carried there %d times of 4, notes moving %d frames of 39\n", jumped, notes);
+        if (jumped || notes != 39) fail++;
+    }
     if (fail) {
         fprintf(stderr, "%d failed\n", fail);
         return 1;

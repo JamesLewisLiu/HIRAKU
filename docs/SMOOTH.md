@@ -83,7 +83,21 @@ Which object was which in the frame before is a pairing of look-alikes. The firs
 within 16 pixels; something fast can be further on, or nearer another look-alike's last place. So
 each object's look-alikes within 64 pixels are listed, the scroll is voted first (every object
 counted once near each move it could have made), and each object takes the look-alike nearest to
-standing still or to the scroll's move, within 16 of either.
+standing still or to the scroll's move, within 16 of either. Two things keep it from taking one
+object for another (most likely the owner's ghost notes beside real ones in beatmania IIDX 7th style,
+2026-10-20; seen in its play case, not in the owner's play):
+- standing still is voted too: an object with a look-alike at its own place (its picture changed)
+  votes for that, and a scroll needs more votes. A row of identical sprites 20 pixels apart whose
+  picture flickers otherwise voted for a move of 20 sideways, each then paired with its neighbour;
+- a look-alike with a steady line of its own is taken only near that line (within 8 pixels), or
+  with the scroll: IIDX's key flash, lit in one lane and then the next 16 pixels on, was drawn
+  halfway between the lanes. Now it just appears in the next, as the game draws it.
+
+The pairing is done once a frame on the PlayStation GPU (each refresh's picture shares it), each
+primitive compared only with those of the frame before with its command and colour in its 64-pixel
+cell and the eight around, and the votes counted in a grid of moves: a screen of 943 identical
+tiles between scenes had made one in-between picture 19 ms, four or five a frame at 240 Hz (the
+owner's lag between scenes); now at most 4.3 ms, mostly the drawing.
 
 A game's resolution still sets the steps: beatmania IIDX draws 240 lines, and at normal speed its
 notes move one line a frame, so there's no place between; the guess then puts that line's step at

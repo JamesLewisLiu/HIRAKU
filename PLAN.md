@@ -1205,6 +1205,14 @@ first and looks 64 px away (it took the nearest within 16); pop'n 8's notes pair
 pixel narrower with a new picture left them unpaired for a frame); the copy's rows are coupled until nothing
 changes (at buffer row 0 the strip's rows are screen rows too: notes split). Result: 0.35 px off, none back
 (whole pixels alone: 0.29). IIDX's and DJ Main's pairing changed the same way, not traced at hi-speed.
+Fifth test: pop'n 8 perfect; IIDX 7th: ghost notes in the lanes beside real ones, and lag spikes between scenes.
+Traced with the bmiidx7a-play case in the window: the lag was the pairing (68000 candidates on a screen of identical
+tiles, a std::map of votes: 19 ms a picture, at 240 Hz four or five a frame); now once a frame on the PlayStation
+GPU, candidates by command, colour and 64-pixel cell, votes in a grid of moves, objects with an exact look-alike at
+their place not voting: at most 4.3 ms. The ghosts, most likely (seen in the play case, not the owner's play): identical sprites a lane apart paired, by a
+sideways "scroll" a flickering row voted for (now standing still is voted too) and by IIDX's key flash moving
+lane to lane (now a pairing far off the look-alike's own steady line is a jump: not carried). tests/smooth has
+both; pop'n 8 at x4 unchanged (0.33 px).
 
 ### Pilot: pop'n music 8 unlocks (done)
 

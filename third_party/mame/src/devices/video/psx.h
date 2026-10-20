@@ -18,6 +18,7 @@
 #include <deque>
 #include <memory>
 #include <thread>
+#include <unordered_map>
 #include <vector>
 
 #include "hiraku/scroll_guess.h"
@@ -325,6 +326,10 @@ private:
 	uint32_t m_hk_no_flip = 1000;   // VBLANKs since the last flip
 	uint64_t m_hk_frames = 0;       // frames shown (hk_new_frame): the scroll guess counts once a frame
 	hk::ScrollGuess m_hk_scroll;    // what scrolls with the frame's other moving items: its steady line
+	struct hk_move { size_t i; int n, dx, dy; };
+	std::vector<hk_move> m_hk_moves; // the frame's pairing: what moved whole, and by how much (its item, its number among them)
+	uint64_t m_hk_moves_frame = ~uint64_t( 0 ); // ... for this frame
+	size_t m_hk_moves_size = 0;
 	// what the uploads (CPU-to-VRAM, MoveImage, fills) wrote over, kept by the drawing thread from the
 	// queue's position where the frame after the one on show begins: the textures and palettes that
 	// frame changes (the game prepares it while this one shows) put back while this one is drawn again

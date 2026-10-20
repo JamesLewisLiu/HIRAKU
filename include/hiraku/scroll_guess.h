@@ -48,6 +48,7 @@ public:
     static constexpr int N = 6;   // frames the line goes through
     static constexpr int REACH = 64;   // the furthest an object is looked for, each way, in the frame before
     static constexpr int NEAR = 16;    // ... and taken: this near standing still or the scroll's move
+    static constexpr double JUMP = 8;  // ... and this near the look-alike's own speed, if it has one
 
     // That object `obj` of this frame may be `from` of the frame before, moved (dx, dy); `cost`, how
     // different it looks (0: the same); `whole`, whether it moved as one piece (only those vote).
@@ -61,44 +62,72 @@ public:
             m_pair_frame = frame;
             m_hint_x = m_cx, m_hint_y = m_cy;
         }
-        // votes: for each move, the objects with a candidate within a pixel of it
-        std::map<std::pair<int, int>, std::pair<int, int>> votes;   // move -> (objects, the last one counted + 1)
+        // votes: for each move, the objects with a candidate within a pixel of it. An object with its
+        // exact look-alike at its own place stands still and doesn't vote: a screen of identical
+        // tiles (beatmania IIDX between scenes, 598) listed 68000 candidates, 15 ms of voting
+        std::vector<bool> still((size_t)objects, false);
+        for (const Candidate &c : cands)
+            if (!c.dx && !c.dy && !c.cost && c.obj >= 0 && c.obj < objects) still[(size_t)c.obj] = true;
+        // (counted in a grid of the moves within REACH, a pixel more each way: a map of them took 10 ms
+        // for 60000 candidates of moving tiles)
+        constexpr int R = REACH + 1, W = 2 * R + 1;
+        m_votes.assign((size_t)W * W, 0);
+        m_voter.assign((size_t)W * W, 0);   // the last object counted there, + 1
         for (const Candidate &c : cands) {
-            if (!c.whole || (!c.dx && !c.dy)) continue;
+            if (!c.whole || (!c.dx && !c.dy) || still[(size_t)c.obj] || std::abs(c.dx) > REACH || std::abs(c.dy) > REACH) continue;
             for (int ex = -1; ex <= 1; ex++)
                 for (int ey = -1; ey <= 1; ey++) {
-                    auto &v = votes[{c.dx + ex, c.dy + ey}];
-                    if (v.second != c.obj + 1) v.first++, v.second = c.obj + 1;
+                    const size_t k = (size_t)(c.dx + ex + R) * W + (size_t)(c.dy + ey + R);
+                    if (m_voter[k] != c.obj + 1) m_votes[k]++, m_voter[k] = c.obj + 1;
                 }
         }
         int best = 0;
-        for (const auto &[m, v] : votes) best = std::max(best, v.first);
-        bool scroll = best >= 2;
+        for (const int v : m_votes) best = std::max(best, v);
+        // and against standing still: an object that may be where it was (a look-alike at its own
+        // place, its picture changed) votes for that. A row of identical sprites flickering to the
+        // beat (beatmania IIDX's gauge, 20 pixels apart) otherwise voted for a move of 20 sideways,
+        // each then paired with its neighbour and drawn up to a lane over: ghost notes
+        int stay = 0, counted = -1;
+        for (const Candidate &c : cands)
+            if (!c.dx && !c.dy && !still[(size_t)c.obj] && c.obj != counted) stay++, counted = c.obj;
+        bool scroll = best >= 2 && best > stay;
         int sx = 0, sy = 0;
         if (scroll) {
             // of the moves with the most, the one nearest the frame before's scroll, else the smallest;
             // the frame before's own kept while it has two thirds of the most (a stream of notes
             // evenly spaced also votes for each note having taken the place of the one ahead)
             const bool hint = m_hint_x || m_hint_y;
-            auto far = [&](const std::pair<int, int> &m) {
-                return hint ? std::fabs(m.first - m_hint_x) + std::fabs(m.second - m_hint_y) : std::abs(m.first) + std::abs(m.second) + 0.0;
+            auto far = [&](int mx, int my) {
+                return hint ? std::fabs(mx - m_hint_x) + std::fabs(my - m_hint_y) : std::abs(mx) + std::abs(my) + 0.0;
             };
-            const std::pair<int, int> *pick = nullptr, *kept = nullptr;
-            for (const auto &[m, v] : votes) {
-                if (v.first == best && (!pick || far(m) < far(*pick))) pick = &m;
-                if (hint && std::fabs(m.first - m_hint_x) <= 1.5 && std::fabs(m.second - m_hint_y) <= 1.5 && v.first >= 2 &&
-                    v.first * 3 >= best * 2 && (!kept || votes[*kept].first < v.first || (votes[*kept].first == v.first && far(m) < far(*kept))))
-                    kept = &m;
+            int pick = -1, kept = -1;   // grid indexes, x major (as the moves' order)
+            for (int k = 0; k < W * W; k++) {
+                const int v = m_votes[(size_t)k];
+                if (!v) continue;
+                const int mx = k / W - R, my = k % W - R;
+                if (v == best && (pick < 0 || far(mx, my) < far(pick / W - R, pick % W - R))) pick = k;
+                if (hint && std::fabs(mx - m_hint_x) <= 1.5 && std::fabs(my - m_hint_y) <= 1.5 && v >= 2 && v * 3 >= best * 2 &&
+                    (kept < 0 || m_votes[(size_t)kept] < v || (m_votes[(size_t)kept] == v && far(mx, my) < far(kept / W - R, kept % W - R))))
+                    kept = k;
             }
-            if (kept) pick = kept;
-            sx = pick->first, sy = pick->second;
+            if (kept >= 0) pick = kept;
+            sx = pick / W - R, sy = pick % W - R;
         }
         std::vector<int> out((size_t)objects, -1);
         std::vector<int> score((size_t)objects, 1 << 30);
+        // the frame before's tracks (frame() for this frame may have come already)
+        const std::vector<Track> &was = frame == m_frame ? m_was : m_tracks;
         auto rate = [&](const Candidate &c) {
             const int still = std::max(std::abs(c.dx), std::abs(c.dy));
             const int along = scroll ? std::max(std::abs(c.dx - sx), std::abs(c.dy - sy)) : 1 << 20;
             if (still > NEAR && along > NEAR) return -1;
+            // not a move but a jump, unless with the scroll: away from the look-alike's own steady
+            // line by more than JUMP (beatmania IIDX's key flash, lit in one lane and then the next,
+            // 16 pixels on, was drawn between the two lanes: a ghost note)
+            double lx, ly, vx, vy;
+            if (along > 1 && c.from >= 0 && (size_t)c.from < was.size() && was[(size_t)c.from].line(lx, ly, vx, vy) &&
+                (std::fabs(c.dx - vx) > JUMP || std::fabs(c.dy - vy) > JUMP))
+                return -1;
             return c.cost + std::min(std::abs(c.dx) + std::abs(c.dy), scroll ? std::abs(c.dx - sx) + std::abs(c.dy - sy) : 1 << 20);
         };
         if (!unique) {
@@ -146,6 +175,7 @@ public:
             if (next && (size_t)from[k] < m_tracks.size()) tracks[k] = m_tracks[(size_t)from[k]];
             tracks[k].add(moves[k].first, moves[k].second);
         }
+        m_was.swap(m_tracks);
         m_tracks.swap(tracks);
         std::map<std::pair<int, int>, int> count;
         for (const auto &m : moves)
@@ -258,9 +288,11 @@ private:
 
     uint64_t m_frame = UINT64_MAX, m_pair_frame = UINT64_MAX;
     double m_hint_x = 0, m_hint_y = 0;              // the frame before's scroll, for pair()
+    std::vector<int> m_votes, m_voter;               // pair()'s grid of moves
     double m_cx = 0, m_cy = 0;                     // the scroll's move this frame (its objects' average)
     std::vector<std::pair<double, double>> m_pos;   // the scroll's position, frame by frame (the last: this frame)
     std::vector<Track> m_tracks;   // each object's own line (frame()'s `from`)
+    std::vector<Track> m_was;      // ... the frame before's
 };
 
 }  // namespace hk
