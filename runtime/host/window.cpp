@@ -790,14 +790,14 @@ static void draw_overlays(int ww, int wh) {
 
 // The second monitor's half in player 2's window (window_set_split), after the first window's
 // picture: nothing waits here, the first window's pacing stands for both
-static void present_second(const uint32_t *rgb, int w, int h, double aspect) {
+static void present_second(const uint32_t *rgb, int w, int h, double aspect, uint64_t frame) {
     if (g_gl) {
         SDL_GL_MakeCurrent(g_win2, g_gl);
         int ww = 0, wh = 0;
         SDL_GetWindowSizeInPixels(g_win2, &ww, &wh);
         int vw = ww, vh = (int)std::lround(ww / aspect);
         if (vh > wh) vh = wh, vw = (int)std::lround(wh * aspect);
-        picture::draw(rgb, w, h, (ww - vw) / 2, (wh - vh) / 2, std::max(1, vw), std::max(1, vh), ww, wh, g_mode, 1);
+        picture::draw(rgb, w, h, (ww - vw) / 2, (wh - vh) / 2, std::max(1, vw), std::max(1, vh), ww, wh, g_mode, 1, frame);
         SDL_GL_SwapWindow(g_win2);
         SDL_GL_MakeCurrent(g_win, g_gl);
         return;
@@ -859,8 +859,11 @@ void window_present(const uint32_t *rgb, int w, int h, double vsec) {
         int fw = w, fh = h;
         if (exact && pacing::phase(0) > 0.01)
             if (const uint32_t *b = core().render_between(pacing::phase(0), fw, fh)) first = b;
+        // the game's frame number: the shaders' FrameCount, and what makes the in-between pictures
+        // below refreshes of this frame for them (picture.h)
+        const uint64_t number = core().frame_count();
         picture::Mode shown = picture::draw(first, first == rgb ? w : fw, first == rgb ? h : fh, (ww - vw) / 2, (wh - vh) / 2,
-                                            vw, vh, ww, wh, g_mode);
+                                            vw, vh, ww, wh, g_mode, 0, number);
         draw_overlays(ww, wh);
         if (sync) {
             if (g_glFlush) g_glFlush();   // the GPU draws while we wait for the commit time
@@ -893,12 +896,12 @@ void window_present(const uint32_t *rgb, int w, int h, double vsec) {
             if (i > 1) bw = w, bh = h, between = core().render_between(pacing::phase(i), bw, bh);
             if (between) g_in_between++;
             else between = rgb, bw = w, bh = h;
-            picture::draw(between, bw, bh, (ww - vw) / 2, (wh - vh) / 2, vw, vh, ww, wh, g_mode);
+            picture::draw(between, bw, bh, (ww - vw) / 2, (wh - vh) / 2, vw, vh, ww, wh, g_mode, 0, number);
             draw_overlays(ww, wh);
             pacing::commit_extra(i);
             SDL_GL_SwapWindow(g_win);
         }
-        if (g_split) present_second(g_half[1].data(), w, h, frame_aspect);
+        if (g_split) present_second(g_half[1].data(), w, h, frame_aspect, number);
         if (shown != g_shown) {
             g_shown = shown;
             g_title_dirty = true;
@@ -981,7 +984,7 @@ void window_present(const uint32_t *rgb, int w, int h, double vsec) {
         SDL_RenderPresent(g_ren);
         g_start_to_picture.add(g_frame_start_ns);
         if (sync) pacing::committed();
-        if (g_split) present_second(g_half[1].data(), w, h, frame_aspect);
+        if (g_split) present_second(g_half[1].data(), w, h, frame_aspect, core().frame_count());
     }
     if (!sync) g_present.add(vsec);
 

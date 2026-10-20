@@ -41,3 +41,12 @@ add_executable(test_ata_security ata/test_ata_security.cpp)
 target_link_libraries(test_ata_security PRIVATE hiraku_ata)
 target_include_directories(test_ata_security PRIVATE ${CMAKE_SOURCE_DIR}/runtime)
 add_test(NAME ata_security COMMAND test_ata_security)
+
+# The picture's shader engine: FrameCount, frame history, feedback (needs a display and OpenGL
+# 3.3; skipped without them)
+if(TARGET hiraku_host)
+  add_executable(test_picture picture/test_picture.cpp)
+  target_link_libraries(test_picture PRIVATE hiraku_host)
+  add_test(NAME picture_engine COMMAND test_picture)
+  set_tests_properties(picture_engine PROPERTIES SKIP_RETURN_CODE 77)
+endif()

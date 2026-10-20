@@ -168,8 +168,9 @@ struct Param {
     float def = 0, value = 0;
 };
 
-// A texture a pass can read: the frame, a pass output, a preset texture.
-enum Src { S_ORIGINAL, S_PASS, S_LUT };
+// A texture a pass can read: the frame, a frame before it (OriginalHistoryN), a pass output, a
+// pass's output a frame ago (PassFeedbackN, <alias>Feedback), a preset texture.
+enum Src { S_ORIGINAL, S_HISTORY, S_PASS, S_FEEDBACK, S_LUT };
 
 struct Bind {
     enum Kind { MVP, SIZE, FRAMECOUNT, FRAMEDIR, PARAM } kind;
@@ -177,7 +178,7 @@ struct Bind {
     GLint loc = -1, offset = 0;
     GLenum type = GL_FLOAT;
     Src src = S_ORIGINAL;   // SIZE: of which texture (S_PASS with idx -1: this pass's output,
-    int idx = 0;            //       -2: the final viewport); PARAM: index into params
+    int idx = 0;            //       -2: the final viewport; S_HISTORY: frames ago); PARAM: index into params
 };
 
 struct SamplerUse {
@@ -207,6 +208,8 @@ struct Pass {
     std::vector<Bind> binds;
     std::vector<SamplerUse> samplers;
     Target out;
+    bool feedback = false;   // a pass reads its output a frame ago: kept in `prev` (swapped each frame)
+    Target prev;
     int w = 0, h = 0;   // this frame's size
 };
 
@@ -219,10 +222,18 @@ struct Lut {
 
 GLuint g_vao = 0, g_vbo = 0, g_plain = 0, g_over = 0, g_over_tex = 0;
 // Each window draws its own picture (draw's view: Keyboardmania's two monitors in two windows):
-// its frame's texture and size here, its preset chains (their pass sizes, FrameCount) in g_chain
-struct Frame {
+// its frame's texture and size here, with the frames before it as far back as a preset reads
+// (OriginalHistoryN), its preset chains (their pass sizes) in g_chain
+struct Image {
     GLuint tex = 0;
     int w = 0, h = 0;
+};
+struct Frame {
+    std::vector<Image> ring = std::vector<Image>(1);   // ring[head]: the frame (Original); k on: k frames ago
+    size_t head = 0;
+    uint64_t number = UINT64_MAX;   // the game frame it is (draw's `frame`)
+    uint64_t count = 0;             // frames drawn (FrameCount when draw isn't told the game's)
+    Image &ago(size_t k) { return ring[(head + k) % ring.size()]; }
 };
 Frame g_frames[2];
 int g_view = 0;
@@ -238,7 +249,9 @@ class Chain {
 public:
     std::string name;
     bool load(const std::string &dir);
-    void draw(int w, int h, int x, int y, int vw, int vh, int win_w, int win_h);
+    // next: a new frame (the passes' feedback turns over); frame: FrameCount
+    void draw(int w, int h, int x, int y, int vw, int vh, int win_w, int win_h, bool next, uint32_t frame);
+    size_t history() const { return m_history; }   // how many frames it reads: 1 + the oldest OriginalHistoryN
     void check_params();   // read the parameter files again if one changed
     ~Chain();
 
@@ -248,7 +261,7 @@ private:
     std::vector<Lut> m_luts;
     std::vector<Param> m_params;
     std::vector<std::pair<std::string, time_t>> m_param_files;   // and their mtimes
-    uint32_t m_frame = 0;
+    size_t m_history = 1;
     int m_vw = 0, m_vh = 0;
 
     bool resolve(const std::string &name, Src &src, int &idx, int pass) const;
@@ -256,6 +269,7 @@ private:
     Sampling sampling_of(Src src, int idx) const;
     void size_of(Src src, int idx, int pass, int &w, int &h) const;
     bool link_pass(int i, const std::string &vs, const std::string &fs);
+    void target(Target &t, int i, int w, int h, GLenum fmt, bool mip);
 };
 
 Chain::~Chain() {
@@ -264,14 +278,37 @@ Chain::~Chain() {
         if (p.ubo) gl.glDeleteBuffers(1, &p.ubo);
         if (p.out.tex) gl.glDeleteTextures(1, &p.out.tex);
         if (p.out.fbo) gl.glDeleteFramebuffers(1, &p.out.fbo);
+        if (p.prev.tex) gl.glDeleteTextures(1, &p.prev.tex);
+        if (p.prev.fbo) gl.glDeleteFramebuffers(1, &p.prev.fbo);
     }
     for (auto &l : m_luts)
         if (l.tex) gl.glDeleteTextures(1, &l.tex);
 }
 
-// A sampler or size name: Original, Source, PassOutputN, an alias, a preset texture.
+// `prefix` then a number (OriginalHistory3, PassFeedback0): the number, else -1
+int numbered(const std::string &name, const char *prefix) {
+    const size_t n = strlen(prefix);
+    if (name.size() <= n || name.compare(0, n, prefix) != 0) return -1;
+    for (size_t i = n; i < name.size(); i++)
+        if (!isdigit((unsigned char)name[i])) return -1;
+    return atoi(name.c_str() + n);
+}
+
+// A sampler or size name: Original, OriginalHistoryN, Source, PassOutputN, PassFeedbackN, an alias,
+// an alias + Feedback, a preset texture. A pass reads the outputs of the passes before it, and the
+// output a frame ago of any pass (itself included).
 bool Chain::resolve(const std::string &name, Src &src, int &idx, int pass) const {
-    if (name == "Original" || name == "OriginalHistory0") { src = S_ORIGINAL; return true; }
+    if (name == "Original") { src = S_ORIGINAL; return true; }
+    if (int k = numbered(name, "OriginalHistory"); k >= 0) {
+        src = k ? S_HISTORY : S_ORIGINAL;
+        idx = k;
+        return true;
+    }
+    if (int k = numbered(name, "PassFeedback"); k >= 0) {
+        src = S_FEEDBACK;
+        idx = k;
+        return k < (int)m_passes.size();
+    }
     if (name == "Source") {
         if (pass == 0) src = S_ORIGINAL;
         else { src = S_PASS; idx = pass - 1; }
@@ -284,16 +321,21 @@ bool Chain::resolve(const std::string &name, Src &src, int &idx, int pass) const
     }
     for (int i = 0; i < pass; i++)
         if (!m_passes[i].alias.empty() && m_passes[i].alias == name) { src = S_PASS; idx = i; return true; }
+    if (name.size() > 8 && name.compare(name.size() - 8, 8, "Feedback") == 0) {
+        const std::string alias = name.substr(0, name.size() - 8);
+        for (size_t i = 0; i < m_passes.size(); i++)
+            if (m_passes[i].alias == alias) { src = S_FEEDBACK; idx = (int)i; return true; }
+    }
     for (size_t k = 0; k < m_luts.size(); k++)
         if (m_luts[k].name == name) { src = S_LUT; idx = (int)k; return true; }
     return false;
 }
 
 // RetroArch: a pass's output (and the frame) is read with the filter, wrap mode and mipmaps
-// of the pass after it.
+// of the pass after it; its output a frame ago as its output, the frames before as the frame.
 Sampling Chain::sampling_of(Src src, int idx) const {
     if (src == S_LUT) return m_luts[idx].sampling;
-    int next = src == S_ORIGINAL ? 0 : idx + 1;
+    int next = src == S_ORIGINAL || src == S_HISTORY ? 0 : idx + 1;
     Sampling s;
     if (next < (int)m_passes.size()) {
         const Pass &p = m_passes[next];
@@ -306,7 +348,19 @@ Sampling Chain::sampling_of(Src src, int idx) const {
 
 void Chain::size_of(Src src, int idx, int pass, int &w, int &h) const {
     switch (src) {
-    case S_ORIGINAL: w = g_cur->w; h = g_cur->h; break;
+    case S_ORIGINAL: w = g_cur->ago(0).w; h = g_cur->ago(0).h; break;
+    case S_HISTORY: {   // a frame not drawn yet (the first frames): the frame's size, its picture black
+        const Image &im = g_cur->ago((size_t)idx);
+        w = im.tex ? im.w : g_cur->ago(0).w;
+        h = im.tex ? im.h : g_cur->ago(0).h;
+        break;
+    }
+    case S_FEEDBACK: {
+        const Pass &p = m_passes[idx];
+        w = p.prev.tex ? p.prev.w : p.w;
+        h = p.prev.tex ? p.prev.h : p.h;
+        break;
+    }
     case S_LUT: w = m_luts[idx].w; h = m_luts[idx].h; break;
     case S_PASS:
         if (idx == -2) { w = m_vw; h = m_vh; }
@@ -354,6 +408,8 @@ bool Chain::link_pass(int i, const std::string &vs, const std::string &fs) {
                 src = S_LUT;
                 idx = -1;
             }
+            if (src == S_FEEDBACK) m_passes[idx].feedback = true;
+            if (src == S_HISTORY) m_history = std::max(m_history, (size_t)idx + 1);
             gl.glUniform1i(b.loc, unit);
             p.samplers.push_back({unit++, src, idx});
             continue;
@@ -493,6 +549,10 @@ bool Chain::load(const std::string &dir) {
         std::string sc = get("scale" + k, "1.0");
         p.scale_x = (float)atof(get("scale_x" + k, sc).c_str());
         p.scale_y = (float)atof(get("scale_y" + k, sc).c_str());
+    }
+    // linked once every pass's alias is known: a pass may read a later pass's feedback
+    for (int i = 0; i < n; i++) {
+        std::string k = std::to_string(i);
         std::string vs = read_file(dir + "/" + get("shader" + k) + ".vert");
         std::string fs = read_file(dir + "/" + get("shader" + k) + ".frag");
         if (vs.empty() || fs.empty()) {
@@ -522,11 +582,44 @@ GLenum target_format(const Pass &p) {
     return p.srgb ? GL_SRGB8_ALPHA8 : p.fp ? GL_RGBA16F : GL_RGBA8;
 }
 
-void Chain::draw(int w, int h, int x, int y, int vw, int vh, int win_w, int win_h) {
+// A pass's target at this size and format: made again (cleared to black) when either changed
+void Chain::target(Target &t, int i, int w, int h, GLenum fmt, bool mip) {
+    if (t.tex && t.w == w && t.h == h && t.fmt == fmt && t.mip == mip) return;
+    if (!t.tex) {
+        gl.glGenTextures(1, &t.tex);
+        gl.glGenFramebuffers(1, &t.fbo);
+    }
+    gl.glActiveTexture(GL_TEXTURE0);
+    gl.glBindTexture(GL_TEXTURE_2D, t.tex);
+    gl.glTexImage2D(GL_TEXTURE_2D, 0, fmt, w, h, 0, GL_RGBA, fmt == GL_RGBA16F || fmt == GL_RGBA32F ? GL_FLOAT : GL_UNSIGNED_BYTE,
+                    nullptr);
+    if (mip) gl.glGenerateMipmap(GL_TEXTURE_2D);
+    gl.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, mip ? 1000 : 0);
+    gl.glBindFramebuffer(GL_FRAMEBUFFER, t.fbo);
+    gl.glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, t.tex, 0);
+    if (gl.glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+        fprintf(stderr, "picture: %s pass %d: a %dx%d target is not usable here\n", name.c_str(), i, w, h);
+    gl.glDisable(GL_FRAMEBUFFER_SRGB);
+    gl.glViewport(0, 0, w, h);
+    gl.glClearColor(0, 0, 0, 0);   // a feedback's first frame reads black, as RetroArch's
+    gl.glClear(GL_COLOR_BUFFER_BIT);
+    t.w = w;
+    t.h = h;
+    t.fmt = fmt;
+    t.mip = mip;
+}
+
+void Chain::draw(int w, int h, int x, int y, int vw, int vh, int win_w, int win_h, bool next, uint32_t frame) {
     m_vw = vw;
     m_vh = vh;
     int n = (int)m_passes.size();
-    // sizes, and targets for every pass but the last
+    // a new frame: what each pass with feedback drew last becomes its output a frame ago (for a
+    // refresh of the same frame, smooth motion's in-between pictures, it stays the frame before's)
+    if (next)
+        for (Pass &p : m_passes)
+            if (p.feedback) std::swap(p.out, p.prev);
+    // sizes, and targets for every pass but the last (the last too when its feedback is read: it
+    // draws into its target, which is then copied to the window)
     for (int i = 0; i < n; i++) {
         Pass &p = m_passes[i];
         int sw = i ? m_passes[i - 1].w : w, sh = i ? m_passes[i - 1].h : h;
@@ -534,41 +627,24 @@ void Chain::draw(int w, int h, int x, int y, int vw, int vh, int win_w, int win_
             float v = t == "absolute" ? s : t == "viewport" ? view * s : src * s;
             return std::max(1, (int)std::lround(v));
         };
-        p.w = i == n - 1 ? vw : axis(p.type_x, p.scale_x, sw, vw);
-        p.h = i == n - 1 ? vh : axis(p.type_y, p.scale_y, sh, vh);
-        if (i == n - 1) break;
-        bool mip = m_passes[i + 1].mipmap_input;
-        GLenum fmt = target_format(p);
-        Target &t = p.out;
-        if (t.tex && t.w == p.w && t.h == p.h && t.fmt == fmt && t.mip == mip) continue;
-        if (!t.tex) {
-            gl.glGenTextures(1, &t.tex);
-            gl.glGenFramebuffers(1, &t.fbo);
-        }
-        gl.glActiveTexture(GL_TEXTURE0);
-        gl.glBindTexture(GL_TEXTURE_2D, t.tex);
-        gl.glTexImage2D(GL_TEXTURE_2D, 0, fmt, p.w, p.h, 0, GL_RGBA, fmt == GL_RGBA16F || fmt == GL_RGBA32F ? GL_FLOAT : GL_UNSIGNED_BYTE,
-                        nullptr);
-        if (mip) gl.glGenerateMipmap(GL_TEXTURE_2D);
-        gl.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, mip ? 1000 : 0);
-        gl.glBindFramebuffer(GL_FRAMEBUFFER, t.fbo);
-        gl.glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, t.tex, 0);
-        if (gl.glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
-            fprintf(stderr, "picture: %s pass %d: a %dx%d target is not usable here\n", name.c_str(), i, p.w, p.h);
-        t.w = p.w;
-        t.h = p.h;
-        t.fmt = fmt;
-        t.mip = mip;
+        const bool last = i == n - 1;
+        p.w = last ? vw : axis(p.type_x, p.scale_x, sw, vw);
+        p.h = last ? vh : axis(p.type_y, p.scale_y, sh, vh);
+        if (last && !p.feedback) break;
+        const bool mip = !last && m_passes[i + 1].mipmap_input;
+        const GLenum fmt = last ? GL_RGBA8 : target_format(p);   // the last: as the window has it
+        target(p.out, i, p.w, p.h, fmt, mip);
+        if (p.feedback) target(p.prev, i, p.w, p.h, fmt, mip);
     }
     for (int i = 0; i < n; i++) {
         Pass &p = m_passes[i];
-        bool last = i == n - 1;
+        const bool to_window = i == n - 1 && !p.feedback;
         if (p.mipmap_input && i > 0) {
             gl.glActiveTexture(GL_TEXTURE0);
             gl.glBindTexture(GL_TEXTURE_2D, m_passes[i - 1].out.tex);
             gl.glGenerateMipmap(GL_TEXTURE_2D);
         }
-        if (last) {
+        if (to_window) {
             gl.glBindFramebuffer(GL_FRAMEBUFFER, 0);
             gl.glDisable(GL_FRAMEBUFFER_SRGB);
             gl.glViewport(0, 0, win_w, win_h);
@@ -584,19 +660,21 @@ void Chain::draw(int w, int h, int x, int y, int vw, int vh, int win_w, int win_
         gl.glUseProgram(p.prog);
         for (const SamplerUse &s : p.samplers) {
             GLuint tex = 0;
-            if (s.src == S_ORIGINAL) tex = g_cur->tex;
+            if (s.src == S_ORIGINAL) tex = g_cur->ago(0).tex;
+            else if (s.src == S_HISTORY) tex = g_cur->ago((size_t)s.idx).tex;
             else if (s.src == S_PASS) tex = m_passes[s.idx].out.tex;
+            else if (s.src == S_FEEDBACK) tex = m_passes[s.idx].prev.tex;
             else if (s.idx >= 0) tex = m_luts[s.idx].tex;
             gl.glActiveTexture(GL_TEXTURE0 + s.unit);
             gl.glBindTexture(GL_TEXTURE_2D, tex);
             gl.glBindSampler(s.unit, s.idx >= 0 || s.src != S_LUT ? sampler_for(sampling_of(s.src, s.idx)) : 0);
         }
-        uint32_t frame = p.frame_count_mod > 0 ? m_frame % (uint32_t)p.frame_count_mod : m_frame;
+        const uint32_t fc = p.frame_count_mod > 0 ? frame % (uint32_t)p.frame_count_mod : frame;
         for (const Bind &b : p.binds) {
             float v4[16];
             int nf = 0;
             switch (b.kind) {
-            case Bind::MVP: mvp(v4, last); nf = 16; break;
+            case Bind::MVP: mvp(v4, to_window); nf = 16; break;
             case Bind::SIZE: {
                 int sw = 0, sh = 0;
                 size_of(b.src, b.idx, i, sw, sh);
@@ -607,7 +685,7 @@ void Chain::draw(int w, int h, int x, int y, int vw, int vh, int win_w, int win_
             case Bind::PARAM: v4[0] = m_params[b.idx].value; nf = 1; break;
             case Bind::FRAMECOUNT:
             case Bind::FRAMEDIR: {
-                uint32_t u = b.kind == Bind::FRAMECOUNT ? frame : 1u;
+                uint32_t u = b.kind == Bind::FRAMECOUNT ? fc : 1u;
                 if (b.in_ubo) {
                     if (b.type == GL_FLOAT) { float f = (float)u; memcpy(&p.ubo_data[b.offset], &f, 4); }
                     else memcpy(&p.ubo_data[b.offset], &u, 4);
@@ -630,7 +708,18 @@ void Chain::draw(int w, int h, int x, int y, int vw, int vh, int win_w, int win_
         gl.glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
     }
     for (int u = 0; u < 16; u++) gl.glBindSampler(u, 0);
-    m_frame++;
+    if (m_passes.back().feedback) {   // the last pass drew into its target: to the window, pixel for pixel
+        gl.glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        gl.glDisable(GL_FRAMEBUFFER_SRGB);
+        gl.glViewport(0, 0, win_w, win_h);
+        gl.glClearColor(0, 0, 0, 1);
+        gl.glClear(GL_COLOR_BUFFER_BIT);
+        gl.glViewport(x, win_h - y - vh, vw, vh);
+        gl.glUseProgram(g_plain);
+        gl.glActiveTexture(GL_TEXTURE0);
+        gl.glBindTexture(GL_TEXTURE_2D, m_passes.back().out.tex);
+        gl.glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+    }
 }
 
 const char *const DIRS[] = {"", "crt-guest-advanced-fast", "crt-royale"};
@@ -765,25 +854,46 @@ bool prepare(Mode m) {
         return false;
     }
     fprintf(stderr, "picture: %s ready (%.0f ms)\n", mode_label(m), (SDL_GetTicksNS() - t0) / 1e6);
+    // the frames it reads before this one: the ring kept that long (the new places black until
+    // frames reach them), its order kept
+    Frame &f = g_frames[g_view];
+    if (f.ring.size() < c->history()) {
+        std::vector<Image> ring;
+        for (size_t a = 0; a < f.ring.size(); a++) ring.push_back(f.ago(a));
+        ring.resize(c->history());
+        f.ring = std::move(ring);
+        f.head = 0;
+    }
     g_chain[g_view][k] = std::move(c);
     return true;
 }
 
-Mode draw(const uint32_t *rgb, int w, int h, int x, int y, int vw, int vh, int win_w, int win_h, Mode m, int view) {
+Mode draw(const uint32_t *rgb, int w, int h, int x, int y, int vw, int vh, int win_w, int win_h, Mode m, int view,
+          uint64_t frame) {
     if (!g_ok || w <= 0 || h <= 0 || vw <= 0 || vh <= 0) return Mode::off;
     g_view = view & 1;
     g_cur = &g_frames[g_view];
+    // a new frame turns the ring (its oldest picture's texture takes this one); the same frame
+    // again replaces its picture only
+    const bool next = frame == UINT64_MAX || frame != g_cur->number;
+    g_cur->number = frame;
+    if (next) {
+        g_cur->head = (g_cur->head + g_cur->ring.size() - 1) % g_cur->ring.size();
+        g_cur->count++;
+    }
+    const uint32_t frame_count = (uint32_t)(frame == UINT64_MAX ? g_cur->count - 1 : frame);
+    Image &img = g_cur->ago(0);
     gl.glActiveTexture(GL_TEXTURE0);
-    if (!g_cur->tex || w != g_cur->w || h != g_cur->h) {
-        if (!g_cur->tex) gl.glGenTextures(1, &g_cur->tex);
-        gl.glBindTexture(GL_TEXTURE_2D, g_cur->tex);
+    if (!img.tex || w != img.w || h != img.h) {
+        if (!img.tex) gl.glGenTextures(1, &img.tex);
+        gl.glBindTexture(GL_TEXTURE_2D, img.tex);
         gl.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_SWIZZLE_A, GL_ONE);   // XRGB: the X byte is not alpha
         gl.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
         gl.glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_BGRA, GL_UNSIGNED_INT_8_8_8_8_REV, nullptr);
-        g_cur->w = w;
-        g_cur->h = h;
+        img.w = w;
+        img.h = h;
     }
-    gl.glBindTexture(GL_TEXTURE_2D, g_cur->tex);
+    gl.glBindTexture(GL_TEXTURE_2D, img.tex);
     gl.glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
     gl.glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, w, h, GL_BGRA, GL_UNSIGNED_INT_8_8_8_8_REV, rgb);
 
@@ -808,7 +918,7 @@ Mode draw(const uint32_t *rgb, int w, int h, int x, int y, int vw, int vh, int w
         gl.glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
     } else {
         if (g_draws % 30 == 0) g_chain[g_view][k]->check_params();
-        g_chain[g_view][k]->draw(w, h, x, y, vw, vh, win_w, win_h);
+        g_chain[g_view][k]->draw(w, h, x, y, vw, vh, win_w, win_h, next, frame_count);
     }
     if (timed) {
         gl.glEndQuery(GL_TIME_ELAPSED);
@@ -861,8 +971,11 @@ void shutdown() {
     if (g_plain) gl.glDeleteProgram(g_plain);
     if (g_over) gl.glDeleteProgram(g_over);
     if (g_over_tex) gl.glDeleteTextures(1, &g_over_tex);
-    for (Frame &f : g_frames)
-        if (f.tex) gl.glDeleteTextures(1, &f.tex);
+    for (Frame &f : g_frames) {
+        for (Image &im : f.ring)
+            if (im.tex) gl.glDeleteTextures(1, &im.tex);
+        f = Frame();
+    }
     if (g_vbo) gl.glDeleteBuffers(1, &g_vbo);
     if (g_vao) gl.glDeleteVertexArrays(1, &g_vao);
     g_ok = false;

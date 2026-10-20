@@ -9,7 +9,9 @@
 // The engine does what RetroArch's filter chain does: pass sizes (source, viewport,
 // absolute), 8-bit / sRGB / fp16 targets, each output sampled with the next pass's filter,
 // wrap mode and mipmaps, the preset's textures, and the semantics (MVP, SourceSize,
-// OriginalSize, OutputSize, FinalViewportSize, <alias>Size, FrameCount, parameters).
+// OriginalSize, OutputSize, FinalViewportSize, <alias>Size, FrameCount, parameters), the frames
+// before this one (OriginalHistoryN) and a pass's output a frame ago (PassFeedbackN,
+// <alias>Feedback; black at first, as in RetroArch).
 //
 // Parameters: parameters.txt's defaults, then shaders/<name>/hiraku.params (HIRAKU's own
 // defaults), then <dir>/<name>.params for each config dir, in order (the launcher's
@@ -37,7 +39,13 @@ bool prepare(Mode m);
 // win_w x win_h default framebuffer; the rest is black. Returns the mode drawn: `m`, or off
 // when its preset can't run here.
 // view: which window (0, or 1 for a second one: its own frame texture and preset state)
-Mode draw(const uint32_t *rgb, int w, int h, int x, int y, int vw, int vh, int win_w, int win_h, Mode m, int view = 0);
+// frame: the game's frame number, the shaders' FrameCount. The same number as the last draw's is a
+// refresh of that frame (smooth motion's in-between pictures): its picture is replaced, but
+// FrameCount, the frames before it and the passes' output a frame ago stay as they were, so a
+// shader's interlaced fields and afterglow keep the game's pace on a faster display.
+// UINT64_MAX: every draw a new frame, counted from the first.
+Mode draw(const uint32_t *rgb, int w, int h, int x, int y, int vw, int vh, int win_w, int win_h, Mode m, int view = 0,
+          uint64_t frame = UINT64_MAX);
 // After draw: an ARGB picture (w x h, with its own alpha, times `alpha`) blended over the window,
 // drawn at (x, y, dw, dh) from the top left, its pixels sharp (host/notice.h's banner)
 void overlay(const uint32_t *argb, int w, int h, int x, int y, int dw, int dh, float alpha, int win_w, int win_h);

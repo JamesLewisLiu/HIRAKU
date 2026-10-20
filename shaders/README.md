@@ -36,6 +36,8 @@ does what RetroArch does when it loads a preset: it expands the `#include`s, tak
 pragmas and splits the stages. Then each stage goes to SPIR-V with glslang and back to
 GLSL 3.30 with SPIRV-Cross.
 
-The same engine runs any slang preset that doesn't need frame history or feedback. For
+The same engine runs other slang presets: frame history (`OriginalHistoryN`) and a pass's output a
+frame ago (`PassFeedbackN`, `<alias>Feedback`) included, with `FrameCount` the game's frame number
+(smooth motion's extra refreshes of a frame keep it; `tests/picture` checks all three). For
 crt-guest-advanced-fast, its output was checked against a hand port of the shader: the
 pictures are identical, pixel for pixel.
