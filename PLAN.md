@@ -223,6 +223,7 @@ Durations are rough, assume one person, and are assisted. Each milestone has a c
 | **M14** | System 573 core | The roadmap is §19. MAME's PS1 devices with an interpreted CPU, in cycle-exact lockstep with MAME on an analog-board game (CD audio). Then the digital board (MP3 + FPGA). Then a static MIPS recompiler if the CPU is what costs most on an N100. | **in progress** (§19):<br>• `ddr3mj` (digital board) runs **in lockstep with MAME at the pin**: main RAM identical on all 3,600 frames of a 60 s boot, all 60 snapshots pixel-identical. That covers the BIOS, the CD boot, the cassette and PC Card checks and ERROR 147 (no install yet). It is a regress case. Host cost ~3.5 ms a frame on the desktop, interpreted.<br>• Every device is MAME's own code on the framework shim, run by a copy of MAME's scheduler.<br>• **`ddr2m` (analog board, 2026-10-12): in lockstep with MAME at the pin for 400 s.** That covers the first boot, the flash install (two Test presses) and attract with its demo and video: main RAM identical on all 24,000 frames, all 400 snapshots pixel-identical. The sound (SPU + CD audio) matches MAME's WAV: lag 0, correlation ≥ 0.998, level 1.00. It is a regress case.<br>• **A whole game too (`oracle/scripts/ddr2m-play.his`, 350 s):** the same first boot, then two coins, Start, NORMAL, How To Play skipped, BOYS played by stepping on all four panels (GOOD/GREAT/BOO, DANGER, CLEARED), stage 2's song select and Ready. Main RAM identical on all 21,000 frames, 350/350 snapshots, the sound lag 0 with correlation ≥ 0.998. Regress case `ddr2m-play`. **This is 573-2's lockstep exit test, met; the hands-on test with a pad remains.**<br>• The board is chosen per game (`io_board`, `cassette`, `pccard2`, `memory_card_reader` in game.toml): the analog GX700-PWB(F) is ported from MAME. DDR controls and lamps are in `cabinet.cpp`. Coin, start, mode and song select, and a stage start work from the installed flash.<br>• Fixed: the shim's CD reader didn't byte-swap little-endian CD audio (noise); the shim's address map took over 12 GB per 573 run (per-byte tables for MAME's unmapped ranges), which got the desktop OOM-killed during a parallel regress run.<br>• **Owner's hands-on test (2026-10-12): "worked nicely", with slight crackles.** Those came from MAME's mix: the SPU and the CD audio summed at 1.0 each peak at 2.0 and clip at the output (~1 % of samples, a third on loud songs; MAME's WAV clips identically). The 573 core now plays the mix at 0.5, which never clips, in MAME's balance. `--mame-mix` restores MAME's level for oracle comparisons. A departure from MAME's output stage only: the machine is unchanged.<br>• **Next:** the install flow for `ddr3mj` (573-3). |
 | **M15** | Twinkle core (beatmania IIDX 1st–8th) | The M14 PS1 core plus Twinkle's SPU (68000 + RF5C400, already in HIRAKU), SCSI CD, ATA hard disk. Then the background video MAME lacks: Video CD (MPEG-1) for early styles, DVD for 6th–8th. | **in progress** (§21):<br>• **TW-0 done:** oracle (pinned MAME with `twinkle.cpp`, Lua taps on both CPUs), `bmiidx3` and `bmiidx` ingested.<br>• **TW-1, boot and attract done (2026-10-13):** `hiraku-bmiidx3` (MAME's PS1 and MAME's 68000, all of MAME's devices on the shim) runs in lockstep with MAME: main RAM on all 9,000 frames, 150/150 snapshots, all 2.15 M traced device accesses, sound lag 0. Regress case `bmiidx3-boot`.<br>• **TW-2 (2026-10-13):** IIDX controls, lamps, the 16-segment display in the title, launcher; a scripted game (coins, Start, menus, a stage with keys and turntable, result) in lockstep with MAME; regress `bmiidx3-play`. Hands-on test pending.<br>• **TW-3 (2026-10-13), further than MAME:** the background video from the Video CD, as the game drives the DVD player, keyed into the PlayStation's black with the Bt812's colour controls; the attract intro and the stage videos play. Open: which clip goes with which song, the exact key and placement (real-cabinet footage). Regress `bmiidx3-video`.<br>• **TW-4 (2026-10-13):** the 573's R3000 recompiler on the game's code, the video decoded on a worker thread: 3.0 → 1.5 ms a frame on the desktop, a stage with the video 1.5 ms (p99 2.0). The CD loads between screens (up to ~40 ms a frame, MAME's per-byte SCSI model) answered 2026-10-15: the cabinet's 4x drive, a sector at a time (`--mame-cd` keeps MAME's), ~4.7 ms a frame.<br>• **TW-5 (2026-10-14), further than MAME:** the 1st style (`bmiidx`) boots, plays and shows its videos (MAME: E600 DVD INIT ERROR): SIO1 with the DVD player's CTS. In lockstep with a MAME given the same SIO1 (oracle/mame-patches); regress `bmiidx-clear`, `bmiidx-play`, `bmiidx-video`.<br>• `bmiidx3` (3rd style, MAME working) is the first set; `bmiidx` (1st style, MAME `NOT_WORKING`) arrived 2026-10-13.<br>• Phases TW-0 (oracle) → TW-1 (lockstep) → TW-2 (playable) → TW-3 (background video, beyond MAME) → TW-4 (N100 budget) → TW-5 (other styles, DVD).<br>• MAME ~570 % real time. |
 | **M17** | A song added to pop'n music 14 (modding pilot, §20) | A new song, packed by a tool from the modder's own files, appears in the song list, plays with its sounds and its charts, and keeps its scores, through a mod folder alone (nothing on the user's disk changed). The pieces: a new entry past the last in the song list (lisbin), the list's integrity checksum made again (FUN_017c18b8, constants 0x3f306b90 / 0x70f93885), the sounds encoded in the game's ADPCM and placed in a free 20 MB slot of the song area (from 0x20000000, LCG-scrambled: tools/popnsong.py reads them), the charts in the game's format, and the song select, unlocks and score records accepting the new number. | **not started** (split from the pilot 2026-10-20). Most of it is reverse engineering still to do: the checksum's coverage, the chart format, and what else counts the songs. |
+| **M18** | Two more shaders: Lola Retro and the CRT beam simulator (§29) | Lola Retro as a picture mode with presets chosen per board; the Blur Busters beam simulator as a motion mode on 120 Hz+ displays, paced from the game's real rate; both from the launcher. | **reviewed 2026-10-20** (§29): Lola runs in the engine as converted, minus its afterglow (feedback textures to add); the beam simulator fits the smooth-motion pacing. |
 
 Rough total to playable BM3 Final is about 4 months. Each later family should cost weeks, not months, if the SDK-signature bet in §3.3 holds.
 
@@ -2268,6 +2269,87 @@ What such a user meets, step by step, and where each stands (✓ done and checke
 - ✓ A choice of output device on Windows (Settings > Audio > Output: the devices by the names Windows shows; `--audio-device NAME`, shared).
 - ✓ WASAPI exclusive mode (`--audio-exclusive`, Settings > Audio > Exclusive; `runtime/host/wasapi.cpp`): the device alone, event-driven, MMCSS "Pro Audio", float/32/24/16 bits, falls back to shared with the reason. ✗ Not tried on real Windows: Wine's audio refuses exclusive mode (the shared fallback and its message checked there).
 - ✓ ASIO (`--audio-asio NAME`, Settings > Audio > Output's `ASIO:` entries; `runtime/host/asio.cpp`): the driver interface declared from the specification, as Wine's pwasio does (Steinberg's SDK is GPLv3 since 2025-10-29, but not needed); drivers from the registry, the driver's own buffer unless `--audio-buffer`, its sample form written on its thread. Checked under Wine with pwasio: float, 48 kHz, 64 frames, 99.97 % of the rate; on real Windows by the owner (2026-10-18): works.
+
+## 29. Two more shaders: Lola Retro and the CRT beam simulator (reviewed 2026-10-20)
+
+The owner asked for two shaders (M18 in the table): **Lola Retro** (Zoki, MIT, github.com/zoran123456/lola-retro,
+reviewed at 2640253, 2026-10-19) and the **Blur Busters CRT Beam Simulator** (Mark Rejhon and Timothy Lottes, MIT,
+github.com/blurbusters/crt-beam-simulator, 734786a). The owner's own beam-simulator work (a gamescope ReShade port,
+outside the repo) is where the lessons in "What carries over" come from.
+
+### Lola Retro: a CRT picture, the whole analog chain
+
+- **What it is:** a libretro slang preset pack (13 presets × curved/flat, plus HDR versions), 8 passes:
+  native (finds the console pixel), encode (RGB → composite/S-Video/RF signal at the console's real pixel clock and
+  subcarrier phase), decode (the TV's luma trap or comb filter, chroma bandwidth, colour decoder with "red push"),
+  glow (two passes), beam (a spot per line whose width grows with brightness, per gun; a pass 8192 wide), crt (mask,
+  curvature, halation, white point, glass, the casing and room around the tube), present. It is checked against
+  measured test patterns (colour bars within ~2/255; light output of alternate lines 0.4996 of white).
+- **It fits HIRAKU's engine as it is.** `tools/slang2glsl.py` converts `consumer-tv-composite` with no change (8
+  passes, 59 parameters) and `runtime/host/picture.cpp` runs it (bm1stmix, nested KWin, 1280×960): the picture is
+  right. One thing is missing: the crt pass reads `LR_CRTFeedback`, its own output a frame ago (the afterglow),
+  which the engine doesn't provide (RetroArch's `<alias>Feedback` / `PassFeedbackN`): it reads black, so there is
+  no afterglow; the rest works.
+- **Arcade timings are built in:** `LR_CONSOLE` 7 = PC VGA (31 kHz), 8 = arcade 15 kHz, 9 = arcade 24 kHz, 4 =
+  PlayStation, and `LR_CABLE` 3 = RGB (the encode/decode chain skipped). So: DJ Main, System 573 and Twinkle →
+  15 kHz arcade RGB (the 1084S / studio-monitor tube); Firebeat's 640×480 → 31 kHz (`pc-monitor-vga`); Python's
+  480i/480p likewise by its mode. HIRAKU knows each core's mode, so it can set these per board, as `hiraku.params`
+  sets 480-line pictures progressive for the two shaders already there.
+- **Cost** (RX 7900 GRE, 1280×960, GPU time per frame): sharp 0.01 ms, crt-guest-advanced-fast 0.17, crt-royale
+  0.29, **Lola 0.93** (3× royale). An N100's iGPU is roughly 40-60× slower than this card: Lola is likely too heavy
+  there at full screen (royale already borderline); a desktop-GPU option, labelled so. Most of it is probably the
+  fixed 8192-wide fp16 beam pass; to measure per pass before choosing presets.
+- **Not taken:** the HDR presets (they write HDR10 themselves; HIRAKU's window is SDR OpenGL), the scenes and
+  casings around the tube (kept as parameters, off), the composite/RF presets as defaults (the cabinets were RGB;
+  composite stays a choice).
+
+### The CRT beam simulator: a rolling scan on a fast display
+
+- **What it is:** one pass. Each display refresh draws the slice of a simulated CRT refresh that the beam would be
+  sweeping then: rows above the beam glow from the new frame, rows below fade from the old one, with each pixel's
+  light (in linear light, gamma-corrected, `GAMMA`) spread over as few refreshes as its brightness allows ("variable
+  per-pixel MPRT", `GAIN_VS_BLUR`). It reads the three latest source frames. 60 Hz content on a 240 Hz display looks
+  like a CRT's motion; 120-144 Hz works with less benefit. Any display/content ratio works (2.4 at 144 Hz).
+- **Its own words on integrating it:** the demo fakes its history by scrolling one picture sideways
+  (`MOTION_SPEED`, the "rolling image" the owner's port had to set to 0); a real integration keeps the last three
+  frames and runs the pass at every display refresh, independently of the game's frame rate, with the simulated CRT
+  refresh at the content's rate. That is exactly what HIRAKU's display pacing already does for smooth motion
+  (`pacing.h`): a present at every refresh through fifo-v1 (KWin 6.7) or DWM's vblank, and `pacing::phase(i)`, the
+  exact moment of refresh i within the game frame. So the beam's position comes from real time and the game's own
+  rate (58.00 Hz DJ Main, 59.94 Firebeat), not from counting refreshes, and the "frames per Hz" constant goes away.
+
+### What carries over from the owner's gamescope port
+
+- It must present at every vblank, locked to it: a missed or doubled refresh shows as a dark or bright band. In
+  HIRAKU the pacing reports missed refreshes already (presentation-time); the exit report should count them for the
+  beam simulator, as the port's `STATS=1` counted composites (~240 a second = running, ~60 = not).
+- The content's frame rate has to be paced to the display (the port needed MangoHud's limiter): HIRAKU does that.
+- Gamma has to match the monitor (the port settled on 2.2; the shader's default is 2.4); SDR, not HDR; ABL/APL off.
+  `GAIN_VS_BLUR` 0.7 at 240 Hz. These become settings with those defaults, with the shader's own warnings in the
+  launcher.
+- The port needed forced compositing; HIRAKU's direct scanout (fullscreen) is better still, nothing to force.
+
+### The plan (M18)
+
+1. **The engine:** feedback textures (`<alias>Feedback`, `PassFeedbackN`: each pass keeps last frame's output);
+   `OriginalHistoryN` while at it (frame history; other presets use it). `FrameCount` counted in game frames, not
+   draws: with smooth motion it now advances every display refresh, which flips a shader's interlaced fields
+   (royale's 480i, Lola's fields and subcarrier phase) at the display's rate instead of the game's.
+2. **Lola as a third picture mode** (vendored at a pinned commit under `third_party/`, converted by
+   `slang2glsl.py`, its MIT notice kept): a few presets, chosen per board by default (15 kHz arcade RGB; 31 kHz for
+   Firebeat), the rest in the launcher's list; `hiraku.params` for HIRAKU's defaults; the launcher's sliders come
+   from its parameters as for the others. Measure per pass; a lighter default if the beam pass dominates.
+3. **The beam simulator as a motion mode** beside smooth motion (the two exclude each other: both use the
+   frame's extra refreshes): the CRT shader (any mode) runs once per game frame into a texture at the window's size;
+   the last three are kept; each refresh runs the beam pass on them with the refresh's phase. That keeps the costly
+   chain at the game's rate; the beam pass is three texture reads. Scan direction follows the cabinet's monitor
+   (Keyboardmania's are turned on their side: the beam sweeps sideways). The LCD anti-retention offset is unneeded
+   when the ratio comes from real time (it is rarely a whole number), kept as an option for exact 4:1 cases.
+   Settings: gamma (2.2), gain (0.7), on/off; needs fifo-v1 or DWM like smooth motion, else off with a reason.
+4. **Not first:** the Python core (pop'n 9-14 draw through Reliquary's GS, and smooth notes run those games at the
+   display's rate, where a beam simulation doesn't apply); HDR output.
+5. **Check:** offline, the beam pass's output summed over a game frame's refreshes equals the frame in linear light
+   (its photon budget), and snapshots per refresh show the rolling band; then the owner's eyes on a 240 Hz and a 144 Hz display.
 
 ## M0 steps (all done)
 
