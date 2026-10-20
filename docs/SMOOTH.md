@@ -210,13 +210,15 @@ more, so the picture keeps most of its brightness).
   SDR output; 2.4 if the display is set so: a mismatch shows as bands, washed-out colour, or a slow
   wave of brightness), its ABL/APL and its own strobing or black frame insertion off. HDR modes and
   local dimming fight the per-refresh brightness.
-- **The same refreshes every frame where possible:** where the display is within 0.5 % of a whole
-  number of refreshes a frame (59.94 Hz games at 120 or 240 Hz), the game runs that much faster
-  (0.1 %) and every frame gets the same refreshes. At the game's exact speed the light's split over
-  the refreshes drifts (4.004 refreshes a frame: a cycle every 4 s), and then any difference
-  between the display's response and the gamma setting comes out as a slow, wavy change of
-  brightness (owner, 2026-10-20: "a slow strobe"). Other games (pop'n music's 58.49 Hz, DJ Main's
-  58) keep their exact speed, and the drift with it.
+- **The same refreshes every frame where possible:** where display sync would lock the game to the
+  display (within 3 %: 59.94 Hz games at 120 or 240 Hz run 0.1 % faster, pop'n music's 58.49 Hz
+  2.6 %, as display sync does without smooth motion), every frame gets the same refreshes. At the
+  game's exact speed the light's split over the refreshes drifts (4.10 refreshes a frame for pop'n at
+  240 Hz), and the display's own response, its curve and its slow transitions near black, turns
+  that into a slow, wavy change of brightness in the darker parts (owner, 2026-10-20: "a slow
+  strobe", then "only in lower brightness zones" at pop'n's exact speed; simulated, 2-4 % even on a
+  display that matches the gamma exactly, from a 6 Hz beat; dithering and a sharp band edge made it
+  no better). DJ Main's 58 Hz (3.4 % off 60) keeps its exact speed, and the drift with it.
 - **Brightness** (`gain`, 0.7): lower is sharper and darker; about 0.5 at 120 Hz.
 - **Any picture mode:** the mode (sharp, light, full, analog) draws each frame once into a picture
   at the window's size; the beam's pass, every refresh, reads the frame's picture and the one

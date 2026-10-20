@@ -2384,8 +2384,13 @@ outside the repo) is where the lessons in "What carries over" come from.
    2.2 a curve no display has, 5-10 % off a 2.2 display) and, at exact speed, the light's split over the refreshes
    drifting (4.004 refreshes a frame: a cycle every 4 s), which turns any mismatch into a wave (simulated: 2-16 %
    swings at 4.004, none at 4.0). Fixed: plain power curves, and the beam takes whole refreshes where the display
-   is within 0.5 % (`pacing::set_whole_refreshes`: 59.94 Hz games at 120/240 Hz, 0.1 % faster). Left: the
-   owner's eyes again, and pop'n music / DJ Main (58.49, 58 Hz) still drift.
+   is within 0.5 % (`pacing::set_whole_refreshes`: 59.94 Hz games at 120/240 Hz, 0.1 % faster). Second test
+   (pop'n 8, 58.49 Hz: exact speed): the wave only in darker parts. Simulated, a drifting split leaves a 6 Hz
+   beat of 2-4 % in darks even on a matching display (not rounding: dithering didn't help; a sharp band edge was
+   worse), which slow dark transitions make more of. So the beam now locks wherever display sync would (3 %:
+   pop'n 2.6 % faster). DJ Main's 58 Hz still drifts. The exit report now counts the frames' other refreshes'
+   commits (shown, late, replaced): the smooth-motion runs had 44 % of frames' first commits "replaced" in
+   direct scanout, unexplained (the beam's top band would have flashed).
 4. **Not first:** the Python core (pop'n 9-14 draw through Reliquary's GS, and smooth notes run those games at the
    display's rate, where a beam simulation doesn't apply); HDR output.
 5. **Check:** offline, the beam pass's output summed over a game frame's refreshes equals the frame in linear light

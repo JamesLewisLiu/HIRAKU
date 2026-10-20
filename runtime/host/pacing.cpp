@@ -59,6 +59,7 @@ bool g_overrun = false;        // this frame wasn't ready at its commit time
 
 uint64_t n_frames = 0, n_presented = 0, n_on_time = 0, n_late = 0, n_overrun = 0, n_resync = 0, n_discarded = 0,
          n_moved = 0;
+uint64_t n_extra = 0, n_extra_shown = 0, n_extra_late = 0, n_extra_discarded = 0;   // the frames' other refreshes' commits (commit_extra)
 uint64_t n_shown = 0, n_zero_copy = 0;   // every frame's presentation feedback, either mode: shown, and
                                          // of them scanned out straight from our buffer (not composited)
 std::string g_state;           // the last announced state, to print changes once
@@ -185,16 +186,24 @@ const wp_presentation_feedback_listener feedback_listener = {
        uint32_t, uint32_t, uint32_t flags) {
         auto *p = (Pending *)data;
         int64_t t = (int64_t)(((uint64_t)sec_hi << 32) | sec_lo) * 1'000'000'000 + nsec;
+        if (p->k < 0) {   // an in-between commit: shown at its refresh, or later
+            n_extra_shown++;
+            if (clock_to_steady(t) - p->target > g_T / 2) n_extra_late++;
+            delete p;
+            g_live.erase(fb);
+            wp_presentation_feedback_destroy(fb);
+            return;
+        }
         n_shown++;
         if (flags & WP_PRESENTATION_FEEDBACK_KIND_ZERO_COPY) n_zero_copy++;
-        if (p->k) presented(clock_to_steady(t), p->committed, p->target, p->overrun, refresh, p->k);   // k 0: observe()
+        if (p->k > 0) presented(clock_to_steady(t), p->committed, p->target, p->overrun, refresh, p->k);   // k 0: observe()
         delete p;
         g_live.erase(fb);
         wp_presentation_feedback_destroy(fb);
     },
     [](void *data, struct wp_presentation_feedback *fb) {   // replaced before it was shown, or the window is hidden
-        n_discarded++;
-        g_prev_t = 0;
+        if (((Pending *)data)->k < 0) n_extra_discarded++;
+        else n_discarded++, g_prev_t = 0;
         delete (Pending *)data;
         g_live.erase(fb);
         wp_presentation_feedback_destroy(fb);
@@ -391,11 +400,11 @@ bool frame(double period) {
     }
     g_exact = g_smooth_motion && g_dwm;
 #endif
-    // the CRT beam: the same refreshes every frame where the display is within 0.5 % of a whole
-    // number of them (59.94 Hz games at 120 or 240 Hz: the game 0.1 % faster); at exact speed the
-    // light's split over the refreshes drifts, and any mismatch with the display's response shows
-    // as a slow wave of brightness
-    if (g_exact && g_whole && k >= 2 && std::fabs(f - 1.0) <= 0.005) g_exact = false;
+    // the CRT beam: the same refreshes every frame where display sync would (within its skew: 59.94 Hz
+    // games 0.1 % faster at 120 or 240 Hz, pop'n music's 58.49 Hz 2.6 %); at exact speed the light's
+    // split over the refreshes drifts, and the display's own response (its curve, its slow dark
+    // transitions) turns that into a slow wave of brightness in the darker parts
+    if (g_exact && g_whole && k >= 2 && std::fabs(f - 1.0) <= g_max_skew) g_exact = false;
     if (g_exact) return frame_exact(period, hz);
     if (std::fabs(f - 1.0) > g_max_skew) {
         if (g_active) g_active = false;
@@ -512,7 +521,13 @@ bool can_fill_refreshes() {
 // refresh after the last one's (the swap that follows commits it). With fifo-v1 the compositor
 // holds it; with DWM's vblank (Windows) this waits for that refresh's commit time
 void commit_extra(int i) {
+    n_extra++;
 #ifdef HK_WITH_WAYLAND
+    if (g_pres) {   // whether it reaches the screen, at its refresh (the exit report)
+        struct wp_presentation_feedback *fb = wp_presentation_feedback(g_pres, g_surface);
+        wp_presentation_feedback_add_listener(fb, &feedback_listener, new Pending{g_target + (int64_t)i * g_T, false, -1, (int64_t)prof::now_ns()});
+        g_live.insert(fb);
+    }
     if (g_fifo) {
         wp_fifo_v1_set_barrier(g_fifo);
         wp_fifo_v1_wait_barrier(g_fifo);
@@ -574,7 +589,14 @@ std::string describe() {
              (unsigned long long)n_discarded, (unsigned long long)n_overrun, (unsigned long long)n_resync,
              (double)g_best / MS, (double)g_lead / MS, g_settled ? " (settled)" : "", (unsigned long long)n_moved,
              (double)g_budget / MS);
-    return b;
+    std::string out = b;
+    if (n_extra) {
+        snprintf(b, sizeof b, "\nvideo: the frames' other refreshes: %llu pictures committed, %llu shown (%llu of them a refresh or more late), %llu replaced",
+                 (unsigned long long)n_extra, (unsigned long long)n_extra_shown, (unsigned long long)n_extra_late,
+                 (unsigned long long)n_extra_discarded);
+        out += b;
+    }
+    return out;
 }
 
 }  // namespace hk::host::pacing

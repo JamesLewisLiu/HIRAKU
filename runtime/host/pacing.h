@@ -69,7 +69,7 @@ bool can_fill_refreshes();
 // moment in frames after the frame's (0 <= phase, the next frame's moment at 1)
 void set_smooth_motion(bool on);
 // The CRT beam (window.h): with smooth motion's pacing, a whole number of refreshes a frame instead
-// of the game's exact speed where the display is within 0.5 % of one (the game that much faster)
+// of the game's exact speed where display sync would (within its skew: the game that much faster)
 void set_whole_refreshes(bool on);
 bool exact_speed();
 double phase(int i);
