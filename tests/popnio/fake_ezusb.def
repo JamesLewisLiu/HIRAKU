@@ -1,0 +1,10 @@
+; A pretend pop'n music ezusb.dll's exports, by the games' (MSVC C++) names
+LIBRARY fake_ezusb.dll
+EXPORTS
+?usbStart@@YAHH@Z=usbStart
+?usbFirmResult@@YAHXZ=usbFirmResult
+?usbCoinMode@@YAHH@Z=usbCoinMode
+?usbPadRead@@YAHPAK@Z=usbPadRead
+?usbLamp@@YAHH@Z=usbLamp
+?usbCoinGet@@YAHH@Z=usbCoinGet
+?usbEnd@@YAHXZ=usbEnd

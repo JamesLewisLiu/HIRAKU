@@ -18,6 +18,17 @@
 #include "../shell/cabinet.h"
 #include "../shell/core.h"
 
+#ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+
+#include "../shell/sys.h"
+#include "ezusb/link.h"
+#endif
+
 #ifdef __linux__
 #include <dirent.h>
 #include <fcntl.h>
@@ -250,18 +261,36 @@ namespace {
 using namespace popnio;
 
 std::string g_where;      // "auto" or a port
-std::string g_firmware;   // the game's ezusb.dll
+std::string g_dll;        // the game's ezusb.dll (Linux: the firmware; Windows: what drives the board)
 std::unique_ptr<Usb> g_usb;
 std::atomic<bool> g_running{false};
 std::thread g_thread;
 std::mutex g_mutex;
 uint32_t g_lamps = 0;     // from popnio_frame
-uint8_t g_in[64] = {};    // the board's last in packet
+uint32_t g_pad = 0;       // the controls, active high (pad())
+uint32_t g_coins = 0;     // the board's coin count
 bool g_have_in = false;
 const bool g_log = getenv("HK_POPNIO_LOG") != nullptr;
 
 void sleep_ms(int ms) {
     for (int t = 0; t < ms && g_running; t += 50) std::this_thread::sleep_for(std::chrono::milliseconds(std::min(50, ms - t)));
+}
+
+uint32_t lamps_now() {
+    std::lock_guard<std::mutex> l(g_mutex);
+    return g_lamps;
+}
+
+void have(uint32_t pad, uint32_t coins) {
+    std::lock_guard<std::mutex> l(g_mutex);
+    g_pad = pad;
+    g_coins = coins;
+    g_have_in = true;
+}
+
+void lost() {
+    std::lock_guard<std::mutex> l(g_mutex);
+    g_have_in = false;
 }
 
 void log_packet(const char *what, const uint8_t *p, int n) {
@@ -308,6 +337,7 @@ bool wanted(const Device &d) {
     return d.vid == 0x04b4 && d.pid == 0x8613;
 }
 
+// The board over USB itself (Linux, and the tests' pretend board)
 void run() {
     std::vector<Chunk> image;
     bool told_none = false, told_bare = false;
@@ -334,15 +364,15 @@ void run() {
             return;
         }
         if (d.bare) {   // no firmware: the game's, from its ezusb.dll
-            if (image.empty() && !g_firmware.empty()) {
-                std::ifstream f(g_firmware, std::ios::binary);
+            if (image.empty() && !g_dll.empty()) {
+                std::ifstream f(g_dll, std::ios::binary);
                 std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
                 image = find_firmware(bytes);
-                if (image.empty()) fprintf(stderr, "popn-io: no firmware found in %s\n", g_firmware.c_str());
+                if (image.empty()) fprintf(stderr, "popn-io: no firmware found in %s\n", g_dll.c_str());
             }
             if (image.empty()) {
                 if (!told_bare)
-                    fprintf(stderr, "popn-io: the board at USB port %s has no firmware: --popn-io-firmware gives it "
+                    fprintf(stderr, "popn-io: the board at USB port %s has no firmware: --popn-io-dll gives it "
                                     "(the game's ezusb.dll, pop'n music 15 or later)\n", d.port.c_str());
                 told_bare = true;
                 sleep_ms(5000);
@@ -389,12 +419,7 @@ void run() {
             memset(bulk, 0, sizeof bulk);
             for (int k = 0; k < 2; k++)
                 if (allowed_bulk(bulk, sizeof bulk)) g_usb->transfer(0x02, bulk, 512, 200);
-            uint32_t lamps;
-            {
-                std::lock_guard<std::mutex> l(g_mutex);
-                lamps = g_lamps;
-            }
-            ok = send_out(out_packet(lamps, 0x09, 0x03)) == 64;
+            ok = send_out(out_packet(lamps_now(), 0x09, 0x03)) == 64;
         }
         if (!ok) {
             fprintf(stderr, "popn-io: the board at USB port %s doesn't answer as pop'n music's I/O board\n", d.port.c_str());
@@ -420,17 +445,11 @@ void run() {
                     log_packet("in", in, 64);
                     memcpy(logged, in, 64);
                 }
-                std::lock_guard<std::mutex> l(g_mutex);
-                memcpy(g_in, in, 64);
-                g_have_in = true;
+                have(pad(in), coins(in));
             } else {
                 failures++;
             }
-            uint32_t lamps;
-            {
-                std::lock_guard<std::mutex> l(g_mutex);
-                lamps = g_lamps;
-            }
+            const uint32_t lamps = lamps_now();
             const auto now = std::chrono::steady_clock::now();
             if (lamps != sent || now - last_out > std::chrono::milliseconds(500)) {
                 r = send_out(out_packet(lamps));
@@ -442,34 +461,107 @@ void run() {
         }
         if (g_running) fprintf(stderr, "popn-io: lost the board; looking for it again\n");
         g_usb->close();
-        {
-            std::lock_guard<std::mutex> l(g_mutex);
-            g_have_in = false;
-        }
+        lost();
         sleep_ms(1000);
     }
 }
+
+#ifdef _WIN32
+// The board through an ezusb.dll (Windows): the 32-bit hiraku-ezusb.exe beside this program loads it
+// (ezusb/link.h) and HIRAKU trades the controls and lamps with it through shared memory
+void run_helper() {
+    if (g_dll.empty()) {
+        fprintf(stderr, "popn-io: on Windows the board is driven through an ezusb.dll: --popn-io-dll FILE (the game's, "
+                        "or a replacement such as UltimatePopnController's)\n");
+        return;
+    }
+    const std::string name = "Local\\hiraku-ezusb-" + std::to_string(GetCurrentProcessId());
+    HANDLE map = CreateFileMappingA(INVALID_HANDLE_VALUE, nullptr, PAGE_READWRITE, 0, sizeof(hk_ezusb_link), name.c_str());
+    auto *link = map ? (hk_ezusb_link *)MapViewOfFile(map, FILE_MAP_ALL_ACCESS, 0, 0, sizeof(hk_ezusb_link)) : nullptr;
+    if (!link) {
+        fprintf(stderr, "popn-io: no shared memory (%lu)\n", GetLastError());
+        return;
+    }
+    std::string helper = hk::sys::exe_path();
+    helper = helper.substr(0, helper.find_last_of('/') + 1) + "hiraku-ezusb.exe";
+    for (char &c : helper)
+        if (c == '/') c = '\\';
+    for (int tries = 0; g_running && tries < 3; tries++) {
+        memset((void *)link, 0, sizeof *link);
+        link->magic = HK_EZUSB_MAGIC;
+        std::string cmd = "\"" + helper + "\" " + name + " \"" + g_dll + "\" " + std::to_string(GetCurrentProcessId());
+        STARTUPINFOA si{};
+        si.cb = sizeof si;
+        si.dwFlags = STARTF_USESTDHANDLES;   // its messages go where HIRAKU's go
+        si.hStdInput = GetStdHandle(STD_INPUT_HANDLE);
+        si.hStdOutput = si.hStdError = GetStdHandle(STD_ERROR_HANDLE);
+        PROCESS_INFORMATION pi{};
+        if (!CreateProcessA(helper.c_str(), cmd.data(), nullptr, nullptr, TRUE, CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi)) {
+            fprintf(stderr, "popn-io: cannot start %s (%lu)\n", helper.c_str(), GetLastError());
+            break;
+        }
+        int shown = 99;
+        while (g_running) {
+            const int state = link->state;
+            if (state != shown) {
+                shown = state;
+                if (state == HK_EZUSB_STARTING) fprintf(stderr, "popn-io: %s: starting the board\n", g_dll.c_str());
+                if (state == HK_EZUSB_FIRMWARE) fprintf(stderr, "popn-io: the board takes its firmware (about 20 s)\n");
+                if (state == HK_EZUSB_RUNNING) fprintf(stderr, "popn-io: through ezusb.dll: the cabinet's buttons and lamps\n");
+            }
+            if (state == HK_EZUSB_RUNNING) have(link->pad, link->coins);
+            link->lamps = lamps_now();
+            if (WaitForSingleObject(pi.hProcess, 1) == WAIT_OBJECT_0) break;   // also the 1 ms between polls
+        }
+        lost();
+        if (!g_running) {
+            link->quit = 1;   // it turns the lamps off and lets the board go
+            if (WaitForSingleObject(pi.hProcess, 3000) != WAIT_OBJECT_0) TerminateProcess(pi.hProcess, 1);
+        }
+        DWORD code = 0;
+        GetExitCodeProcess(pi.hProcess, &code);
+        CloseHandle(pi.hProcess);
+        CloseHandle(pi.hThread);
+        if (!g_running) break;
+        const int state = link->state;
+        if (state == HK_EZUSB_NO_DLL || state == HK_EZUSB_NO_EXPORT) break;   // trying again won't help
+        fprintf(stderr, "popn-io: hiraku-ezusb.exe stopped (exit %lu); starting it again in 5 s\n", code);
+        sleep_ms(5000);
+    }
+    UnmapViewOfFile((void *)link);
+    CloseHandle(map);
+}
+#endif
 
 }  // namespace
 
 bool popnio_option(const std::string &name, const std::function<std::string()> &val) {
     if (name == "--popn-io") g_where = val();
-    else if (name == "--popn-io-firmware") g_firmware = val();
+    else if (name == "--popn-io-dll" || name == "--popn-io-firmware") g_dll = val();
     else return false;
     return true;
 }
 
 std::string popnio_help() {
-    return "  --popn-io WHERE      a pop'n music cabinet's USB I/O board (pop'n 15 and later): auto, or its USB\n"
-           "                       port (3-2.1): the cabinet's buttons and lamps\n"
-           "  --popn-io-firmware FILE  the firmware for a board that has none: the game's ezusb.dll\n";
+    return "  --popn-io WHERE      a pop'n music cabinet's USB I/O board (pop'n 15 and later): auto, or (Linux) its\n"
+           "                       USB port (3-2.1): the cabinet's buttons and lamps\n"
+           "  --popn-io-dll FILE   the game's ezusb.dll: Linux loads a bare board's firmware from it; on Windows it\n"
+           "                       drives the board (or a replacement ezusb.dll, such as UltimatePopnController's)\n";
 }
 
 void popnio_start() {
     if (g_where.empty()) return;
+#ifdef _WIN32
+    if (!g_usb) {
+        g_running = true;
+        g_thread = std::thread(run_helper);
+        atexit(popnio_stop);
+        return;
+    }
+#endif
     if (!g_usb) g_usb = system_usb();
     if (!g_usb) {
-        fprintf(stderr, "popn-io: on Linux only for now\n");
+        fprintf(stderr, "popn-io: not on this system\n");
         return;
     }
     g_running = true;
@@ -500,27 +592,30 @@ void popnio_frame(hk::Core &core) {
     const auto &lit = core.lamp_state();
     for (size_t i = 0; i < bits.size() && i < lit.size(); i++)
         if (lit[i]) lamps |= bits[i];
-    uint8_t in[64];
+    uint32_t now, count;
     {
         std::lock_guard<std::mutex> l(g_mutex);
         g_lamps = lamps;
         if (!g_have_in) return;
-        memcpy(in, g_in, 64);
+        now = g_pad, count = g_coins;
     }
 
     // the controls in: what changed since the last frame (all up to begin with)
-    static uint32_t last = 0;
+    static uint32_t last = 0, last_count = 0;
     static bool first = true;
-    static uint16_t last_coins = 0;
-    const uint32_t now = pad(in);
-    if (first) last_coins = coins(in), first = false;
+    if (first) last_count = count, first = false;
     for (auto &b : inputs())
         if ((now >> b.bit & 1) != (last >> b.bit & 1)) core.set_input(b.name, now >> b.bit & 1);
+    // coins: the board's count (Konami's board counts them); a board whose count never moves
+    // (UltimatePopnController's ezusb.dll) by its coin switch, bit 22, unless the count moves
+    // within 15 frames of the switch
+    static int pending = 0, coin_frames = 0, switch_wait = 0;
+    static bool counting = false;
+    if (uint32_t d = (count - last_count) & 0xffff; d && d < 16) pending += (int)d, counting = true, switch_wait = 0;
+    last_count = count;
+    if (!counting && (now >> 22 & 1) && !(last >> 22 & 1)) switch_wait = 15;
+    if (switch_wait && --switch_wait == 0 && !counting) pending++;
     last = now;
-    // coins: the count goes up by one a coin; each a press of a few frames
-    static int pending = 0, coin_frames = 0;
-    if (uint16_t d = (uint16_t)(coins(in) - last_coins); d && d < 16) pending += d;
-    last_coins = coins(in);
     if (coin_frames) {
         if (--coin_frames == 2) core.set_input("Coin 1", 0);
     } else if (pending) {

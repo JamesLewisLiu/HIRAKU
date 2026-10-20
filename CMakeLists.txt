@@ -163,6 +163,18 @@ target_include_directories(hiraku_shell PUBLIC runtime)
 find_package(Threads REQUIRED)
 find_package(ZLIB REQUIRED)   # mods' PNG pictures (runtime/host/png.h)
 target_link_libraries(hiraku_shell PUBLIC hiraku_cabinet Threads::Threads ZLIB::ZLIB)
+# hiraku-ezusb.exe (Windows): the 32-bit go-between that loads pop'n music's ezusb.dll for the
+# 64-bit games (runtime/host/popnio.h, ezusb/link.h). One C file, built by the same clang for i686
+# beside the games (tools/package-win.sh takes every hiraku*.exe).
+if(WIN32 AND CMAKE_C_COMPILER_ID MATCHES "Clang" AND NOT MSVC)
+  add_custom_command(OUTPUT ${CMAKE_BINARY_DIR}/hiraku-ezusb.exe
+    COMMAND ${CMAKE_C_COMPILER} --target=i686-w64-mingw32 -O2 -Wall -Wextra -fuse-ld=lld -static
+            -o ${CMAKE_BINARY_DIR}/hiraku-ezusb.exe ${CMAKE_SOURCE_DIR}/runtime/host/ezusb/helper.c -lwinmm
+    DEPENDS runtime/host/ezusb/helper.c runtime/host/ezusb/link.h
+    COMMENT "hiraku-ezusb.exe (32-bit)")
+  add_custom_target(hiraku-ezusb ALL DEPENDS ${CMAKE_BINARY_DIR}/hiraku-ezusb.exe)
+  add_dependencies(hiraku_shell hiraku-ezusb)
+endif()
 # NFC card readers through PC/SC (runtime/host/readers.h, --scard): optional
 find_package(PkgConfig QUIET)
 if(PkgConfig_FOUND)

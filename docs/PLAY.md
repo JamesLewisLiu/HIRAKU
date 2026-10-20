@@ -212,19 +212,21 @@ The first reader of each kind is player 1's, the second player 2's. A card held 
 
 ### Cabinet I/O: pop'n music's USB I/O board
 
-`--popn-io auto` (**Settings > Cabinet I/O**, Linux) takes the USB I/O board of a pop'n music cabinet that runs pop'n music 15 or later, the one those games drive through their `ezusb.dll`. Its nine buttons, TEST, SERVICE and coin become the game's controls, and the game's button, top and side lamps light the cabinet's. It works for every pop'n music game: the DJ Main ones (1–3), Firebeat (4–8) and Python (9–14). `auto` takes the first board it finds. If there's more than one, give the board's USB port as Linux names it in `/sys/bus/usb/devices` (for example `--popn-io 3-2.1`).
+`--popn-io auto` (**Settings > Cabinet I/O**) takes the USB I/O board of a pop'n music cabinet that runs pop'n music 15 or later, the one those games drive through their `ezusb.dll`. Its nine buttons, TEST, SERVICE and coin become the game's controls, and the game's button, top and side lamps light the cabinet's. It works for every pop'n music game: the DJ Main ones (1–3), Firebeat (4–8) and Python (9–14). `auto` takes the first board it finds. If there's more than one, give the board's USB port as Linux names it in `/sys/bus/usb/devices` (for example `--popn-io 3-2.1`).
 
-The board keeps no firmware of its own. The game loads it into the board's memory at every start, and it's gone at power-off. A board that comes up without it gets it from `--popn-io-firmware FILE`, the `ezusb.dll` of your pop'n music 15 or later. HIRAKU reads the firmware from that file and loads it the way the game does. The board then leaves and comes back with its firmware, which takes a few seconds. The firmware only goes into the board's memory: HIRAKU never writes the board's EEPROM or its security chip. A board that copies Konami's with firmware of its own, such as PopnIO in its REALIO mode, is used as it is (without PopnIO's enhanced polling). Details: [POPN-IO.md](POPN-IO.md).
+**On Windows** HIRAKU drives the board the way the games do, through an `ezusb.dll`: give it with `--popn-io-dll FILE` (Settings: "its ezusb.dll"). That's the game's own `ezusb.dll` (pop'n music 15 or later; the board needs Cypress's driver installed, as on the cabinet's PC), or a replacement that drives something else, such as UltimatePopnController's. The DLL is 32-bit and the games are 64-bit, so a small helper, `hiraku-ezusb.exe` beside them, loads it and passes the buttons and lamps along. A real board takes about 20 s to start, while the DLL loads its firmware.
 
-Only root can open a USB device directly by default. A udev rule lets you, in `/etc/udev/rules.d/70-popn-io.rules`:
+**On Linux** HIRAKU talks to the board itself. The board keeps no firmware of its own. The game loads it into the board's memory at every start, and it's gone at power-off. A board that comes up without it gets it from `--popn-io-dll FILE`, the `ezusb.dll` of your pop'n music 15 or later. HIRAKU reads the firmware from that file and loads it the way the game does. The board then leaves and comes back with its firmware, which takes a few seconds. The firmware only goes into the board's memory: HIRAKU never writes the board's EEPROM or its security chip. A board that copies Konami's with firmware of its own, such as PopnIO in its REALIO mode, is used as it is (without PopnIO's enhanced polling). Details: [POPN-IO.md](POPN-IO.md).
+
+On Linux, only root can open a USB device directly by default. A udev rule lets you, in `/etc/udev/rules.d/70-popn-io.rules`:
 
 ```
 SUBSYSTEM=="usb", ATTRS{idVendor}=="04b4", ATTRS{idProduct}=="8613", TAG+="uaccess"
 ```
 
-Then run `sudo udevadm control --reload` and plug the board in again. 04b4:8613 is the ID of every Cypress FX2LP chip, the board's included, before and after its firmware. A bare FX2LP chip from something else (some logic analysers) has the same ID, so unplug those when you use `auto`, or give the board's port. This hasn't been checked on a board yet. `HK_POPNIO_LOG=1` shows its packets.
+Then run `sudo udevadm control --reload` and plug the board in again. 04b4:8613 is the ID of every Cypress FX2LP chip, the board's included, before and after its firmware. A bare FX2LP chip from something else (some logic analysers) has the same ID, so unplug those when you use `auto`, or give the board's port. This hasn't been checked on a board yet. `HK_POPNIO_LOG=1` shows its packets (Linux).
 
-An UltimatePopnController (CrazyRedMachine's, in its HID mode) needs none of this: its buttons are a game controller's (**Controls**), and its lamps are named HID outputs that a lights file drives ([LIGHTS.md](LIGHTS.md)).
+An UltimatePopnController (CrazyRedMachine's) needs none of this on Linux: its buttons are a game controller's (**Controls**), and its lamps are named HID outputs that a lights file drives ([LIGHTS.md](LIGHTS.md)). On Windows it works either way: as a controller with a lights file, or with `--popn-io auto` and its own `ezusb.dll`.
 
 ## Latency
 

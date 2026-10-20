@@ -421,7 +421,6 @@ SettingsDialog::SettingsDialog(QWidget *parent) : QDialog(parent) {
                        "the cabinet's keys, turntables, buttons, effector and coin, and its lamps and ticker, for "
                        "beatmania IIDX, III and the DJ Main games.");
     fc->addRow("IIDX BIO2 board:", m_bio2);
-#ifndef Q_OS_WIN
     m_popnio = new QComboBox;
     m_popnio->setEditable(true);
     m_popnio->addItems({"", "auto"});
@@ -429,16 +428,21 @@ SettingsDialog::SettingsDialog(QWidget *parent) : QDialog(parent) {
     m_popnio->lineEdit()->setPlaceholderText("none");
     m_popnio->setToolTip("--popn-io: a pop'n music cabinet's USB I/O board (the one pop'n music 15 and later drive through "
                          "ezusb.dll, or a board that copies it, such as PopnIO): its buttons, TEST, SERVICE and coin, and its "
-                         "button, top and side lamps, for every pop'n music game. auto takes the first; a USB port "
+                         "button, top and side lamps, for every pop'n music game. auto takes the first; on Linux a USB port "
                          "(as in /sys/bus/usb/devices, e.g. 3-2.1) chooses one.");
     fc->addRow("pop'n music I/O board:", m_popnio);
-    m_popnioFirmware = new QLineEdit(s.value("cabinet/popnioFirmware").toString());
-    m_popnioFirmware->setPlaceholderText("only for a board with no firmware: the game's ezusb.dll");
-    m_popnioFirmware->setToolTip("--popn-io-firmware: Konami's board keeps no firmware; the game loads it at every start "
-                                 "from its ezusb.dll (pop'n music 15 or later), and HIRAKU does the same from this file.");
-    fc->addRow("  its firmware:", withBrowse(m_popnioFirmware, false, this, "Choose the game's ezusb.dll",
-                                             "ezusb.dll (ezusb*.dll);;All files (*)"));
+    m_popnioDll = new QLineEdit(s.value("cabinet/popnioDll").toString());
+#ifdef Q_OS_WIN
+    m_popnioDll->setPlaceholderText("the ezusb.dll that drives it: the game's, or a replacement");
+    m_popnioDll->setToolTip("--popn-io-dll: HIRAKU drives the board through it, as the games do: the game's ezusb.dll "
+                            "(pop'n music 15 or later, with Cypress's driver installed), or a replacement such as "
+                            "UltimatePopnController's.");
+#else
+    m_popnioDll->setPlaceholderText("only for a board with no firmware: the game's ezusb.dll");
+    m_popnioDll->setToolTip("--popn-io-dll: Konami's board keeps no firmware; the game loads it at every start "
+                            "from its ezusb.dll (pop'n music 15 or later), and HIRAKU does the same from this file.");
 #endif
+    fc->addRow("  its ezusb.dll:", withBrowse(m_popnioDll, false, this, "Choose an ezusb.dll", "ezusb.dll (ezusb*.dll);;All files (*)"));
     v->addWidget(cab);
 
     auto *paths = new QGroupBox("Folders");
@@ -536,10 +540,8 @@ void SettingsDialog::accept() {
     s.setValue("readers/scard", m_scard->isChecked());
     s.setValue("readers/cardio", m_cardio->isChecked());
     s.setValue("cabinet/bio2", m_bio2->currentText().trimmed());
-    if (m_popnio) {
-        s.setValue("cabinet/popnio", m_popnio->currentText().trimmed());
-        s.setValue("cabinet/popnioFirmware", m_popnioFirmware->text().trimmed());
-    }
+    s.setValue("cabinet/popnio", m_popnio->currentText().trimmed());
+    s.setValue("cabinet/popnioDll", m_popnioDll->text().trimmed());
     s.sync();
     QDialog::accept();
 }

@@ -229,7 +229,7 @@ int main() {
     b->want = flat;
     use_usb(std::move(board));
     CHECK(hk::host::popnio_option("--popn-io", [] { return std::string("auto"); }));
-    CHECK(hk::host::popnio_option("--popn-io-firmware", [&] { return dllpath; }));
+    CHECK(hk::host::popnio_option("--popn-io-dll", [&] { return dllpath; }));
     hk::host::popnio_start();
 
     Machine m;
@@ -238,17 +238,23 @@ int main() {
         hk::host::popnio_frame(m);
         std::this_thread::sleep_for(std::chrono::milliseconds(16));
     }
-    b->buttons = 1u << 10 | 1u << 7;   // button 3, TEST
-    b->coins = 1;
-    for (int k = 0; k < 10; k++) {
-        hk::host::popnio_frame(m);
-        std::this_thread::sleep_for(std::chrono::milliseconds(16));
-    }
+    auto frames = [&](int n) {
+        for (int k = 0; k < n; k++) {
+            hk::host::popnio_frame(m);
+            std::this_thread::sleep_for(std::chrono::milliseconds(16));
+        }
+    };
+    // a coin by the switch alone (a count that never moves: UltimatePopnController's DLL) ...
+    b->buttons = 1u << 22;
+    frames(3);
     b->buttons = 0;
-    for (int k = 0; k < 4; k++) {
-        hk::host::popnio_frame(m);
-        std::this_thread::sleep_for(std::chrono::milliseconds(16));
-    }
+    frames(20);
+    // ... then by the count (Konami's board), with the switch at the same time: one coin, not two
+    b->buttons = 1u << 10 | 1u << 7 | 1u << 22;   // button 3, TEST, the coin switch
+    b->coins = 1;
+    frames(10);
+    b->buttons = 0;
+    frames(20);
     hk::host::popnio_stop();
     remove(dllpath.c_str());
 
@@ -268,7 +274,9 @@ int main() {
     if (log != want) fprintf(stderr, "dialogue: %s\n", log.c_str());
     CHECK(has(m.inputs, "P1 Button 3=1") && has(m.inputs, "P1 Button 3=0"));
     CHECK(has(m.inputs, "Test=1") && has(m.inputs, "Test=0"));
-    CHECK(has(m.inputs, "Coin 1=1") && has(m.inputs, "Coin 1=0"));
+    int coins = 0;
+    for (auto &s : m.inputs) coins += s == "Coin 1=1";
+    CHECK(coins == 2);
     CHECK(!has(m.inputs, "P1 Button 1=1") && !has(m.inputs, "Service=1"));
     for (auto &s : m.inputs) printf("input %s\n", s.c_str());
     if (failures) fprintf(stderr, "%d failed\n", failures);

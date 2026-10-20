@@ -60,7 +60,7 @@
 //                       runtime/host/readers.h)
 //     --bio2 PATH       beatmania IIDX's BIO2 I/O board as the cabinet's controls and lamps, with
 //                       --window (runtime/host/bio2.h)
-//     --popn-io WHERE, --popn-io-firmware FILE  a pop'n music cabinet's USB I/O board as its buttons
+//     --popn-io WHERE, --popn-io-dll FILE  a pop'n music cabinet's USB I/O board as its buttons
 //                       and lamps, with --window (runtime/host/popnio.h)
 //     --audio-ms N      initial audio queue target (default 8); grows by 1 ms per underrun (the device
 //                       asking for more than is queued; not in the first 10 s), up to 30

@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // A pop'n music cabinet's USB I/O board as the cabinet's buttons and lamps, for the pop'n music
-// games (DJ Main, Firebeat, Python): --popn-io auto (or the board's USB port, as Linux names it in
-// /sys/bus/usb/devices, e.g. 3-2.1), --popn-io-firmware FILE.
+// games (DJ Main, Firebeat, Python): --popn-io auto (or, on Linux, the board's USB port as it's named
+// in /sys/bus/usb/devices, e.g. 3-2.1), --popn-io-dll FILE (the game's ezusb.dll).
 //
 // The board is the one pop'n music 15 and later drive through their ezusb.dll: a Cypress EZ-USB
 // FX2LP (04b4:8613) that keeps no firmware of its own. The game's ezusb.dll loads it into the
 // chip's RAM at every start (it's gone at power-off); a board that comes up bare gets it from
-// --popn-io-firmware, a copy of that ezusb.dll (HIRAKU carries none: Konami's). It then says
+// --popn-io-dll, the user's own ezusb.dll (HIRAKU carries none: Konami's). It then says
 // "KONAMI" (string descriptor 1) and keeps its IDs. Boards that copy it with firmware of their own
 // (PopnIO in its REALIO mode) are taken as they are; bare is a board with no strings at all.
 //
@@ -18,8 +18,12 @@
 // out packets are only ever the polling and coin-mode ones, and the firmware load only writes the
 // chip's RAM and its CPUCS register (popnio::allowed_*).
 //
-// Linux only for now (usbdevfs; the board's /dev/bus/usb node must be the user's: docs/PLAY.md).
-// Not checked on a board yet. HK_POPNIO_LOG=1 shows the packets.
+// Linux: usbdevfs (the board's /dev/bus/usb node must be the user's: docs/PLAY.md). Windows: through
+// the ezusb.dll itself, as the games do, which also drives boards and controllers that replace it
+// (UltimatePopnController's DLL, PopnIO): a 32-bit helper, hiraku-ezusb.exe, loads it (HIRAKU is
+// 64-bit) and trades the controls and lamps through shared memory (ezusb/link.h).
+// Coins: the board's count; a board whose count never moves, by its coin switch (bit 22).
+// Not checked on a board yet. HK_POPNIO_LOG=1 shows the packets (Linux).
 #pragma once
 
 #include <array>
@@ -35,7 +39,7 @@ class Core;
 
 namespace hk::host {
 
-// --popn-io WHERE, --popn-io-firmware FILE: true if `name` was one
+// --popn-io WHERE, --popn-io-dll FILE (--popn-io-firmware, the same): true if `name` was one
 bool popnio_option(const std::string &name, const std::function<std::string()> &val);
 std::string popnio_help();
 
@@ -91,8 +95,8 @@ public:
     enum { XFER_TIMEOUT = -1, XFER_GONE = -2, XFER_ERROR = -3 };
     virtual int transfer(uint8_t ep, uint8_t *data, int n, int timeout_ms) = 0;
 };
-std::unique_ptr<Usb> system_usb();                          // nullptr where there's none yet (Windows)
-void use_usb(std::unique_ptr<Usb> usb);                     // before popnio_start: tests' pretend board
+std::unique_ptr<Usb> system_usb();                          // nullptr where there's none (Windows: the helper)
+void use_usb(std::unique_ptr<Usb> usb);                     // before popnio_start: tests' pretend board, on any system
 
 }  // namespace popnio
 

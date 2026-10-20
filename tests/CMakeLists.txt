@@ -40,6 +40,21 @@ endif()
 add_executable(test_popnio popnio/test_popnio.cpp)
 target_link_libraries(test_popnio PRIVATE hiraku_shell)
 add_test(NAME popn_io_board COMMAND test_popnio)
+# Windows: the same through hiraku-ezusb.exe and a pretend 32-bit ezusb.dll (under Wine here); all
+# three beside each other, where HIRAKU looks for the helper
+if(WIN32 AND TARGET hiraku-ezusb)
+  add_custom_command(OUTPUT ${CMAKE_BINARY_DIR}/fake_ezusb.dll
+    COMMAND ${CMAKE_C_COMPILER} --target=i686-w64-mingw32 -O2 -shared -fuse-ld=lld -static
+            -o ${CMAKE_BINARY_DIR}/fake_ezusb.dll ${CMAKE_CURRENT_SOURCE_DIR}/popnio/fake_ezusb.c
+            ${CMAKE_CURRENT_SOURCE_DIR}/popnio/fake_ezusb.def
+    DEPENDS popnio/fake_ezusb.c popnio/fake_ezusb.def)
+  add_custom_target(fake_ezusb DEPENDS ${CMAKE_BINARY_DIR}/fake_ezusb.dll)
+  add_executable(test_ezusb_helper popnio/test_ezusb_helper.cpp)
+  target_link_libraries(test_ezusb_helper PRIVATE hiraku_shell)
+  set_target_properties(test_ezusb_helper PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
+  add_dependencies(test_ezusb_helper fake_ezusb hiraku-ezusb)
+  add_test(NAME popn_io_ezusb_helper COMMAND test_ezusb_helper ${CMAKE_BINARY_DIR}/fake_ezusb.dll)
+endif()
 
 # ATA security (SECURITY UNLOCK) on a hard disk, as MAME does it (DJ Main complete MIX on)
 add_executable(test_ata_security ata/test_ata_security.cpp)
