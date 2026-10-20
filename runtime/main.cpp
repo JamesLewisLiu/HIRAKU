@@ -31,6 +31,12 @@
 //                       uneven numbers of refreshes.
 //                       Needs the compositor's fifo-v1 (KWin 6.7), or Windows (DWM's vblank).
 //                       docs/SMOOTH.md
+//     --crt-beam        the Blur Busters CRT beam simulator over the picture, on a display faster
+//                       than the game (120 Hz and up; best at 240): each refresh lights the part of
+//                       the tube the beam sweeps then, for a CRT's motion clarity. Needs what
+//                       --smooth-motion does, and replaces its in-between pictures. docs/SMOOTH.md
+//     --crt-beam-gamma G  the display's gamma for it (2.2; a mismatch shows as bands, washed out)
+//     --crt-beam-gain X   its brightness against motion blur (0.7; 1 as bright as without it)
 //     --lights-overlay  the game's lights over its picture: every lamp the core decodes, lit or not
 //                       as the game drives it, and how often they change (F9 shows or hides it)
 //     --macro NAME[@F]  run one of the game's code macros (games/<game>/macros.txt) at frame F, or
@@ -254,7 +260,8 @@ int main(int argc, char **argv) {
     std::string picture_mode = "off";
     std::vector<std::string> picture_config;
     std::vector<std::string> macro_specs;
-    bool display_sync = true, smooth_motion = false, lights_overlay = false;
+    bool display_sync = true, smooth_motion = false, lights_overlay = false, crt_beam = false;
+    float beam_gamma = 2.2f, beam_gain = 0.7f;
     std::string lights_log_path;
     bool nvram_given = false;
     int audio_ms = 8, audio_buffer = 0;
@@ -292,6 +299,9 @@ int main(int argc, char **argv) {
         else if (a == "--macro") macro_specs.push_back(val());
         else if (a == "--display-sync") display_sync = val() != "off";
         else if (a == "--smooth-motion") smooth_motion = true;
+        else if (a == "--crt-beam") crt_beam = true;
+        else if (a == "--crt-beam-gamma") beam_gamma = std::stof(val());
+        else if (a == "--crt-beam-gain") beam_gain = std::stof(val());
         else if (a == "--lights-overlay") lights_overlay = true;
         else if (a == "--lights-log") lights_log_path = val();
         else if (a == "--nvram") { nvram_dir = val(); nvram_given = true; }
@@ -435,6 +445,7 @@ int main(int argc, char **argv) {
     host::window_set_picture(picture_mode, opt.root + "/shaders", picture_config);
     host::window_set_display_sync(display_sync);
     host::window_set_smooth_motion(smooth_motion);
+    host::window_set_beam(crt_beam, beam_gamma, beam_gain);
     host::window_set_lights_overlay(lights_overlay);
     host::window_set_audio_output(audio_device, audio_buffer, audio_exclusive);
     host::window_set_audio_asio(audio_asio);

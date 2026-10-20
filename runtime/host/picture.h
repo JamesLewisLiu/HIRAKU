@@ -35,6 +35,19 @@ const char *mode_label(Mode m);           // "sharp pixels", "CRT light (crt-gue
 
 // Needs a current OpenGL 3.3 core context. The presets are loaded the first time they are drawn.
 bool init(const std::string &shaders_dir, const std::vector<std::string> &config_dirs);
+// The CRT beam simulator (Blur Busters, MIT: beam_shader.h): on a display faster than the game, each
+// refresh lights the part of the picture the electron beam is sweeping then and lets the rest fade,
+// each pixel's light spread over as few refreshes as its brightness allows: a CRT's motion clarity
+// on an LCD or OLED. It goes after the picture mode (any of them: the mode runs once a frame, the
+// beam pass, three texture reads a pixel, every refresh). The window decides when it applies
+// (window.h); false if it can't run here.
+struct Beam {
+    float gamma = 2.2f;      // the display's gamma: a mismatch shows as bands and washed-out colour
+    float gain = 0.7f;       // brightness against motion blur (1: as bright as without, less sharp)
+    bool sideways = false;   // the monitor turned on its side: the beam runs left to right in each tube
+    int tubes = 1;           // monitors side by side in the frame (Keyboardmania: 2)
+};
+bool set_beam(bool on, const Beam &b = {});
 // The cabinet's monitor, in kHz of line rate (15: TV-like arcade monitors; 24: medium resolution,
 // DJ Main; 31: VGA-like, Firebeat): the shaders' settings for it (hiraku-<k>khz.params). 0: none.
 void set_monitor(int khz);
@@ -50,8 +63,13 @@ bool prepare(Mode m);
 // FrameCount, the frames before it and the passes' output a frame ago stay as they were, so a
 // shader's interlaced fields and afterglow keep the game's pace on a faster display.
 // UINT64_MAX: every draw a new frame, counted from the first.
+// beam_phase, frames_per_hz: with the CRT beam on (set_beam), this draw is one display refresh of
+// the beam: beam_phase is where the beam is when the refresh starts, in frames after the frame's
+// moment (pacing::phase: 0 its top, 1 the next frame's), frames_per_hz the display's refreshes in
+// a frame of the game. A new frame's picture (the mode's) is kept, not shown; each refresh shows the
+// beam's pass over the last two. -1: no beam for this draw.
 Mode draw(const uint32_t *rgb, int w, int h, int x, int y, int vw, int vh, int win_w, int win_h, Mode m, int view = 0,
-          uint64_t frame = UINT64_MAX);
+          uint64_t frame = UINT64_MAX, double beam_phase = -1, double frames_per_hz = 0);
 // After draw: an ARGB picture (w x h, with its own alpha, times `alpha`) blended over the window,
 // drawn at (x, y, dw, dh) from the top left, its pixels sharp (host/notice.h's banner)
 void overlay(const uint32_t *argb, int w, int h, int x, int y, int dw, int dh, float alpha, int win_w, int win_h);

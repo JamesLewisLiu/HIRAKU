@@ -295,6 +295,7 @@ public:
     // Keyboardmania: two 4:3 monitors turned upright (MAME ROT270), side by side: 3:2
     double display_aspect() const override { return fb::screens() == 2 ? 1.5 : 4.0 / 3.0; }
     int monitor_khz() const override { return 31; }   // 640x480, progressive
+    bool monitor_turned() const override { return fb::screens() == 2; }   // Keyboardmania (board.cpp draw_picture)
     std::vector<std::string> setup_warning() const override {
         if (!fb::sound_flash_blank()) return {};
         // the YMZ280B then plays erased flash: a level stuck at full scale under the rest

@@ -296,11 +296,18 @@ runs the game on the display's refreshes:
 - The console says what it chose (`display sync: on: 60.00 Hz display, 1 refresh per frame, the
   game at +2.6 % speed`), and the exit report's `video: display sync` line how it went.
 
-**Smooth motion** (launcher: Settings > "Smooth motion (DJ Main, Firebeat, Twinkle and System 573 games)";
-`--smooth-motion`): the game runs at its exact speed on any display (144 Hz too), and every
-refresh shows the notes and other moving things where they are at that refresh's moment, carried
-on along their move, instead of a frame held for 2 or 3 refreshes unevenly. Needs Wayland with
-the fifo protocol (KWin 6.7), or Windows (new, checked under Wine only). See docs/SMOOTH.md.
+**Motion on a fast display** (launcher: Settings > Motion; DJ Main, Firebeat, Twinkle and System
+573 games). Both need Wayland with the fifo protocol (KWin 6.7), or Windows (new, checked under
+Wine only). See docs/SMOOTH.md.
+- **Smooth motion** (`--smooth-motion`): the game runs at its exact speed on any display (144 Hz
+  too), and every refresh shows the notes and other moving things where they are at that
+  refresh's moment, carried on along their move, instead of a frame held for 2 or 3 refreshes
+  unevenly.
+- **CRT beam** (`--crt-beam`): the Blur Busters CRT Beam Simulator. On 120 Hz and up (best at
+  240), each refresh lights the part of the tube the electron beam sweeps then and lets the rest
+  fade, so moving notes stay as sharp as on a CRT. Set **Display gamma** to your display's (2.2
+  for most), use SDR, and turn off the display's ABL/APL and its own strobing; **Brightness** trades
+  light for sharpness (0.7; about 0.5 at 120 Hz). It works with any picture mode.
 
 **When it's off:**
 - **A display that doesn't fit**, such as 144 Hz (58.49 × 2 = 117, × 3 = 175): frames are shown as

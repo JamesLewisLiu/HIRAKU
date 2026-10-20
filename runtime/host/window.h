@@ -34,6 +34,12 @@ void window_set_split(bool on);
 // the k - 1 refreshes after each frame show the core's in-between pictures (Core::render_between)
 // instead of holding the frame
 void window_set_smooth_motion(bool on);
+// --crt-beam: the Blur Busters CRT beam simulator (host/picture.h, set_beam) over the picture on a
+// display faster than the game: each refresh lights the part of the tube the beam sweeps then. It
+// needs what smooth motion does (display pacing, a picture every refresh: Wayland's fifo-v1 or
+// Windows' DWM) and takes the place of its in-between pictures. gamma: the display's; gain:
+// brightness against motion blur.
+void window_set_beam(bool on, float gamma = 2.2f, float gain = 0.7f);
 // --lights-overlay: the game's lights over its picture from the start (F9 toggles it; host/lampview.h)
 void window_set_lights_overlay(bool on);
 bool window_open(const char *title, int scale, const std::string &bindings, int audio_target_ms, bool fullscreen = false,

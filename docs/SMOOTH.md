@@ -2,7 +2,8 @@
 
 A 120 or 240 Hz display can show notes moving two or four times as smoothly as the cabinet's
 60 Hz monitor. A game draws one picture per vsync, though, so the extra smoothness has to come
-from somewhere. HIRAKU has two ways, and which one fits depends on how the game keeps time:
+from somewhere. HIRAKU has two ways, and which one fits depends on how the game keeps time (and a
+third, the CRT beam, for a CRT's sharpness in motion rather than more pictures):
 
 | The game's play goes by | Way | Where | Games so far |
 |---|---|---|---|
@@ -171,6 +172,51 @@ display start and drawing area at each VBLANK.
 
 Python (the PS2's GS) could have in-between pictures the same way, not done. For its
 clock-following games the `[[rate]]` way is better: the pictures are the game's own.
+
+## A CRT's motion clarity (`--crt-beam`)
+
+A third way, for the same games as the in-between pictures (DJ Main, Firebeat, Twinkle, System
+573): the [Blur Busters CRT Beam Simulator](https://github.com/blurbusters/crt-beam-simulator)
+(Mark Rejhon and Timothy Lottes, MIT). A sample-and-hold display (LCD, OLED) shows each frame for
+the whole frame, and the eye tracking a moving note smears it; a CRT lit each line for a moment as
+the beam passed, so motion stayed sharp. On a display faster than the game, each refresh lights
+only the part of the tube the beam sweeps during it, and lets the rest fade: the frame's light,
+gamma-corrected, spread over as few refreshes as each pixel's brightness allows (bright pixels over
+more, so the picture keeps most of its brightness).
+
+- **On:** Settings > Video > Motion > "CRT beam", or `--crt-beam` (`--crt-beam-gamma`,
+  `--crt-beam-gain`). It replaces smooth motion's in-between pictures: both use the frame's other
+  refreshes.
+- **Needs** what smooth motion needs (display sync, a picture every refresh: Windows, or Wayland
+  with fifo-v1, KWin 6.7) and a display at least twice the game's rate: 120 Hz and up, best at 240
+  (four refreshes a 60 Hz frame). Below that, or without those, the game says why at exit
+  ("CRT beam: ... without (...)").
+- **The display:** SDR, its gamma set to match (2.2 by default; 2.4 if the display is set so: a
+  mismatch shows as horizontal bands and washed-out colour), its ABL/APL and its own strobing or
+  black frame insertion off. HDR modes and local dimming fight the per-refresh brightness.
+- **Brightness** (`gain`, 0.7): lower is sharper and darker; about 0.5 at 120 Hz.
+- **Any picture mode:** the mode (sharp, light, full, analog) draws each frame once into a picture
+  at the window's size; the beam's pass, every refresh, reads the frame's picture and the one
+  before it (three texture reads a pixel, about 0.01 ms).
+
+How HIRAKU runs it (runtime/host/beam_shader.h, picture.cpp, window.cpp):
+
+- The beam's place comes from time, not a counter: display pacing at the game's own speed
+  (`pacing::phase(i)`, the same moments as the in-between pictures) gives each refresh's moment in
+  the frame, and `pacing::refreshes_in_frame()` the display's refreshes per frame (2.4 for a 60 Hz
+  game at 144 Hz, 4.13 for DJ Main's 58 Hz at 240). The original's frame counter and its LCD
+  "anti-retention" slew aren't needed: the ratio is rarely a whole number, so the pattern drifts by
+  itself.
+- No latency added: the frame the beam draws is the game's latest (the original's demo draws the
+  one before it). The next frame isn't there yet when a refresh crosses into it, so that refresh
+  draws this frame's top again; the light is the same.
+- Keyboardmania's monitors are turned on their side (`Core::monitor_turned`): the beam sweeps left
+  to right in each.
+- Not with the monitors in windows of their own (Keyboardmania split), nor on the Python core
+  (pop'n music 9-14 draw through PCSX2's own window).
+- Checked (tests/picture): every refresh against the formula, and the light: over a run of frames,
+  what the refreshes show adds up, in linear terms, to the frames' light times the gain (at 4, 2.4
+  and 4.004 refreshes a frame). Not yet seen on a fast display.
 
 ## More vsyncs (`[[rate]]` mods)
 

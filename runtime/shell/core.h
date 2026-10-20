@@ -130,6 +130,9 @@ public:
     // resolution: DJ Main) or 31 (VGA-like: Firebeat). The CRT pictures follow it
     // (runtime/host/picture.h, set_monitor)
     virtual int monitor_khz() const { return 15; }
+    // The monitors turned on their side, the tube's first line at the frame's left (Keyboardmania's,
+    // MAME ROT270): the CRT beam simulator sweeps left to right in each of screens()
+    virtual bool monitor_turned() const { return false; }
     // How many monitors a frame holds, side by side and equally wide (Keyboardmania: 2, one a
     // player). display_aspect is the whole frame's; the window can show each in its own
     // (runtime/host/window.h, window_set_split)

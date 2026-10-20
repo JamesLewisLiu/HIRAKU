@@ -70,6 +70,9 @@ bool can_fill_refreshes();
 void set_smooth_motion(bool on);
 bool exact_speed();
 double phase(int i);
+// The display's refreshes in a frame of the game: at its own speed (exact_speed) the frame period
+// over the refresh period (2.4 for a 60 Hz game at 144 Hz), else refreshes_per_frame()
+double refreshes_in_frame();
 void commit_extra(int i);
 // Display pacing, after the swap: wait until the next frame's burst should start.
 void wait_next();

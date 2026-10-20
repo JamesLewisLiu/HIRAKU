@@ -7,6 +7,7 @@
 #include <QComboBox>
 #include <QDialogButtonBox>
 #include <QDir>
+#include <QDoubleSpinBox>
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QFormLayout>
@@ -170,13 +171,49 @@ SettingsDialog::SettingsDialog(QWidget *parent) : QDialog(parent) {
                               "refreshes, and the game runs at the display's rate (pop'n 2.6 % faster, its sound "
                               "with it). Off: the exact speed, for a variable-refresh (FreeSync, G-Sync) display.");
     fv->addRow("", m_displaySync);
-    m_smoothMotion = new QCheckBox("Smooth motion (DJ Main, Firebeat, Twinkle and System 573 games)");
-    m_smoothMotion->setChecked(s.value("video/smoothMotion", false).toBool());
-    m_smoothMotion->setToolTip("With smooth frames on: the game at its exact speed on any display (60, 144, 240 Hz), "
-                               "and every refresh a picture of its own moment, the notes and other moving objects "
-                               "carried on along their move. Best on a fast display. Windows, or Wayland with the "
-                               "fifo protocol (KWin 6.7).");
-    fv->addRow("", m_smoothMotion);
+    // DJ Main, Firebeat, Twinkle and System 573 games, with smooth frames on (Windows, or Wayland
+    // with the fifo protocol: KWin 6.7); docs/SMOOTH.md
+    m_motion = new QComboBox;
+    m_motion->addItem("Each frame held for its refreshes", "held");
+    m_motion->addItem("Smooth motion: every refresh a picture of its own moment", "smooth");
+    m_motion->addItem("CRT beam: each refresh the part of the tube the beam sweeps (120 Hz and up)", "beam");
+    m_motion->setCurrentIndex(s.value("video/crtBeam", false).toBool()          ? 2
+                              : s.value("video/smoothMotion", false).toBool() ? 1
+                                                                                : 0);
+    m_motion->setToolTip("DJ Main, Firebeat, Twinkle and System 573 games, with smooth frames on, on a display faster "
+                         "than the game. Smooth motion: the game at its exact speed on any display (60, 144, 240 Hz), "
+                         "the notes and other moving objects carried on along their move at each refresh. CRT beam "
+                         "(Blur Busters' CRT Beam Simulator): each refresh lights the part of the tube the electron "
+                         "beam sweeps then and lets the rest fade, for a CRT's motion clarity; best at 240 Hz, SDR, "
+                         "with the monitor's ABL/APL and its own strobing off. Windows, or Wayland with the fifo "
+                         "protocol (KWin 6.7).");
+    fv->addRow("Motion:", m_motion);
+    m_beamGamma = new QDoubleSpinBox;
+    m_beamGamma->setRange(1.8, 2.8);
+    m_beamGamma->setSingleStep(0.1);
+    m_beamGamma->setDecimals(2);
+    m_beamGamma->setValue(s.value("video/crtBeamGamma", 2.2).toDouble());
+    m_beamGamma->setToolTip("Your display's gamma (2.2 for most; 2.4 if set so). A mismatch shows as horizontal bands "
+                            "and washed-out colours.");
+    m_beamGain = new QDoubleSpinBox;
+    m_beamGain->setRange(0.3, 1.0);
+    m_beamGain->setSingleStep(0.05);
+    m_beamGain->setDecimals(2);
+    m_beamGain->setValue(s.value("video/crtBeamGain", 0.7).toDouble());
+    m_beamGain->setToolTip("Brightness against motion blur: lower is sharper and darker. 0.7 at 240 Hz, about 0.5 at 120 Hz.");
+    auto *beamRow = new QWidget;
+    auto *bh = new QHBoxLayout(beamRow);
+    bh->setContentsMargins(0, 0, 0, 0);
+    bh->addWidget(new QLabel("Display gamma"));
+    bh->addWidget(m_beamGamma);
+    bh->addSpacing(12);
+    bh->addWidget(new QLabel("Brightness"));
+    bh->addWidget(m_beamGain);
+    bh->addStretch(1);
+    fv->addRow("CRT beam:", beamRow);
+    auto beamShown = [this, beamRow] { beamRow->setEnabled(m_motion->currentData().toString() == "beam"); };
+    connect(m_motion, &QComboBox::currentIndexChanged, this, beamShown);
+    beamShown();
     m_picture = new QComboBox;
     m_picture->addItem("Off: sharp pixels", "off");
     m_picture->addItem("CRT light: crt-guest-advanced-fast", "light");
@@ -450,7 +487,10 @@ void SettingsDialog::accept() {
     s.setValue("video/fullscreen", m_fullscreen->isChecked());
     s.setValue("video/splitScreens", m_splitScreens->isChecked());
     s.setValue("video/displaySync", m_displaySync->isChecked());
-    s.setValue("video/smoothMotion", m_smoothMotion->isChecked());
+    s.setValue("video/smoothMotion", m_motion->currentData().toString() == "smooth");
+    s.setValue("video/crtBeam", m_motion->currentData().toString() == "beam");
+    s.setValue("video/crtBeamGamma", m_beamGamma->value());
+    s.setValue("video/crtBeamGain", m_beamGain->value());
     s.setValue("video/picture", m_picture->currentData().toString());
     s.setValue("audio/ms", m_audioMs->value());
     s.setValue("audio/volumeDb", m_volume->value());

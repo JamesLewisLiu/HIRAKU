@@ -7,6 +7,8 @@
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_opengl.h>
 
+#include <algorithm>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
@@ -67,6 +69,25 @@ void expect(const char *what, const int got[3], int r, int g, int b) {
     if (got[0] == r && got[1] == g && got[2] == b) return;
     fprintf(stderr, "FAIL %s: (%d, %d, %d), expected (%d, %d, %d)\n", what, got[0], got[1], got[2], r, g, b);
     g_fail++;
+}
+
+// The beam's formula (beam_shader.h) in C++: the window's value (0-1) at tube position `tube` (0
+// top), for this refresh, from the two latest pictures' values
+double beam_ref(double now, double before, double tube, double phase, double fph, double gamma, double gain) {
+    auto lin = [&](double c) { return c > 0.04045 ? std::pow(c / 1.055 + 0.055 / 1.055, gamma) : c / 12.92; };
+    auto enc = [&](double c) { return std::min(std::max(0.04045, c * 12.92), std::pow(c, 1.0 / gamma) * 1.055 - 0.055); };
+    auto ov = [](double a0, double a1, double b0, double b1) { return std::max(0.0, std::min(a1, b1) - std::max(a0, b0)); };
+    const double b = lin(before) * fph * gain, n = lin(now) * fph * gain, t = tube * fph, f0 = phase * fph, f1 = f0 + 1;
+    return std::clamp(enc(ov(t - fph, t - fph + b, f0, f1) + ov(t, t + n, f0, f1) + ov(t + fph, t + fph + n, f0, f1)), 0.0, 1.0);
+}
+
+// The window's value at row `row` from the top (0-255), red, after a beam refresh of a grey frame
+int beam_draw(uint8_t grey, uint64_t frame, double phase, double fph, int row) {
+    auto px = std::vector<uint32_t>(4 * 4, 0x010101u * grey);
+    hk::host::picture::draw(px.data(), 4, 4, 0, 0, W, H, W, H, Mode::off, 0, frame, phase, fph);
+    uint8_t rgb[4];
+    g_read(W / 2, H - 1 - row, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, rgb);
+    return rgb[0];
 }
 
 void start() {
@@ -171,6 +192,55 @@ void main() { FragColor = vec4(texture(PassFeedback0, vTex).r + 1.0 / 255.0, tex
     draw(80, 2, c), expect("last pass feedback, frame 2", c, 3, 80, 0);
     hk::host::picture::shutdown();
 
+    // The CRT beam on a display's refresh clock (refresh j at j / fph frames, fph refreshes a frame:
+    // 4, 2.4 as at 144 Hz, 4.004 as 59.94 Hz at 240): each refresh against the formula, for the top
+    // and bottom rows; and over a long run of the same frame, the light the refreshes give, summed in
+    // linear terms, is the frames' times the gain (the "photon budget"; the run's ends shift it by
+    // less than a frame's)
+    const double gamma = 2.2, gain = 0.7;
+    auto lin = [&](double c) { return c > 0.04045 ? std::pow(c / 1.055 + 0.055 / 1.055, gamma) : c / 12.92; };
+    for (double fph : {4.0, 2.4, 4.004}) {
+        start();   // nothing kept: the frame before the first is black
+        if (!hk::host::picture::set_beam(true, {(float)gamma, (float)gain, false, 1})) {
+            fprintf(stderr, "FAIL the beam's shader didn't build\n");
+            g_fail++;
+            break;
+        }
+        const int N = 26;
+        auto grey = [&](int f) { return f < N ? 64 : 200; };
+        const int rows[2] = {0, H - 1};
+        const double tube[2] = {0.5 / H, (H - 0.5) / H};
+        double light[2][2] = {};
+        for (long j = 0;; j++) {
+            const double t = j / fph;
+            const int f = (int)std::floor(t + 1e-9);
+            if (f >= 2 * N) break;
+            const double phase = t - f;
+            const int before = f ? grey(f - 1) : 0;
+            for (int r = 0; r < 2; r++) {
+                int got = beam_draw((uint8_t)grey(f), 1000 + f, phase, fph, rows[r]);
+                int want = (int)std::lround(beam_ref(grey(f) / 255.0, before / 255.0, tube[r], phase, fph, gamma, gain) * 255);
+                if (std::abs(got - want) > 1) {
+                    fprintf(stderr, "FAIL beam fph %.3f frame %d phase %.3f row %d: %d, the formula %d\n", fph, f, phase, rows[r], got, want);
+                    g_fail++;
+                }
+                const int run = f < N ? 0 : 1;   // the steady parts of each run (its first frame's refreshes left out)
+                if (f % N >= 1 && f % N < N - 1) light[run][r] += lin(got / 255.0);
+            }
+        }
+        for (int run = 0; run < 2; run++) {
+            const double budget = lin(grey(run * N) / 255.0) * fph * gain * (N - 2);
+            for (int r = 0; r < 2; r++)
+                if (std::fabs(light[run][r] / budget - 1) > 0.05) {
+                    fprintf(stderr, "FAIL beam fph %.3f grey %d row %d: light %.3f, the frames' %.3f\n", fph, grey(run * N),
+                            rows[r], light[run][r], budget);
+                    g_fail++;
+                }
+        }
+        hk::host::picture::set_beam(false);
+        hk::host::picture::shutdown();
+    }
+
     fs::remove_all(g_dir);
     SDL_GL_DestroyContext(ctx);
     SDL_DestroyWindow(win);
@@ -179,6 +249,6 @@ void main() { FragColor = vec4(texture(PassFeedback0, vTex).r + 1.0 / 255.0, tex
         fprintf(stderr, "%d failed\n", g_fail);
         return 1;
     }
-    printf("picture engine: FrameCount, frame history and feedback as expected\n");
+    printf("picture engine: FrameCount, frame history, feedback and the CRT beam as expected\n");
     return 0;
 }

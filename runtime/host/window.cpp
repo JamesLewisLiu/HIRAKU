@@ -76,6 +76,10 @@ bool g_quit = false;
 bool g_display_sync = true;       // display pacing (pacing.h)
 bool g_smooth_motion = false;     // --smooth-motion: the core's in-between pictures on the frame's other refreshes
 uint64_t g_in_between = 0;        // how many it showed (the exit report)
+bool g_beam = false, g_beam_ok = false;   // --crt-beam, and its shader built
+float g_beam_gamma = 2.2f, g_beam_gain = 0.7f;
+uint64_t g_beam_frames = 0, g_beam_without = 0;   // frames through it, and not (the exit report)
+const char *g_beam_why = nullptr;                 // the last reason a frame went without
 double g_ratio = 1.0;             // the audio stream's frequency ratio: the game's speed, steered
 // Display sync off, and the core hands its sound on once per frame (Core::audio_per_frame): the
 // window waits for the sound after showing a frame, before the next one runs (window_frame), and
@@ -182,6 +186,10 @@ bool open_gl(const char *title, int scale) {
     if (g_gl) SDL_GL_SetSwapInterval(0);   // as with the renderer: presenting never waits for the display
     if (g_gl && picture::init(g_shaders_dir, g_picture_config)) {
         picture::set_monitor(core().monitor_khz());
+        if (g_beam) {
+            g_beam_ok = picture::set_beam(true, {g_beam_gamma, g_beam_gain, core().monitor_turned(), core().screens()});
+            if (!g_beam_ok) fprintf(stderr, "picture: the CRT beam's shader doesn't build here: no beam\n");
+        }
         return true;
     }
     fprintf(stderr, "picture: no OpenGL 3.3 (%s): the SDL renderer, sharp pixels only\n", g_gl ? "see above" : SDL_GetError());
@@ -202,7 +210,11 @@ void window_set_picture(const std::string &mode, const std::string &shaders_dir,
 
 void window_set_display_sync(bool on) { g_display_sync = on; }
 void window_set_lights_overlay(bool on) { lampview::set_shown(on); }
-void window_set_smooth_motion(bool on) { g_smooth_motion = on, pacing::set_smooth_motion(on); }
+void window_set_smooth_motion(bool on) { g_smooth_motion = on, pacing::set_smooth_motion(on || g_beam); }
+void window_set_beam(bool on, float gamma, float gain) {
+    g_beam = on, g_beam_gamma = gamma, g_beam_gain = gain;
+    pacing::set_smooth_motion(on || g_smooth_motion);   // the game at its own speed, every refresh a picture
+}
 
 void window_set_audio_output(const std::string &device, int frames, bool exclusive) {
     g_audio_device = device;
@@ -857,9 +869,24 @@ void window_present(const uint32_t *rgb, int w, int h, double vsec) {
         double cw, ch;
         core().display_cover(w, h, cw, ch);
         vw = std::max(1, (int)std::lround(vw * cw)), vh = std::max(1, (int)std::lround(vh * ch));
+        // --crt-beam: each of the frame's refreshes is the beam's pass at its moment (picture.h), with
+        // two refreshes a frame or more (120 Hz and up): the display's rate over the game's decides,
+        // not the frame's own count (2 or 3 at 144 Hz), so it doesn't come and go from frame to frame
+        const double frame_refreshes = sync ? pacing::refreshes_in_frame() : 1;
+        const bool beam = g_beam && g_beam_ok && sync && !g_split && frame_refreshes >= 1.9 && pacing::can_fill_refreshes();
+        if (g_beam && !beam) {
+            g_beam_without++;
+            g_beam_why = !g_beam_ok ? "its shader doesn't build here"
+                         : !sync ? "display sync is off (or fast-forward)"
+                         : g_split ? "the monitors are in windows of their own"
+                         : frame_refreshes < 1.9 ? "the display is under twice the game's rate: it needs 120 Hz or more"
+                                                 : "this display can't take a picture every refresh (Wayland fifo-v1 or Windows' DWM)";
+        }
+        if (beam) g_beam_frames++;
+        const double beam_fph = beam ? frame_refreshes : 0;
         // --smooth-motion at the game's own speed: the frame's first refresh comes after its moment
         // (up to a refresh), so it too is shown carried on to the refresh's
-        const bool exact = sync && g_smooth_motion && !g_split && pacing::exact_speed();
+        const bool exact = !beam && sync && g_smooth_motion && !g_split && pacing::exact_speed();
         const uint32_t *first = rgb;
         int fw = w, fh = h;
         if (exact && pacing::phase(0) > 0.01)
@@ -868,7 +895,7 @@ void window_present(const uint32_t *rgb, int w, int h, double vsec) {
         // below refreshes of this frame for them (picture.h)
         const uint64_t number = core().frame_count();
         picture::Mode shown = picture::draw(first, first == rgb ? w : fw, first == rgb ? h : fh, (ww - vw) / 2, (wh - vh) / 2,
-                                            vw, vh, ww, wh, g_mode, 0, number);
+                                            vw, vh, ww, wh, g_mode, 0, number, beam ? pacing::phase(0) : -1, beam_fph);
         draw_overlays(ww, wh);
         if (sync) {
             if (g_glFlush) g_glFlush();   // the GPU draws while we wait for the commit time
@@ -889,15 +916,22 @@ void window_present(const uint32_t *rgb, int w, int h, double vsec) {
         // at a half). The frame is held as it is only when neither the first refresh nor the last
         // (the furthest on) has anything moved, or the core can't
         int bw = w, bh = h;
-        const bool can = g_smooth_motion && !g_split && k > 1 && pacing::can_fill_refreshes();
+        const bool can = !beam && g_smooth_motion && !g_split && k > 1 && pacing::can_fill_refreshes();
         const uint32_t *between = can ? core().render_between(pacing::phase(1), bw, bh) : nullptr;
-        bool fill = between != nullptr;
+        bool fill = beam || between != nullptr;
         if (can && !fill && k > 2) {
             int lw, lh;
             fill = core().render_between(pacing::phase(k - 1), lw, lh) != nullptr;
         }
         if (sync) pacing::committed(!fill);
         for (int i = 1; fill && i < k; i++) {
+            if (beam) {   // the same frame, the beam further down
+                picture::draw(rgb, w, h, (ww - vw) / 2, (wh - vh) / 2, vw, vh, ww, wh, g_mode, 0, number, pacing::phase(i), beam_fph);
+                draw_overlays(ww, wh);
+                pacing::commit_extra(i);
+                SDL_GL_SwapWindow(g_win);
+                continue;
+            }
             if (i > 1) bw = w, bh = h, between = core().render_between(pacing::phase(i), bw, bh);
             if (between) g_in_between++;
             else between = rgb, bw = w, bh = h;
@@ -1205,7 +1239,10 @@ std::string audio_describe() {
                  (unsigned long long)p.hist[5]);
     }
     std::string out = std::string(b) + "\n" + pacing::describe();
-    if (g_smooth_motion) out += "\nvideo: smooth motion: " + std::to_string(g_in_between) + " in-between pictures shown";
+    if (g_smooth_motion && !g_beam) out += "\nvideo: smooth motion: " + std::to_string(g_in_between) + " in-between pictures shown";
+    if (g_beam)
+        out += "\nvideo: CRT beam: " + std::to_string(g_beam_frames) + " frames through it" +
+               (g_beam_without ? ", " + std::to_string(g_beam_without) + " without (" + g_beam_why + ")" : std::string());
     if (std::string sc = pacing::scanout_describe(); !sc.empty()) out += "\n" + sc;
     if (const StartToPicture &l = g_start_to_picture; l.n) {
         snprintf(b, sizeof b,

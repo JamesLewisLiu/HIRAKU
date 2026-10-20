@@ -481,6 +481,11 @@ int refreshes_per_frame() { return g_active ? g_k : 1; }
 
 bool exact_speed() { return g_active && g_exact; }
 
+double refreshes_in_frame() {
+    if (exact_speed() && g_period_ns > 0 && g_T > 0) return g_period_ns / (double)g_T;
+    return refreshes_per_frame();
+}
+
 double phase(int i) {
     if (!exact_speed() || g_period_ns <= 0) return (double)i / std::max(g_k, 1);
     return std::max(0.0, ((double)g_target + (double)i * (double)g_T - g_frame_at) / g_period_ns);

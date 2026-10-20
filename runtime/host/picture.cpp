@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "picture.h"
 
+#include "beam_shader.h"
+
 #include <SDL3/SDL.h>
 #define GL_GLEXT_PROTOTYPES 1   // declarations only (for decltype): everything is loaded through SDL
 #include <SDL3/SDL_opengl.h>
@@ -250,8 +252,9 @@ class Chain {
 public:
     std::string name;
     bool load(const std::string &dir);
-    // next: a new frame (the passes' feedback turns over); frame: FrameCount
-    void draw(int w, int h, int x, int y, int vw, int vh, int win_w, int win_h, bool next, uint32_t frame);
+    // next: a new frame (the passes' feedback turns over); frame: FrameCount; fbo: where the picture
+    // goes (0: the window, else a win_w x win_h target)
+    void draw(int w, int h, int x, int y, int vw, int vh, int win_w, int win_h, bool next, uint32_t frame, GLuint fbo = 0);
     size_t history() const { return m_history; }   // how many frames it reads: 1 + the oldest OriginalHistoryN
     void check_params();   // read the parameter files again if one changed
     void read_params();
@@ -598,8 +601,8 @@ GLenum target_format(const Pass &p) {
     return p.srgb ? GL_SRGB8_ALPHA8 : p.fp ? GL_RGBA16F : GL_RGBA8;
 }
 
-// A pass's target at this size and format: made again (cleared to black) when either changed
-void Chain::target(Target &t, int i, int w, int h, GLenum fmt, bool mip) {
+// A target at this size and format: made again (cleared to black) when either changed
+void make_target(Target &t, int w, int h, GLenum fmt, bool mip, const std::string &what) {
     if (t.tex && t.w == w && t.h == h && t.fmt == fmt && t.mip == mip) return;
     if (!t.tex) {
         gl.glGenTextures(1, &t.tex);
@@ -614,7 +617,7 @@ void Chain::target(Target &t, int i, int w, int h, GLenum fmt, bool mip) {
     gl.glBindFramebuffer(GL_FRAMEBUFFER, t.fbo);
     gl.glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, t.tex, 0);
     if (gl.glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
-        fprintf(stderr, "picture: %s pass %d: a %dx%d target is not usable here\n", name.c_str(), i, w, h);
+        fprintf(stderr, "picture: %s: a %dx%d target is not usable here\n", what.c_str(), w, h);
     gl.glDisable(GL_FRAMEBUFFER_SRGB);
     gl.glViewport(0, 0, w, h);
     gl.glClearColor(0, 0, 0, 0);   // a feedback's first frame reads black, as RetroArch's
@@ -625,7 +628,11 @@ void Chain::target(Target &t, int i, int w, int h, GLenum fmt, bool mip) {
     t.mip = mip;
 }
 
-void Chain::draw(int w, int h, int x, int y, int vw, int vh, int win_w, int win_h, bool next, uint32_t frame) {
+void Chain::target(Target &t, int i, int w, int h, GLenum fmt, bool mip) {
+    make_target(t, w, h, fmt, mip, name + " pass " + std::to_string(i));
+}
+
+void Chain::draw(int w, int h, int x, int y, int vw, int vh, int win_w, int win_h, bool next, uint32_t frame, GLuint fbo) {
     m_vw = vw;
     m_vh = vh;
     int n = (int)m_passes.size();
@@ -667,7 +674,7 @@ void Chain::draw(int w, int h, int x, int y, int vw, int vh, int win_w, int win_
             gl.glGenerateMipmap(GL_TEXTURE_2D);
         }
         if (to_window) {
-            gl.glBindFramebuffer(GL_FRAMEBUFFER, 0);
+            gl.glBindFramebuffer(GL_FRAMEBUFFER, fbo);
             gl.glDisable(GL_FRAMEBUFFER_SRGB);
             gl.glViewport(0, 0, win_w, win_h);
             gl.glClearColor(0, 0, 0, 1);
@@ -738,7 +745,7 @@ void Chain::draw(int w, int h, int x, int y, int vw, int vh, int win_w, int win_
     }
     for (int u = 0; u < 16; u++) gl.glBindSampler(u, 0);
     if (m_passes.back().feedback) {   // the last pass drew into its target: to the window, pixel for pixel
-        gl.glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        gl.glBindFramebuffer(GL_FRAMEBUFFER, fbo);
         gl.glDisable(GL_FRAMEBUFFER_SRGB);
         gl.glViewport(0, 0, win_w, win_h);
         gl.glClearColor(0, 0, 0, 1);
@@ -759,8 +766,8 @@ struct GpuTime {
     GLuint q[4] = {};
     int mode[4] = {};
     uint32_t issued = 0, read = 0;
-    double sum_ms[NMODES] = {}, max_ms[NMODES] = {};
-    uint64_t n[NMODES] = {};
+    double sum_ms[NMODES + 1] = {}, max_ms[NMODES + 1] = {};   // [NMODES]: a refresh's beam pass alone
+    uint64_t n[NMODES + 1] = {};
 } g_gpu;
 
 void gpu_collect(bool all) {
@@ -782,6 +789,18 @@ void gpu_collect(bool all) {
 }
 std::unique_ptr<Chain> g_chain[2][NMODES];
 bool g_failed[NMODES] = {};
+
+// The CRT beam simulator (set_beam): each window's two latest pictures, as the mode drew them at
+// the viewport's size (`now` the latest); each refresh's beam pass draws the window from them
+struct BeamKept {
+    Target pic[2];
+    int now = 0;
+};
+BeamKept g_kept[2];
+bool g_beam = false;
+Beam g_beam_cfg;
+GLuint g_beam_prog = 0;
+uint64_t g_beam_refreshes = 0;
 
 const char *const PLAIN_VS = R"(#version 330
 layout(location = 0) in vec4 Position;
@@ -878,6 +897,20 @@ bool init(const std::string &shaders_dir, const std::vector<std::string> &config
     return true;
 }
 
+bool set_beam(bool on, const Beam &b) {
+    g_beam = on;
+    g_beam_cfg = b;
+    if (on && !g_beam_prog && g_ok) {
+        g_beam_prog = link(BEAM_VS, BEAM_FS, "the CRT beam");
+        if (g_beam_prog) {
+            gl.glUseProgram(g_beam_prog);
+            gl.glUniform1i(gl.glGetUniformLocation(g_beam_prog, "Now"), 0);
+            gl.glUniform1i(gl.glGetUniformLocation(g_beam_prog, "Before"), 1);
+        }
+    }
+    return !on || g_beam_prog;
+}
+
 void set_monitor(int khz) {
     if (khz == g_monitor_khz) return;
     g_monitor_khz = khz;
@@ -914,7 +947,7 @@ bool prepare(Mode m) {
 }
 
 Mode draw(const uint32_t *rgb, int w, int h, int x, int y, int vw, int vh, int win_w, int win_h, Mode m, int view,
-          uint64_t frame) {
+          uint64_t frame, double beam_phase, double frames_per_hz) {
     if (!g_ok || w <= 0 || h <= 0 || vw <= 0 || vh <= 0) return Mode::off;
     g_view = view & 1;
     g_cur = &g_frames[g_view];
@@ -927,9 +960,14 @@ Mode draw(const uint32_t *rgb, int w, int h, int x, int y, int vw, int vh, int w
         g_cur->count++;
     }
     const uint32_t frame_count = (uint32_t)(frame == UINT64_MAX ? g_cur->count - 1 : frame);
+    // the beam: a new frame's picture is drawn and kept; a refresh of the same frame is the beam
+    // pass over the kept ones only
+    const bool beam = g_beam && g_beam_prog && beam_phase >= 0 && frames_per_hz > 0;
+    const bool picture = !beam || next;
     Image &img = g_cur->ago(0);
     gl.glActiveTexture(GL_TEXTURE0);
-    if (!img.tex || w != img.w || h != img.h) {
+    if (!picture) {
+    } else if (!img.tex || w != img.w || h != img.h) {
         if (!img.tex) gl.glGenTextures(1, &img.tex);
         gl.glBindTexture(GL_TEXTURE_2D, img.tex);
         gl.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_SWIZZLE_A, GL_ONE);   // XRGB: the X byte is not alpha
@@ -938,32 +976,72 @@ Mode draw(const uint32_t *rgb, int w, int h, int x, int y, int vw, int vh, int w
         img.w = w;
         img.h = h;
     }
-    gl.glBindTexture(GL_TEXTURE_2D, img.tex);
-    gl.glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
-    gl.glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, w, h, GL_BGRA, GL_UNSIGNED_INT_8_8_8_8_REV, rgb);
+    if (picture) {
+        gl.glBindTexture(GL_TEXTURE_2D, img.tex);
+        gl.glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+        gl.glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, w, h, GL_BGRA, GL_UNSIGNED_INT_8_8_8_8_REV, rgb);
+    }
 
     if (!prepare(m)) m = Mode::off;
     int k = (int)m;
     gpu_collect(false);
     bool timed = g_gpu.issued - g_gpu.read < 4;
     if (timed) {
-        g_gpu.mode[g_gpu.issued % 4] = k;
+        g_gpu.mode[g_gpu.issued % 4] = picture ? k : NMODES;
         gl.glBeginQuery(GL_TIME_ELAPSED, g_gpu.q[g_gpu.issued % 4]);
     }
 
-    if (m == Mode::off) {
+    // where the picture goes: the window, or (the beam) the kept picture it turns over to
+    GLuint fbo = 0;
+    int px = x, py = y, pw = win_w, ph = win_h;
+    BeamKept &kept = g_kept[g_view];
+    if (beam) {
+        if (next) kept.now ^= 1;
+        for (Target &t : kept.pic) make_target(t, vw, vh, GL_RGBA8, false, "the beam's pictures");
+        fbo = kept.pic[kept.now].fbo;
+        px = py = 0, pw = vw, ph = vh;
+    }
+    if (picture && m == Mode::off) {
+        gl.glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+        gl.glDisable(GL_FRAMEBUFFER_SRGB);
+        gl.glViewport(0, 0, pw, ph);
+        gl.glClearColor(0, 0, 0, 1);
+        gl.glClear(GL_COLOR_BUFFER_BIT);
+        gl.glViewport(px, ph - py - vh, vw, vh);
+        gl.glActiveTexture(GL_TEXTURE0);
+        gl.glBindTexture(GL_TEXTURE_2D, img.tex);
+        gl.glUseProgram(g_plain);
+        gl.glBindSampler(0, 0);
+        gl.glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+    } else if (picture) {
+        if (g_draws % 30 == 0) g_chain[g_view][k]->check_params();
+        g_chain[g_view][k]->draw(w, h, px, py, vw, vh, pw, ph, next, frame_count, fbo);
+    }
+    if (beam) {   // this refresh: the beam's pass over the two latest pictures, into the window
         gl.glBindFramebuffer(GL_FRAMEBUFFER, 0);
         gl.glDisable(GL_FRAMEBUFFER_SRGB);
         gl.glViewport(0, 0, win_w, win_h);
         gl.glClearColor(0, 0, 0, 1);
         gl.glClear(GL_COLOR_BUFFER_BIT);
         gl.glViewport(x, win_h - y - vh, vw, vh);
-        gl.glUseProgram(g_plain);
-        gl.glBindSampler(0, 0);
+        gl.glUseProgram(g_beam_prog);
+        const GLuint nearest = sampler_for({false, false, GL_CLAMP_TO_EDGE});
+        for (int u = 0; u < 2; u++) {
+            gl.glActiveTexture(GL_TEXTURE0 + u);
+            gl.glBindTexture(GL_TEXTURE_2D, kept.pic[u ? kept.now ^ 1 : kept.now].tex);
+            gl.glBindSampler(u, nearest);
+        }
+        auto loc = [](const char *n) { return gl.glGetUniformLocation(g_beam_prog, n); };
+        gl.glUniform1f(loc("Phase"), (float)std::clamp(beam_phase, 0.0, 0.99999));
+        gl.glUniform1f(loc("FramesPerHz"), (float)frames_per_hz);
+        gl.glUniform1f(loc("Gamma"), g_beam_cfg.gamma);
+        gl.glUniform1f(loc("Gain"), g_beam_cfg.gain);
+        gl.glUniform1i(loc("Scan"), g_beam_cfg.sideways ? 3 : 1);
+        gl.glUniform1f(loc("Tubes"), (float)std::max(1, g_beam_cfg.tubes));
         gl.glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
-    } else {
-        if (g_draws % 30 == 0) g_chain[g_view][k]->check_params();
-        g_chain[g_view][k]->draw(w, h, x, y, vw, vh, win_w, win_h, next, frame_count);
+        for (int u = 0; u < 2; u++) gl.glBindSampler(u, 0);
+        gl.glActiveTexture(GL_TEXTURE0);
+        g_beam_refreshes++;
     }
     if (timed) {
         gl.glEndQuery(GL_TIME_ELAPSED);
@@ -1008,11 +1086,24 @@ void overlay(const uint32_t *argb, int w, int h, int x, int y, int dw, int dh, f
 void shutdown() {
     if (!g_ok) return;
     gpu_collect(true);
-    for (int m = 0; m < NMODES; m++)
+    for (int m = 0; m <= NMODES; m++)
         if (g_gpu.n[m] > 31)
-            fprintf(stderr, "picture: %s: GPU %.2f ms per frame (worst %.2f) over %llu frames\n", mode_label((Mode)m),
-                    g_gpu.sum_ms[m] / (g_gpu.n[m] - 31), g_gpu.max_ms[m], (unsigned long long)g_gpu.n[m]);
+            fprintf(stderr, "picture: %s: GPU %.2f ms per %s (worst %.2f) over %llu\n",
+                    m == NMODES ? "the CRT beam's pass alone" : mode_label((Mode)m), g_gpu.sum_ms[m] / (g_gpu.n[m] - 31),
+                    m == NMODES ? "refresh" : "frame", g_gpu.max_ms[m], (unsigned long long)g_gpu.n[m]);
+    if (g_beam_refreshes) fprintf(stderr, "picture: CRT beam: %llu refreshes drawn\n", (unsigned long long)g_beam_refreshes);
+    for (BeamKept &b : g_kept) {
+        for (Target &t : b.pic) {
+            if (t.tex) gl.glDeleteTextures(1, &t.tex);
+            if (t.fbo) gl.glDeleteFramebuffers(1, &t.fbo);
+        }
+        b = BeamKept();
+    }
+    if (g_beam_prog) gl.glDeleteProgram(g_beam_prog);
+    g_beam_prog = 0;
     gl.glDeleteQueries(4, g_gpu.q);
+    g_gpu = GpuTime();
+    g_beam_refreshes = 0;
     for (auto &v : g_chain)
         for (auto &c : v) c.reset();
     if (g_plain) gl.glDeleteProgram(g_plain);
