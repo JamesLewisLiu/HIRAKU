@@ -1467,26 +1467,8 @@ bool psxgpu_device::hk_between( double t, screen_device &screen, bitmap_rgb32 &b
 	if( m_hk_shown.empty() || m_hk_shown_before.empty() )
 		return false;
 	hk_sync(); // VRAM as the queue leaves it, the worker idle
-	// the uploads since the frame on show undone, newest first (and done again at the end)
-	std::vector<std::pair<hk_area, std::vector<uint16_t>>> redo;
-	const uint64_t from = m_hk_frame_at.load();
-	for( auto u = m_hk_undo.rbegin(); u != m_hk_undo.rend() && u->at >= from; ++u )
-	{
-		std::vector<uint16_t> now;
-		now.reserve( u->pixels.size() );
-		size_t k = 0;
-		for( int32_t y = 0; y < u->a.h; y++ )
-			for( int32_t x = 0; x < u->a.w; x++ )
-			{
-				uint16_t &px = p_p_vram[ ( u->a.y + y ) & 1023 ][ ( u->a.x + x ) & 1023 ];
-				now.push_back( px );
-				px = u->pixels[ k++ ];
-			}
-		redo.emplace_back( u->a, std::move( now ) );
-	}
 	// how far on, in the frame's moves: a frame shown for two VBLANKs moves half its step a VBLANK
 	const double on = std::min( ( m_hk_vblanks + t ) / m_hk_frame_vblanks, 1.5 );
-
 	// where an item's vertices are in its packet (n_entry), and how many: none for what doesn't move
 	auto vertices = []( uint32_t op, int n_points, int *at ) {
 		int n = 0, step = 1;
@@ -1511,6 +1493,7 @@ bool psxgpu_device::hk_between( double t, screen_device &screen, bitmap_rgb32 &b
 	// texture: an animated one); a polygon or line with the same texture (a shaded one's colours
 	// change with its light).
 	std::vector<uint32_t> items = m_hk_shown;
+	bool moved = false;
 	std::vector<const uint32_t *> before;
 	for( size_t i = 0; i < m_hk_shown_before.size(); i += m_hk_shown_before[ i + 1 ] )
 		before.push_back( &m_hk_shown_before[ i ] );
@@ -1604,11 +1587,34 @@ bool psxgpu_device::hk_between( double t, screen_device &screen, bitmap_rgb32 &b
 		if( !whole )
 			continue;
 		const int mx = (int)std::lround( dx * on ), my = (int)std::lround( dy * on );
+		if( mx == 0 && my == 0 )
+			continue;
+		moved = true;
 		for( int v = 0; v < n; v++ )
 		{
 			const uint32_t w = c[ at[ v ] ];
 			c[ at[ v ] ] = ( uint32_t( uint16_t( int16_t( w >> 16 ) + my ) ) << 16 ) | uint16_t( int16_t( w & 0xffff ) + mx );
 		}
+	}
+
+	if( !moved )
+		return false; // nothing on by a whole pixel yet: the frame as it is
+	// the uploads since the frame on show undone, newest first (and done again at the end)
+	std::vector<std::pair<hk_area, std::vector<uint16_t>>> redo;
+	const uint64_t from = m_hk_frame_at.load();
+	for( auto u = m_hk_undo.rbegin(); u != m_hk_undo.rend() && u->at >= from; ++u )
+	{
+		std::vector<uint16_t> now;
+		now.reserve( u->pixels.size() );
+		size_t k = 0;
+		for( int32_t y = 0; y < u->a.h; y++ )
+			for( int32_t x = 0; x < u->a.w; x++ )
+			{
+				uint16_t &px = p_p_vram[ ( u->a.y + y ) & 1023 ][ ( u->a.x + x ) & 1023 ];
+				now.push_back( px );
+				px = u->pixels[ k++ ];
+			}
+		redo.emplace_back( u->a, std::move( now ) );
 	}
 
 	// the rows the frame draws on kept as they are, the frame drawn again, composed, and the rows

@@ -64,7 +64,7 @@ private:
     void execute_display_list(uint32_t addr);
     void execute_command(const uint32_t *cmd);
     void run(const uint32_t *cmd);                          // fb config, fill, object, character
-    void touch(int y0, int y1);                             // rows y0..y1 are about to be drawn on
+    void touch(int y0, int y1, int x0, int x1);             // rows y0..y1, columns x0..x1, about to be drawn on
 
     using Cmd = std::array<uint32_t, 4>;
     struct Drawn {                                          // a frame's drawing
@@ -72,12 +72,19 @@ private:
         int origin_x = 0, origin_y = 0;                     // fb_config as it began
         std::vector<uint32_t> rows;                         // the rows it drew on, and what they
         std::vector<uint32_t> before;                       // held before (512 words each)
+        int x0 = 1024, x1 = -1;                             // the columns it drew on
+        std::vector<std::pair<int, int>> cmd_rows;          // each command's rows (first > last: none)
     };
     bool m_keep = false, m_replaying = false;
     Drawn m_drawing, m_shown;
     std::vector<Cmd> m_shown_before;                        // the commands of the frame before m_shown
     std::vector<uint32_t> m_row_mark, m_restore_rows, m_restore;
     uint32_t m_mark = 0, m_replay_mark = 0;
+    int m_span0 = 0, m_span1 = 512;                         // a replay: the words of each row it keeps
+    bool m_clip = false;                                    // a replay draws only on the rows marked here
+    std::vector<uint8_t> m_clip_row;
+    int m_cmd_y0 = 0, m_cmd_y1 = 0;                         // the command running: the rows it drew on
+    bool row_out(int y) const { return m_clip && !m_clip_row[(uint32_t)y & (m_clip_row.size() - 1)]; }
 
     std::unique_ptr<uint32_t[]> m_vram;
     uint32_t m_vram_read_addr = 0;

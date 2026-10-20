@@ -67,8 +67,9 @@ the same tile, within 16 pixels, and moved on by that step. The picture is drawn
 object RAM and into a buffer of its own, so the machine is never touched. Checked on pop'n music
 1 (notes are sprites moving 2 pixels a frame): halfway, the notes are 1 pixel on, nothing else
 moved. beatmania (1st mix's "u gotta groove"): the notes, the bar lines and the FREE ZONE panel
-are sprites too, and move half a step. The tilemaps (backgrounds) aren't carried on: their scroll
-registers could be, the same way.
+are sprites too, and move half a step. The tilemaps (backgrounds) aren't carried on, and needn't
+be: through pop'n 1's and beatmania's play cases their scroll registers change 3 times in all (the
+registers the games keep changing are the RAM page and ROM bank selects).
 
 ### Firebeat (runtime/dev/k057714.cpp, `draw_between`)
 
@@ -90,14 +91,19 @@ Checked on pop'n music 4 (the attract demo's notes, objects moving 2 pixels a fr
 music 8 (the How to Play, notes and sliding arrows): halfway, only the moving objects differ, 1
 pixel on. The regress cases are identical with it built in: nothing is kept until a picture is
 asked for. Costs: the rows a frame draws on are copied each frame (about 2.3 MB for pop'n's
-three double-buffered layers), and each in-between picture copies them twice more and draws the
-frame again (about 100 commands for pop'n).
+three double-buffered layers). An in-between picture redraws only the rows where something moved
+(the moved objects' rows before and after; each command keeps the rows it drew on, writes
+elsewhere are dropped and commands that reach none of them skipped), and of each, the columns the
+frame drew on: on pop'n 4's demo 0.2 ms a picture, from 1.1 for the whole frame, the pictures
+identical (pop'n 4 and 8 compared). Where nothing has moved a whole pixel yet, there's no
+redraw at all: the frame itself is shown (a note moving 1 pixel a frame is 0 a quarter on).
 
 Not covered:
 - Keyboardmania (two GCUs, one a monitor): no in-between pictures.
 - A game drawing a frame over two vsyncs (30 frames a second) moves its objects per two vsyncs,
   which the GCU's in-between pictures don't know (the PlayStation GPU's do: below): they would
-  spread a frame's move over one vsync. Not seen in pop'n or beatmania III yet.
+  spread a frame's move over one vsync. Not seen: pop'n music 4 and 8 and beatmania III draw a
+  frame every vsync (beatmania III's play: about 78 commands each).
 - Objects drawn from the CPU straight into VRAM (not through commands) aren't moved.
 
 ### Twinkle and System 573 (beatmania IIDX, DDR, DrumMania, GuitarFreaks; third_party/mame/hiraku-edits.py, `hk_between`)

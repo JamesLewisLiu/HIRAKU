@@ -876,17 +876,27 @@ void window_present(const uint32_t *rgb, int w, int h, double vsec) {
         // --smooth-motion: the frame's other refreshes each with a picture of its own, the core's
         // in-between one (what moves further along its move), instead of the frame held
         const int k = sync ? pacing::refreshes_per_frame() : 1;
+        // A refresh where nothing has moved a whole pixel yet (render_between gives nullptr) shows the
+        // frame itself, and the next may still move (a slow note: 1 pixel a frame is 0 at a quarter, 1
+        // at a half). The frame is held as it is only when neither the first refresh nor the last
+        // (the furthest on) has anything moved, or the core can't
         int bw = w, bh = h;
-        const uint32_t *between = g_smooth_motion && !g_split && k > 1 && pacing::can_fill_refreshes()
-                                      ? core().render_between(pacing::phase(1), bw, bh) : nullptr;
-        if (sync) pacing::committed(between == nullptr);
-        for (int i = 1; between && i < k; i++) {
-            if (i > 1 && !(between = core().render_between(pacing::phase(i), bw, bh))) between = rgb, bw = w, bh = h;
+        const bool can = g_smooth_motion && !g_split && k > 1 && pacing::can_fill_refreshes();
+        const uint32_t *between = can ? core().render_between(pacing::phase(1), bw, bh) : nullptr;
+        bool fill = between != nullptr;
+        if (can && !fill && k > 2) {
+            int lw, lh;
+            fill = core().render_between(pacing::phase(k - 1), lw, lh) != nullptr;
+        }
+        if (sync) pacing::committed(!fill);
+        for (int i = 1; fill && i < k; i++) {
+            if (i > 1) bw = w, bh = h, between = core().render_between(pacing::phase(i), bw, bh);
+            if (between) g_in_between++;
+            else between = rgb, bw = w, bh = h;
             picture::draw(between, bw, bh, (ww - vw) / 2, (wh - vh) / 2, vw, vh, ww, wh, g_mode);
             draw_overlays(ww, wh);
             pacing::commit_extra(i);
             SDL_GL_SwapWindow(g_win);
-            g_in_between++;
         }
         if (g_split) present_second(g_half[1].data(), w, h, frame_aspect);
         if (shown != g_shown) {
