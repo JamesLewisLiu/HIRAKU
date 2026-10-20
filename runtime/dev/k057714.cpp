@@ -571,10 +571,14 @@ bool K057714::draw_between(uint32_t *out, int width, int height, double t) {
         const int x = c[1] & 0x3ff, y = (c[1] >> 10) & 0x3fff;
         int best = 1 << 30;
         for (const Cmd &b : m_shown_before) {
-            if (((b[0] >> 29) & 7) != 5 || b[2] != c[2] || (b[1] & 0xff000000) != (c[1] & 0xff000000)) continue;
-            if (b[0] != c[0] && b[3] != c[3]) continue;
+            if (((b[0] >> 29) & 7) != 5 || (b[1] & 0xff000000) != (c[1] & 0xff000000)) continue;
+            // the same width and scale, and the same picture or height (a note going off the lane
+            // gets shorter, an animated one changes picture); or the same picture and height, its
+            // width or horizontal scale changed (pop'n music 8's notes squash and stretch to the beat
+            // as they fall: unmatched, they stood still between frames)
+            if (b[2] == c[2] ? b[0] != c[0] && b[3] != c[3] : b[0] != c[0] || b[3] != c[3]) continue;
             const int bx = b[1] & 0x3ff, by = (b[1] >> 10) & 0x3fff;
-            const int d = std::abs(x - bx) + std::abs(y - by) + (b[0] != c[0] ? 8 : 0) + (b[3] != c[3] ? 8 : 0);
+            const int d = std::abs(x - bx) + std::abs(y - by) + (b[0] != c[0] ? 8 : 0) + (b[3] != c[3] ? 8 : 0) + (b[2] != c[2] ? 4 : 0);
             if (std::abs(x - bx) > 16 || std::abs(y - by) > 16 || d >= best) continue;
             best = d, moves[k] = {x - bx, y - by};
         }

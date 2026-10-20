@@ -59,6 +59,18 @@ int main() {
                    p[0], p.size() > 1 ? "..." : "", fph, s.sd, s.back, l.sd, l.back);
             if (s.back || s.sd > 0.42) fail++;
         }
+    // pop'n music 8's demo play: falling notes step 2 or 3 in the same frame (4 and 3 of them),
+    // while 5 objects (a lyric) rise 3: the notes are the scroll, the rising ones go by their own move
+    {
+        hk::ScrollGuess g;
+        for (uint64_t f = 1; f < 10; f++)
+            g.frame(f, {{0, 2}, {0, 2}, {0, 2}, {0, 2}, {0, 3}, {0, 3}, {0, 3}, {0, -3}, {0, -3}, {0, -3}, {0, -3}, {0, -3}});
+        int ox, oy, rx, ry;
+        g.offset(0, 2, 0.5, ox, oy);
+        g.offset(0, -3, 0.5, rx, ry);
+        printf("mixed steps under a rising group: a note goes %d (the line: 2.43 a frame), a rising object %d\n", oy, ry);
+        if (oy != 1 || ry != -2) fail++;   // 0.5 x 2.43 -> 1; -1.5 -> -2
+    }
     if (fail) {
         fprintf(stderr, "%d failed\n", fail);
         return 1;

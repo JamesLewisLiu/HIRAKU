@@ -57,7 +57,8 @@ step 2, 3, 3, 2, 3, 3 pixels a frame. Carried on by its last step, a note went 3
 next frame moved it 2, and it stepped back a pixel: at 240 Hz one refresh in twenty went back, and
 the notes were 0.57 px (sd) off a steady line, which showed as judder (owner, 2026-10-20, pop'n
 music 8 and beatmania IIDX 7th style). So each core takes the move most of a frame's moving
-objects share as the scroll, keeps its position over the last six frames, and carries what moves
+objects share, within a pixel (notes step 2 or 3 in the same frame; a lyric rising beside them is
+a smaller group), as the scroll, its speed their average, keeps its position over the last six frames, and carries what moves
 with it along the steady line through them (include/hiraku/scroll_guess.h): the average speed,
 from where the line puts this frame, up to a pixel off the frame's own place (so the frame's first
 refresh is drawn too, not shown as it is). The notes are then 0.29 px off the line (the whole
@@ -101,7 +102,10 @@ An in-between picture then puts those rows back as they were before the frame wa
 the frame's commands again with each object moved on, composes the layers as the display shows
 them, and puts the rows back as they are. Each object command is matched with the nearest of the
 frame before's with the same size, scale and flags, and either its picture or its height (a note
-going off the lane is clipped shorter; an animated one changes picture), within 16 pixels.
+going off the lane is clipped shorter; an animated one changes picture), or with the same picture
+and height and another width or horizontal scale (pop'n music 8's notes squash and stretch to the
+beat as they fall: matched only by size, they went unmatched in play, stood still between frames
+and jumped at each one, a constant stutter; owner, 2026-10-20), within 16 pixels.
 
 Checked on pop'n music 4 (the attract demo's notes, objects moving 2 pixels a frame) and pop'n
 music 8 (the How to Play, notes and sliding arrows): halfway, only the moving objects differ, 1

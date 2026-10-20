@@ -1181,7 +1181,14 @@ rounding, no step back (tests/smooth; pop'n 8's How to Play logged: falling note
 their own). IIDX at normal speed moves a line a frame of 240: nothing between to show; the step now falls at the
 same point each frame. Regress identical (the guess runs only for in-between pictures). `--snap-from`,
 `--snap-between N` write in-between pictures headless (Firebeat's belong to the window's picture, so compare
-them among themselves). Left: the owner's eyes again.
+them among themselves). Second test: still a constant stutter, and glitches under falling notes. The logs
+showed the pictures reaching the screen in order (the frames' other refreshes all shown, none replaced), so
+the pictures themselves: in pop'n 8's play the notes squash and stretch to the beat (their horizontal scale
+51, 52, 53/64 from frame to frame), and the GCU matched objects only of the same size, so almost no note matched:
+they stood still between frames (the stutter) while other parts moved (the glitches, likely). Now the same
+picture and height match with another width or scale; and the scroll is the largest group of moves within a
+pixel (falling notes stepping 2 and 3 outnumber a rising lyric), its speed their average. Left: the owner's
+eyes again.
 
 ### Pilot: pop'n music 8 unlocks (done)
 
