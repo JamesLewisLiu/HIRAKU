@@ -353,6 +353,14 @@ emulation and its picture, a whole frame (~17 ms) from the controls to the pictu
 on DJ Main, ~5 ms on pop'n 9, 9 ms on Keyboardmania (whose synth card is heavy). The exit report's
 `video: from a frame starting` line shows it, in either mode.
 
+## The last runs' logs
+
+The launcher keeps what each game printed (its log pane: the command line, the start-up, the
+exit report with its `video:`, `audio:` and `picture:` lines, how it ended) in a file a run, for
+the last 10 runs: `~/.local/share/hiraku/logs/<date>-<time>-<game>.log` (a portable package:
+`user/data/logs/`). Help > **Open the last runs' logs** opens the folder. When something looks
+wrong in a game, that file says what HIRAKU saw.
+
 ## Recording and testing
 
 ```bash

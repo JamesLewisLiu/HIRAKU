@@ -10,6 +10,7 @@
 
 class QAction;
 class QDockWidget;
+class QFile;
 class QLabel;
 class QLineEdit;
 class QPlainTextEdit;
@@ -46,6 +47,9 @@ private:
     QLabel *m_details;
     QLineEdit *m_filter;
     QPlainTextEdit *m_log;
+    QFile *m_runLog = nullptr;   // the running game's log file (cfg::logsDir): what the log pane gets
+    void openRunLog(const QString &game);
+    void closeRunLog();
     QDockWidget *m_logDock;
     QAction *m_play, *m_stop, *m_controls, *m_lights, *m_showAll;
     QProcess m_proc;

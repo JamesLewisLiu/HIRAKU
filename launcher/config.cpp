@@ -95,6 +95,14 @@ QString modsDir(const QString &game) {
 
 QString bundledModsDir(const QString &game) { return rootDir() + "/games/" + game + "/mods"; }
 
+QString logsDir() {
+    QString base = nvramBase();
+    if (base.isEmpty())
+        base = portable() ? portableRoot() + "/user/data"
+                          : QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation) + "/hiraku";
+    return base + "/logs";
+}
+
 QString modPath(const QString &game, const QString &mod) {
     const QString own = modsDir(game) + "/" + mod;
     return QFileInfo(own).isDir() ? own : bundledModsDir(game) + "/" + mod;

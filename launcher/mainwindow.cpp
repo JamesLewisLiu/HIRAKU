@@ -13,6 +13,7 @@
 #include <QMimeData>
 #include <QRegularExpression>
 #include <QDesktopServices>
+#include <QDateTime>
 #include <QDir>
 #include <QDockWidget>
 #include <QFile>
@@ -286,6 +287,10 @@ MainWindow::MainWindow() {
     help->addAction("Lights (docs/LIGHTS.md)", this, [] {
         QDesktopServices::openUrl(QUrl::fromLocalFile(cfg::rootDir() + "/docs/LIGHTS.md"));
     });
+    help->addAction("Open the last runs' logs", this, [] {
+        QDir().mkpath(cfg::logsDir());
+        QDesktopServices::openUrl(QUrl::fromLocalFile(cfg::logsDir()));
+    })->setToolTip(QString("A file for each of the last %1 games run: what the log pane showed").arg(cfg::kRunLogs));
     help->addSeparator();
     auto *updAct = help->addAction("Check for updates…", this, [this] { checkForUpdate(true); });
     if (!upd::available()) {
@@ -343,6 +348,7 @@ MainWindow::MainWindow() {
         bool ok = m_stopping || (st == QProcess::NormalExit && (code == 0 || code == 130));
         QString msg = st == QProcess::CrashExit ? title + " crashed" : QString("%1 exited (code %2)").arg(title).arg(code);
         log("\n--- " + msg + " ---\n");
+        closeRunLog();
         statusBar()->showMessage(ok ? title + " stopped" : msg);
         if (!ok) m_logDock->show();
         m_running.clear();
@@ -352,6 +358,8 @@ MainWindow::MainWindow() {
     });
     connect(&m_proc, &QProcess::errorOccurred, this, [this](QProcess::ProcessError e) {
         if (e != QProcess::FailedToStart) return;
+        log("\n--- could not start " + m_proc.program() + ": " + m_proc.errorString() + " ---\n");
+        closeRunLog();
         QMessageBox::warning(this, "HIRAKU", "Could not start " + m_proc.program() + ":\n" + m_proc.errorString());
         m_running.clear();
         if (isHidden()) show();
@@ -642,6 +650,7 @@ void MainWindow::play(const QString &id) {
         return;
     }
     m_log->clear();
+    openRunLog(g->id);
     // the first start of a game with saves to start from: they become its saves
     if (QString seed = nvramSeed(*g); !seed.isEmpty() && !QFileInfo::exists(cfg::nvramDir(g->id))) {
         QDir().mkpath(cfg::nvramDir(g->id));
@@ -847,8 +856,37 @@ void MainWindow::offerUpdate() {
     close();
 }
 
+// A run's log: a file of its own in cfg::logsDir(), the oldest beyond the newest cfg::kRunLogs
+// removed, so the last runs' reports can be looked at (and sent) after the launcher closes
+void MainWindow::openRunLog(const QString &game) {
+    closeRunLog();
+    const QString dir = cfg::logsDir();
+    if (!QDir().mkpath(dir)) return;
+    const QString name = QDateTime::currentDateTime().toString("yyyyMMdd-HHmmss") + "-" + game + ".log";
+    QStringList old = QDir(dir).entryList({"*.log"}, QDir::Files, QDir::Name);   // oldest first (by name: the time)
+    while (old.size() >= cfg::kRunLogs) QFile::remove(dir + "/" + old.takeFirst());
+    m_runLog = new QFile(dir + "/" + name);
+    if (!m_runLog->open(QIODevice::WriteOnly | QIODevice::Text)) {
+        delete m_runLog;
+        m_runLog = nullptr;
+        return;
+    }
+    m_runLog->write(("# HIRAKU, " + game + ", " + QDateTime::currentDateTime().toString(Qt::ISODate) + "\n").toUtf8());
+}
+
+void MainWindow::closeRunLog() {
+    if (!m_runLog) return;
+    m_runLog->close();
+    delete m_runLog;
+    m_runLog = nullptr;
+}
+
 void MainWindow::log(const QString &text) {
     if (m_echo) { fputs(text.toLocal8Bit().constData(), stderr); fflush(stderr); }
+    if (m_runLog) {
+        m_runLog->write(text.toUtf8());
+        m_runLog->flush();   // a crash of the launcher keeps what came
+    }
     m_log->moveCursor(QTextCursor::End);
     m_log->insertPlainText(text);
     m_log->moveCursor(QTextCursor::End);

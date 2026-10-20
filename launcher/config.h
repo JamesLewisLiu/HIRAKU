@@ -29,6 +29,10 @@ QString modPath(const QString &game, const QString &mod);   // the player's, els
 QStringList modsOn(const QString &game);
 void setModsOn(const QString &game, const QStringList &mods);
 QString saveDir(const QString &game);
+// The last runs' logs (the launcher's log pane, a file a run: <yyyyMMdd-HHmmss>-<game>.log), beside
+// the saves: <data>/logs. The launcher keeps the newest kRunLogs.
+QString logsDir();
+constexpr int kRunLogs = 10;
 QString controlsFile(const QString &family);  // the family's controls set's file
 void mergeControls();                       // once: a set's members' old files joined into the set's
 QString lightsFile(const QString &family);
