@@ -110,7 +110,10 @@ and height and another width or horizontal scale, within 16 pixels. Where an obj
   later object copies onto the lanes, the strip a few pixels sideways from frame to frame. An object
   inside a later one's source rectangle is placed through that copy (its offset turned back into
   the strip by the copy's scale), and the copy's rows on the screen are drawn again with it, at
-  the frame buffer's origin when the copy is drawn relative to it, as it is;
+  the frame buffer's origin when the copy is drawn relative to it, as it is. A copy's two sides
+  are drawn again together, row for row: a screen row it writes needs the strip row it reads (else
+  it copies the strip as the frame left it, and a slice of the note at its old place shows under
+  the moved one: the owner's "glitch under every note");
 - in the frame on the screen: the one whose frame buffer the first layer shows (a frame's buffer:
   where its first command, its fb_config, puts the origin). It's the last one drawn; a game drawing
   a frame ahead would show the one before, its objects then going towards the next one's.
@@ -121,7 +124,8 @@ in VRAM with the strip's sideways shift as a move (so they were carried sideways
 not drawn again in one of the two buffers, left them where they were). Checked in the window: 30
 frames of the demo play captured with `HK_PICTURE_SNAP=FIRST-LAST,FILE`, with and without
 smooth motion; a falling note's place is 0.60 window pixels off a steady line in time with it (the
-pixels' own rounding) and 0.67 off a line in whole frames without it, as it should. (Headless
+pixels' own rounding) and 0.67 off a line in whole frames without it, as it should. Every refresh's
+picture can be captured too (`FILE-<frame>-<n>.ppm`). (Headless
 snapshots don't show Firebeat's in-between pictures right: the frame hook comes before the
 game's flip.)
 

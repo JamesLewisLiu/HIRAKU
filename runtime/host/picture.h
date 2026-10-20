@@ -76,7 +76,8 @@ void overlay(const uint32_t *argb, int w, int h, int x, int y, int dw, int dh, f
 void shutdown();
 
 // HK_PICTURE_SNAP=FRAME[-LAST],FILE.ppm writes the window's picture at that game frame (its first
-// draw: checking a shader; a range: FILE-<frame>.ppm each).
+// draw: checking a shader; a range: FILE-<frame>.ppm each, and a frame's later refreshes
+// FILE-<frame>-<n>.ppm: smooth motion's in-between pictures as the window shows them).
 // HK_PICTURE_PASSES=1 prints each pass's GPU time at exit (it reads the timers back every frame: for
 // finding a preset's costly passes, not for playing).
 

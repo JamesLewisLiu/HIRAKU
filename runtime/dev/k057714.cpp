@@ -588,7 +588,7 @@ bool K057714::draw_between(uint32_t *out, int width, int height, double t) {
     // through it (and its scale noted, to turn a move on the screen back into one in the strip)
     // Its place is its middle: pop'n music 8's notes also squash and stretch to the beat about their
     // middle, so their left edge moves while they don't
-    struct Placed { int x, y, xs, ys; bool copied, rel; };   // on the screen; the copy's scale; drawn relative to the origin
+    struct Placed { int x, y, xs, ys; bool copied, rel; int via; };   // on the screen; the copy's scale, origin, index
     auto middle = [](const Cmd &c, int &x, int &y) {
         const int xs = (c[2] >> 10) & 0x7ff, ys = (c[3] >> 10) & 0x7ff;
         const int w = (int)(c[2] & 0x1ff) + 1, h = (int)(c[3] & 0x3ff) + 1;
@@ -598,7 +598,7 @@ bool K057714::draw_between(uint32_t *out, int width, int height, double t) {
     auto place = [&](const std::vector<Cmd> &cs) {
         std::vector<Placed> p(cs.size());
         for (size_t k = 0; k < cs.size(); k++) {
-            p[k] = {0, 0, 64, 64, false, false};
+            p[k] = {0, 0, 64, 64, false, false, -1};
             middle(cs[k], p[k].x, p[k].y);
         }
         for (size_t j = 0; j < cs.size(); j++) {
@@ -612,7 +612,7 @@ bool K057714::draw_between(uint32_t *out, int width, int height, double t) {
                 if (p[k].copied || ((cs[k][0] >> 29) & 7) != 5) continue;
                 const int x = p[k].x, y = p[k].y;   // its middle, inside the copy's source
                 if (x < ax || x >= ax + w || y < ay || y >= ay + h) continue;
-                p[k] = {bx + (x - ax) * 64 / xs, by + (y - ay) * 64 / ys, xs, ys, true, (b[0] & 0x10000000) != 0};
+                p[k] = {bx + (x - ax) * 64 / xs, by + (y - ay) * 64 / ys, xs, ys, true, (b[0] & 0x10000000) != 0, (int)j};
             }
         }
         return p;
@@ -678,6 +678,28 @@ bool K057714::draw_between(uint32_t *out, int width, int height, double t) {
         }
     }
     if (!moved) return false;   // nothing on by a whole pixel yet: the frame as it is
+    // A copy's two sides drawn again together: a screen row it writes drawn again needs the strip
+    // row it reads drawn again (else it copies the strip as the frame left it: the object at its
+    // old place, a slice of it under the moved one), and a strip row drawn again needs the screen
+    // row it goes to
+    {
+        std::vector<bool> is_copy(shown.cmds.size(), false);
+        for (const Placed &p : here)
+            if (p.via >= 0) is_copy[(size_t)p.via] = true;
+        auto marked = [&](int y) { return y >= 0 && m_clip_row[(uint32_t)y & (ROWS - 1)] != 0; };
+        for (int pass = 0; pass < 2; pass++)
+            for (size_t j = 0; j < shown.cmds.size(); j++) {
+                if (!is_copy[j]) continue;
+                const Cmd &b = shown.cmds[j];
+                const int ay = (b[0] >> 10) & 0x3fff, h = (b[3] & 0x3ff) + 1, ys = (b[3] >> 10) & 0x7ff;
+                const int by = int((b[1] >> 10) & 0x3fff) + ((b[0] & 0x10000000) ? shown_y : 0);
+                const int dh = h * 64 / ys;
+                for (int r = 0; r < dh; r++) {
+                    const int dst = by + r, src = ay + r * ys / 64;
+                    if (marked(dst) != marked(src)) mark(dst, dst), mark(src, src);
+                }
+            }
+    }
     // The rows back as they were before the frame was drawn, the frame drawn again, composed, and
     // VRAM and the frame buffer origin put back: of each row, the columns the frame drew on and 32
     // pixels each side (what moves is carried on by at most 16 a frame)

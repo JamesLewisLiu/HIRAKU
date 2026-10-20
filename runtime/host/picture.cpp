@@ -831,14 +831,14 @@ void main() {
 }
 )";
 
-void snap(int win_w, int win_h, uint32_t frame) {
+void snap(int win_w, int win_h, uint32_t frame, int again = 0) {
     std::vector<uint8_t> px((size_t)win_w * win_h * 3);
     gl.glPixelStorei(GL_PACK_ALIGNMENT, 1);
     gl.glReadPixels(0, 0, win_w, win_h, GL_RGB, GL_UNSIGNED_BYTE, px.data());
     std::string path = g_snap_path;   // a range: the frame's number before the extension
     if (g_snap_last != g_snap_frame) {
         const size_t dot = path.rfind('.');
-        path.insert(dot == std::string::npos ? path.size() : dot, "-" + std::to_string(frame));
+        path.insert(dot == std::string::npos ? path.size() : dot, "-" + std::to_string(frame) + (again ? "-" + std::to_string(again) : ""));
     }
     FILE *f = fopen(path.c_str(), "wb");
     if (!f) return;
@@ -1056,8 +1056,10 @@ Mode draw(const uint32_t *rgb, int w, int h, int x, int y, int vw, int vh, int w
     }
     // the game's frame (the first draw of it), else the draws counted
     const uint64_t at = frame == UINT64_MAX ? g_draws : frame;
-    if ((frame == UINT64_MAX || next) && at >= g_snap_frame && at <= g_snap_last && !g_snap_path.empty())
-        snap(win_w, win_h, (uint32_t)at);
+    static uint64_t again = 0;   // a range's refreshes of a frame after its first: FILE-<frame>-<n>.ppm
+    again = next ? 0 : again + 1;
+    if (at >= g_snap_frame && at <= g_snap_last && !g_snap_path.empty() && (next || g_snap_last != g_snap_frame))
+        snap(win_w, win_h, (uint32_t)at, (int)again);
     g_draws++;
     return m;
 }
