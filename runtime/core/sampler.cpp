@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // HK_PROFILE=1: a 1 kHz SIGPROF sampler of the host instruction pointer (HK_PROFILE_AFTER=ms:
-// from that much CPU time on), for
+// from that much CPU time on; HK_PROFILE_FRAMES=A-B,C-D: only in frames A to B-1 and C to D-1:
+// a run's slow frames; HK_PROFILE_MAIN=1: only the main thread's, the one running the machine,
+// not helpers such as the PlayStation GPU's drawing thread), for
 // finding hot spots without perf. Samples are written at exit to
 // hk-profile.txt as executable-relative addresses (symbolise with
 // llvm-symbolizer --obj=<binary>). Samples in shared libraries are written as
@@ -10,20 +12,28 @@
 #include <dlfcn.h>
 #include <link.h>
 #include <signal.h>
+#include <sys/syscall.h>
 #include <sys/time.h>
 #include <ucontext.h>
+#include <unistd.h>
 
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <map>
+
+#include "core/prof.h"
 
 namespace {
 constexpr int MAX = 1 << 21;
 uintptr_t g_samples[MAX];
 volatile int g_n = 0;
 uintptr_t g_base = 0;
+volatile bool g_on = true;   // HK_PROFILE_FRAMES: in one of them
+long g_main = 0;             // HK_PROFILE_MAIN: the main thread's id
 
 void on_prof(int, siginfo_t *, void *uc) {
+    if (!g_on || (g_main && syscall(SYS_gettid) != g_main)) return;
     auto *ctx = static_cast<ucontext_t *>(uc);
     int n = g_n;
 #if defined(__x86_64__)
@@ -68,6 +78,20 @@ struct Init {
         itimerval t{{0, 1000}, {after / 1000, after > 0 ? (after % 1000) * 1000 : 1000}};
         setitimer(ITIMER_PROF, &t, nullptr);
         atexit(dump);
+        if (getenv("HK_PROFILE_MAIN")) g_main = (long)getpid();
+        if (getenv("HK_PROFILE_FRAMES")) {
+            g_on = false;
+            hk::prof::g_sample_frame = [](uint64_t f) {
+                bool in = false;
+                for (const char *q = getenv("HK_PROFILE_FRAMES"); q && *q;) {
+                    unsigned long long lo, hi;
+                    if (sscanf(q, "%llu-%llu", &lo, &hi) == 2 && f >= lo && f < hi) in = true;
+                    q = strchr(q, ',');
+                    if (q) q++;
+                }
+                g_on = in;
+            };
+        }
     }
 } g_init;
 }  // namespace

@@ -2142,6 +2142,7 @@ def machine_atahle_h(s):
 
 
 def machine_atahle_cpp(s):
+    s = edit(s, '#include "atahle.h"\n', '#include "atahle.h"\n\n#include <bit> // HIRAKU: hk_dma_burst\n#include <cstring>\n', 'machine/atahle.cpp includes')
     return edit(s, """void device_ata_hle_interface::command_r(offs_t offset, PAIR16 &data, uint16_t mem_mask)
 """, """// HIRAKU: dma_r() for the words before the buffer's last, at once: each takes dma_r()'s
 // read_data() branch (nothing those checks look at changes until the buffer ends) and only moves
@@ -2155,12 +2156,16 @@ int device_ata_hle_interface::hk_dma_burst(uint16_t *dst, int max)
 		return 0;
 	if ((m_status & IDE_STATUS_BSY) || !(m_status & IDE_STATUS_DRQ))
 		return 0;
-	int n = 0;
-	while (n < max && int(m_buffer_offset) + 2 < int(m_buffer_size))
-	{
-		dst[n++] = m_buffer[m_buffer_offset] | (m_buffer[m_buffer_offset + 1] << 8);
-		m_buffer_offset += 2;
-	}
+	// the words dma_r() would take one at a time (while offset + 2 < size): on a little-endian
+	// host each is its two bytes as they are
+	const int room = int(m_buffer_size) - int(m_buffer_offset) - 2;
+	const int n = room > 0 ? std::min(max, (room + 1) / 2) : 0;
+	if constexpr (std::endian::native == std::endian::little)
+		memcpy(dst, &m_buffer[m_buffer_offset], 2 * size_t(n));
+	else
+		for (int i = 0; i < n; i++)
+			dst[i] = m_buffer[m_buffer_offset + 2 * i] | (m_buffer[m_buffer_offset + 2 * i + 1] << 8);
+	m_buffer_offset += 2 * n;
 	return n;
 }
 

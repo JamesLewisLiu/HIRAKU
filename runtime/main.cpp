@@ -515,6 +515,7 @@ int main(int argc, char **argv) {
         }
 #endif
         if (debug_every && f % debug_every == 0) machine.debug_line(f);
+        if (prof::g_sample_frame) prof::g_sample_frame(f);   // HK_PROFILE_FRAMES
         if (lights_log) lights_log(f);
 #ifdef HK_WITH_SDL
         host::lights_frame();

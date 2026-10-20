@@ -3,6 +3,9 @@
 #include "emu.h"
 #include "atahle.h"
 
+#include <bit> // HIRAKU: hk_dma_burst
+#include <cstring>
+
 #define LOG_COMMAND (1U << 1)
 #define LOG_READ (1U << 2)
 #define LOG_READDATA (1U << 3)
@@ -543,12 +546,16 @@ int device_ata_hle_interface::hk_dma_burst(uint16_t *dst, int max)
 		return 0;
 	if ((m_status & IDE_STATUS_BSY) || !(m_status & IDE_STATUS_DRQ))
 		return 0;
-	int n = 0;
-	while (n < max && int(m_buffer_offset) + 2 < int(m_buffer_size))
-	{
-		dst[n++] = m_buffer[m_buffer_offset] | (m_buffer[m_buffer_offset + 1] << 8);
-		m_buffer_offset += 2;
-	}
+	// the words dma_r() would take one at a time (while offset + 2 < size): on a little-endian
+	// host each is its two bytes as they are
+	const int room = int(m_buffer_size) - int(m_buffer_offset) - 2;
+	const int n = room > 0 ? std::min(max, (room + 1) / 2) : 0;
+	if constexpr (std::endian::native == std::endian::little)
+		memcpy(dst, &m_buffer[m_buffer_offset], 2 * size_t(n));
+	else
+		for (int i = 0; i < n; i++)
+			dst[i] = m_buffer[m_buffer_offset + 2 * i] | (m_buffer[m_buffer_offset + 2 * i + 1] << 8);
+	m_buffer_offset += 2 * n;
 	return n;
 }
 

@@ -19,6 +19,10 @@ inline const char *const NAMES[NCAT] = {"disk", "draw", "present", "68000", "glu
 inline uint64_t g_ticks[NCAT];   // accumulated since the last reset, in ticks()
 inline uint64_t g_total[NCAT];   // accumulated since start (never reset)
 
+// HK_PROFILE's sampler (runtime/core/sampler.cpp), told each frame's number so that with
+// HK_PROFILE_FRAMES=A-B,C-D it samples only those frames' work; null without it
+inline void (*g_sample_frame)(uint64_t frame) = nullptr;
+
 inline uint64_t now_ns() {
     return (uint64_t)std::chrono::duration_cast<std::chrono::nanoseconds>(
                std::chrono::steady_clock::now().time_since_epoch()).count();

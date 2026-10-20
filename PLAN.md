@@ -1672,6 +1672,7 @@ The owner downloaded the remaining sets on 2026-10-14. All 21 new CHDs match MAM
   - `hk_read_dma_burst()` (hiraku-edits.py: `ataintf`, `atadev`, `hdd`, `atahle`) takes a buffer's words but the last in one go, when `dma_r()` would take each through `read_data()` with nothing else changing. The last word still goes through `dma_r()`, which refills the buffer or ends the transfer.
   - The shim's hard disk image is mapped instead of `pread()` a sector at a time.
   - Those frames: 14–17 → 5–7 ms, identical.
+  - **2026-10-20:** the 4x drive's worst frames (8,849–8,851, the result screen) were keysound DMA too. `hk_read_dma_burst()` now copies the buffer's words with one `memcpy` (little-endian hosts; the word swap otherwise), and the SPU board's DMA request bursts them straight into wave RAM, where they went through a 256-word buffer and were copied again one by one. Found with `HK_PROFILE_FRAMES=8849-8852 HK_PROFILE_MAIN=1` (the sampler on those frames' work and the main thread only).
 - **The whole scripted game** (`bmiidx3-play`'s inputs, no RAM hash; desktop):
 
   | Program CD | p99 frame | worst frame |
@@ -1679,9 +1680,12 @@ The owner downloaded the remaining sets on 2026-10-14. All 21 new CHDs match MAM
   | MAME's, before | 16.3 ms | 35.0 ms |
   | MAME's (`--mame-cd`), with the keysound path | 8.2 ms | 24.5 ms |
   | the 4x drive (default) | 4.9 ms | 10.9 ms |
+  | the 4x drive, DMA by memcpy (2026-10-20) | 5.7 ms | 7.4 ms |
+
+  (The last row is a later measurement, with the fine sound on, from frame 2,000: p99.9 6.15 ms, no frame over 8 ms where 15 were.)
 
 - **Regress:** every Twinkle case runs with `--mame-cd`, identical to its baseline (still in lockstep with MAME). Each play case also has a `-drive` twin on the 4x drive, from the same NVRAM (`tools/regress.py`).
-- **Left:** the 4x drive's worst frames (~11 ms, frames 8,849–8,851, at the result screen) and the loads' ~4.7 ms are desktop numbers; an N100 is likely ~2× that. No seek time is modelled (the drive's ~120 ms access); the data phase starts one sector's time after the command.
+- **Left:** the worst frames (~7 ms, the result screen) and the loads' ~4.7 ms are desktop numbers; an N100 is likely ~2× that. No seek time is modelled (the drive's ~120 ms access); the data phase starts one sector's time after the command.
 
 ### Risks
 - **The mix is undocumented** (TW-3). Fallback: a plain "video behind the PS1 picture where it is black" mode, labelled as a guess.
