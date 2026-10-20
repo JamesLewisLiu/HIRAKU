@@ -78,7 +78,26 @@ bool same(double a, double b) { return std::fabs(a - b) < 1e-6; }
 
 const char *const MODES[][2] = {{"off", "Off: sharp pixels"},
                                 {"light", "Light: crt-guest-advanced-fast"},
-                                {"full", "Full: crt-royale"}};
+                                {"full", "Full: crt-royale"},
+                                {"lola", "Analog: Lola Retro"}};
+
+// The tab of a mode's shader (off: the first)
+int tabOf(const QString &m) { return m == "full" ? 1 : m == "lola" ? 2 : 0; }
+
+// The game's monitor, kHz, as its core says (runtime/shell/core.h, monitor_khz): DJ Main 24,
+// Firebeat (no core key) 31, the rest 15; 0 without a game. The shaders' hiraku-<k>khz.params.
+int monitorKhz(const QString &game) {
+    if (game.isEmpty()) return 0;
+    QFile f(cfg::rootDir() + "/games/" + game + "/game.toml");
+    QString core;
+    if (f.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        QTextStream in(&f);
+        static const QRegularExpression re("^core\\s*=\\s*\"([^\"]*)\"");
+        while (!in.atEnd())
+            if (auto m = re.match(in.readLine()); m.hasMatch()) core = m.captured(1);
+    }
+    return core == "djmain" ? 24 : core.isEmpty() || core == "firebeat" ? 31 : 15;
+}
 
 QString modeLabel(const QString &m) {
     for (auto &x : MODES)
@@ -103,15 +122,19 @@ PictureDialog::PictureDialog(const QString &game, const QString &gameTitle, bool
     m_mode = new QComboBox;
     top->addRow("Picture:", m_mode);
     v->addLayout(top);
-    auto *note = new QLabel("A running game follows the sliders at once. In the game, F10 cycles off, light and full.");
+    auto *note = new QLabel("A running game follows the sliders at once. In the game, F10 cycles off, light, full and analog.");
     note->setWordWrap(true);
     v->addWidget(note);
 
     m_globalMode = picture::globalMode();
     m_gameMode = m_game.isEmpty() ? QString() : cfg::settings().value("picture/" + m_game).toString();
 
-    m_shaders = {{"crt-guest-advanced-fast", "Light: crt-guest-advanced-fast", {}, {}, nullptr},
-                 {"crt-royale", "Full: crt-royale", {}, {}, nullptr}};
+    for (auto [name, title] : {std::pair{"crt-guest-advanced-fast", "Light: crt-guest-advanced-fast"},
+                               std::pair{"crt-royale", "Full: crt-royale"}, std::pair{"lola-retro", "Analog: Lola Retro"}}) {
+        Shader sh;
+        sh.name = name, sh.title = title;
+        m_shaders.push_back(sh);
+    }
     m_values.resize(m_shaders.size());
     m_rows.resize(m_shaders.size());
     m_tabs = new QTabWidget;
@@ -132,9 +155,9 @@ PictureDialog::PictureDialog(const QString &game, const QString &gameTitle, bool
                 p.max = c[3].toDouble();
                 p.step = c[4].toDouble();
                 p.label = c[5].trimmed();
-                if (p.name.startsWith("bogus") || p.label.startsWith('[')) {   // guest's section headers
+                if (p.name.startsWith("bogus") || p.label.startsWith('[') || p.label.startsWith("---")) {   // guest's, Lola's section headers
                     section = p.label;
-                    section.remove(QRegularExpression("[\\[\\]:]"));
+                    section.remove(QRegularExpression("[\\[\\]:]|^-+|-+$"));
                     section = section.trimmed();
                     continue;
                 }
@@ -150,9 +173,24 @@ PictureDialog::PictureDialog(const QString &game, const QString &gameTitle, bool
                 sh.params.push_back(p);
             }
         }
-        auto hiraku = readValues(dir + "/hiraku.params");
-        for (auto it = hiraku.begin(); it != hiraku.end(); ++it)
-            if (sh.base.contains(it.key())) sh.base[it.key()] = it.value();
+        // HIRAKU's defaults, then those for the game's monitor (as the game reads them)
+        QStringList layers = {dir + "/hiraku.params"};
+        if (int khz = monitorKhz(m_game)) layers << dir + QString("/hiraku-%1khz.params").arg(khz);
+        for (const QString &l : layers) {
+            auto hiraku = readValues(l);
+            for (auto it = hiraku.begin(); it != hiraku.end(); ++it)
+                if (sh.base.contains(it.key())) sh.base[it.key()] = it.value();
+        }
+        // looks: the shader's presets that differ only in their values (looks/*.params, the
+        // first line's comment their name)
+        for (const QFileInfo &fi : QDir(dir + "/looks").entryInfoList({"*.params"}, QDir::Files, QDir::Name)) {
+            Look lk;
+            QFile lf(fi.filePath());
+            if (lf.open(QIODevice::ReadOnly | QIODevice::Text)) lk.title = QString::fromUtf8(lf.readLine()).remove('#').trimmed();
+            if (lk.title.isEmpty()) lk.title = fi.baseName();
+            lk.values = readValues(fi.filePath());
+            sh.looks.push_back(lk);
+        }
         // what Cancel puts back
         QStringList files = {file(s, false)};
         if (!m_game.isEmpty()) files << file(s, true);
@@ -186,7 +224,7 @@ PictureDialog::PictureDialog(const QString &game, const QString &gameTitle, bool
         if (m_onGame) m_gameMode = m;
         else m_globalMode = m;
         QString shown = m_onGame && m.isEmpty() ? m_globalMode : m;
-        m_tabs->setCurrentIndex(shown == "full" ? 1 : 0);
+        m_tabs->setCurrentIndex(tabOf(shown));
     });
 
     auto *bb = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
@@ -223,6 +261,24 @@ void PictureDialog::buildPage(int s) {
     resetAll->setAutoDefault(false);
     bar->addWidget(resetAll);
     v->addLayout(bar);
+    if (!sh.looks.isEmpty()) {   // a look sets all its values at once; the sliders then fine-tune it
+        auto *lr = new QHBoxLayout;
+        lr->addWidget(new QLabel("Look:"));
+        sh.look = new QComboBox;
+        sh.look->addItem("Own settings", -1);
+        for (int k = 0; k < sh.looks.size(); k++) sh.look->addItem(sh.looks[k].title, k);
+        sh.look->setToolTip("The shader's presets: each a tube, a cable and a set-up. Curvature and the board's timing stay as they are.");
+        lr->addWidget(sh.look, 1);
+        v->addLayout(lr);
+        connect(sh.look, &QComboBox::currentIndexChanged, this, [this, s](int) {
+            if (m_loading) return;
+            Shader &sh = m_shaders[s];
+            int k = sh.look->currentData().toInt();
+            if (k < 0) return;
+            for (int i = 0; i < sh.params.size(); i++)
+                if (sh.looks[k].values.contains(sh.params[i].name)) setValue(s, i, sh.looks[k].values[sh.params[i].name], false);
+        });
+    }
 
     auto *inner = new QWidget;
     auto *g = new QGridLayout(inner);
@@ -310,7 +366,25 @@ void PictureDialog::setValue(int s, int i, double v, bool fromSlider) {
     row.label->setFont(f);
     row.reset->setEnabled(!same(v, inh));
     row.reset->setToolTip(QString("Back to %1 (%2)").arg(inh).arg(m_onGame ? "all games" : "the default"));
+    showLook(s);
     m_saveTimers[s]->start();
+}
+
+// The look the values are, or "Own settings"
+void PictureDialog::showLook(int s) {
+    Shader &sh = m_shaders[s];
+    if (!sh.look) return;
+    int found = -1;
+    for (int k = 0; k < sh.looks.size() && found < 0; k++) {
+        bool all = true;
+        for (auto it = sh.looks[k].values.begin(); it != sh.looks[k].values.end() && all; ++it)
+            all = !m_values[s].contains(it.key()) || same(m_values[s][it.key()], it.value());
+        if (all) found = k;
+    }
+    const bool was = m_loading;
+    m_loading = true;
+    sh.look->setCurrentIndex(std::max(0, sh.look->findData(found)));
+    m_loading = was;
 }
 
 void PictureDialog::load() {
@@ -321,7 +395,7 @@ void PictureDialog::load() {
     QString cur = m_onGame ? m_gameMode : m_globalMode;
     m_mode->setCurrentIndex(std::max(0, m_mode->findData(cur)));
     QString shown = m_onGame && cur.isEmpty() ? m_globalMode : cur;
-    m_tabs->setCurrentIndex(shown == "full" ? 1 : 0);
+    m_tabs->setCurrentIndex(tabOf(shown));
     m_loading = false;
     for (int s = 0; s < m_shaders.size(); s++) {
         auto inh = inherited(s);

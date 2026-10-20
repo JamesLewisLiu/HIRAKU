@@ -36,6 +36,7 @@ const Licence kLicences[] = {
     {"LZMA SDK (libchdr's LZMA decoder): public domain", "third_party/libchdr/lzma/LICENSE.txt", 0},
     {"crt-royale: GNU GPL v2", "third_party/slang-shaders/crt/shaders/crt-royale/LICENSE.TXT", 0},
     {"crt-guest-advanced-fast: GNU GPL v2 or later", "third_party/slang-shaders/crt/shaders/guest/fast/bloom_horizontal.slang", 22},
+    {"Lola Retro: MIT", "third_party/lola-retro/LICENSE", 0},
     {"Wayland presentation-time: MIT", "third_party/wayland/presentation-time.xml", 26},
     {"Wayland fifo-v1: MIT", "third_party/wayland/fifo-v1.xml", 24},
 };
@@ -96,6 +97,8 @@ QString softwareHtml() {
     h += "<li><b>" + link("https://github.com/libretro/slang-shaders", "libretro slang-shaders") +
          "</b> (GPL-2.0-or-later): crt-guest-advanced-fast (guest(r), with Dr. Venom) and "
          "crt-royale (TroggleMonkey), the picture's CRT shaders.</li>";
+    h += "<li><b>" + link("https://github.com/zoran123456/lola-retro", "Lola Retro") +
+         "</b> (MIT, Zoki): the analog CRT picture, the signal, the TV and the tube.</li>";
     h += "<li><b>" + link("https://gitlab.freedesktop.org/wayland/wayland-protocols", "wayland-protocols") +
          "</b> (MIT): presentation-time (Collabora) and fifo-v1 (Valve), for frame pacing.</li>";
     h += "</ul>";

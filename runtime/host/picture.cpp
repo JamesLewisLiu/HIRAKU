@@ -35,7 +35,7 @@ namespace {
     X(glGenVertexArrays) X(glBindVertexArray) X(glDeleteVertexArrays) X(glVertexAttribPointer)                \
     X(glEnableVertexAttribArray) X(glDrawArrays) X(glGenSamplers) X(glDeleteSamplers) X(glBindSampler)        \
     X(glSamplerParameteri) X(glReadPixels) X(glGenQueries) X(glDeleteQueries) X(glBeginQuery)   \
-    X(glEndQuery) X(glGetQueryObjectiv) X(glGetQueryObjectui64v) X(glBlendFunc)
+    X(glEndQuery) X(glGetQueryObjectiv) X(glGetQueryObjectui64v) X(glBlendFunc) X(glQueryCounter)
 
 struct Gl {
 #define X(f) decltype(&::f) f = nullptr;
@@ -240,6 +240,7 @@ int g_view = 0;
 Frame *g_cur = &g_frames[0];
 std::string g_shaders_dir;
 std::vector<std::string> g_config_dirs;
+int g_monitor_khz = 0;   // set_monitor: the cabinet's monitor, for shaders/<name>/hiraku-<k>khz.params
 bool g_ok = false;
 uint32_t g_draws = 0;
 uint32_t g_snap_frame = UINT32_MAX;
@@ -253,6 +254,7 @@ public:
     void draw(int w, int h, int x, int y, int vw, int vh, int win_w, int win_h, bool next, uint32_t frame);
     size_t history() const { return m_history; }   // how many frames it reads: 1 + the oldest OriginalHistoryN
     void check_params();   // read the parameter files again if one changed
+    void read_params();
     ~Chain();
 
 private:
@@ -263,16 +265,29 @@ private:
     std::vector<std::pair<std::string, time_t>> m_param_files;   // and their mtimes
     size_t m_history = 1;
     int m_vw = 0, m_vh = 0;
+    // HK_PICTURE_PASSES=1: each pass's GPU time (timestamps after each, read back at once: slows the
+    // drawing, for finding a preset's costly passes); the averages printed at exit
+    std::vector<GLuint> m_stamps;
+    std::vector<double> m_pass_ms;
+    uint64_t m_timed = 0;
 
     bool resolve(const std::string &name, Src &src, int &idx, int pass) const;
-    void read_params();
     Sampling sampling_of(Src src, int idx) const;
     void size_of(Src src, int idx, int pass, int &w, int &h) const;
     bool link_pass(int i, const std::string &vs, const std::string &fs);
     void target(Target &t, int i, int w, int h, GLenum fmt, bool mip);
 };
 
+bool g_pass_times = false;
+
 Chain::~Chain() {
+    if (m_timed > 30) {
+        fprintf(stderr, "picture: %s, GPU time per pass over %llu frames:", name.c_str(), (unsigned long long)m_timed - 30);
+        for (size_t i = 0; i < m_pass_ms.size(); i++)
+            fprintf(stderr, " %zu: %.3f ms (%dx%d)%s", i, m_pass_ms[i] / (m_timed - 30), m_passes[i].w, m_passes[i].h,
+                    i + 1 < m_pass_ms.size() ? "," : "\n");
+    }
+    if (!m_stamps.empty()) gl.glDeleteQueries((GLsizei)m_stamps.size(), m_stamps.data());
     for (auto &p : m_passes) {
         if (p.prog) gl.glDeleteProgram(p.prog);
         if (p.ubo) gl.glDeleteBuffers(1, &p.ubo);
@@ -441,6 +456,7 @@ bool Chain::link_pass(int i, const std::string &vs, const std::string &fs) {
 void Chain::read_params() {
     for (auto &prm : m_params) prm.value = prm.def;
     std::vector<std::string> files = {m_dir + "/hiraku.params"};
+    if (g_monitor_khz) files.push_back(m_dir + "/hiraku-" + std::to_string(g_monitor_khz) + "khz.params");
     for (const auto &d : g_config_dirs) files.push_back(d + "/" + name + ".params");
     m_param_files.clear();
     for (const auto &f : files) {
@@ -636,6 +652,12 @@ void Chain::draw(int w, int h, int x, int y, int vw, int vh, int win_w, int win_
         target(p.out, i, p.w, p.h, fmt, mip);
         if (p.feedback) target(p.prev, i, p.w, p.h, fmt, mip);
     }
+    if (g_pass_times && m_stamps.empty()) {
+        m_stamps.resize(n + 1);
+        gl.glGenQueries(n + 1, m_stamps.data());
+        m_pass_ms.assign(n, 0.0);
+    }
+    if (g_pass_times) gl.glQueryCounter(m_stamps[0], GL_TIMESTAMP);
     for (int i = 0; i < n; i++) {
         Pass &p = m_passes[i];
         const bool to_window = i == n - 1 && !p.feedback;
@@ -706,6 +728,13 @@ void Chain::draw(int w, int h, int x, int y, int vw, int vh, int win_w, int win_
             gl.glBindBufferBase(GL_UNIFORM_BUFFER, 0, p.ubo);
         }
         gl.glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+        if (g_pass_times) gl.glQueryCounter(m_stamps[i + 1], GL_TIMESTAMP);
+    }
+    if (g_pass_times) {
+        std::vector<GLuint64> t(n + 1);
+        for (int i = 0; i <= n; i++) gl.glGetQueryObjectui64v(m_stamps[i], GL_QUERY_RESULT, &t[i]);
+        if (++m_timed > 30)   // not the first frames: shader compilation, first allocations
+            for (int i = 0; i < n; i++) m_pass_ms[i] += (t[i + 1] - t[i]) / 1e6;
     }
     for (int u = 0; u < 16; u++) gl.glBindSampler(u, 0);
     if (m_passes.back().feedback) {   // the last pass drew into its target: to the window, pixel for pixel
@@ -722,15 +751,16 @@ void Chain::draw(int w, int h, int x, int y, int vw, int vh, int win_w, int win_
     }
 }
 
-const char *const DIRS[] = {"", "crt-guest-advanced-fast", "crt-royale"};
+const int NMODES = 4;
+const char *const DIRS[NMODES] = {"", "crt-guest-advanced-fast", "crt-royale", "lola-retro"};
 
 // GPU time per frame, per mode (timer queries, read a few frames late so nothing waits)
 struct GpuTime {
     GLuint q[4] = {};
     int mode[4] = {};
     uint32_t issued = 0, read = 0;
-    double sum_ms[3] = {}, max_ms[3] = {};
-    uint64_t n[3] = {};
+    double sum_ms[NMODES] = {}, max_ms[NMODES] = {};
+    uint64_t n[NMODES] = {};
 } g_gpu;
 
 void gpu_collect(bool all) {
@@ -750,8 +780,8 @@ void gpu_collect(bool all) {
         g_gpu.read++;
     }
 }
-std::unique_ptr<Chain> g_chain[2][3];
-bool g_failed[3] = {};
+std::unique_ptr<Chain> g_chain[2][NMODES];
+bool g_failed[NMODES] = {};
 
 const char *const PLAIN_VS = R"(#version 330
 layout(location = 0) in vec4 Position;
@@ -791,21 +821,27 @@ void snap(int win_w, int win_h) {
     fprintf(f, "P6\n%d %d\n255\n", win_w, win_h);
     for (int y = win_h - 1; y >= 0; y--) fwrite(&px[(size_t)y * win_w * 3], 1, (size_t)win_w * 3, f);
     fclose(f);
-    fprintf(stderr, "picture: frame %u written to %s\n", g_draws, g_snap_path.c_str());
+    fprintf(stderr, "picture: frame %u written to %s\n", g_snap_frame, g_snap_path.c_str());
 }
 
 }  // namespace
 
-const char *mode_name(Mode m) { return m == Mode::light ? "light" : m == Mode::full ? "full" : "off"; }
+const char *mode_name(Mode m) {
+    return m == Mode::light ? "light" : m == Mode::full ? "full" : m == Mode::lola ? "lola" : "off";
+}
 
 const char *mode_label(Mode m) {
-    return m == Mode::light ? "CRT light (crt-guest-advanced-fast)" : m == Mode::full ? "CRT full (crt-royale)" : "sharp pixels";
+    return m == Mode::light  ? "CRT light (crt-guest-advanced-fast)"
+           : m == Mode::full ? "CRT full (crt-royale)"
+           : m == Mode::lola ? "CRT analog (Lola Retro)"
+                             : "sharp pixels";
 }
 
 bool parse_mode(const std::string &s, Mode &m) {
     if (s == "off" || s == "sharp") m = Mode::off;
     else if (s == "light" || s == "crt") m = Mode::light;
     else if (s == "full" || s == "royale") m = Mode::full;
+    else if (s == "lola" || s == "analog") m = Mode::lola;
     else return false;
     return true;
 }
@@ -831,6 +867,7 @@ bool init(const std::string &shaders_dir, const std::vector<std::string> &config
     gl.glEnableVertexAttribArray(1);
     gl.glDisable(GL_BLEND);
     gl.glGenQueries(4, g_gpu.q);
+    if (const char *e = getenv("HK_PICTURE_PASSES")) g_pass_times = *e && *e != '0';
     if (const char *e = getenv("HK_PICTURE_SNAP")) {
         g_snap_frame = (uint32_t)strtoul(e, nullptr, 10);
         if (const char *c = strchr(e, ',')) g_snap_path = c + 1;
@@ -839,6 +876,14 @@ bool init(const std::string &shaders_dir, const std::vector<std::string> &config
             (const char *)gl.glGetString(GL_RENDERER));
     g_ok = true;
     return true;
+}
+
+void set_monitor(int khz) {
+    if (khz == g_monitor_khz) return;
+    g_monitor_khz = khz;
+    for (auto &v : g_chain)   // the loaded presets read their settings again
+        for (auto &c : v)
+            if (c) c->read_params();
 }
 
 bool prepare(Mode m) {
@@ -924,7 +969,9 @@ Mode draw(const uint32_t *rgb, int w, int h, int x, int y, int vw, int vh, int w
         gl.glEndQuery(GL_TIME_ELAPSED);
         g_gpu.issued++;
     }
-    if (g_draws == g_snap_frame && !g_snap_path.empty()) snap(win_w, win_h);
+    // the game's frame (the first draw of it), else the draws counted
+    if ((frame == UINT64_MAX ? g_draws == g_snap_frame : next && frame == g_snap_frame) && !g_snap_path.empty())
+        snap(win_w, win_h);
     g_draws++;
     return m;
 }
@@ -961,7 +1008,7 @@ void overlay(const uint32_t *argb, int w, int h, int x, int y, int dw, int dh, f
 void shutdown() {
     if (!g_ok) return;
     gpu_collect(true);
-    for (int m = 0; m < 3; m++)
+    for (int m = 0; m < NMODES; m++)
         if (g_gpu.n[m] > 31)
             fprintf(stderr, "picture: %s: GPU %.2f ms per frame (worst %.2f) over %llu frames\n", mode_label((Mode)m),
                     g_gpu.sum_ms[m] / (g_gpu.n[m] - 31), g_gpu.max_ms[m], (unsigned long long)g_gpu.n[m]);

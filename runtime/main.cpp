@@ -36,8 +36,9 @@
 //     --macro NAME[@F]  run one of the game's code macros (games/<game>/macros.txt) at frame F, or
 //                       at its own `at` frame (power-on codes); repeatable. In the window,
 //                       Ctrl+1..9 types the 1st..9th macro
-//     --picture MODE    off (sharp pixels, the default), light (CRT: crt-guest-advanced-fast) or
-//                       full (CRT: crt-royale); F10 cycles them. --crt is --picture light
+//     --picture MODE    off (sharp pixels, the default), light (CRT: crt-guest-advanced-fast),
+//                       full (CRT: crt-royale) or lola (CRT, the analog chain: Lola Retro); F10
+//                       cycles them. --crt is --picture light
 //     --picture-config DIR  read DIR/<shader>.params over the shader's settings (repeatable,
 //                       later ones win; `name = value` lines; read again when they change)
 //     --bindings FILE   controls (see runtime/host/input.h)

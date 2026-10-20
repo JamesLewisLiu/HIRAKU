@@ -86,7 +86,7 @@ MainWindow::MainWindow() {
     m_lights = new QAction(QIcon::fromTheme("dialog-information", QIcon::fromTheme("weather-clear")), "Lights", this);
     auto *settings = new QAction(QIcon::fromTheme("preferences-system"), "Settings", this);
     auto *pictureAct = new QAction(QIcon::fromTheme("video-display", QIcon::fromTheme("preferences-desktop-display")), "Picture", this);
-    pictureAct->setToolTip("Sharp pixels or a CRT (light, full), and the CRT's settings: for all games, or the selected one");
+    pictureAct->setToolTip("Sharp pixels or a CRT (light, full, analog), and the CRT's settings: for all games, or the selected one");
     connect(pictureAct, &QAction::triggered, this, [this] {
         auto *g = selected();
         PictureDialog d(g ? g->id : QString(), g ? g->title : QString(), false, this);
@@ -505,7 +505,10 @@ void MainWindow::showDetails() {
         bool own = cfg::settings().contains("picture/" + g->id) || QFileInfo::exists(picture::configDir(g->id));
         if (UnlocksDialog::available(g->id)) h += "<p>Unlocks and codes: right-click the game &gt; Unlocks.</p>";
         h += QString("<p>Picture: %1%2</p>")
-                 .arg(m == "full" ? "CRT full (crt-royale)" : m == "light" ? "CRT light (crt-guest-advanced-fast)" : "sharp pixels",
+                 .arg(m == "full"    ? "CRT full (crt-royale)"
+                      : m == "light" ? "CRT light (crt-guest-advanced-fast)"
+                      : m == "lola"  ? "CRT analog (Lola Retro)"
+                                     : "sharp pixels",
                       own ? ", with its own settings" : "");
     }
     m_details->setText(h);

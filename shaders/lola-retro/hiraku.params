@@ -1,0 +1,4 @@
+# HIRAKU's defaults for Lola Retro, over the converted preset's (consumer-tv-scart-rgb):
+# the whole picture on the tube, as operators set a cabinet's monitor (a look's overscan, as its
+# curvature and the board's timing, is not part of the look: looks/)
+LR_OVERSCAN = 0

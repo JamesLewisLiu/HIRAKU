@@ -133,9 +133,19 @@ for the games that have a `games/<id>/macros.txt`.
 |---|---|---|
 | **Off** | sharp pixels (the default) | none |
 | **Light** | guest(r)'s crt-guest-advanced-fast: scanlines, a phosphor mask, glow | small |
-| **Full** | TroggleMonkey's crt-royale: beam shapes, real phosphor-mask textures, bloom, halation, optional curvature | the heaviest |
+| **Full** | TroggleMonkey's crt-royale: beam shapes, real phosphor-mask textures, bloom, halation, optional curvature | moderate |
+| **Analog** | Zoki's Lola Retro: the whole analog chain, the cable's signal, the TV's or monitor's electronics, a beam whose spot grows with brightness, the mask, the glass, phosphor afterglow | the heaviest |
 
-F10 cycles the three while you play, and the window's title says which one is on.
+F10 cycles the four while you play, and the window's title says which one is on.
+
+**Analog's looks:** Lola Retro comes with presets, each a tube, a cable and a set-up: a consumer TV
+on SCART RGB or composite, a Trinitron on S-Video, an old TV on the antenna, a studio monitor
+(PVM), an Amiga 1084S, a CRT projector, PC monitors from average to "extreme". Pick one under
+**Look** in Analog's tab, then fine-tune it with the sliders. Each game starts with the look for its
+cabinet's monitor: the Amiga 1084S (Lola's choice for 15 kHz arcade games) for System 573 and
+Twinkle, the studio monitor for DJ Main's medium-resolution one (512×384, 24 kHz), the PC VGA
+monitor for Firebeat (640×480, 31 kHz). A look leaves the curvature and the board's timing as they
+are, and HIRAKU shows the whole picture (no overscan) unless you set it.
 
 **Settings for:** you can set the mode, and each shader's settings, for all games or for one.
 To do it for one game, select it first, or right-click it > **Picture for…**. A game's own
@@ -152,15 +162,15 @@ and beatmania IIDX draws 640×240. On the tube each fills the same shape, so the
 square. Each frame keeps its own lines and pixels, stretched to that shape.
 
 **480-line games:** HIRAKU draws Firebeat's 640×480 progressive, with a scanline on every
-line, like the cabinets' monitors. Both shaders would otherwise treat 480 lines as interlaced
-(480i, as on a TV). To get that look back, set guest's **Interlace Mode** to 1, or turn on
-royale's **Interlacing - Toggle**.
+line, like the cabinets' monitors. The shaders would otherwise treat 480 lines as interlaced
+(480i, as on a TV). To get that look back, set guest's **Interlace Mode** to 1, turn on
+royale's **Interlacing - Toggle**, or set Lola's **Console timing** to 0 (auto).
 
 **Files and options:**
 - The settings live in `~/.config/hiraku/picture/` (all games) and
   `~/.config/hiraku/picture/games/<game>/`. Each holds `<shader>.params` files of
   `name = value` lines, and a RetroArch preset's parameter lines work as is.
-- From a terminal: `--picture off|light|full` and `--picture-config DIR` (repeatable: later
+- From a terminal: `--picture off|light|full|lola` and `--picture-config DIR` (repeatable: later
   folders win).
 - When a game exits, it prints each mode's GPU time per frame. That is the number to watch
   on a small GPU.

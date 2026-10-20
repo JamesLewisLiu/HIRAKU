@@ -181,6 +181,7 @@ SettingsDialog::SettingsDialog(QWidget *parent) : QDialog(parent) {
     m_picture->addItem("Off: sharp pixels", "off");
     m_picture->addItem("CRT light: crt-guest-advanced-fast", "light");
     m_picture->addItem("CRT full: crt-royale", "full");
+    m_picture->addItem("CRT analog: Lola Retro (the heaviest)", "lola");
     m_picture->setCurrentIndex(std::max(0, m_picture->findData(picture::globalMode())));
     m_picture->setToolTip("For all games; a game can have its own (Picture, in the game's menu). In the game, F10 cycles them.");
     auto *pic = new QWidget;

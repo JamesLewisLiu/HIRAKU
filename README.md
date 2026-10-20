@@ -90,6 +90,6 @@ HK_REGRESS_BIN=build/arm64 tools/regress.py check   # the ARM build against the 
 
 ## Licence
 
-GPL-3.0-or-later (see `LICENSE`). Code taken from other projects keeps its own licence and notices. This includes MAME (BSD-3-Clause), Musashi (MIT), PCSX2 Reliquary (GPL-3.0-or-later), minimp3 (CC0), libchdr (BSD-3-Clause, with dr_flac and the LZMA SDK decoder, public domain) and libretro's slang-shaders (GPL-2.0-or-later). The full list is in the launcher's Help > About HIRAKU.
+GPL-3.0-or-later (see `LICENSE`). Code taken from other projects keeps its own licence and notices. This includes MAME (BSD-3-Clause), Musashi (MIT), PCSX2 Reliquary (GPL-3.0-or-later), minimp3 (CC0), libchdr (BSD-3-Clause, with dr_flac and the LZMA SDK decoder, public domain) libretro's slang-shaders (GPL-2.0-or-later) and Lola Retro (MIT). The full list is in the launcher's Help > About HIRAKU.
 
 beatmania, pop'n music, Keyboardmania, ParaParaParadise, GuitarFreaks, DrumMania, Dance Dance Revolution, beatmania IIDX and e-AMUSEMENT are trademarks of Konami. HIRAKU is not affiliated with or endorsed by Konami.

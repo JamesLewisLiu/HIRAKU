@@ -1,0 +1,37 @@
+# The 31 kHz monitor (Firebeat, 640x480 progressive): the look "PC monitor, VGA (31 kHz)" (looks/pc-monitor-vga.params)
+LR_NORM = 0
+LR_CABLE = 3
+LR_COMB = 0
+LR_YTRAP = 0.75
+LR_SHARP = 0
+LR_SAT = 1.08
+LR_TINT = 0
+LR_DEMOD = 0
+LR_BRIGHT = 0
+LR_CONTRAST = 1.05
+LR_NOISE = 0
+LR_STEADY = 1
+LR_SIG_LO = 0.3
+LR_SIG_HI = 0.5
+LR_HFOCUS = 0.3
+LR_GAMMA = 2.4
+LR_PERSIST = 0.03
+LR_CONV = 0.12
+LR_MASK_TYPE = 3
+LR_MASK_STR = 0.45
+LR_MASK_TRIADS = 600
+LR_WHITE = 9300
+LR_PHOS = 0
+LR_BEND = 0.3
+LR_GLOW = 0.04
+LR_GLOW_SIZE = 0.5
+LR_VIGNETTE = 0.15
+LR_AMBIENT = 0.003
+LR_MON_MM = 0
+LR_MON_SIZE = 15
+LR_MON_PITCH = 0.28
+LR_MON_SPOT_LO = 0.3
+LR_MON_SPOT_HI = 0.45
+LR_MON_CORNER = 1.4
+# Firebeat draws 640x480 progressive: Lola's PC VGA timing (its "auto" reads 480 lines as interlaced)
+LR_CONSOLE = 7

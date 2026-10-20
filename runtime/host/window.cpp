@@ -143,9 +143,11 @@ void poll() {
             lampview::toggle();
             continue;
         }
-        if (e.type == SDL_EVENT_KEY_DOWN && !e.key.repeat && e.key.key == SDLK_F10 && g_gl)   // F10: off, light, full
-            g_mode = g_mode == picture::Mode::off ? picture::Mode::light
-                   : g_mode == picture::Mode::light ? picture::Mode::full : picture::Mode::off;
+        if (e.type == SDL_EVENT_KEY_DOWN && !e.key.repeat && e.key.key == SDLK_F10 && g_gl)   // F10: off, light, full, lola
+            g_mode = g_mode == picture::Mode::off     ? picture::Mode::light
+                   : g_mode == picture::Mode::light ? picture::Mode::full
+                   : g_mode == picture::Mode::full  ? picture::Mode::lola
+                                                    : picture::Mode::off;
         if (e.type == SDL_EVENT_WINDOW_DISPLAY_CHANGED || e.type == SDL_EVENT_DISPLAY_CURRENT_MODE_CHANGED)
             pacing::display_changed();
         // no pointer over the game in fullscreen (it would also keep the compositor from
@@ -178,7 +180,10 @@ bool open_gl(const char *title, int scale) {
     g_win = SDL_CreateWindow(title, window_width(scale), 480 * scale, SDL_WINDOW_RESIZABLE | SDL_WINDOW_OPENGL);
     if (g_win) g_gl = SDL_GL_CreateContext(g_win);
     if (g_gl) SDL_GL_SetSwapInterval(0);   // as with the renderer: presenting never waits for the display
-    if (g_gl && picture::init(g_shaders_dir, g_picture_config)) return true;
+    if (g_gl && picture::init(g_shaders_dir, g_picture_config)) {
+        picture::set_monitor(core().monitor_khz());
+        return true;
+    }
     fprintf(stderr, "picture: no OpenGL 3.3 (%s): the SDL renderer, sharp pixels only\n", g_gl ? "see above" : SDL_GetError());
     picture::shutdown();
     if (g_gl) SDL_GL_DestroyContext(g_gl);
@@ -190,7 +195,7 @@ bool open_gl(const char *title, int scale) {
 }  // namespace
 
 void window_set_picture(const std::string &mode, const std::string &shaders_dir, const std::vector<std::string> &config_dirs) {
-    if (!picture::parse_mode(mode, g_mode)) fprintf(stderr, "picture: %s is not off, light or full\n", mode.c_str());
+    if (!picture::parse_mode(mode, g_mode)) fprintf(stderr, "picture: %s is not off, light, full or lola\n", mode.c_str());
     g_shaders_dir = shaders_dir;
     g_picture_config = config_dirs;
 }

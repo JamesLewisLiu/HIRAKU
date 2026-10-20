@@ -126,6 +126,10 @@ public:
     // 640x480 on the same 4:3 tube; Twinkle's on a 16:9 one), so its pixels aren't square.
     // 0: square pixels.
     virtual double display_aspect() const { return 4.0 / 3.0; }
+    // The monitor's line rate, kHz: 15 (a TV-like arcade monitor: System 573, Twinkle), 24 (medium
+    // resolution: DJ Main) or 31 (VGA-like: Firebeat). The CRT pictures follow it
+    // (runtime/host/picture.h, set_monitor)
+    virtual int monitor_khz() const { return 15; }
     // How many monitors a frame holds, side by side and equally wide (Keyboardmania: 2, one a
     // player). display_aspect is the whole frame's; the window can show each in its own
     // (runtime/host/window.h, window_set_split)

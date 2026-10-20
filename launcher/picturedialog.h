@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// The picture: off (sharp pixels), light (crt-guest-advanced-fast) or full (crt-royale), for
-// all games or one, and each shader's settings as sliders.
+// The picture: off (sharp pixels), light (crt-guest-advanced-fast), full (crt-royale) or analog
+// (Lola Retro, with its looks), for all games or one, and each shader's settings as sliders.
 //
 // Settings are layered, as the game reads them (runtime/host/picture.h): the shader's own
-// defaults, HIRAKU's (shaders/<name>/hiraku.params), all games' (<config>/picture/<name>.params),
+// defaults, HIRAKU's (shaders/<name>/hiraku.params, then hiraku-<k>khz.params for the game's
+// monitor), all games' (<config>/picture/<name>.params),
 // then the game's (<config>/picture/games/<id>/<name>.params). Each file holds only what differs
 // from the layer under it. Files are written as the sliders move, and a running game re-reads
 // them, so changes show at once; Cancel puts the files back.
@@ -25,7 +26,7 @@ class QWidget;
 
 namespace picture {
 
-// The mode for a game: its own, else all games' ("off", "light", "full").
+// The mode for a game: its own, else all games' ("off", "light", "full", "lola").
 QString mode(const QString &game);
 QString globalMode();
 QString configDir();                       // <config>/picture
@@ -46,11 +47,17 @@ private:
         QString name, label, section;
         double def = 0, min = 0, max = 0, step = 0;
     };
+    struct Look {
+        QString title;
+        QMap<QString, double> values;
+    };
     struct Shader {
         QString name, title;
         QVector<Param> params;
-        QMap<QString, double> base;   // the shader's defaults + HIRAKU's
+        QMap<QString, double> base;   // the shader's defaults + HIRAKU's (and for the game's monitor)
         QWidget *page = nullptr;
+        QVector<Look> looks;          // shaders/<name>/looks/*.params
+        QComboBox *look = nullptr;
     };
     struct Row {
         QLabel *label;
@@ -60,6 +67,7 @@ private:
     };
     void buildPage(int s);
     void setValue(int s, int row, double v, bool fromSlider);
+    void showLook(int s);
     void load();                      // the values for the current scope
     void save(int s);                 // write the scope's file for shader s
     QMap<QString, double> inherited(int s) const;

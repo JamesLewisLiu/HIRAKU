@@ -70,6 +70,7 @@ public:
     }
 
     const std::string &family() const override { return dj::family(); }
+    int monitor_khz() const override { return 24; }   // 512x384: medium resolution
     void set_frame_hook(FrameHook h) override { dj::set_frame_hook(std::move(h)); }
     bool set_present_hook(PresentHook h) override { dj::set_present_hook(std::move(h)); return true; }
     void set_audio_sink(AudioSink s) override { dj::set_audio_sink(std::move(s)); }

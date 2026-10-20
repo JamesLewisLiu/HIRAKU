@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // The picture in the window: sharp pixels, or a CRT through a libretro slang shader preset
 // converted to GLSL 3.30 by tools/slang2glsl.py (shaders/<name>/: preset.slangp, passN.vert,
-// passN.frag, parameters.txt, lut/). Two of them:
+// passN.frag, parameters.txt, lut/). Three of them:
 //
 //   light  crt-guest-advanced-fast (guest(r)): scanlines, mask, glow; cheap
 //   full   crt-royale (TroggleMonkey): beam profiles, real phosphor masks, bloom, halation
+//   lola   Lola Retro (Zoki): the analog chain (the signal, the TV's decoder, the beam, the mask,
+//          the glass), its presets as looks (shaders/lola-retro/looks/); the heaviest
 //
 // The engine does what RetroArch's filter chain does: pass sizes (source, viewport,
 // absolute), 8-bit / sRGB / fp16 targets, each output sampled with the next pass's filter,
@@ -14,7 +16,8 @@
 // <alias>Feedback; black at first, as in RetroArch).
 //
 // Parameters: parameters.txt's defaults, then shaders/<name>/hiraku.params (HIRAKU's own
-// defaults), then <dir>/<name>.params for each config dir, in order (the launcher's
+// defaults), shaders/<name>/hiraku-<k>khz.params (for the cabinet's monitor: set_monitor), then
+// <dir>/<name>.params for each config dir, in order (the launcher's
 // global settings, then the game's). Those files are `name = value` lines (a RetroArch
 // preset works); they are read again when they change, so a running game follows them.
 #pragma once
@@ -25,13 +28,16 @@
 
 namespace hk::host::picture {
 
-enum class Mode { off, light, full };
-const char *mode_name(Mode m);            // "off", "light", "full"
+enum class Mode { off, light, full, lola };
+const char *mode_name(Mode m);            // "off", "light", "full", "lola"
 bool parse_mode(const std::string &s, Mode &m);
 const char *mode_label(Mode m);           // "sharp pixels", "CRT light (crt-guest-advanced-fast)", ...
 
 // Needs a current OpenGL 3.3 core context. The presets are loaded the first time they are drawn.
 bool init(const std::string &shaders_dir, const std::vector<std::string> &config_dirs);
+// The cabinet's monitor, in kHz of line rate (15: TV-like arcade monitors; 24: medium resolution,
+// DJ Main; 31: VGA-like, Firebeat): the shaders' settings for it (hiraku-<k>khz.params). 0: none.
+void set_monitor(int khz);
 // Load a mode's preset now (compiling its shaders takes up to a second the first time; the
 // draw that needs it otherwise does). False if it can't run here.
 bool prepare(Mode m);
@@ -51,6 +57,9 @@ Mode draw(const uint32_t *rgb, int w, int h, int x, int y, int vw, int vh, int w
 void overlay(const uint32_t *argb, int w, int h, int x, int y, int dw, int dh, float alpha, int win_w, int win_h);
 void shutdown();
 
-// HK_PICTURE_SNAP=FRAME,FILE.ppm writes the window's picture at that frame (checking a shader).
+// HK_PICTURE_SNAP=FRAME,FILE.ppm writes the window's picture at that game frame (its first draw:
+// checking a shader).
+// HK_PICTURE_PASSES=1 prints each pass's GPU time at exit (it reads the timers back every frame: for
+// finding a preset's costly passes, not for playing).
 
 }  // namespace hk::host::picture
