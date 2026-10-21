@@ -2431,6 +2431,49 @@ outside the repo) is where the lessons in "What carries over" come from.
 5. **Check:** offline, the beam pass's output summed over a game frame's refreshes equals the frame in linear light
    (its photon budget), and snapshots per refresh show the rolling band; then the owner's eyes on a 240 Hz and a 144 Hz display.
 
+## 30. The PC pop'n music games (written 2026-10-21)
+
+From pop'n music 15 ADVENTURE (2007) on, pop'n is a Windows program on a PC. The owner chose to **wrap** the original program, as `hiraku-python` wraps PCSX2 (Reliquary), rather than reimplement Windows: on Windows it runs as it is, on Linux under Wine, and HIRAKU supplies the cabinet around it from DLLs of its own. The first game is pop'n 15, and the later ones come once it is in a good state.
+
+**The games, by how they start:**
+- 15–18: an `.exe` (`popn15.exe`) on Konami's older library, `libavs-win32` with the ea3 e-AMUSEMENT. spice2x doesn't run these.
+- 19 Tune Street, 20 fantasia, 21 Sunny Park: `popn19/20/21.dll`. 22 Lapistoria to the last M39 builds: `popn22.dll`. All are 32-bit and started by spice2x (GPL-3.0, like HIRAKU), which replaces the cabinet's calls with its own.
+- The newest is a 64-bit `popn.dll` on the cabinet with a second screen and the BI3A I/O.
+
+**pop'n 15, measured (G15, programs 2007-03-30 to 2007-09-18):**
+- **What it calls:**
+  - `ezusb.dll`: the same `usbPadRead`/`usbLamp`/`usbCoinGet` calls as the FX2 board behind `--popn-io`. Pad bits: test 7, service 6, coin 22, buttons 1–9 = 8–16.
+  - `libacio.dll`: the IC card reader on COM1.
+  - `libavs-win32`: ea3 e-AMUSEMENT.
+  - `libcomm`/`globbyc`: local link and lobby.
+  - Windows: Direct3D 9 with `d3dx9_24`, DirectSound, and ACM for ADPCM.
+- **Paths:** `D:\popn15\data` and `D:\popn15\prog\<date>`. E: is its backup drive (settings, bookkeeping, `dcs.bin`). NVRAM and RAW live in `./CONF` under the program folder.
+- **Integrity lists:** `prg.bin` and `dat.bin` hold a count, then entries of an MD5 and a path. Each boot hashes one twentieth of the data files, and `E:\dcs.bin` says which twentieth is next. The program folder checked so far lists no program files in `prg.bin`.
+- **Boot:** on a new E: the game makes its backup files and asks to be switched off and on (BACKUP ERROR 5-1502). Without a network it stops at "no router" (5-2000) until SERVICE (play offline) or test mode's e-AMUSEMENT OFF. It finds e-AMUSEMENT by DNS (`eamuse.konami.fun`) and pings the default gateway.
+
+**Steps** (✓ done 2026-10-21: pop'n 15 boots, plays offline at 60.00 pictures a second with sound, from `hiraku-pc` on Linux under Wine 11 and from the Windows `hiraku-pc.exe` under Wine; not yet on real Windows, nor with a real board, reader or controller):
+1. ✓ **PC-1, the cabinet DLLs** (`runtime/pc/`, built 32-bit by the same clang as `hiraku-ezusb.exe`, for both packages):
+   - `ezusb.dll`: the pad, lamps, coins and watchdog.
+   - `libacio.dll`: the reader, after spice2x's `acio/icca`. `--reader` keeps the game's own `libacio.dll` and points COM1 at the real reader.
+   - Path hooks in the game's modules' imports (`CreateFileA`, `FindFirstFileA`, `GetFileAttributesA`, `CreateDirectoryA`, `DeleteFileA`, `MoveFileA`, `RemoveDirectoryA`, `GetFullPathNameA`): `D:\popn15` goes to the game's folder and `E:\` to its save folder. The same on Windows and Wine, with no drive letters.
+   - Direct3D 9 created windowed, so the picture scales to the window.
+2. ✓ **PC-2, `hiraku-pc` and the link** (also: the first boot's restart done for the player; `--popn-io` with the game's own `ezusb.dll` for a bare board's firmware):
+   - The host process starts the game: Wine on Linux, in a prefix in HIRAKU's user data; directly on Windows.
+   - It shares a small memory with the DLLs: a `/dev/shm` file on Linux (Wine maps it as a file), a named mapping on Windows. The memory carries pad bits, lamps, coins and the card.
+   - The host side is HIRAKU's own: bindings and joysticks (`input.cpp`), lamps and HID lights, card readers, and the pop'n board natively on Linux (`popnio.cpp`), which Konami's `ezusb.dll` can't reach under Wine.
+   - The game's window has the keyboard, so the DLL reads keys itself from the bindings the host passes.
+3. ✓ **PC-3, adding and starting it** (the launcher's family "pop'n music (PC)", `pcpopn`, with pop'n's controls and lamps; both packages carry `bin/pc/`): ingest tells the folder (`prog/<date>/popn15.exe` + `data/`) and runs the newest program, with the data read where it is. Plus a launcher entry, the offline/e-AMUSEMENT setting and the reader.
+4. **PC-4, e-AMUSEMENT:** pop'n 15 speaks ea3 (`cardmng`, `pcbtracker`, `playerdata_*`) like pop'n 13/14. `runtime/python/easerver.cpp` grows pop'n 15's player data, so one card carries 9–15 (`popn-one-card`).
+5. **PC-5, enhancements:**
+   - Shaders and pacing through the D3D9 `Present`.
+   - The sound's latency.
+   - Mods (`mod.toml` patches to `popn15.exe`'s memory).
+6. **PC-6, pop'n 16–18, then 19 onwards** through spice2x, with the same link and DLL hooks loaded beside it.
+
+**Open:**
+- A program folder whose `prg.bin` lists `ezusb.dll` or `libacio.dll` would fail the program check with HIRAKU's in their place. HIRAKU's code would then come in another way, leaving Konami's files as they are: a stand-in `d3d9.dll` beside the program (a file the list doesn't name), patching the board's and reader's calls in Konami's DLLs as spice2x does.
+- To check by the owner: a real Windows PC, the pop'n controller and board, a card reader (the card logic is spice2x's, untested here), the sound's latency.
+
 ## M0 steps (all done)
 
 1. ~~`git init` HIRAKU and add `.gitignore` for `dumps/` and `build/`~~ Done.

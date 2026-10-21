@@ -175,6 +175,35 @@ if(WIN32 AND CMAKE_C_COMPILER_ID MATCHES "Clang" AND NOT MSVC)
   add_custom_target(hiraku-ezusb ALL DEPENDS ${CMAKE_BINARY_DIR}/hiraku-ezusb.exe)
   add_dependencies(hiraku_shell hiraku-ezusb)
 endif()
+# The PC games' cabinet (runtime/pc/, PLAN.md section 30): HIRAKU's ezusb.dll and libacio.dll, 32-bit
+# like the games, which load them into their own process (under Wine on Linux). Built by clang for
+# i686 Windows wherever it can: a Windows build, or Linux with mingw-w64's i686 libraries. Into pc/.
+set(HK_PC_DLL_CC "")
+if(WIN32 AND CMAKE_C_COMPILER_ID MATCHES "Clang" AND NOT MSVC)
+  set(HK_PC_DLL_CC ${CMAKE_C_COMPILER})
+elseif(NOT WIN32 AND EXISTS /usr/i686-w64-mingw32/lib/libkernel32.a)
+  find_program(HK_CLANG clang)
+  find_program(HK_LLD ld.lld)
+  if(HK_CLANG AND HK_LLD)
+    set(HK_PC_DLL_CC ${HK_CLANG})
+  endif()
+endif()
+if(HK_PC_DLL_CC)
+  set(HK_PC_DLLS "")
+  foreach(dll ezusb libacio)
+    add_custom_command(OUTPUT ${CMAKE_BINARY_DIR}/pc/${dll}.dll
+      COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_BINARY_DIR}/pc
+      COMMAND ${HK_PC_DLL_CC} --target=i686-w64-mingw32 -O2 -Wall -Wextra -fuse-ld=lld -static -shared
+              -o ${CMAKE_BINARY_DIR}/pc/${dll}.dll ${CMAKE_SOURCE_DIR}/runtime/pc/${dll}.c
+              ${CMAKE_SOURCE_DIR}/runtime/pc/cabinet.c ${CMAKE_SOURCE_DIR}/runtime/pc/${dll}.def -lpsapi -lgdi32
+      DEPENDS runtime/pc/${dll}.c runtime/pc/${dll}.def runtime/pc/cabinet.c runtime/pc/cabinet.h runtime/pc/link.h
+      COMMENT "pc/${dll}.dll (32-bit)")
+    list(APPEND HK_PC_DLLS ${CMAKE_BINARY_DIR}/pc/${dll}.dll)
+  endforeach()
+  add_custom_target(hiraku-pc-dlls ALL DEPENDS ${HK_PC_DLLS})
+else()
+  message(STATUS "No 32-bit Windows compiler (clang, lld and mingw-w64's i686 libraries): no PC games' DLLs")
+endif()
 # NFC card readers through PC/SC (runtime/host/readers.h, --scard): optional
 find_package(PkgConfig QUIET)
 if(PkgConfig_FOUND)
@@ -332,6 +361,14 @@ if(SDL3_FOUND)
       COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:SDL3::SDL3-shared> ${CMAKE_BINARY_DIR})
   endif()
   message(STATUS "hiraku: SDL3 front end enabled")
+  # hiraku-pc: the PC games, Konami's own programs, in HIRAKU's cabinet (runtime/pc/host.cpp,
+  # PLAN.md section 30); its DLLs are the hiraku-pc-dlls above
+  add_executable(hiraku-pc runtime/pc/host.cpp)
+  target_link_libraries(hiraku-pc PRIVATE hiraku_host)
+  target_compile_definitions(hiraku-pc PRIVATE HK_ROOT="${CMAKE_SOURCE_DIR}")
+  if(TARGET hiraku-pc-dlls)
+    add_dependencies(hiraku-pc hiraku-pc-dlls)
+  endif()
 endif()
 
 # --- the launcher (optional: Qt 6 Widgets + SDL3) ------------------------------------

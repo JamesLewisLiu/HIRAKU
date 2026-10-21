@@ -37,6 +37,7 @@ private:
     const Game *selected() const;
     const Game *find(const QString &id) const;
     QStringList arguments(const Game &g) const;
+    QStringList pcArguments(const Game &g) const;   // hiraku-pc's (a PC game)
     void stop();
     void contextMenu(const QPoint &pos);
     void controls(const QString &family);   // the Controls dialog, which can end by starting a game to try them

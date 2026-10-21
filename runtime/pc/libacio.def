@@ -1,0 +1,5 @@
+; HIRAKU's libacio.dll (libacio.c): the two exports Konami's has by C++ names (the rest are C)
+LIBRARY libacio.dll
+EXPORTS
+    "?ac_io_icca_get_status_buffer@@YAXPAUac_io_icca_ty_status_buffer@@H@Z" = icca_get_status_buffer
+    "?ac_io_icca_update_status_buffer@@YA_NE@Z" = icca_update_status_buffer

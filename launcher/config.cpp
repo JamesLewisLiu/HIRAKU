@@ -206,26 +206,27 @@ QString familyName(const QString &family) {
     if (family == "drmn") return "DrumMania (System 573)";
     if (family == "gtrf") return "GuitarFreaks (System 573)";
     if (family == "pypopn") return "pop'n music (Konami Python)";
+    if (family == "pcpopn") return "pop'n music (PC)";
     if (family == "iidx") return "beatmania IIDX";
     return family;
 }
 
 QList<QPair<QString, QStringList>> familySeries() {
     return {{"beatmania", {"djbm", "iidx", "bm3"}},
-            {"pop'n music", {"djpopn", "popn", "pypopn", "djpstage"}},
+            {"pop'n music", {"djpopn", "popn", "pypopn", "pcpopn", "djpstage"}},
             {"Other games", {"ddr", "ddrsolo", "dmx", "drmn", "gtrf", "kbm", "mambo", "ppp"}}};
 }
 
 QString controlsSet(const QString &family) {
     if (family == "djbm" || family == "iidx" || family == "bm3") return "beatmania";
-    if (family == "djpopn" || family == "pypopn") return "popn";
+    if (family == "djpopn" || family == "pypopn" || family == "pcpopn") return "popn";
     return family;
 }
 
 // The first member's table gives the order (IIDX: the seven keys together)
 QStringList controlsSetMembers(const QString &set) {
     if (set == "beatmania") return {"iidx", "djbm", "bm3"};
-    if (set == "popn") return {"djpopn", "popn", "pypopn"};
+    if (set == "popn") return {"djpopn", "popn", "pypopn", "pcpopn"};
     return {set};
 }
 
@@ -241,6 +242,7 @@ QString controlsMemberName(const QString &family) {
     if (family == "bm3") return "beatmania III";
     if (family == "popn") return "Firebeat";
     if (family == "pypopn") return "Konami Python";
+    if (family == "pcpopn") return "PC";
     return familyName(family);
 }
 

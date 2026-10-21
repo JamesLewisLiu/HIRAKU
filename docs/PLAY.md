@@ -1070,3 +1070,17 @@ In test mode, blue (buttons 4/6) moves and red (5) selects; I/O CHECK > INPUT CH
 **On another PC:** `tools/package.sh` takes the Python binaries along with Reliquary's resources and the libraries built for it; `tools/pack-data.py DEST popn9` copies the game's data, CHD included (2.4 GB).
 
 **Not yet:** the board's own CPU (Reliquary answers its FireWire commands directly), Python games other than pop'n 9–14 (they need their own `games/<id>/game.toml`; the ingester tells you the program's SHA-1).
+
+## PC: pop'n music 15 ADVENTURE (in progress, PLAN.md §30)
+
+From pop'n music 15 on, the games are Windows programs. HIRAKU runs Konami's own program as it is, under Wine on Linux and directly on Windows, and puts its cabinet around it with `hiraku-pc` and two DLLs of its own (`bin/pc/`): the controls, the lamps, the card and the window.
+
+- **Adding it:** drop the game's folder, the one holding `prog` (its programs, by date) and `data`, on the launcher's window, or `tools/ingest.py FOLDER`. HIRAKU reads it where it is (8 GB): keep it there. The newest program is the one run, from a copy in the save folder with HIRAKU's `ezusb.dll` and `libacio.dll` in place of Konami's. The game's own files aren't changed.
+- **Linux:** Wine must be installed (`wine` in the PATH, or `--wine PROGRAM`). The first start makes Wine's folder for the PC games (`pc-wine` beside the saves), which takes a minute.
+- **First start:** the game makes its backup files and asks to be restarted (BACKUP ERROR 5-1502); `hiraku-pc` restarts it by itself.
+- **e-AMUSEMENT isn't there yet:** at "can't reach the router" (5-2000), press SERVICE (9) to play offline, or switch e-AMUSEMENT off once in test mode > NETWORK OPTIONS.
+- **Controls:** the pop'n controls and lamps of the launcher's Controls and Lights (pop'n music, PC). The keyboard is read inside the game's window; controllers and the pop'n board (`--popn-io auto`, its firmware from the game's own `ezusb.dll`) by `hiraku-pc`.
+- **The window:** `--scale N`, `--window WxH` or `--fullscreen`; the picture keeps its shape, at most 60 pictures a second (`--hz`), as on the cabinet's monitor.
+- **On the command line:** `bin/hiraku-pc --game popn15 [--fullscreen]`.
+
+**Not yet:** e-AMUSEMENT, HIRAKU's shaders, a check on real Windows and with a real board or reader; pop'n 16 and later.

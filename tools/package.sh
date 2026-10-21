@@ -134,6 +134,9 @@ done
 [ -n "$sdl" ] && cp -L "$sdl" "$d/bin/lib/"
 # HK_PACKAGE_BIN: more programs for bin/ (a release's 7-Zip, bin/7zz: tools/mameset.py looks there first)
 for f in ${HK_PACKAGE_BIN:-}; do cp -L "$f" "$d/bin/"; done
+# the PC games' DLLs (runtime/pc/), 32-bit Windows ones that hiraku-pc puts beside the game's
+# program under Wine
+[ -d "$build/pc" ] && mkdir -p "$d/bin/pc" && cp "$build"/pc/*.dll "$d/bin/pc/"
 # HK_PACKAGE_LIBS: libraries for bin/lib that the binaries load themselves (dlopen: ldd doesn't
 # see them), a release's PCSX2 shader compiler (libshaderc_shared.so.1)
 for f in ${HK_PACKAGE_LIBS:-}; do

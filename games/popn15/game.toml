@@ -1,0 +1,10 @@
+# pop'n music 15 ADVENTURE (G15 J:A:A), Konami 2007: a Windows PC
+id = "popn15"
+title = "pop'n music 15 ADVENTURE"
+family = "pcpopn"       # pop'n on a PC: 9 buttons, the e-AMUSEMENT reader and 10-key, the board's lamps
+core = "pc"             # Konami's own program in HIRAKU's cabinet (runtime/pc/, PLAN.md section 30)
+
+[pc]
+exe = "popn15.exe"      # in prog/<date>/, the newest date the newest program
+drive = 'D:\popn15'     # where it looks for prog\ and data\
+save_drive = 'E:\'      # its backup drive (settings, bookkeeping)

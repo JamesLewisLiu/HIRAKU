@@ -31,6 +31,8 @@ for f in "$build"/hiraku*.exe; do
   "$strip" -o "$d/bin/$(basename "$f")" "$f"
 done
 cp "$build"/SDL3.dll "$d/bin/"
+# the PC games' DLLs (runtime/pc/), 32-bit, which hiraku-pc copies beside the game's program
+[ -d "$build/pc" ] && mkdir -p "$d/bin/pc" && cp "$build"/pc/*.dll "$d/bin/pc/"
 # HK_PACKAGE_BIN: more programs for bin\ (a release's 7-Zip, 7zr.exe: tools/mameset.py looks there first)
 for f in ${HK_PACKAGE_BIN:-}; do cp -L "$f" "$d/bin/"; done
 # HK_PYTHON_WIN: the Konami Python core's folder (the release workflow's python-windows job:

@@ -86,6 +86,23 @@ QString Game::howTo() const {
                        "(.zip, .7z or a folder), its program CD, the player's Video CD (or, from 6th style "
                        "on, its DVD) and its hard disk (CHDs).\n\n%3")
             .arg(title, mame, drop);
+    if (core == "pc") {   // a PC game: Konami's own program in HIRAKU's cabinet (hiraku-pc)
+        if (status == NotInstalled)
+            return QString("HIRAKU has no data for %1 yet. You need the game's own folder, as the cabinet's "
+                           "drive holds it: prog (its programs, by date) and data.\n\n"
+                           "Drop that folder on this window, or File > Add game files. HIRAKU reads it where it "
+                           "is (it is large), so keep it there.%2")
+                .arg(title, QString(
+#ifdef _WIN32
+                    ""
+#else
+                    " On Linux the game runs under Wine, which needs to be installed."
+#endif
+                    ));
+        if (status == NotBuilt || status == Unavailable)
+            return QString("This HIRAKU has no hiraku-pc, which runs the PC games. Is the binaries folder right (Settings)?");
+        return {};
+    }
     if (core == "python") {   // Konami Python: PCSX2 Reliquary hosted, built in Reliquary's tree
         if (status == NotInstalled)
             return QString("HIRAKU has no data for %1 yet. You need your own dumps: the game's folder (its disk "
@@ -162,7 +179,8 @@ QList<Game> scanGames() {
         // and Twinkle games run from one binary per core, told the game with --game)
         bool built = false;
         QStringList names = {"hiraku-" + g.id};
-        if (g.core == "djmain" || g.core == "sys573" || g.core == "twinkle" || g.core == "python") names << "hiraku-" + g.core;
+        if (g.core == "djmain" || g.core == "sys573" || g.core == "twinkle" || g.core == "python" || g.core == "pc")
+            names << "hiraku-" + g.core;
         if (g.core.isEmpty() || g.core == "firebeat") names << "hiraku-firebeat";   // the executor (PLAN.md section 27)
         for (const QString &name : names) {
             for (const QString &d : {bin, QCoreApplication::applicationDirPath(), root + "/bin", root + "/build/cmake"}) {
@@ -191,6 +209,7 @@ QIcon familyIcon(const QString &family) {
            : family == "djbm" ? Look{QColor(0x22, 0x2a, 0x5a), "bm"}
            : family == "djpopn" ? Look{QColor(0xf0, 0xb4, 0x1e), "pop'n"}
            : family == "pypopn" ? Look{QColor(0x3c, 0xb4, 0xdc), "pop'n"}
+           : family == "pcpopn" ? Look{QColor(0x7c, 0xc8, 0x3c), "pop'n"}
            : family == "djpstage" ? Look{QColor(0xe0, 0x50, 0x90), "stage"}
            : family == "ppp"  ? Look{QColor(0xf0, 0x8a, 0x24), "PPP"}
            : family == "kbm"  ? Look{QColor(0x2e, 0x9e, 0x6a), "KBM"}

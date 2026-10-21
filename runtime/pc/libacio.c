@@ -1,0 +1,229 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// HIRAKU's libacio.dll for the PC pop'n music games (PLAN.md section 30): Konami's library for the
+// e-AMUSEMENT card reader on the cabinet's serial port, answered from hiraku-pc's card and 10-key
+// (runtime/pc/link.h) instead. The reader's states and status block are spice2x's (acio/icca,
+// acio/core). With a real reader on a serial port, hiraku-pc keeps Konami's DLL instead of this one.
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#include <stdint.h>
+#include <string.h>
+
+#include "cabinet.h"
+
+#define API __declspec(dllexport) __cdecl
+
+struct icca_status {   // 24 bytes, as ac_io_icca_get_status fills it
+    uint8_t state, solenoid, front_sensor, rear_sensor;
+    uint8_t uid[8];
+    int32_t error;
+    uint32_t key_edge, key_level;
+};
+
+enum { STEP = 0, SLEEP = 1, START = 2, INIT = 3, READY = 4, GET_USERID = 5, ACTIVE = 6, EJECT = 7,
+       EJECT_CHECK = 8, END = 9, CLOSE_EJECT = 10, CLOSE_E_CHK = 11, CLOSE_END = 12, ERR_GETUID = -2 };
+
+static struct {
+    struct icca_status st;
+    int state;
+    uint32_t seen_seq;   // the link's card_seq last taken
+    DWORD card_at;       // when a card was held there (GetTickCount), 0: none
+    uint8_t key_serial;
+    uint32_t keys_last;
+} g;
+
+#define CARD_HELD_MS 2000   // a card stays in the reader that long after it was held there
+
+static void update(void) {
+    struct hk_pc_link *l = hk_link();
+    // the 10-key: the reader's key codes in its order (0-9, decimal, 00), level and edge
+    static const uint32_t code[12] = {0x100, 0x200, 0x2000, 2, 0x400, 0x4000, 4, 0x800, 0x8000, 8, 1, 0x1000};
+    const uint32_t held = hk_keypad_now();
+    g.st.key_level = 0;
+    for (int i = 0; i < 12; i++) {
+        const uint32_t bit = i < 10 ? 1u << i : i == 10 ? HK_PC_KEY_DECIMAL : HK_PC_KEY_00;
+        if (held & bit) {
+            g.st.key_level |= code[i];
+            if (!(g.keys_last & bit)) {
+                g.st.key_edge = code[i] << 16 | 0x80 | (uint32_t)g.key_serial << 4 | (uint32_t)i;
+                g.key_serial = (g.key_serial + 1) & 7;
+            }
+        } else {
+            g.st.key_edge &= ~(code[i] << 16);
+        }
+    }
+    g.keys_last = held;
+    // a card held to the reader
+    const uint32_t seq = hk_card_seq();
+    if (seq != g.seen_seq) {
+        g.seen_seq = seq;
+        if (g.state == GET_USERID || g.state == CLOSE_EJECT || g.state == STEP || g.state == READY) {
+            memcpy(g.st.uid, (const void *)l->card_uid, 8);
+            g.state = ACTIVE;
+            g.st.front_sensor = g.st.rear_sensor = 1;
+            g.card_at = GetTickCount();
+            hk_log("hiraku-pc: a card at the reader");
+        }
+    } else if (g.card_at && GetTickCount() - g.card_at > CARD_HELD_MS) {
+        g.card_at = 0;
+        memset(g.st.uid, 0, 8);
+        g.st.front_sensor = g.st.rear_sensor = 0;
+        if (g.state == ACTIVE) g.state = CLOSE_EJECT;
+    }
+}
+
+API char ac_io_begin(size_t dev, const char *ver, unsigned *val, size_t flags, void *p, size_t baud) {
+    (void)dev, (void)ver, (void)val, (void)flags, (void)p, (void)baud;
+    hk_log("hiraku-pc: the game opened its card reader");
+    return 1;
+}
+API char ac_io_begin_get_status(void) { return 1; }
+API int ac_io_end(int a) { (void)a; return 1; }
+API int ac_io_end_get_status(int a) { (void)a; return 1; }
+API void *ac_io_get_rs232c_status(char *p, int a) { (void)a; return memset(p, 0, 88); }
+// pop'n music wants a version above 1.x.x (spice2x)
+API char ac_io_get_version(uint8_t *p, int a) {
+    (void)a;
+    p[5] = 2, p[6] = 0, p[7] = 0;
+    return 1;
+}
+API const char *ac_io_get_version_string(void) { return "1.25.0"; }
+// The reader comes up after a while, as a real one does, or at once once is_active2 asked
+static int g_polls;
+API char ac_io_is_active(int a, int b) {
+    (void)a, (void)b;
+    return ++g_polls > 601;
+}
+API int ac_io_is_active2(int a, int *b, int c) {
+    (void)a, (void)c;
+    g_polls = 601;
+    *b = 6;
+    return 1;
+}
+API char ac_io_is_active_device(int index, int a) { (void)index, (void)a; return 1; }
+API int ac_io_get_node_no(void) { return 1; }
+API int ac_io_get_firmware_update_device_index(void) { return 0xff; }
+API int ac_io_go_firmware_update(void) { return 1; }
+API int ac_io_get_recv_log(void) { return 0; }
+API int ac_io_get_send_log(void) { return 0; }
+API int ac_io_reset(void) { return 1; }
+API int ac_io_update(void) { return 1; }
+API int ac_io_version(void) { return 1; }
+API int ac_io_set_soft_watch_dog(int a, int b) { (void)a, (void)b; return 1; }
+API int ac_io_soft_watch_dog_on(int a) { (void)a; return 1; }
+API int ac_io_soft_watch_dog_off(void) { return 1; }
+
+API char ac_io_icca_cardunit_init(int unit) { (void)unit; return 1; }
+API char ac_io_icca_cardunit_init_isfinished(int unit, DWORD *st) {
+    (void)unit;
+    *st = READY;
+    return 1;
+}
+API char ac_io_icca_device_control_iccard_power_supply_off(int unit) { (void)unit; return 1; }
+API char ac_io_icca_device_control_iccard_power_supply_on(int unit) { (void)unit; return 1; }
+API char ac_io_icca_device_control_isfinished(int unit, DWORD *a) { (void)unit, (void)a; return 1; }
+API char ac_io_icca_get_keep_alive_error(int unit, DWORD *a) {
+    (void)unit;
+    *a = 0;
+    return 0;
+}
+API int ac_io_icca_send_keep_alive_packet(int a, int b, int c) { (void)a, (void)b, (void)c; return 0; }
+API char ac_io_icca_get_status(void *out, int unit) {
+    (void)unit;
+    update();
+    g.st.state = (uint8_t)g.state;
+    memcpy(out, &g.st, sizeof g.st);
+    return 1;
+}
+API char ac_io_icca_get_uid(int unit, char *card) {
+    (void)unit;
+    memcpy(card, g.st.uid, 8);
+    return g.state != ERR_GETUID;
+}
+API char ac_io_icca_req_uid(int unit) {
+    (void)unit;
+    g.state = GET_USERID;
+    update();
+    return 1;
+}
+API int ac_io_icca_req_uid_isfinished(int unit, DWORD *st) {
+    (void)unit;
+    update();
+    if (g.state == ACTIVE) g.state = END;
+    *st = (DWORD)g.state;
+    return 1;
+}
+API int ac_io_icca_workflow(int w, int unit) {
+    (void)unit;
+    update();
+    switch (w) {
+    case STEP: g.state = STEP; break;
+    case SLEEP: g.state = SLEEP; break;
+    case INIT: g.state = READY; break;
+    case START: g.state = g.card_at ? ACTIVE : READY; break;
+    case EJECT: g.card_at = 0; break;
+    case CLOSE_EJECT: g.state = g.card_at ? EJECT_CHECK : SLEEP; break;
+    case CLOSE_END: g.state = SLEEP; break;
+    case GET_USERID: g.state = GET_USERID; break;
+    default: break;
+    }
+    return g.state;
+}
+
+// The status buffer's C++ pair, and the other boards' calls the library also has (pjec, pjei:
+// other cabinets'): there, answering yes
+void __cdecl icca_get_status_buffer(void *buf, int unit) {
+    (void)unit;
+    update();
+    g.st.state = (uint8_t)g.state;
+    memcpy(buf, &g.st, sizeof g.st);
+}
+int __cdecl icca_update_status_buffer(int a) { (void)a; return 1; }
+
+#define YES(name) API int name(int a, int b, int c, int d) { (void)a, (void)b, (void)c, (void)d; return 1; }
+YES(ac_io_pjec_create_get_status_thread)
+YES(ac_io_pjec_destroy_get_status_thread)
+YES(ac_io_pjec_get_control_status_buffer)
+YES(ac_io_pjec_get_ps2)
+YES(ac_io_pjec_set_motor)
+YES(ac_io_pjec_update_control_status_buffer)
+YES(ac_io_pjei_add_coin)
+YES(ac_io_pjei_consume_coinstock)
+YES(ac_io_pjei_control_coin_blocker_off)
+YES(ac_io_pjei_control_coin_blocker_on)
+YES(ac_io_pjei_control_lamp_bright)
+YES(ac_io_pjei_control_lamp_mode)
+YES(ac_io_pjei_control_lamp_off)
+YES(ac_io_pjei_control_lamp_on)
+YES(ac_io_pjei_control_parallel_off)
+YES(ac_io_pjei_control_parallel_on)
+YES(ac_io_pjei_control_reset)
+YES(ac_io_pjei_create_get_status_thread)
+YES(ac_io_pjei_current_coinstock)
+YES(ac_io_pjei_destroy_get_status_thread)
+YES(ac_io_pjei_get_coin_input_wave_buffer)
+YES(ac_io_pjei_get_control_status_buffer)
+YES(ac_io_pjei_get_softwareid)
+YES(ac_io_pjei_get_systemid)
+YES(ac_io_pjei_get_watchdog_status)
+YES(ac_io_pjei_get_watchdog_time_min)
+YES(ac_io_pjei_get_watchdog_time_now)
+YES(ac_io_pjei_lock_coincounter)
+YES(ac_io_pjei_req_coin_input_wave)
+YES(ac_io_pjei_req_get_control_status)
+YES(ac_io_pjei_req_secplug_check)
+YES(ac_io_pjei_req_secplug_check_isfinished)
+YES(ac_io_pjei_req_secplug_check_softwareplug)
+YES(ac_io_pjei_req_secplug_check_systemplug)
+YES(ac_io_pjei_req_secplug_missing_check)
+YES(ac_io_pjei_req_secplug_missing_check_isfinished)
+YES(ac_io_pjei_set_framing_err_packet_send_interval)
+YES(ac_io_pjei_set_watchdog_time)
+YES(ac_io_pjei_unlock_coincounter)
+YES(ac_io_pjei_update_control_status_buffer)
+
+// Whichever of HIRAKU's DLLs loads first sets the game up (runtime/pc/cabinet.c: once)
+BOOL WINAPI DllMain(HINSTANCE h, DWORD why, LPVOID r) {
+    (void)h, (void)r;
+    if (why == DLL_PROCESS_ATTACH) hk_cabinet_start();
+    return TRUE;
+}

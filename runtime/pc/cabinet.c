@@ -1,0 +1,452 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+#include "cabinet.h"
+
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#include <d3d9.h>
+#include <psapi.h>
+#include <stdarg.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+// --- the log
+
+static FILE *g_logf;
+
+void hk_log(const char *fmt, ...) {
+    if (!g_logf) {
+        const char *f = getenv("HK_PC_LOG");
+        g_logf = f && *f ? fopen(f, "a") : NULL;
+        if (!g_logf) g_logf = stderr;
+    }
+    va_list a;
+    va_start(a, fmt);
+    vfprintf(g_logf, fmt, a);
+    va_end(a);
+    fputc('\n', g_logf);
+    fflush(g_logf);
+}
+
+// --- the link
+
+static struct hk_pc_link g_alone;   // no hiraku-pc: the keys below, nothing else
+static struct hk_pc_link *g_link;
+
+static void default_keys(struct hk_pc_link *l) {
+    // HIRAKU's pop'n keys (shell/cabinet.cpp): the buttons zig-zag Z S X D C F V G B, F2 test,
+    // 9 service, 5 a coin, Insert the card, the keypad the 10-key
+    static const char row[9] = {'Z', 'S', 'X', 'D', 'C', 'F', 'V', 'G', 'B'};
+    for (int b = 0; b < 9; b++) l->keys[7 + b + 1][0] = (uint8_t)row[b];
+    l->keys[7][0] = VK_F2;
+    l->keys[6][0] = '9';
+    l->coin_keys[0] = '5';
+    l->card_keys[0] = VK_INSERT;
+    for (int k = 0; k < 10; k++) l->keypad_keys[k][0] = (uint8_t)(VK_NUMPAD0 + k);
+    l->keypad_keys[11][0] = VK_DECIMAL;
+}
+
+struct hk_pc_link *hk_link(void) {
+    if (g_link) return g_link;
+    const char *f = getenv("HK_PC_LINK");
+    if (f && *f) {
+        HANDLE h = CreateFileA(f, GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL,
+                               OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+        HANDLE m = h != INVALID_HANDLE_VALUE ? CreateFileMappingA(h, NULL, PAGE_READWRITE, 0, sizeof(struct hk_pc_link), NULL) : NULL;
+        struct hk_pc_link *l = m ? (struct hk_pc_link *)MapViewOfFile(m, FILE_MAP_ALL_ACCESS, 0, 0, sizeof *l) : NULL;
+        if (m) CloseHandle(m);   // the view keeps the mapping
+        if (h != INVALID_HANDLE_VALUE) CloseHandle(h);
+        if (l && l->magic == HK_PC_LINK_MAGIC && l->version == HK_PC_LINK_VERSION) {
+            g_link = l;
+            return g_link;
+        }
+        hk_log("hiraku-pc: %s isn't hiraku-pc's link (error %lu): the keyboard alone", f, GetLastError());
+    }
+    default_keys(&g_alone);
+    g_link = &g_alone;
+    return g_link;
+}
+
+// --- the test script (HK_PAD_SCRIPT)
+
+static struct { double at; uint32_t bits; int ms; } g_ev[256];
+static int g_nev = -1;
+static DWORD g_t0;
+
+static uint32_t scripted(void) {
+    if (g_nev < 0) {
+        g_nev = 0;
+        g_t0 = GetTickCount();
+        const char *f = getenv("HK_PAD_SCRIPT");
+        FILE *fh = f && *f ? fopen(f, "r") : NULL;
+        if (fh) {
+            unsigned long bits;
+            while (g_nev < 256 && fscanf(fh, "%lf %lx %d", &g_ev[g_nev].at, &bits, &g_ev[g_nev].ms) == 3)
+                g_ev[g_nev++].bits = (uint32_t)bits;
+            fclose(fh);
+        }
+    }
+    const double now = (GetTickCount() - g_t0) / 1000.0;
+    uint32_t b = 0;
+    for (int i = 0; i < g_nev; i++)
+        if (now >= g_ev[i].at && now < g_ev[i].at + g_ev[i].ms / 1000.0) b |= g_ev[i].bits;
+    return b;
+}
+
+static int key_down(int vk) { return vk && (GetAsyncKeyState(vk) & 0x8000) != 0; }
+
+// Escape in the game's window ends the game, as it closes HIRAKU's other games (runtime/host/
+// window.cpp): at once, since the game has nothing to save that it hasn't (its backup is written as
+// it changes). Only in its own window: the keys' state is the whole desktop's
+static void escape_quits(void) {
+    if (!key_down(VK_ESCAPE)) return;
+    DWORD pid = 0;
+    GetWindowThreadProcessId(GetForegroundWindow(), &pid);
+    if (pid != GetCurrentProcessId()) {
+        static int said;
+        if (!said++) hk_log("hiraku-pc: Escape, but another program's window is in front (%lu)", pid);
+        return;
+    }
+    hk_log("hiraku-pc: Escape: the game ends");
+    TerminateProcess(GetCurrentProcess(), 0);
+}
+
+uint32_t hk_pad_now(void) {
+    struct hk_pc_link *l = hk_link();
+    escape_quits();
+    uint32_t b = l->pad;
+    for (int i = 0; i < 32; i++)
+        if (key_down(l->keys[i][0]) || key_down(l->keys[i][1])) b |= 1u << i;
+    l->game_alive++;
+    return b | (scripted() & ~(1u << 22));
+}
+
+uint32_t hk_coins_now(void) {
+    static uint32_t extra;
+    static int was;
+    struct hk_pc_link *l = hk_link();
+    const int now = key_down(l->coin_keys[0]) || key_down(l->coin_keys[1]) || (scripted() & (1u << 22));
+    if (now && !was) extra++;
+    was = now;
+    return l->coins + extra;
+}
+
+uint32_t hk_keypad_now(void) {
+    struct hk_pc_link *l = hk_link();
+    uint32_t b = l->keypad;
+    for (int i = 0; i < 12; i++)
+        if (key_down(l->keypad_keys[i][0]) || key_down(l->keypad_keys[i][1])) b |= i < 10 ? 1u << i : i == 10 ? HK_PC_KEY_00 : HK_PC_KEY_DECIMAL;
+    return b;
+}
+
+uint32_t hk_card_seq(void) {
+    static uint32_t extra;
+    static int was;
+    struct hk_pc_link *l = hk_link();
+    const int now = key_down(l->card_keys[0]) || key_down(l->card_keys[1]);
+    if (now && !was) extra++;
+    was = now;
+    return l->card_seq + extra;
+}
+
+// --- the game's paths (HK_PC_MAP)
+
+static struct { char from[MAX_PATH], to[MAX_PATH]; size_t n; } g_map[8];
+static int g_nmap;
+
+static void read_map(void) {
+    const char *s = getenv("HK_PC_MAP");
+    while (s && *s && g_nmap < 8) {
+        const char *end = strchr(s, ';'), *eq = strchr(s, '=');
+        if (!end) end = s + strlen(s);
+        if (eq && eq > s && eq < end && eq - s < MAX_PATH && end - eq - 1 < MAX_PATH) {
+            memcpy(g_map[g_nmap].from, s, eq - s);
+            memcpy(g_map[g_nmap].to, eq + 1, end - eq - 1);
+            g_map[g_nmap].n = eq - s;
+            for (char *c = g_map[g_nmap].from; *c; c++)
+                if (*c == '/') *c = '\\';
+            hk_log("hiraku-pc: %s -> %s", g_map[g_nmap].from, g_map[g_nmap].to);
+            g_nmap++;
+        }
+        s = *end ? end + 1 : end;
+    }
+}
+
+// The path the game asked for, or where HK_PC_MAP sends it (in buf)
+static const char *mapped(const char *p, char *buf) {
+    if (!p) return p;
+    for (int i = 0; i < g_nmap; i++) {
+        const size_t n = g_map[i].n;
+        size_t k = 0;
+        for (; k < n && p[k]; k++) {
+            const char a = p[k] == '/' ? '\\' : p[k], b = g_map[i].from[k];
+            if ((a | 0x20) != (b | 0x20) && a != b) break;
+        }
+        if (k < n) continue;
+        // a whole folder name: "D:\popn15" doesn't take "D:\popn15x"
+        if (g_map[i].from[n - 1] != '\\' && p[n] && p[n] != '\\' && p[n] != '/') continue;
+        if (snprintf(buf, MAX_PATH, "%s%s", g_map[i].to, p + n) >= MAX_PATH) return p;
+        return buf;
+    }
+    return p;
+}
+
+static HANDLE WINAPI my_CreateFileA(LPCSTR p, DWORD acc, DWORD share, LPSECURITY_ATTRIBUTES sa, DWORD cd, DWORD fl,
+                                    HANDLE t) {
+    char b[MAX_PATH];
+    return CreateFileA(mapped(p, b), acc, share, sa, cd, fl, t);
+}
+static BOOL WINAPI my_CreateDirectoryA(LPCSTR p, LPSECURITY_ATTRIBUTES sa) {
+    char b[MAX_PATH];
+    return CreateDirectoryA(mapped(p, b), sa);
+}
+static HANDLE WINAPI my_FindFirstFileA(LPCSTR p, LPWIN32_FIND_DATAA d) {
+    char b[MAX_PATH];
+    return FindFirstFileA(mapped(p, b), d);
+}
+static DWORD WINAPI my_GetFileAttributesA(LPCSTR p) {
+    char b[MAX_PATH];
+    return GetFileAttributesA(mapped(p, b));
+}
+static BOOL WINAPI my_DeleteFileA(LPCSTR p) {
+    char b[MAX_PATH];
+    return DeleteFileA(mapped(p, b));
+}
+static BOOL WINAPI my_RemoveDirectoryA(LPCSTR p) {
+    char b[MAX_PATH];
+    return RemoveDirectoryA(mapped(p, b));
+}
+static BOOL WINAPI my_MoveFileA(LPCSTR from, LPCSTR to) {
+    char b1[MAX_PATH], b2[MAX_PATH];
+    return MoveFileA(mapped(from, b1), mapped(to, b2));
+}
+static DWORD WINAPI my_GetFullPathNameA(LPCSTR p, DWORD n, LPSTR out, LPSTR *file) {
+    char b[MAX_PATH];
+    return GetFullPathNameA(mapped(p, b), n, out, file);
+}
+
+// --- Direct3D 9: a window instead of the whole screen, and the game's own rate
+
+static int g_win_w, g_win_h, g_win_full;   // HK_PC_WINDOW
+static double g_hz = 60;
+static HWND g_hwnd;
+static int g_game_w = 640, g_game_h = 480;
+
+typedef HRESULT(WINAPI *CreateDevice_t)(IDirect3D9 *, UINT, D3DDEVTYPE, HWND, DWORD, D3DPRESENT_PARAMETERS *,
+                                        IDirect3DDevice9 **);
+typedef HRESULT(WINAPI *Reset_t)(IDirect3DDevice9 *, D3DPRESENT_PARAMETERS *);
+typedef HRESULT(WINAPI *Present_t)(IDirect3DDevice9 *, const RECT *, const RECT *, HWND, const RGNDATA *);
+static CreateDevice_t g_CreateDevice;
+static Reset_t g_Reset;
+static Present_t g_Present;
+
+static void *patch_slot(void **slot, void *to) {
+    DWORD old;
+    void *was = *slot;
+    if (was == to) return NULL;
+    VirtualProtect(slot, sizeof *slot, PAGE_READWRITE, &old);
+    *slot = to;
+    VirtualProtect(slot, sizeof *slot, old, &old);
+    return was;
+}
+
+static void windowed(D3DPRESENT_PARAMETERS *pp) {
+    if (!g_win_w && !g_win_full) return;
+    g_game_w = pp->BackBufferWidth ? (int)pp->BackBufferWidth : g_game_w;
+    g_game_h = pp->BackBufferHeight ? (int)pp->BackBufferHeight : g_game_h;
+    pp->Windowed = TRUE;
+    pp->FullScreen_RefreshRateInHz = 0;
+    pp->BackBufferFormat = D3DFMT_UNKNOWN;   // the desktop's
+}
+
+// The game's window: no border, at HK_PC_WINDOW's size, in the middle of its screen
+static void place_window(HWND w) {
+    if (!w || (!g_win_w && !g_win_full)) return;
+    g_hwnd = w;
+    MONITORINFO mi;
+    memset(&mi, 0, sizeof mi);
+    mi.cbSize = sizeof mi;
+    GetMonitorInfoA(MonitorFromWindow(w, MONITOR_DEFAULTTOPRIMARY), &mi);
+    const RECT m = mi.rcMonitor;
+    const int sw = m.right - m.left, sh = m.bottom - m.top;
+    const int ww = g_win_full ? sw : g_win_w, wh = g_win_full ? sh : g_win_h;
+    SetWindowLongA(w, GWL_STYLE, WS_POPUP | WS_VISIBLE);
+    SetWindowLongA(w, GWL_EXSTYLE, 0);
+    SetWindowPos(w, HWND_TOP, m.left + (sw - ww) / 2, m.top + (sh - wh) / 2, ww, wh, SWP_FRAMECHANGED | SWP_SHOWWINDOW);
+}
+
+static HRESULT WINAPI my_Present(IDirect3DDevice9 *d, const RECT *src, const RECT *dst, HWND wnd, const RGNDATA *dirty) {
+    RECT fit;
+    if (!dst && g_hwnd && (g_win_w || g_win_full)) {
+        // the picture at the window's height, its shape kept, in the middle
+        RECT c;
+        GetClientRect(g_hwnd, &c);
+        const int cw = c.right, ch = c.bottom;
+        int w = cw, h = cw * g_game_h / g_game_w;
+        if (h > ch) h = ch, w = ch * g_game_w / g_game_h;
+        fit.left = (cw - w) / 2, fit.top = (ch - h) / 2, fit.right = fit.left + w, fit.bottom = fit.top + h;
+        dst = &fit;
+        if (w < cw || h < ch) {   // the bands beside it black
+            HDC dc = GetDC(g_hwnd);
+            RECT l = {0, 0, fit.left, ch}, r = {fit.right, 0, cw, ch}, t = {0, 0, cw, fit.top}, b = {0, fit.bottom, cw, ch};
+            HBRUSH k = (HBRUSH)GetStockObject(BLACK_BRUSH);
+            FillRect(dc, &l, k), FillRect(dc, &r, k), FillRect(dc, &t, k), FillRect(dc, &b, k);
+            ReleaseDC(g_hwnd, dc);
+        }
+    }
+    const HRESULT r = g_Present(d, src, dst, wnd, dirty);
+    hk_link()->frames++;
+    if (g_hz > 0) {   // no more than g_hz a second, on a steady grid
+        static LARGE_INTEGER f, next;
+        LARGE_INTEGER now;
+        if (!f.QuadPart) QueryPerformanceFrequency(&f);
+        QueryPerformanceCounter(&now);
+        const LONGLONG period = (LONGLONG)(f.QuadPart / g_hz);
+        if (!next.QuadPart || now.QuadPart > next.QuadPart + period) next.QuadPart = now.QuadPart;
+        next.QuadPart += period;
+        for (;;) {
+            QueryPerformanceCounter(&now);
+            const LONGLONG left = next.QuadPart - now.QuadPart;
+            if (left <= 0) break;
+            const LONGLONG ms = left * 1000 / f.QuadPart;
+            if (ms >= 2) Sleep((DWORD)(ms - 1));
+            else YieldProcessor();
+        }
+    }
+    return r;
+}
+
+static HRESULT WINAPI my_Reset(IDirect3DDevice9 *d, D3DPRESENT_PARAMETERS *pp) {
+    windowed(pp);
+    return g_Reset(d, pp);
+}
+
+static HRESULT WINAPI my_CreateDevice(IDirect3D9 *self, UINT adapter, D3DDEVTYPE type, HWND focus, DWORD flags,
+                                      D3DPRESENT_PARAMETERS *pp, IDirect3DDevice9 **dev) {
+    hk_log("hiraku-pc: the game's Direct3D: %ux%u, %s, %u Hz, interval %#x", pp->BackBufferWidth, pp->BackBufferHeight,
+           pp->Windowed ? "windowed" : "full screen", pp->FullScreen_RefreshRateInHz, pp->PresentationInterval);
+    windowed(pp);
+    place_window(pp->hDeviceWindow ? pp->hDeviceWindow : focus);
+    const HRESULT r = g_CreateDevice(self, adapter, type, focus, flags, pp, dev);
+    if (r == D3D_OK && dev && *dev) {
+        void **vt = *(void ***)*dev;
+        void *was = patch_slot(&vt[16], (void *)my_Reset);
+        if (was) g_Reset = (Reset_t)was;
+        was = patch_slot(&vt[17], (void *)my_Present);
+        if (was) g_Present = (Present_t)was;
+    } else {
+        hk_log("hiraku-pc: CreateDevice failed (%#lx)", (unsigned long)r);
+    }
+    return r;
+}
+
+typedef IDirect3D9 *(WINAPI *Direct3DCreate9_t)(UINT);
+
+static IDirect3D9 *WINAPI my_Direct3DCreate9(UINT sdk) {
+    static Direct3DCreate9_t real;
+    if (!real) real = (Direct3DCreate9_t)(void *)GetProcAddress(LoadLibraryA("d3d9.dll"), "Direct3DCreate9");
+    IDirect3D9 *d = real ? real(sdk) : NULL;
+    if (d) {
+        void *was = patch_slot(&(*(void ***)d)[16], (void *)my_CreateDevice);
+        if (was) g_CreateDevice = (CreateDevice_t)was;
+    }
+    return d;
+}
+
+// --- hooking a module's imports
+
+static HMODULE g_self;
+
+static void *hook_for(const char *dll, const char *fn) {
+    static const struct { const char *dll, *fn; void *to; } hooks[] = {
+        {"kernel32.dll", "CreateFileA", (void *)my_CreateFileA},
+        {"kernel32.dll", "CreateDirectoryA", (void *)my_CreateDirectoryA},
+        {"kernel32.dll", "FindFirstFileA", (void *)my_FindFirstFileA},
+        {"kernel32.dll", "GetFileAttributesA", (void *)my_GetFileAttributesA},
+        {"kernel32.dll", "DeleteFileA", (void *)my_DeleteFileA},
+        {"kernel32.dll", "RemoveDirectoryA", (void *)my_RemoveDirectoryA},
+        {"kernel32.dll", "MoveFileA", (void *)my_MoveFileA},
+        {"kernel32.dll", "GetFullPathNameA", (void *)my_GetFullPathNameA},
+        {"d3d9.dll", "Direct3DCreate9", (void *)my_Direct3DCreate9},
+    };
+    for (size_t i = 0; i < sizeof hooks / sizeof *hooks; i++)
+        if (!_stricmp(dll, hooks[i].dll) && !strcmp(fn, hooks[i].fn)) {
+            if (hooks[i].to == (void *)my_Direct3DCreate9 && !g_win_w && !g_win_full && g_hz <= 0) return NULL;
+            if (hooks[i].dll[0] == 'k' && !g_nmap) return NULL;
+            return hooks[i].to;
+        }
+    return NULL;
+}
+
+static void patch_imports(HMODULE m) {
+    char *base = (char *)m;
+    IMAGE_NT_HEADERS *nt = (IMAGE_NT_HEADERS *)(base + ((IMAGE_DOS_HEADER *)base)->e_lfanew);
+    IMAGE_DATA_DIRECTORY *dir = &nt->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT];
+    if (!dir->VirtualAddress) return;
+    for (IMAGE_IMPORT_DESCRIPTOR *imp = (IMAGE_IMPORT_DESCRIPTOR *)(base + dir->VirtualAddress); imp->Name; imp++) {
+        const char *dll = base + imp->Name;
+        IMAGE_THUNK_DATA *names = (IMAGE_THUNK_DATA *)(base + (imp->OriginalFirstThunk ? imp->OriginalFirstThunk : imp->FirstThunk));
+        IMAGE_THUNK_DATA *addrs = (IMAGE_THUNK_DATA *)(base + imp->FirstThunk);
+        for (; names->u1.AddressOfData; names++, addrs++) {
+            if (IMAGE_SNAP_BY_ORDINAL(names->u1.Ordinal)) continue;
+            const char *fn = (const char *)((IMAGE_IMPORT_BY_NAME *)(base + names->u1.AddressOfData))->Name;
+            void *to = hook_for(dll, fn);
+            if (to) patch_slot((void **)&addrs->u1.Function, to);
+        }
+    }
+}
+
+// The game's own modules: the program and the DLLs in its folder (not Windows', not ours)
+static void patch_game_modules(void) {
+    char exe[MAX_PATH];
+    GetModuleFileNameA(NULL, exe, MAX_PATH);
+    char *slash = strrchr(exe, '\\');
+    const size_t dirlen = slash ? (size_t)(slash - exe) : 0;
+    HMODULE mods[256];
+    DWORD bytes = 0;
+    if (!EnumProcessModules(GetCurrentProcess(), mods, sizeof mods, &bytes)) return;
+    for (DWORD i = 0; i < bytes / sizeof *mods; i++) {
+        char p[MAX_PATH];
+        if (mods[i] == g_self || !GetModuleFileNameA(mods[i], p, MAX_PATH)) continue;
+        if (mods[i] != GetModuleHandleA(NULL) && (strlen(p) <= dirlen || _strnicmp(p, exe, dirlen) || p[dirlen] != '\\'))
+            continue;
+        patch_imports(mods[i]);
+    }
+}
+
+// Modules the game loads later (LoadLibrary) are its own too
+static HMODULE WINAPI my_LoadLibraryA(LPCSTR p) {
+    HMODULE m = LoadLibraryA(p);
+    if (m) patch_game_modules();
+    return m;
+}
+
+void hk_cabinet_start(void) {
+    if (GetEnvironmentVariableA("HK_PC_STARTED", NULL, 0)) return;   // the other DLL did
+    SetEnvironmentVariableA("HK_PC_STARTED", "1");
+    GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                       (LPCSTR)(void *)hk_cabinet_start, &g_self);
+    read_map();
+    const char *w = getenv("HK_PC_WINDOW");
+    if (w && !strcmp(w, "full")) g_win_full = 1;
+    else if (w && sscanf(w, "%dx%d", &g_win_w, &g_win_h) != 2) g_win_w = g_win_h = 0;
+    const char *hz = getenv("HK_PC_HZ");
+    if (hz && *hz) g_hz = atof(hz);
+    hk_link();
+    patch_game_modules();
+    // LoadLibraryA too, in the program, so modules loaded later get the same
+    HMODULE exe = GetModuleHandleA(NULL);
+    char *base = (char *)exe;
+    IMAGE_NT_HEADERS *nt = (IMAGE_NT_HEADERS *)(base + ((IMAGE_DOS_HEADER *)base)->e_lfanew);
+    IMAGE_DATA_DIRECTORY *dir = &nt->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT];
+    for (IMAGE_IMPORT_DESCRIPTOR *imp = (IMAGE_IMPORT_DESCRIPTOR *)(base + dir->VirtualAddress); dir->VirtualAddress && imp->Name; imp++) {
+        if (_stricmp(base + imp->Name, "kernel32.dll")) continue;
+        IMAGE_THUNK_DATA *names = (IMAGE_THUNK_DATA *)(base + (imp->OriginalFirstThunk ? imp->OriginalFirstThunk : imp->FirstThunk));
+        IMAGE_THUNK_DATA *addrs = (IMAGE_THUNK_DATA *)(base + imp->FirstThunk);
+        for (; names->u1.AddressOfData; names++, addrs++)
+            if (!IMAGE_SNAP_BY_ORDINAL(names->u1.Ordinal) &&
+                !strcmp((const char *)((IMAGE_IMPORT_BY_NAME *)(base + names->u1.AddressOfData))->Name, "LoadLibraryA"))
+                patch_slot((void **)&addrs->u1.Function, (void *)my_LoadLibraryA);
+    }
+    hk_log("hiraku-pc: the cabinet is HIRAKU's (%s)", g_link == &g_alone ? "keyboard only" : "linked to hiraku-pc");
+}

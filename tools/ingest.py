@@ -1126,6 +1126,16 @@ def main() -> int:
     if not args.inputs:
         print("ERROR    only the BIOS or the keys: add them with a Konami Python game")
         return 1
+    # PC games: their folder (prog/ and data/), read where it is
+    pcs = [(f, found) for f in args.inputs if os.path.isdir(f) and (found := pc_folder(f)) is not None]
+    if pcs:
+        rc = 0
+        for f, (game, program, data) in pcs:
+            rc |= ingest_pc(args, game, program, data)
+            args.inputs.remove(f)
+        if not args.inputs:
+            return rc
+        print()
     # Konami Python: a .py1, or a set's folder (Reliquary's collections keep <set>.py1 beside it;
     # without it, the folder's files say what they are); each game given is added
     py1, folders = [f for f in args.inputs if f.lower().endswith(".py1")], []
@@ -1154,6 +1164,42 @@ def main() -> int:
         args.inputs = rest
         return rc | ingest_rest(args)
     return ingest_rest(args)
+
+
+def pc_folder(folder: str) -> tuple[dict, str, str] | None:
+    """A PC game's folder (PLAN.md section 30): prog/<date>/<program> and data/, as the cabinet's
+    drive holds them (pop'n music 15: popn15.exe), or the folder above it. The game is the one whose
+    game.toml names the program; the newest date's program is run. (game, program folder, data)."""
+    by_exe = {g["pc"]["exe"].lower(): g for g in all_games() if "pc" in g and "exe" in g["pc"]}
+    for top in [folder] + sorted(glob.glob(os.path.join(folder, "*"))):
+        prog, data = os.path.join(top, "prog"), os.path.join(top, "data")
+        if not (os.path.isdir(prog) and os.path.isdir(data)):
+            continue
+        for date in sorted(os.listdir(prog), reverse=True):
+            d = os.path.join(prog, date)
+            if not os.path.isdir(d):
+                continue
+            for f in os.listdir(d):
+                if f.lower() in by_exe:
+                    return by_exe[f.lower()], os.path.abspath(d), os.path.abspath(data)
+    return None
+
+
+def ingest_pc(args, game: dict, program: str, data: str) -> int:
+    """A PC game: its folder is read where it is (several GB); hiraku-pc copies the program folder
+    into the save folder to run it, with HIRAKU's DLLs (runtime/pc/host.cpp)."""
+    gid, pc = game["id"], game["pc"]
+    outdir = os.path.join(args.out, gid)
+    os.makedirs(outdir, exist_ok=True)
+    lines = ["core=pc", f"family={game.get('family', 'pcpopn')}", f"exe={pc['exe']}", f"program={program}",
+             f"data={data}", f"drive={pc.get('drive', 'D:' + chr(92) + gid)}", f"save_drive={pc.get('save_drive', 'E:' + chr(92))}"]
+    with open(os.path.join(outdir, "machine.txt"), "w") as fh:
+        fh.write("\n".join(lines) + "\n")
+    print(f"game     {gid}: {game.get('title', gid)} (a PC game)")
+    print(f"program  {program}")
+    print(f"data     {data} (read where it is: keep it there)")
+    print(f"OK       dumps/{gid}/machine.txt")
+    return 0
 
 
 def ingest_rest(args) -> int:
