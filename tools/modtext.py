@@ -9,9 +9,9 @@
         what reads as words: Japanese, or ASCII with a space (not the program's names).
     tools/modtext.py mod GAME text.tsv > mod.toml
         a mod.toml with a [[patch]] for every line given a fourth column, its translation: the
-        text there replaced, in the game's Shift-JIS, padded with zeros. A translation longer
-        than its room is refused (say less, or move the text: a patch of the code that points
-        to it).
+        text there replaced, in the game's Shift-JIS (Microsoft's, cp932: the games' ～ and
+        － are its), padded with zeros. A translation longer than its room is refused (say
+        less, or move the text: a patch of the code that points to it).
 
 The patches name the bytes they replace, so they wait for the program to be loaded and apply
 to that game only. Edit text.tsv in any editor that keeps tabs.
@@ -37,7 +37,7 @@ def strings(d, lo, hi, everything):
                 break
         if j - i >= 4 and j < hi and d[j] == 0:
             try:
-                text = d[i:j].decode("shift_jis")
+                text = d[i:j].decode("cp932")
             except UnicodeDecodeError:
                 text = None
             if text is not None:
@@ -81,7 +81,7 @@ def main():
         if len(f) < 4 or not f[3]:
             continue
         at, room, orig, new = int(f[0], 0), int(f[1]), f[2], f[3]
-        o, r = orig.encode("shift_jis"), new.encode("shift_jis")
+        o, r = orig.encode("cp932"), new.encode("cp932")
         if len(r) + 1 > room:
             print("%s:%d: %r takes %d bytes, the room is %d" % (a[2], n, new, len(r) + 1, room), file=sys.stderr)
             bad += 1

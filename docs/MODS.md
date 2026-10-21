@@ -67,6 +67,24 @@ room is refused. The screen's font must have the characters: pop'n music 14's bo
 Much of what a player reads on pop'n music 14 is pictures (the menus' lettering), changed as
 above.
 
+Which pop'n music game has the most text to translate this way (surveyed 2026-10-21, RAM dumps at
+each game's song select, screens compared with the strings): **pop'n music 11**, then 10 and 9.
+Their song selects draw the genre comment, the line under the song list, from the program's
+text. pop'n music 12 to 14 show pictures there (banners, cards), and the Firebeat games (4 to 8)
+have little text beyond test mode; Animelo 2 carries its songs' lyrics. What was learned on
+pop'n music 11:
+- the song table is 0x38-byte records from 0x328434 (450, in banner order `S_BANA_000`...), each
+  pointing to its banner name (+0x00), its genre (+0x24) and its comment (+0x28); the strings sit
+  in a pool around 0x32e000-0x350000, padded with zeros to 8 bytes, so a translation may take the
+  string's room (`modtext.py` measures it);
+- the comment line takes plain ASCII, but every character gets a full-width cell (about 32 to
+  the line); it types itself out, then scrolls as a ticker, so a comment may be as long as its
+  room: twice as many letters as the Japanese it replaces;
+- the genre list beside it, the song titles and the title bar during play are pictures; the
+  table's genre names aren't what the list shows.
+A translation mod's patches carry the Japanese they replace (that's how they know their game), so
+such a mod is Konami's text too: share it as a mod, never in HIRAKU's own folders.
+
 A game with mods on keeps its saves in a folder of its own, named after the mods
 (`<game>+<mod>+<mod>`), started as a copy of the clean game's saves the first time.
 
