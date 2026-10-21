@@ -100,7 +100,12 @@ pop'n music 11:
   the cards; 0xd533200: caption strips that pop'n 11 doesn't seem to show). A changed picture
   goes back as `[[bytes]]` at its texture's place, packed no longer than the original: an
   optimal-parse LZSS packs Konami's own textures about 2 % smaller, room enough for new
-  lettering;
+  lettering. The lettering matches best in the game's own font, which the game draws its live
+  text with: `/256_FONT1/0.GCZ` (pack index at 0x220c800, 8-bit, palette at the index's end),
+  16x16 cells in Shift-JIS order (0x8140 at row 2; digits row 9, A-Z rows 10-11, a-z rows
+  12-13), palette 0 clear, 193-207 the black outline, 210-255 the yellow body by coverage;
+  trimmed to each glyph's ink it sets English proportionally. Few edge levels (four) pack
+  smaller than smooth ones, which matters when a texture's room is tight;
 - found by a marker mod: every Japanese string tagged `#n` and the game played through. Tag
   only what lies in the data (4-byte aligned, three or more Japanese characters, from
   0x200000): a few code bytes read as Japanese, and changing those hangs the boot.
