@@ -258,7 +258,7 @@ SettingsDialog::SettingsDialog(QWidget *parent) : QDialog(parent) {
     fa->addRow("Volume:", m_volume);
     fa->addRow("Audio queue:", m_audioMs);
     fa->addRow("", m_audioFixed);
-    m_priority = new QCheckBox("Ahead of other programs (higher priority)");
+    m_priority = new QCheckBox("Ahead of other programs (higher priority, and GameMode if installed)");
     m_priority->setChecked(s.value("system/priority", true).toBool());
     m_priority->setToolTip("The game's threads run ahead of other programs (a browser, a build), so a busy PC "
                            "doesn't delay its frames and sound; the sound server and the desktop keep theirs. "

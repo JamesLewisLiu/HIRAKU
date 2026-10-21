@@ -720,6 +720,27 @@ std::string realtime_thread() {
 
 bool g_prio_rtkit = false;   // raise_priority went through RealtimeKit: window_open raises the other threads
 
+// Feral's GameMode, if installed: asked for while the game runs (the CPU governor at performance
+// and whatever else its gamemode.ini says), through its own library, as games that use it do
+int (*g_gamemode_end)() = nullptr;
+static std::string gamemode_start() {
+#ifdef __linux__
+    SDL_SharedObject *lib = SDL_LoadObject("libgamemode.so.0");
+    if (!lib) return "";   // not installed
+    auto start = reinterpret_cast<int (*)()>(SDL_LoadFunction(lib, "real_gamemode_request_start"));
+    auto error = reinterpret_cast<const char *(*)()>(SDL_LoadFunction(lib, "real_gamemode_error_string"));
+    g_gamemode_end = reinterpret_cast<int (*)()>(SDL_LoadFunction(lib, "real_gamemode_request_end"));
+    if (!start) return "GameMode: its library has no real_gamemode_request_start";
+    if (start() < 0) {
+        g_gamemode_end = nullptr;
+        return std::string("GameMode: refused (") + (error ? error() : "?") + ")";
+    }
+    return "GameMode: on while the game runs";
+#else
+    return "";
+#endif
+}
+
 #ifdef __linux__
 // The process's threads at normal priority raised through RealtimeKit, as raise_priority raised the
 // one that asked: a thread it raises starts its own threads at normal priority again
@@ -736,6 +757,7 @@ static void raise_threads_rtkit(int nice) {
 #endif
 
 std::string raise_priority() {
+    if (std::string gm = gamemode_start(); !gm.empty()) fprintf(stderr, "%s\n", gm.c_str());
 #ifdef __linux__
     // timer slack: a sleep may otherwise end up to 50 us late (the kernel's default, to batch wake-ups)
     prctl(PR_SET_TIMERSLACK, 1UL, 0UL, 0UL, 0UL);
@@ -1473,6 +1495,27 @@ std::string audio_describe() {
                  (unsigned long long)p.hist[5]);
     }
     std::string out = std::string(b) + "\n" + pacing::describe();
+#ifdef __linux__
+    {   // what the CPU ran at by the end: GameMode, when allowed, sets the governor to performance
+        auto read = [](const char *f) {
+            std::string v;
+            if (FILE *fp = fopen(f, "r")) {
+                char line[64] = {};
+                if (fgets(line, sizeof line, fp)) v = line;
+                fclose(fp);
+                while (!v.empty() && (v.back() == '\n' || v.back() == ' ')) v.pop_back();
+            }
+            return v;
+        };
+        const std::string gov = read("/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor");
+        const std::string epp = read("/sys/devices/system/cpu/cpu0/cpufreq/energy_performance_preference");
+        if (!gov.empty())
+            out += "\nsystem: CPU governor " + gov + (epp.empty() ? "" : ", energy preference " + epp) +
+                   (!g_gamemode_end ? "" : gov == "performance" ? " (GameMode on)"
+                                         : " (GameMode on, but it didn't change the governor: its gamemoded log says why; "
+                                           "on most distributions the user must be in the gamemode group)");
+    }
+#endif
     if (g_smooth_motion && !g_beam) out += "\nvideo: smooth motion: " + std::to_string(g_in_between) + " in-between pictures shown";
     if (g_beam)
         out += "\nvideo: CRT beam: " + std::to_string(g_beam_frames) + " frames through it" +
@@ -1504,6 +1547,7 @@ std::string audio_describe() {
 }
 
 void window_close() {
+    if (g_gamemode_end) g_gamemode_end(), g_gamemode_end = nullptr;   // (GameMode also notices a game that's gone)
     pacing::shutdown();
     alsa::close();
 #ifdef _WIN32
