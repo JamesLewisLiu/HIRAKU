@@ -73,7 +73,7 @@ Their song selects draw the genre comment, the line under the song list, from th
 text. pop'n music 12 to 14 show pictures there (banners, cards), and the Firebeat games (4 to 8)
 have little text beyond test mode; Animelo 2 carries its songs' lyrics. What was learned on
 pop'n music 11:
-- the song table is 0x38-byte records from 0x328434 (450, in banner order `S_BANA_000`...), each
+- the song table is 0x38-byte records from 0x3283fc (451: POPS, then `S_BANA_000`... in order), each
   pointing to its banner name (+0x00), its genre (+0x24) and its comment (+0x28); the strings sit
   in a pool around 0x32e000-0x350000, padded with zeros to 8 bytes, so a translation may take the
   string's room (`modtext.py` measures it);
