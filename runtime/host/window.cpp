@@ -13,6 +13,17 @@
 #include <vector>
 #include <cstdlib>
 #include <thread>
+#ifdef __linux__
+#include <sched.h>
+#include <sys/prctl.h>
+#include <sys/resource.h>
+#include <unistd.h>
+#elif defined(_WIN32)
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#endif
 
 #include "../shell/core.h"
 #include "macro.h"
@@ -547,10 +558,14 @@ void release() {
 }
 }  // namespace reserve
 
+std::string realtime_thread();   // below
+std::string g_writer;            // how the thread that writes runs (the report)
+
 // each time a period of the ring is free: that much from the stream (silence for what it lacks:
-// the stream's get callback counts that as a break), written
+// the stream's get callback counts that as a break), written. Real-time where allowed: it sleeps
+// until the card has room, and an error is never retried at once, so it can't hold a CPU
 void run(SDL_AudioStream *stream) {
-    SDL_SetCurrentThreadPriority(SDL_THREAD_PRIORITY_TIME_CRITICAL);
+    g_writer = realtime_thread();
     std::vector<uint8_t> buf((size_t)g_period * g_frame_bytes);
     const int bytes = (int)buf.size();
     for (unsigned turn = 0; !g_stop.load(std::memory_order_relaxed); turn++) {
@@ -559,6 +574,7 @@ void run(SDL_AudioStream *stream) {
         if (avail < 0) {
             g_xruns.fetch_add(1, std::memory_order_relaxed);
             api.recover(g_pcm, (int)avail, 1);
+            SDL_Delay(1);
             continue;
         }
         if (avail < g_period) {
@@ -571,6 +587,7 @@ void run(SDL_AudioStream *stream) {
         if (n < 0) {
             g_xruns.fetch_add(1, std::memory_order_relaxed);
             api.recover(g_pcm, (int)n, 1);
+            SDL_Delay(1);
         } else {
             g_written.fetch_add((uint64_t)n, std::memory_order_relaxed);
         }
@@ -649,10 +666,100 @@ void close() {
     g_pcm = nullptr;
     reserve::release();   // the card back to its owner (PipeWire)
 }
+
+// RealtimeKit (org.freedesktop.RealtimeKit1, on the system bus) raises a thread of a process whose
+// limits don't let it raise itself, as it does PipeWire's. "" or why not
+[[maybe_unused]] std::string rtkit(const char *method, uint64_t tid, bool realtime, int value) {
+    using namespace reserve;
+    if (!load()) return "no libdbus";
+    DBusError e;
+    d.error_init(&e);
+    Conn *c = d.bus_get_private(1 /* system */, &e);
+    if (!c) return d.error_free(&e), "no system bus";
+    d.set_exit_on_disconnect(c, 0);
+    Msg *m = d.new_method_call("org.freedesktop.RealtimeKit1", "/org/freedesktop/RealtimeKit1", "org.freedesktop.RealtimeKit1", method);
+    int32_t i = value;
+    uint32_t u = (uint32_t)value;
+    if (realtime) d.append_args(m, 't', &tid, 'u', &u, 0);
+    else d.append_args(m, 't', &tid, 'i', &i, 0);
+    Msg *r = d.send_block(c, m, 1000, &e);
+    d.unref(m);
+    std::string why = r ? "" : e.message ? e.message : "no answer";
+    if (r) d.unref(r);
+    d.error_free(&e);
+    d.close(c);
+    d.conn_unref(c);
+    return why;
+}
+
+// The calling thread real-time (SCHED_FIFO 50: under PipeWire's own, 88, over KWin's, 1), itself
+// if RLIMIT_RTPRIO allows, else through RealtimeKit (its usual most, 20); failing both, as high as
+// SDL gets a thread. RLIMIT_RTTIME at 200 ms (RealtimeKit's condition): a real-time thread that ran
+// that long without sleeping would end the game rather than hold its CPU. What it got
+std::string realtime_thread() {
+#ifdef __linux__
+    rlimit rt{};
+    if (getrlimit(RLIMIT_RTTIME, &rt) == 0 && (rt.rlim_max == RLIM_INFINITY || rt.rlim_max > 200000)) {
+        rt.rlim_cur = rt.rlim_max = 200000;
+        setrlimit(RLIMIT_RTTIME, &rt);
+    }
+    rlimit rp{};
+    getrlimit(RLIMIT_RTPRIO, &rp);
+    const int most = rp.rlim_cur == RLIM_INFINITY ? 99 : (int)rp.rlim_cur;
+    sched_param sp{};
+    sp.sched_priority = std::min(50, most);
+    if (sp.sched_priority > 0 && sched_setscheduler(0, SCHED_FIFO | SCHED_RESET_ON_FORK, &sp) == 0)
+        return "real-time (FIFO " + std::to_string(sp.sched_priority) + ")";
+    if (rtkit("MakeThreadRealtime", (uint64_t)gettid(), true, 20).empty()) return "real-time (RR 20, through RealtimeKit)";
+#endif
+    SDL_SetCurrentThreadPriority(SDL_THREAD_PRIORITY_TIME_CRITICAL);
+    return "at SDL's time-critical priority (real-time not allowed)";
+}
 }  // namespace alsa
 }  // namespace
 
-bool window_open(const char *title, int scale, const std::string &bindings, int target_ms, bool fullscreen, int rate) {
+bool g_prio_rtkit = false;   // raise_priority went through RealtimeKit: window_open raises the other threads
+
+#ifdef __linux__
+// The process's threads at normal priority raised through RealtimeKit, as raise_priority raised the
+// one that asked: a thread it raises starts its own threads at normal priority again
+// (SCHED_RESET_ON_FORK). Those that lowered themselves (Mesa's, at 19) or run real-time are left
+static void raise_threads_rtkit(int nice) {
+    std::error_code ec;
+    for (const auto &e : std::filesystem::directory_iterator("/proc/self/task", ec)) {
+        const pid_t tid = (pid_t)atoi(e.path().filename().c_str());
+        if (tid <= 0 || sched_getscheduler(tid) != SCHED_OTHER) continue;
+        errno = 0;
+        if (getpriority(PRIO_PROCESS, (id_t)tid) == 0 && errno == 0) alsa::rtkit("MakeThreadHighPriority", (uint64_t)tid, false, nice);
+    }
+}
+#endif
+
+std::string raise_priority() {
+#ifdef __linux__
+    // timer slack: a sleep may otherwise end up to 50 us late (the kernel's default, to batch wake-ups)
+    prctl(PR_SET_TIMERSLACK, 1UL, 0UL, 0UL, 0UL);
+    constexpr int WANT = -11;   // ahead of other programs; the sound server and the compositor are elsewhere
+    rlimit rl{};
+    getrlimit(RLIMIT_NICE, &rl);
+    const int lowest = rl.rlim_cur == RLIM_INFINITY ? -20 : 20 - (int)rl.rlim_cur;   // RLIMIT_NICE's floor
+    const pid_t tid = gettid();
+    std::string via = "its own limits";
+    if (lowest < 0) setpriority(PRIO_PROCESS, (id_t)tid, std::max(WANT, lowest));
+    if (getpriority(PRIO_PROCESS, (id_t)tid) > WANT && alsa::rtkit("MakeThreadHighPriority", (uint64_t)tid, false, WANT).empty())
+        via = "RealtimeKit", g_prio_rtkit = true;
+    const int got = getpriority(PRIO_PROCESS, (id_t)tid);
+    if (got >= 0) return "priority: normal (neither its limits nor RealtimeKit let it go higher); timer slack 1 us";
+    return "priority: nice " + std::to_string(got) + " for the game's threads (through " + via + "); timer slack 1 us";
+#elif defined(_WIN32)
+    SetPriorityClass(GetCurrentProcess(), ABOVE_NORMAL_PRIORITY_CLASS);
+    return "priority: above normal";
+#else
+    return "priority: normal";
+#endif
+}
+
+static bool open_window(const char *title, int scale, const std::string &bindings, int target_ms, bool fullscreen, int rate) {
     g_rate = rate;
     // the device's buffer: the sound server's quantum (PipeWire: node.latency)
     SDL_SetHint(SDL_HINT_AUDIO_DEVICE_SAMPLE_FRAMES, std::to_string(g_audio_buffer > 0 ? g_audio_buffer : 128).c_str());
@@ -757,6 +864,14 @@ bool window_open(const char *title, int scale, const std::string &bindings, int 
     if (fullscreen) SDL_SetWindowFullscreen(g_win, true);
     pacing::init(g_win, g_display_sync);
     return true;
+}
+
+bool window_open(const char *title, int scale, const std::string &bindings, int target_ms, bool fullscreen, int rate) {
+    const bool ok = open_window(title, scale, bindings, target_ms, fullscreen, rate);
+#ifdef __linux__
+    if (ok && g_prio_rtkit) raise_threads_rtkit(getpriority(PRIO_PROCESS, (id_t)gettid()));   // the threads it has by now
+#endif
+    return ok;
 }
 
 // Present pacing: real time between presents, against the machine's own frame period. With the
@@ -1342,9 +1457,10 @@ std::string audio_describe() {
     if (alsa::g_pcm && alsa::g_t0) {   // the card's own pace: a starving card takes fewer frames than its rate
         const double secs = (prof::now_ns() - alsa::g_t0) / 1e9;
         n += snprintf(b + n, sizeof b - n,
-                      "\naudio: the card took %.1f %% of its rate's frames over %.0f s (100: it plays what it's given), %llu underruns",
+                      "\naudio: the card took %.1f %% of its rate's frames over %.0f s (100: it plays what it's given), %llu underruns; "
+                      "its writer %s",
                       secs > 0 ? 100.0 * (double)alsa::g_written.load() / (secs * alsa::g_card_rate) : 0.0, secs,
-                      (unsigned long long)alsa::g_xruns.load());
+                      (unsigned long long)alsa::g_xruns.load(), alsa::g_writer.c_str());
     }
     if (g_present.n) {
         const PresentStats &p = g_present;

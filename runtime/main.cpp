@@ -66,6 +66,9 @@
 //                       lead that covers all but the two worst seconds of the last minute (not in
 //                       the first 10 s), up to 30 ms, and comes back down when late frames stop
 //     --audio-fixed     the audio queue stays at --audio-ms (no self-tuning)
+//     --normal-priority with --window, leave the game's threads at normal priority (by default they
+//                       go ahead of other programs: Linux nice -11 and timer slack 1 us, as far as
+//                       the limits or RealtimeKit allow; Windows above normal)
 //     --audio-device D  the sound card itself, through ALSA, with no sound server in between: an ALSA
 //                       device name such as hw:CARD=Generic,DEV=0 (aplay -l lists them; the launcher's
 //                       Settings > Audio too). If it's busy, the system's default output instead
@@ -273,7 +276,7 @@ int main(int argc, char **argv) {
     std::string lights_log_path;
     bool nvram_given = false;
     int audio_ms = 8, audio_buffer = 0;
-    bool audio_fixed = false;
+    bool audio_fixed = false, normal_priority = false;
     std::string audio_device;
     bool audio_exclusive = false;
     double volume_db = 0;
@@ -318,6 +321,7 @@ int main(int argc, char **argv) {
         else if (a == "--nvram") { nvram_dir = val(); nvram_given = true; }
         else if (a == "--audio-ms") audio_ms = std::stoi(val());
         else if (a == "--audio-fixed") audio_fixed = true;
+        else if (a == "--normal-priority") normal_priority = true;
         else if (a == "--audio-device") audio_device = val();
         else if (a == "--audio-exclusive") audio_exclusive = true;
         else if (a == "--volume") volume_db = std::stod(val());
@@ -386,6 +390,10 @@ int main(int argc, char **argv) {
         }
         for (const std::string &m : mods::describe()) fprintf(stderr, "mods: %s\n", m.c_str());
     }
+#ifdef HK_WITH_SDL
+    // before the machine's threads start: they inherit it
+    if (window_scale && !normal_priority) fprintf(stderr, "%s\n", host::raise_priority().c_str());
+#endif
     if (!machine.init(opt)) return 1;
 #ifdef HK_WITH_SDL
     if (!lights_file.empty() || !lights_socket.empty()) host::lights_init(game, machine.family(), lights_file, lights_socket);

@@ -258,6 +258,12 @@ SettingsDialog::SettingsDialog(QWidget *parent) : QDialog(parent) {
     fa->addRow("Volume:", m_volume);
     fa->addRow("Audio queue:", m_audioMs);
     fa->addRow("", m_audioFixed);
+    m_priority = new QCheckBox("Ahead of other programs (higher priority)");
+    m_priority->setChecked(s.value("system/priority", true).toBool());
+    m_priority->setToolTip("The game's threads run ahead of other programs (a browser, a build), so a busy PC "
+                           "doesn't delay its frames and sound; the sound server and the desktop keep theirs. "
+                           "A sound card of its own (Output) is written by a real-time thread either way.");
+    fa->addRow("", m_priority);
     m_audioDevice = new QComboBox;
     const QString device = s.value("audio/device").toString();
 #ifdef _WIN32
@@ -531,6 +537,7 @@ void SettingsDialog::accept() {
     s.setValue("video/picture", m_picture->currentData().toString());
     s.setValue("audio/ms", m_audioMs->value());
     s.setValue("audio/fixed", m_audioFixed->isChecked());
+    s.setValue("system/priority", m_priority->isChecked());
     s.setValue("audio/volumeDb", m_volume->value());
     s.setValue("audio/soundEveryMs", m_fineSound->isChecked());
     s.setValue("audio/device", m_audioDevice->currentData().toString());

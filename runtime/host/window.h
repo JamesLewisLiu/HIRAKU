@@ -29,6 +29,11 @@ void window_set_audio_asio(const std::string &driver);
 void window_set_volume(double db);
 // Before window_open: the audio queue target stays where window_open set it (no self-tuning)
 void window_set_audio_fixed(bool on);
+// Before the machine starts its threads (they inherit it): the game ahead of other programs.
+// Linux: the calling thread at nice -11, or as near as RLIMIT_NICE or RealtimeKit allow, and timer
+// slack 1 us. Windows: the process above normal. A line for the log. (A sound card of its own,
+// --audio-device, is written by a real-time thread regardless.)
+std::string raise_priority();
 // Before window_open: each monitor of a machine with several (Core::screens: Keyboardmania's
 // two) in a window of its own, for a monitor each; player 2's goes on the next display
 void window_set_split(bool on);
