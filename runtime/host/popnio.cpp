@@ -549,6 +549,10 @@ bool popnio_option(const std::string &name, const std::function<std::string()> &
     return true;
 }
 
+void popnio_default_dll(const std::string &path) {
+    if (g_dll.empty()) g_dll = path;
+}
+
 std::string popnio_help() {
     return "  --popn-io WHERE      a pop'n music cabinet's USB I/O board (pop'n 15 and later): auto, or (Linux) its\n"
            "                       USB port (3-2.1): the cabinet's buttons and lamps\n"

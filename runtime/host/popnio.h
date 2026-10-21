@@ -41,6 +41,8 @@ namespace hk::host {
 
 // --popn-io WHERE, --popn-io-dll FILE (--popn-io-firmware, the same): true if `name` was one
 bool popnio_option(const std::string &name, const std::function<std::string()> &val);
+// The game's own ezusb.dll, for --popn-io when --popn-io-dll gave none (the PC games: runtime/pc/)
+void popnio_default_dll(const std::string &path);
 std::string popnio_help();
 
 void popnio_start();               // the board's thread, if --popn-io was given

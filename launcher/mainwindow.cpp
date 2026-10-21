@@ -559,12 +559,12 @@ static bool installCd(const Game &g) {
 
 QStringList MainWindow::arguments(const Game &g) const {
     auto &s = cfg::settings();
-    if (g.core == "pc") return pcArguments(g);   // hiraku-pc: the game draws its own picture and sound
     QStringList a = {"--window", QString::number(s.value("video/scale", 2).toInt())};
     if (g.coreBinary) a = QStringList{"--game", g.id} + a;   // the core's own binary (games.h)
     if (s.value("video/fullscreen", false).toBool()) a << "--fullscreen";
     if (!s.value("video/displaySync", true).toBool()) a << "--display-sync" << "off";   // runtime/host/pacing.h
-    else if (g.core == "djmain" || g.core.isEmpty() || g.core == "firebeat" || g.core == "twinkle" || g.core == "sys573") {
+    else if (g.core == "djmain" || g.core.isEmpty() || g.core == "firebeat" || g.core == "twinkle" || g.core == "sys573" ||
+             g.core == "pc") {
         if (s.value("video/crtBeam", false).toBool())   // docs/SMOOTH.md
             a << "--crt-beam" << "--crt-beam-gamma" << QString::number(s.value("video/crtBeamGamma", 2.2).toDouble())
               << "--crt-beam-gain" << QString::number(s.value("video/crtBeamGain", 0.7).toDouble());
@@ -598,7 +598,7 @@ QStringList MainWindow::arguments(const Game &g) const {
     QString sf = s.value("audio/soundfont").toString();
     if (g.family == "kbm" && !sf.isEmpty()) a << "--soundfont" << sf;
     if (g.core == "python") a << "--renderer" << "vk";   // Vulkan GS: less CPU than the software one (PLAN.md section 23)
-    if (g.core == "python") {   // e-AMUSEMENT, as spice2x's options (runtime/shell/eaoptions.h, docs/EAMUSE3.md)
+    if (g.core == "python" || g.core == "pc") {   // e-AMUSEMENT, as spice2x's options (runtime/shell/eaoptions.h, docs/EAMUSE3.md)
         const QString url = s.value("eamuse/url", s.value("eamuse/server")).toString();
         if (!url.isEmpty()) a << "-url" << url;
         if (!url.isEmpty() && s.value("eamuse/smartea", false).toBool()) a << "-smartea";
@@ -607,7 +607,7 @@ QStringList MainWindow::arguments(const Game &g) const {
             if (QString c = s.value(QString("eamuse/card%1").arg(n)).toString(); !c.isEmpty()) a << QString("-card%1").arg(n) << c;
         if (QString ac = s.value("eamuse/autocard", "off").toString(); ac != "off") a << "-autocard" << ac;
     }
-    if (g.core == "python" || g.family == "drmn" || g.family == "gtrf") {   // the e-AMUSEMENT card readers (runtime/host/readers.h)
+    if (g.core == "python" || g.core == "pc" || g.family == "drmn" || g.family == "gtrf") {   // the e-AMUSEMENT card readers (runtime/host/readers.h)
         const QString r0 = s.value("readers/serial0").toString(), r1 = s.value("readers/serial1").toString();
         if (!r0.isEmpty() || !r1.isEmpty()) a << "--reader" << r0;   // "": player 2's only
         if (!r1.isEmpty()) a << "--reader" << r1;
@@ -628,31 +628,6 @@ QStringList MainWindow::arguments(const Game &g) const {
     if (installCassette(g)) a << "--cassette" << "install";
     if (installCd(g)) a << "--cd" << "install";
     a << UnlocksDialog::macroArguments(g.id);   // codes typed at every start
-    a << QProcess::splitCommand(s.value("game/extraArgs").toString());
-    return a;
-}
-
-// hiraku-pc's (runtime/pc/host.cpp): the window, the controls and lamps, e-AMUSEMENT's cards and
-// readers; the game itself draws and plays, so the picture and sound settings aren't its
-QStringList MainWindow::pcArguments(const Game &g) const {
-    auto &s = cfg::settings();
-    QStringList a = {"--game", g.id, "--scale", QString::number(s.value("video/scale", 2).toInt())};
-    if (s.value("video/fullscreen", false).toBool()) a << "--fullscreen";
-    QString controls = cfg::controlsFile(g.family), lights = cfg::lightsFile(g.family);
-    if (QFileInfo::exists(controls)) a << "--bindings" << controls;
-    if (lightsFileUsed(lights)) a << "--lights" << lights;
-    if (s.value("lights/socket", true).toBool()) a << "--lights-socket" << cfg::lightsSocket();
-    for (int n = 0; n < 2; n++)
-        if (QString c = s.value(QString("eamuse/card%1").arg(n)).toString(); !c.isEmpty()) a << QString("-card%1").arg(n) << c;
-    const QString r0 = s.value("readers/serial0").toString(), r1 = s.value("readers/serial1").toString();
-    if (!r0.isEmpty() || !r1.isEmpty()) a << "--reader" << r0;
-    if (!r1.isEmpty()) a << "--reader" << r1;
-    if (s.value("readers/scard", false).toBool()) a << "--scard";
-    if (s.value("readers/cardio", false).toBool()) a << "--cardio";
-    if (QString b = s.value("cabinet/popnio").toString(); !b.isEmpty() && cfg::controlsSet(g.family) == "popn") {
-        a << "--popn-io" << b;   // the pop'n cabinet's board (runtime/host/popnio.h): the game's own DLL's firmware
-        if (QString f = s.value("cabinet/popnioDll").toString(); !f.isEmpty()) a << "--popn-io-dll" << f;
-    }
     a << QProcess::splitCommand(s.value("game/extraArgs").toString());
     return a;
 }

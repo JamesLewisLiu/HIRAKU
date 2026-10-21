@@ -195,8 +195,10 @@ if(HK_PC_DLL_CC)
       COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_BINARY_DIR}/pc
       COMMAND ${HK_PC_DLL_CC} --target=i686-w64-mingw32 -O2 -Wall -Wextra -fuse-ld=lld -static -shared
               -o ${CMAKE_BINARY_DIR}/pc/${dll}.dll ${CMAKE_SOURCE_DIR}/runtime/pc/${dll}.c
-              ${CMAKE_SOURCE_DIR}/runtime/pc/cabinet.c ${CMAKE_SOURCE_DIR}/runtime/pc/${dll}.def -lpsapi -lgdi32
+              ${CMAKE_SOURCE_DIR}/runtime/pc/cabinet.c ${CMAKE_SOURCE_DIR}/runtime/pc/dsound.c
+              ${CMAKE_SOURCE_DIR}/runtime/pc/${dll}.def -lpsapi -lgdi32 -ldxguid
       DEPENDS runtime/pc/${dll}.c runtime/pc/${dll}.def runtime/pc/cabinet.c runtime/pc/cabinet.h runtime/pc/link.h
+              runtime/pc/dsound.c
       COMMENT "pc/${dll}.dll (32-bit)")
     list(APPEND HK_PC_DLLS ${CMAKE_BINARY_DIR}/pc/${dll}.dll)
   endforeach()
@@ -361,10 +363,10 @@ if(SDL3_FOUND)
       COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:SDL3::SDL3-shared> ${CMAKE_BINARY_DIR})
   endif()
   message(STATUS "hiraku: SDL3 front end enabled")
-  # hiraku-pc: the PC games, Konami's own programs, in HIRAKU's cabinet (runtime/pc/host.cpp,
+  # hiraku-pc: the PC games, Konami's own programs, as a core of HIRAKU's shell (runtime/pc/core.cpp,
   # PLAN.md section 30); its DLLs are the hiraku-pc-dlls above
-  add_executable(hiraku-pc runtime/pc/host.cpp)
-  target_link_libraries(hiraku-pc PRIVATE hiraku_host)
+  add_executable(hiraku-pc runtime/main.cpp runtime/pc/core.cpp runtime/core/sampler.cpp)
+  target_link_libraries(hiraku-pc PRIVATE hiraku_host hiraku_shell)
   target_compile_definitions(hiraku-pc PRIVATE HK_ROOT="${CMAKE_SOURCE_DIR}")
   if(TARGET hiraku-pc-dlls)
     add_dependencies(hiraku-pc hiraku-pc-dlls)

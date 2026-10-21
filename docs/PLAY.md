@@ -1073,14 +1073,15 @@ In test mode, blue (buttons 4/6) moves and red (5) selects; I/O CHECK > INPUT CH
 
 ## PC: pop'n music 15 ADVENTURE (in progress, PLAN.md §30)
 
-From pop'n music 15 on, the games are Windows programs. HIRAKU runs Konami's own program as it is, under Wine on Linux and directly on Windows, and puts its cabinet around it with `hiraku-pc` and two DLLs of its own (`bin/pc/`): the controls, the lamps, the card and the window.
+From pop'n music 15 on, the games are Windows programs. HIRAKU runs Konami's own program as it is, under Wine on Linux and directly on Windows, and puts its cabinet around it with `hiraku-pc` and two DLLs of its own (`bin/pc/`): the controls, the lamps, the card, and HIRAKU's own window for the pictures.
 
 - **Adding it:** drop the game's folder, the one holding `prog` (its programs, by date) and `data`, on the launcher's window, or `tools/ingest.py FOLDER`. HIRAKU reads it where it is (8 GB): keep it there. The newest program is the one run, from a copy in the save folder with HIRAKU's `ezusb.dll` and `libacio.dll` in place of Konami's. The game's own files aren't changed.
 - **Linux:** Wine must be installed (`wine` in the PATH, or `--wine PROGRAM`). The first start makes Wine's folder for the PC games (`pc-wine` beside the saves), which takes a minute.
 - **First start:** the game makes its backup files and asks to be restarted (BACKUP ERROR 5-1502); `hiraku-pc` restarts it by itself.
 - **e-AMUSEMENT isn't there yet:** at "can't reach the router" (5-2000), press SERVICE (9) to play offline, or switch e-AMUSEMENT off once in test mode > NETWORK OPTIONS.
-- **Controls:** the pop'n controls and lamps of the launcher's Controls and Lights (pop'n music, PC). The keyboard is read inside the game's window; controllers and the pop'n board (`--popn-io auto`, its firmware from the game's own `ezusb.dll`) by `hiraku-pc`.
-- **The window:** `--scale N`, `--window WxH` or `--fullscreen`; the picture keeps its shape, at most 60 pictures a second (`--hz`), as on the cabinet's monitor.
-- **On the command line:** `bin/hiraku-pc --game popn15 [--fullscreen]`.
+- **Controls:** the pop'n controls and lamps of the launcher's Controls and Lights (pop'n music, PC), the pop'n board too (`--popn-io auto`, its firmware from the game's own `ezusb.dll`).
+- **The picture is HIRAKU's:** the game's own window stays hidden, and each picture it draws goes to HIRAKU's window, as an emulated game's do: the window's size, full screen (F11), the CRT pictures (F10, `--picture`), the beam simulator, display sync, Esc to quit. The game draws its next picture while one is shown, as on its own monitor, at the cabinet's 60 a second.
+- **The sound goes through HIRAKU** too: HIRAKU's DLL is the game's DirectSound and mixes its sounds as the frames go by (44.1 kHz, 735 sound frames a frame), and HIRAKU plays them with its own sound settings (the device, the latency, ASIO on Windows, the volume), in step with the pictures. Neither Wine's nor Windows' sound mixer is involved.
+- **On the command line:** `bin/hiraku-pc --game popn15 --window [--fullscreen] [--picture light]`.
 
-**Not yet:** e-AMUSEMENT, HIRAKU's shaders, a check on real Windows and with a real board or reader; pop'n 16 and later.
+**Not yet:** e-AMUSEMENT, a check on real Windows and with a real board or reader; pop'n 16 and later.
