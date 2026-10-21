@@ -11,7 +11,10 @@
 // frame shown, and played through HIRAKU's sound output like an emulated machine's.
 //
 // Options of its own: --wine PROGRAM (Linux: the Wine to run it with, default `wine` from the PATH),
-// and e-AMUSEMENT's -card0 / -card1 (shell/eaoptions.h).
+// and e-AMUSEMENT's, as spice2x's (shell/eaoptions.h): -url, -card0 / -card1. Without -url the
+// e-AMUSEMENT server is HIRAKU's own (runtime/python/easerver.h, pop'n 9-14's), on this machine,
+// with the pop'n games' shared folder (one card for all); the DLL leads the game's network library
+// to it (runtime/pc/net.c). HK_PC_EA_LOG=1 prints each call in clear.
 //
 // dumps/<ID>/machine.txt (tools/ingest.py) says where the game is:
 //   core=pc, family=pcpopn
@@ -27,7 +30,9 @@
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
+#include <ctime>
 #include <map>
+#include <memory>
 #include <string>
 #include <thread>
 #include <vector>
@@ -53,9 +58,11 @@ extern char **environ;
 #include "host/pacing.h"
 #include "host/popnio.h"
 #include "pc/link.h"
+#include "python/easerver.h"
 #include "shell/cabinet.h"
 #include "shell/core.h"
 #include "shell/eaoptions.h"
+#include "shell/net.h"
 #include "shell/sys.h"
 #include "shell/userdir.h"
 
@@ -202,6 +209,7 @@ public:
         std::string error;
         ea_.read_card_files(save_, &error);
         if (!error.empty()) fprintf(stderr, "%s\n", error.c_str());
+        if (!start_eamuse(o.root)) return false;
         // a bare pop'n board's firmware: the game's own ezusb.dll, unless --popn-io-dll gave one
         hk::host::popnio_default_dll(program_ + "/ezusb.dll");
 
@@ -398,6 +406,90 @@ public:
 private:
     static constexpr double HZ = 60.0;   // the cabinet's VGA monitor
 
+    // e-AMUSEMENT: -url's server, or HIRAKU's own on this machine; the DLL is told where (HK_PC_EA)
+    bool start_eamuse(const std::string &root) {
+        hk::net::start();
+        if (ea_.online()) {   // host:port[/path] or http://host:port[/path]: its IPv4 address
+            std::string url = ea_.http_url().substr(ea_.http_url().find("://") + 3);
+            url = url.substr(0, url.find('/'));
+            const std::string host = url.substr(0, url.find(':'));
+            const std::string port = url.find(':') == std::string::npos ? "80" : url.substr(url.find(':') + 1);
+            addrinfo hints{}, *res = nullptr;
+            hints.ai_family = AF_INET;
+            hints.ai_socktype = SOCK_STREAM;
+            if (getaddrinfo(host.c_str(), port.c_str(), &hints, &res) != 0 || !res) {
+                fprintf(stderr, "e-AMUSEMENT: can't find %s\n", host.c_str());
+                return false;
+            }
+            char ip[INET_ADDRSTRLEN] = "";
+            const sockaddr_in *in = (const sockaddr_in *)res->ai_addr;
+            inet_ntop(AF_INET, &in->sin_addr, ip, sizeof ip);
+            set_env("HK_PC_EA", std::string(ip) + ":" + std::to_string(ntohs(in->sin_port)));
+            freeaddrinfo(res);
+            printf("e-AMUSEMENT: online, %s\n", ea_.http_url().c_str());
+            return true;
+        }
+        // the server's files: the pop'n games' shared folder beside the saves (in the saves' default
+        // place), so a card's player carries from one to the next; with --nvram elsewhere, its own
+        const std::string saves = hk::user_data_dir(root);
+        const std::string dir = save_ == saves + "/" + game_ ? saves + "/eamuse" : save_ + "/eamuse";
+        hk::sys::make_dir(dir);
+        server_ = std::make_unique<hk::py::EamuseServer>(dir);
+        server_->now = [] { return (int64_t)time(nullptr) + 9 * 3600; };   // the cabinet's clock: Japan's
+        if (getenv("HK_PC_EA_LOG")) server_->log = [](const std::string &s) { fprintf(stderr, "%s\n", s.c_str()); };
+        listen_ = hk::net::socket(AF_INET, SOCK_STREAM, 0);
+        sockaddr_in sa{};
+        sa.sin_family = AF_INET;
+        sa.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+        socklen_t len = sizeof sa;
+        if (listen_ < 0 || bind(listen_, (sockaddr *)&sa, sizeof sa) != 0 || listen(listen_, 16) != 0 ||
+            getsockname(listen_, (sockaddr *)&sa, &len) != 0) {
+            fprintf(stderr, "e-AMUSEMENT: no server: %s\n", hk::net::error().c_str());
+            return false;
+        }
+        set_env("HK_PC_EA", "127.0.0.1:" + std::to_string(ntohs(sa.sin_port)));
+        printf("e-AMUSEMENT: HIRAKU's server, data in %s\n", dir.c_str());
+        std::thread([this] { serve(); }).detach();
+        return true;
+    }
+
+    // One call per connection (HTTP/1.0), as the game makes them
+    void serve() {
+        for (;;) {
+            const int fd = hk::net::accept(listen_);
+            if (fd < 0) continue;
+            hk::net::set_timeouts(fd, 10000);
+            std::string req;
+            char buf[4096];
+            for (;;) {   // the head, then Content-Length's body
+                const size_t he = req.find("\r\n\r\n");
+                if (he != std::string::npos) {
+                    std::string head = req.substr(0, he);
+                    for (char &c : head) c = (char)std::tolower((unsigned char)c);
+                    size_t body = 0;
+                    if (const size_t cl = head.find("\r\ncontent-length:"); cl != std::string::npos)
+                        body = std::strtoul(head.c_str() + cl + 17, nullptr, 10);
+                    if (body > (1u << 20) || req.size() >= he + 4 + body) break;
+                }
+                const ssize_t n = req.size() > (1u << 21) ? -1 : hk::net::recv(fd, buf, sizeof buf);
+                if (n <= 0) {
+                    req.clear();
+                    break;
+                }
+                req.append(buf, (size_t)n);
+            }
+            if (!req.empty()) {
+                const std::string answer = server_->handle(req);
+                for (size_t sent = 0; sent < answer.size();) {
+                    const ssize_t n = hk::net::send(fd, answer.data() + sent, answer.size() - sent);
+                    if (n <= 0) break;
+                    sent += (size_t)n;
+                }
+            }
+            hk::net::close(fd);
+        }
+    }
+
     const uint32_t *link_pixels() const { return (const uint32_t *)((const char *)link_ + HK_PC_PIXELS); }
 
     // A frame's sound is asked for as the frame's time passes (a 44.1th of a millisecond each), not
@@ -527,6 +619,8 @@ private:
 
     std::string game_, family_ = "pcpopn", exe_, program_, save_, run_prog_, run_e_, link_path_, wine_ = "wine";
     hk::EaOptions ea_;
+    std::unique_ptr<hk::py::EamuseServer> server_;
+    int listen_ = -1;
     hk_pc_link *link_ = nullptr;
     FrameHook frame_hook_;
     AudioSink audio_sink_;

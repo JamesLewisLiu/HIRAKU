@@ -7,11 +7,19 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <stdint.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "cabinet.h"
 
 #define CALL __cdecl
+
+// HK_PC_USB_LOG: the coin calls, for finding how a game counts its coins
+static int usb_log(void) {
+    static int on = -1;
+    if (on < 0) on = getenv("HK_PC_USB_LOG") != NULL;
+    return on;
+}
 
 int CALL usb_start(int a) {
     (void)a;
@@ -54,12 +62,26 @@ int CALL usb_mute(int a) { (void)a; return 0; }
 
 // Coins: how many so far (the game counts the new ones itself)
 int CALL usb_coin_get(int a) {
-    (void)a;
-    return (int)hk_coins_now();
+    const int n = (int)hk_coins_now();
+    static int last = -1;
+    if (usb_log() && n != last) hk_log("usb: usbCoinGet(%d) = %d", a, n), last = n;
+    return n;
 }
-int CALL usb_coin_get2(void *p) { (void)p; return 0; }
-int CALL usb_coin_mode(int a) { (void)a; return 0; }
-int CALL usb_coin_blocker(int a) { (void)a; return 0; }
+int CALL usb_coin_get2(void *p) {
+    if (usb_log()) hk_log("usb: usbCoinGet2");
+    (void)p;
+    return 0;
+}
+int CALL usb_coin_mode(int a) {
+    if (usb_log()) hk_log("usb: usbCoinMode(%d)", a);
+    hk_set_coin_mode(a);
+    return 0;
+}
+int CALL usb_coin_blocker(int a) {
+    static int last = -2;
+    if (usb_log() && a != last) hk_log("usb: usbCoinBlocker(%d)", a), last = a;
+    return 0;
+}
 int CALL usb_coin_meter_up(int a) { (void)a; return 0; }
 int CALL usb_coin_meter_down(int a) { (void)a; return 0; }
 int CALL usb_coin_up(int a) { (void)a; return 0; }

@@ -26,8 +26,12 @@ void hk_cabinet_start(void);        // once: the path and window hooks (DllMain,
 // The pad as the game reads it: hiraku-pc's, the keys bound to it, the test script's
 uint32_t hk_pad_now(void);
 uint32_t hk_coins_now(void);
+void hk_set_coin_mode(int mode);   // usbCoinMode: 1, coins as the coin switch's pulses on the pad
 uint32_t hk_keypad_now(void);   // HK_PC_KEY_* and digits: hiraku-pc's and the keys bound to them
 uint32_t hk_card_seq(void);     // moves on with each card: hiraku-pc's and the card key's
+// The network's calls that lead to e-AMUSEMENT (net.c): the hook for a ws2_32 call, or NULL
+void *hk_net_hook(const char *fn);
+void *hk_net_card_hook(const char *fn);   // iphlpapi's
 // HIRAKU's DirectSound (dsound.c): the game's, when HIRAKU's window shows it
 long __stdcall hk_DirectSoundCreate8(const void *device, void **out, void *outer);
 long __stdcall hk_DirectSoundCreate(const void *device, void **out, void *outer);

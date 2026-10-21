@@ -112,6 +112,30 @@ static void escape_quits(void) {
     TerminateProcess(GetCurrentProcess(), 0);
 }
 
+// The coin mode the game set (usbCoinMode): 1 (pop'n 15 online) counts the coin switch itself, on
+// the pad's bit 22, where 3 reads the board's count (usbCoinGet)
+static int g_coin_mode = 3;
+void hk_set_coin_mode(int mode) { g_coin_mode = mode; }
+
+// In mode 1, each coin is a pulse of the coin switch: on for 4 reads of the pad, off for 4
+static uint32_t coin_switch(void) {
+    static uint32_t given;
+    static int phase;
+    const uint32_t coins = hk_coins_now();
+    if (g_coin_mode != 1) {
+        given = coins;
+        return 0;
+    }
+    if (phase || given != coins) {
+        if (++phase > 8) {
+            phase = 0;
+            given++;
+        }
+        return phase <= 4 ? 1u << 22 : 0;
+    }
+    return 0;
+}
+
 uint32_t hk_pad_now(void) {
     struct hk_pc_link *l = hk_link();
     escape_quits();
@@ -119,7 +143,7 @@ uint32_t hk_pad_now(void) {
     for (int i = 0; i < 32; i++)
         if (key_down(l->keys[i][0]) || key_down(l->keys[i][1])) b |= 1u << i;
     l->game_alive++;
-    return b | (scripted() & ~(1u << 22));
+    return b | (scripted() & ~(1u << 22)) | coin_switch();
 }
 
 uint32_t hk_coins_now(void) {
@@ -454,6 +478,8 @@ static BOOL WINAPI my_ShowWindow(HWND w, int how) {
 static HMODULE g_self;
 
 static void *hook_for(const char *dll, const char *fn) {
+    if (!_stricmp(dll, "ws2_32.dll") || !_stricmp(dll, "wsock32.dll")) return hk_net_hook(fn);   // net.c
+    if (!_stricmp(dll, "iphlpapi.dll")) return hk_net_card_hook(fn);
     static const struct { const char *dll, *fn; void *to; } hooks[] = {
         {"kernel32.dll", "CreateFileA", (void *)my_CreateFileA},
         {"kernel32.dll", "CreateDirectoryA", (void *)my_CreateDirectoryA},
@@ -479,6 +505,22 @@ static void *hook_for(const char *dll, const char *fn) {
     return NULL;
 }
 
+// The calls the hooks take that games import by number
+static const char *by_ordinal(const char *dll, unsigned ord) {
+    static const struct { const char *dll; unsigned ord; const char *fn; } names[] = {
+        {"dsound.dll", 1, "DirectSoundCreate"}, {"dsound.dll", 11, "DirectSoundCreate8"},
+        {"ws2_32.dll", 2, "bind"},              {"ws2_32.dll", 3, "closesocket"},       {"ws2_32.dll", 4, "connect"},
+        {"ws2_32.dll", 17, "recvfrom"},         {"ws2_32.dll", 20, "sendto"},
+        {"ws2_32.dll", 23, "socket"},           {"ws2_32.dll", 52, "gethostbyname"},
+        {"wsock32.dll", 2, "bind"},             {"wsock32.dll", 3, "closesocket"},      {"wsock32.dll", 4, "connect"},
+        {"wsock32.dll", 17, "recvfrom"},        {"wsock32.dll", 20, "sendto"},
+        {"wsock32.dll", 23, "socket"},          {"wsock32.dll", 52, "gethostbyname"},
+    };
+    for (size_t i = 0; i < sizeof names / sizeof *names; i++)
+        if (names[i].ord == ord && !_stricmp(dll, names[i].dll)) return names[i].fn;
+    return NULL;
+}
+
 static void patch_imports(HMODULE m) {
     char *base = (char *)m;
     IMAGE_NT_HEADERS *nt = (IMAGE_NT_HEADERS *)(base + ((IMAGE_DOS_HEADER *)base)->e_lfanew);
@@ -490,10 +532,9 @@ static void patch_imports(HMODULE m) {
         IMAGE_THUNK_DATA *addrs = (IMAGE_THUNK_DATA *)(base + imp->FirstThunk);
         for (; names->u1.AddressOfData; names++, addrs++) {
             const char *fn;
-            if (IMAGE_SNAP_BY_ORDINAL(names->u1.Ordinal)) {   // dsound.dll's, by number: 1 and 11 (pop'n 15)
-                const DWORD ord = (DWORD)IMAGE_ORDINAL(names->u1.Ordinal);
-                if (_stricmp(dll, "dsound.dll") || (ord != 1 && ord != 11)) continue;
-                fn = ord == 11 ? "DirectSoundCreate8" : "DirectSoundCreate";
+            if (IMAGE_SNAP_BY_ORDINAL(names->u1.Ordinal)) {   // by number: dsound.dll's and ws2_32.dll's (pop'n 15)
+                fn = by_ordinal(dll, (unsigned)IMAGE_ORDINAL(names->u1.Ordinal));
+                if (!fn) continue;
             } else {
                 fn = (const char *)((IMAGE_IMPORT_BY_NAME *)(base + names->u1.AddressOfData))->Name;
             }

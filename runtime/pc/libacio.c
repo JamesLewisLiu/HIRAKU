@@ -6,6 +6,8 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "cabinet.h"
@@ -31,12 +33,25 @@ static struct {
     uint32_t keys_last;
 } g;
 
-#define CARD_HELD_MS 2000   // a card stays in the reader that long after it was held there
+#define CARD_HELD_MS 2000
+
+// HK_PC_USB_LOG: the reader's calls as the game makes them (each change)
+static void trace(const char *what, int a, int b) {
+    static int on = -1;
+    static char last[64];
+    char now[64];
+    if (on < 0) on = getenv("HK_PC_USB_LOG") != NULL;
+    if (!on) return;
+    snprintf(now, sizeof now, "%s %d %d", what, a, b);
+    if (strcmp(now, last)) hk_log("acio: %s", now), strcpy(last, now);
+}   // a card stays in the reader that long after it was held there
 
 static void update(void) {
     struct hk_pc_link *l = hk_link();
-    // the 10-key: the reader's key codes in its order (0-9, decimal, 00), level and edge
+    // the 10-key: the reader's key codes in its order (0-9, decimal, 00), level and edge; the edge
+    // names a key by its number on the reader's grid, not its digit (spice2x's KEYPAD_KEY_CODE_NUMS)
     static const uint32_t code[12] = {0x100, 0x200, 0x2000, 2, 0x400, 0x4000, 4, 0x800, 0x8000, 8, 1, 0x1000};
+    static const uint32_t num[12] = {0, 1, 5, 9, 2, 6, 10, 3, 7, 11, 8, 4};
     const uint32_t held = hk_keypad_now();
     g.st.key_level = 0;
     for (int i = 0; i < 12; i++) {
@@ -44,7 +59,7 @@ static void update(void) {
         if (held & bit) {
             g.st.key_level |= code[i];
             if (!(g.keys_last & bit)) {
-                g.st.key_edge = code[i] << 16 | 0x80 | (uint32_t)g.key_serial << 4 | (uint32_t)i;
+                g.st.key_edge = code[i] << 16 | 0x80 | (uint32_t)g.key_serial << 4 | num[i];
                 g.key_serial = (g.key_serial + 1) & 7;
             }
         } else {
@@ -52,22 +67,26 @@ static void update(void) {
         }
     }
     g.keys_last = held;
-    // a card held to the reader
+    // a card held to the reader: there (active, its number read) for as long as it is held, as
+    // spice2x's while its key is down, whatever the game's steps say meanwhile
     const uint32_t seq = hk_card_seq();
     if (seq != g.seen_seq) {
         g.seen_seq = seq;
-        if (g.state == GET_USERID || g.state == CLOSE_EJECT || g.state == STEP || g.state == READY) {
-            memcpy(g.st.uid, (const void *)l->card_uid, 8);
-            g.state = ACTIVE;
-            g.st.front_sensor = g.st.rear_sensor = 1;
-            g.card_at = GetTickCount();
-            hk_log("hiraku-pc: a card at the reader");
+        memcpy(g.st.uid, (const void *)l->card_uid, 8);
+        g.card_at = GetTickCount();
+        hk_log("hiraku-pc: a card at the reader");
+    }
+    if (g.card_at && GetTickCount() - g.card_at <= CARD_HELD_MS) {
+        g.state = ACTIVE;
+        g.st.front_sensor = g.st.rear_sensor = 1;
+    } else {   // no card (or taken away): the reader closed and empty, as spice2x reports it; a
+        // stepping reader (0) holds the game's card screen until its time runs out
+        if (g.card_at) {
+            g.card_at = 0;
+            memset(g.st.uid, 0, 8);
+            g.st.front_sensor = g.st.rear_sensor = 0;
         }
-    } else if (g.card_at && GetTickCount() - g.card_at > CARD_HELD_MS) {
-        g.card_at = 0;
-        memset(g.st.uid, 0, 8);
-        g.st.front_sensor = g.st.rear_sensor = 0;
-        if (g.state == ACTIVE) g.state = CLOSE_EJECT;
+        if (g.state == STEP || g.state == ACTIVE) g.state = CLOSE_EJECT;
     }
 }
 
@@ -128,6 +147,7 @@ API char ac_io_icca_get_keep_alive_error(int unit, DWORD *a) {
 }
 API int ac_io_icca_send_keep_alive_packet(int a, int b, int c) { (void)a, (void)b, (void)c; return 0; }
 API char ac_io_icca_get_status(void *out, int unit) {
+    trace("get_status", unit, g.state);
     (void)unit;
     update();
     g.st.state = (uint8_t)g.state;
@@ -140,12 +160,14 @@ API char ac_io_icca_get_uid(int unit, char *card) {
     return g.state != ERR_GETUID;
 }
 API char ac_io_icca_req_uid(int unit) {
+    trace("req_uid", unit, g.state);
     (void)unit;
     g.state = GET_USERID;
     update();
     return 1;
 }
 API int ac_io_icca_req_uid_isfinished(int unit, DWORD *st) {
+    trace("req_uid_isfinished", unit, g.state);
     (void)unit;
     update();
     if (g.state == ACTIVE) g.state = END;
@@ -153,8 +175,8 @@ API int ac_io_icca_req_uid_isfinished(int unit, DWORD *st) {
     return 1;
 }
 API int ac_io_icca_workflow(int w, int unit) {
+    trace("workflow", w, g.state);
     (void)unit;
-    update();
     switch (w) {
     case STEP: g.state = STEP; break;
     case SLEEP: g.state = SLEEP; break;
@@ -166,6 +188,7 @@ API int ac_io_icca_workflow(int w, int unit) {
     case GET_USERID: g.state = GET_USERID; break;
     default: break;
     }
+    update();
     return g.state;
 }
 

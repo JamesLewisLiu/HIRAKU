@@ -911,7 +911,25 @@ std::string EamuseServer::answer_later(const std::string &game, const Request &r
         if (game == "E02" || game == "F02" || game == "E03" || game == "F03")
             items += "<item name=\"ntp\" url=\"ntp://10.50.0.1/\"/><item name=\"keepalive\" url=\"http://10.50.0.1/keepalive?pa=10.50.0.1&amp;ia=10.50.0.1&amp;"
                      "ga=10.50.0.1&amp;ma=10.50.0.1&amp;t1=2&amp;t2=10\"/>";
+        // The PC pop'n games (G15: pop'n 15, runtime/pc/): the same keepalive, its router where the
+        // cabinet's card says it is (192.168.0.1, runtime/pc/net.c), its other addresses this machine;
+        // HIRAKU's DLL answers their pings
+        if (game == "G15")
+            items += "<item name=\"pcbevent\" url=\"http://" + esc(host) + "/\"/>"
+                     "<item name=\"keepalive\" url=\"http://127.0.0.1/keepalive?pa=127.0.0.1&amp;ia=127.0.0.1&amp;"
+                     "ga=192.168.0.1&amp;ma=127.0.0.1&amp;t1=2&amp;t2=10\"/>";
         return "<services expire=\"600\" status=\"0\">" + items + "</services>";
+    }
+    if (m == "facility" && f == "get" && game == "G15") {   // pop'n 15's library (libavs ea3_facility): every
+        // field it imports (location, line, portfw, public, share), or it fails the start-up (5-2009)
+        return "<facility status=\"0\" expire=\"600\"><location><id>HIRAKU</id><country>JP</country>"
+               "<region>13</region></location><line><id>0</id></line><portfw><globalip __type=\"ip4\">192.168.0.2"
+               "</globalip><globalport __type=\"u16\">5700</globalport><privateport __type=\"u16\">5700</privateport>"
+               "</portfw><public><flag __type=\"u8\">0</flag><name>HIRAKU</name><latitude>0</latitude>"
+               "<longitude>0</longitude></public><share><url><eapass>www.ea-pass.konami.net</eapass>"
+               "<arcadefan>www.konami.jp/am</arcadefan><konaminetdx>http://am.573.jp</konaminetdx>"
+               "<konamiid>http://id.konami.jp</konamiid></url><eapass><valid __type=\"u16\">1</valid></eapass></share>"
+               "</facility>";
     }
     if (m == "facility" && f == "get") {   // pop'n 14 (0x17d6860): the shop, as text elements in three groups
         return "<facility status=\"0\" expire=\"600\"><location><id>HIRAKU</id><country>JP</country>"
