@@ -432,10 +432,18 @@ SettingsDialog::SettingsDialog(QWidget *parent) : QDialog(parent) {
     m_popnio->addItems({"", "auto"});
     m_popnio->setCurrentText(s.value("cabinet/popnio").toString());
     m_popnio->lineEdit()->setPlaceholderText("none");
+#ifdef Q_OS_WIN
     m_popnio->setToolTip("--popn-io: a pop'n music cabinet's USB I/O board (the one pop'n music 15 and later drive through "
                          "ezusb.dll, or a board that copies it, such as PopnIO): its buttons, TEST, SERVICE and coin, and its "
-                         "button, top and side lamps, for every pop'n music game. auto takes the first; on Linux a USB port "
+                         "button, top and side lamps, for every pop'n music game. On Windows choose auto: the ezusb.dll below "
+                         "finds the board (Konami's needs Cypress's CyUSB driver installed for it). The game's log says "
+                         "how it goes, in its lines starting popn-io.");
+#else
+    m_popnio->setToolTip("--popn-io: a pop'n music cabinet's USB I/O board (the one pop'n music 15 and later drive through "
+                         "ezusb.dll, or a board that copies it, such as PopnIO): its buttons, TEST, SERVICE and coin, and its "
+                         "button, top and side lamps, for every pop'n music game. auto takes the first; a USB port "
                          "(as in /sys/bus/usb/devices, e.g. 3-2.1) chooses one.");
+#endif
     fc->addRow("pop'n music I/O board:", m_popnio);
     m_popnioDll = new QLineEdit(s.value("cabinet/popnioDll").toString());
 #ifdef Q_OS_WIN

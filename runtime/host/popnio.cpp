@@ -486,6 +486,7 @@ void run_helper() {
     helper = helper.substr(0, helper.find_last_of('/') + 1) + "hiraku-ezusb.exe";
     for (char &c : helper)
         if (c == '/') c = '\\';
+    fprintf(stderr, "popn-io: %s drives the board through %s\n", helper.c_str(), g_dll.c_str());
     for (int tries = 0; g_running && tries < 3; tries++) {
         memset((void *)link, 0, sizeof *link);
         link->magic = HK_EZUSB_MAGIC;
@@ -523,7 +524,13 @@ void run_helper() {
         CloseHandle(pi.hProcess);
         CloseHandle(pi.hThread);
         if (!g_running) break;
+        // what went wrong, said here too: the helper's own messages may not reach the game's log
         const int state = link->state;
+        const int result = link->result;
+        if (state == HK_EZUSB_NO_DLL) fprintf(stderr, "popn-io: the DLL didn't load (Windows error %d)\n", result);
+        else if (state == HK_EZUSB_NO_EXPORT) fprintf(stderr, "popn-io: the DLL isn't an ezusb.dll (no usbStart, usbPadRead...)\n");
+        else if (state == HK_EZUSB_FAILED) fprintf(stderr, "popn-io: the DLL's call failed (result %d)\n", result);
+        else if (state == HK_EZUSB_LOADING) fprintf(stderr, "popn-io: hiraku-ezusb.exe stopped before loading the DLL\n");
         if (state == HK_EZUSB_NO_DLL || state == HK_EZUSB_NO_EXPORT) break;   // trying again won't help
         fprintf(stderr, "popn-io: hiraku-ezusb.exe stopped (exit %lu); starting it again in 5 s\n", code);
         sleep_ms(5000);

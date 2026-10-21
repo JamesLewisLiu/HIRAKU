@@ -69,10 +69,24 @@ int main(int argc, char **argv) {
     timeBeginPeriod(1);
     SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_ABOVE_NORMAL);
 
-    /* the DLL, with its folder first for what it loads in turn */
+    /* the DLL, with its folder first for what it loads in turn. LOAD_WITH_ALTERED_SEARCH_PATH
+     * needs a path with backslashes: with the launcher's C:/... the DLL's own folder isn't searched,
+     * so a DLL that brings others of its own beside it (a replacement's) wouldn't load */
     link->state = HK_EZUSB_LOADING;
+    for (char *c = argv[2]; *c; c++)
+        if (*c == '/') *c = '\\';
     dll = LoadLibraryExA(argv[2], NULL, LOAD_WITH_ALTERED_SEARCH_PATH);
-    if (!dll) return fail(HK_EZUSB_NO_DLL, (int)GetLastError(), "the DLL doesn't load (a 32-bit ezusb.dll is needed)");
+    if (!dll) {
+        const DWORD e = GetLastError();
+        /* (Windows says 126 both for a missing file and for a missing DLL it needs) */
+        const int there = GetFileAttributesA(argv[2]) != INVALID_FILE_ATTRIBUTES;
+        fprintf(stderr, "popn-io (ezusb.dll): %s doesn't load: %s\n", argv[2],
+                !there ? "no such file (Settings > pop'n music I/O board: its ezusb.dll)"
+                : e == ERROR_BAD_EXE_FORMAT ? "it isn't a 32-bit DLL (a 64-bit one can't be used)"
+                : e == ERROR_MOD_NOT_FOUND ? "a DLL it needs is missing (put the files that came with it in its folder)"
+                : "Windows refused it");
+        return fail(HK_EZUSB_NO_DLL, (int)e, "the DLL doesn't load");
+    }
     int_fn start = (int_fn)find("?usbStart@@YAHH@Z", "usbStart");
     void_fn firm = (void_fn)find("?usbFirmResult@@YAHXZ", "usbFirmResult");
     int_fn coin_mode = (int_fn)find("?usbCoinMode@@YAHH@Z", "usbCoinMode");
@@ -86,7 +100,9 @@ int main(int argc, char **argv) {
     /* as a game starts the board: the real one takes its firmware here (about 17 s) */
     link->state = HK_EZUSB_STARTING;
     int r = until_zero(call_start, (void *)start, 10000, 0);
-    if (r) return stopping() ? 0 : fail(HK_EZUSB_FAILED, r, "usbStart(0) failed");
+    if (r) return stopping() ? 0 : fail(HK_EZUSB_FAILED, r, "usbStart(0) failed: no board found through this DLL (Konami's "
+                                                            "ezusb.dll needs Cypress's CyUSB driver installed for the board, "
+                                                            "04b4:8613; a replacement DLL, its own board plugged in)");
     link->state = HK_EZUSB_FIRMWARE;
     r = until_zero(call_firm, (void *)firm, 90000, 1);   /* ezusb.dll tries four loads, 17 s each */
     if (r) return stopping() ? 0 : fail(HK_EZUSB_FAILED, r, "usbFirmResult() never gave 0 (0x60: still loading)");

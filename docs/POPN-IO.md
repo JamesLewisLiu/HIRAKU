@@ -58,7 +58,7 @@ The board has an EEPROM and a security chip that the games write through these c
 
 ## Windows: through the ezusb.dll
 
-On Windows HIRAKU calls the DLL as the games do, which also covers boards and controllers that come with their own `ezusb.dll` (UltimatePopnController's, PopnIO). The DLL is 32-bit and HIRAKU's games are 64-bit, so `hiraku-ezusb.exe` (`runtime/host/ezusb/helper.c`, built 32-bit) loads it. HIRAKU starts it with a page of shared memory (`runtime/host/ezusb/link.h`):
+On Windows HIRAKU calls the DLL as the games do. With Konami's board, and with a board that copies it such as PopnIO in its REALIO mode, that's the real `ezusb.dll` (with Cypress's CyUSB driver installed for the board). A controller that comes with an `ezusb.dll` of its own, such as UltimatePopnController, is driven through that one. The DLL is 32-bit and HIRAKU's games are 64-bit, so `hiraku-ezusb.exe` (`runtime/host/ezusb/helper.c`, built 32-bit) loads it. HIRAKU starts it with a page of shared memory (`runtime/host/ezusb/link.h`):
 
 1. `usbStart(0)` until it gives 0, `usbFirmResult()` until 0 (0x60 means still busy; the real board takes about 17 s per firmware load), `usbCoinMode(3)`.
 2. About 1000 times a second: `usbPadRead` (the controls, 1 = pressed), `usbCoinGet(0)` if the DLL has it, and `usbLamp` when the lamps change, or twice a second.
