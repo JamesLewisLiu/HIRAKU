@@ -62,8 +62,10 @@
 //                       --window (runtime/host/bio2.h)
 //     --popn-io WHERE, --popn-io-dll FILE  a pop'n music cabinet's USB I/O board as its buttons
 //                       and lamps, with --window (runtime/host/popnio.h)
-//     --audio-ms N      initial audio queue target (default 8); grows by 1 ms per underrun (the device
-//                       asking for more than is queued; not in the first 10 s), up to 30
+//     --audio-ms N      the audio queue target (default 8), and its least: it tunes itself to the
+//                       lead that covers all but the two worst seconds of the last minute (not in
+//                       the first 10 s), up to 30 ms, and comes back down when late frames stop
+//     --audio-fixed     the audio queue stays at --audio-ms (no self-tuning)
 //     --audio-device D  the sound card itself, through ALSA, with no sound server in between: an ALSA
 //                       device name such as hw:CARD=Generic,DEV=0 (aplay -l lists them; the launcher's
 //                       Settings > Audio too). If it's busy, the system's default output instead
@@ -271,6 +273,7 @@ int main(int argc, char **argv) {
     std::string lights_log_path;
     bool nvram_given = false;
     int audio_ms = 8, audio_buffer = 0;
+    bool audio_fixed = false;
     std::string audio_device;
     bool audio_exclusive = false;
     double volume_db = 0;
@@ -314,6 +317,7 @@ int main(int argc, char **argv) {
         else if (a == "--lights-log") lights_log_path = val();
         else if (a == "--nvram") { nvram_dir = val(); nvram_given = true; }
         else if (a == "--audio-ms") audio_ms = std::stoi(val());
+        else if (a == "--audio-fixed") audio_fixed = true;
         else if (a == "--audio-device") audio_device = val();
         else if (a == "--audio-exclusive") audio_exclusive = true;
         else if (a == "--volume") volume_db = std::stod(val());
@@ -459,6 +463,7 @@ int main(int argc, char **argv) {
     host::window_set_audio_output(audio_device, audio_buffer, audio_exclusive);
     host::window_set_audio_asio(audio_asio);
     host::window_set_volume(volume_db);
+    host::window_set_audio_fixed(audio_fixed);
     host::window_set_split(split_screens);
     if (window_scale && !host::window_open(("HIRAKU - " + game).c_str(), window_scale, bindings, audio_ms, fullscreen, machine.audio_rate())) {
         fprintf(stderr, "cannot open a window\n");

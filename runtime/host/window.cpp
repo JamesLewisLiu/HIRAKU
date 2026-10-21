@@ -30,7 +30,6 @@ namespace {
 uint64_t g_settle_until = 0;   // window/renderer setup right after opening: not a stall
 std::atomic<uint64_t> g_device_pulls{0}, g_device_short{0};   // the device's pulls, and those the queue fell short of
 std::atomic<uint64_t> g_device_short_late{0};                  // ... of those, after the game's boot (g_tune_from)
-uint64_t g_short_seen = 0;        // g_device_short when the target last grew for it
 uint64_t g_tune_from = 0;          // the queue target self-tunes from here on (window_open + 10 s)
 
 // window_set_split: each of the frame's monitors (Core::screens) in a window of its own
@@ -70,6 +69,8 @@ std::string g_audio_asio;         // Windows: an ASIO driver (asio.h)
 int g_audio_buffer = 0;           // ... and the device buffer in frames (0: 128)
 std::string g_audio_output;       // what it got, for the report
 int g_target_frames = 0;          // audio queued ahead, when audio paces
+int g_target_min = 0;             // ... the starting setting: self-tuning keeps it at least this
+bool g_audio_fixed = false;       // window_set_audio_fixed: no self-tuning
 bool g_fast = false;              // Tab held: run as fast as possible (audio is dropped)
 int g_device_frames = 0;
 bool g_quit = false;
@@ -89,6 +90,68 @@ double g_ratio = 1.0;             // the audio stream's frequency ratio: the gam
 bool g_frame_paced = false;
 uint64_t g_frame_start_ns = 0;    // when the window last let a frame run (the controls just read)
 uint64_t g_last_push_end = 0;     // the host's work since then is what must fit (push_chunk)
+int g_queued_after = 0;           // frames queued at g_last_push_end
+bool g_log_stalls = getenv("HK_LOG_STALLS") != nullptr;   // each stall, break and second's lead, to stderr
+
+// The queue target's self-tuning (unless window_set_audio_fixed). As each chunk comes, the lead it
+// needed: the target, less what was left of the queue, plus a device buffer (the device takes
+// whole buffers: less than one left can break the sound). The target is what covers all but the
+// two worst seconds of the last minute, never below the starting setting, at most 30 ms: it grows
+// for late frames that keep coming and comes back down when they stop, and a stall no sensible
+// lead covers (a rare one) breaks the sound once instead of adding to every keysound for the rest
+// of the run.
+struct LeadTuner {
+    static constexpr int SECS = 60, SPARED = 2;   // a minute, but for its 2 worst seconds
+    float worst[SECS] = {};                       // each second's largest needed lead, ms
+    uint64_t sec_of[SECS] = {};                   // the second each slot holds (+1; 0: none)
+    int lo = 0, hi = 0;                           // the target's range over the run (frames)
+    uint64_t cur = 0;
+    void add(uint64_t now_ns, float need) {
+        const double target_ms = g_target_frames * 1000.0 / g_rate;
+        const uint64_t sec = now_ns / 1'000'000'000ull + 1;
+        const int i = (int)(sec % SECS);
+        if (sec_of[i] != sec) sec_of[i] = sec, worst[i] = 0;
+        const bool past = need > worst[i] && need > target_ms;
+        worst[i] = std::max(worst[i], need);
+        if (g_log_stalls && sec != cur && cur)
+            fprintf(stderr, "lead: second %llu needed %.2f ms, target %.2f ms\n", (unsigned long long)cur, worst[cur % SECS], target_ms);
+        if (past || sec != cur) {   // a lead past the target, or a new second (one falls out of the minute)
+            cur = sec;
+            retune(sec);
+        }
+    }
+    void retune(uint64_t sec) {
+        float all[SECS];   // seconds not seen yet (the first minute of tuning) count as needing nothing
+        for (int i = 0; i < SECS; i++) all[i] = sec_of[i] && sec_of[i] + SECS > sec ? worst[i] : 0.0f;
+        std::nth_element(all, all + SPARED, all + SECS, std::greater<float>());
+        const int frames = (int)std::ceil(all[SPARED] * g_rate / 1000.0);
+        g_target_frames = std::clamp(frames, g_target_min, std::max(g_target_min, g_rate * 30 / 1000));
+        lo = std::min(lo, g_target_frames);
+        hi = std::max(hi, g_target_frames);
+    }
+} g_tuner;
+
+// The run's three latest chunks (after the first 10 s): the lead each needed (LeadTuner) and where
+// the time since the chunk before went, for the exit report
+struct LateChunks {
+    struct Late {
+        float need = 0, gap = 0, wait = 0, cat[prof::NCAT] = {};
+        uint64_t frame = 0;
+    } worst[3];
+    uint64_t wait_mark = 0;   // prof::g_wait_ticks at the chunk before
+    void add(float need, double gap) {
+        if (need > worst[2].need) {
+            Late l;
+            l.need = need, l.gap = (float)gap, l.frame = core().frame_count();
+            l.wait = (float)((prof::g_wait_ticks - wait_mark) * prof::ns_per_tick() / 1e6);
+            for (int c = 0; c < prof::NCAT; c++) l.cat[c] = (float)(prof::ns((prof::Cat)c) / 1e6);
+            int k = 2;
+            for (; k > 0 && need > worst[k - 1].need; k--) worst[k] = worst[k - 1];
+            worst[k] = l;
+        }
+    }
+} g_late;
+
 
 // With g_frame_paced, each picture is held until a steady time after its frame started: the slow
 // end of recent frames' emulation and drawing (as display sync's burst budget, pacing.cpp), so the
@@ -231,6 +294,7 @@ std::vector<float> g_out;   // audio_push's samples after the DC blocker and the
 double g_dc_x[2], g_dc_y[2];
 }
 void window_set_volume(double db) { g_volume = (float)std::pow(10.0, db / 20.0); }
+void window_set_audio_fixed(bool on) { g_audio_fixed = on; }
 void window_set_split(bool on) { g_split_wanted = on; }
 
 namespace {
@@ -635,7 +699,8 @@ bool window_open(const char *title, int scale, const std::string &bindings, int 
     if (g_audio) {
         SDL_AudioSpec dev{};
         if (SDL_GetAudioStreamDevice(g_audio)) SDL_GetAudioDeviceFormat(SDL_GetAudioStreamDevice(g_audio), &dev, &g_device_frames);
-        g_target_frames = g_rate * target_ms / 1000;
+        g_target_frames = g_target_min = g_rate * target_ms / 1000;
+        g_tuner.lo = g_tuner.hi = g_target_frames;
         // start with the target lead of silence: the first frames' window setup
         // would otherwise find an empty queue (and grow the target for nothing)
         std::vector<float> silence((size_t)g_target_frames * 2, 0.0f);
@@ -1085,6 +1150,8 @@ bool window_next(double vsec) {
         prof::g_wait_ticks += prof::ticks() - w0;
         poll();
         g_frame_start_ns = g_last_push_end = prof::now_ns();   // the wait isn't host work
+        g_queued_after = SDL_GetAudioStreamQueued(g_audio) / 8;
+        g_late.wait_mark = prof::g_wait_ticks;
         sound_lag(vsec);
         return !g_quit;
     }
@@ -1121,7 +1188,10 @@ struct AudioStats {
     uint64_t gap_hist[8] = {};   // work time per chunk: <1,<2,<4,<8,<16,<32,<64,>=64 ms
     uint64_t low_ns[prof::NCAT] = {};
 } g_ast;
-bool g_log_stalls = getenv("HK_LOG_STALLS") != nullptr;
+
+// g_device_short(_late) as the last chunk came: the breaks the sound came back from (the report's;
+// when the run ends, the device keeps pulling from an empty queue until the window closes)
+uint64_t g_breaks = 0, g_breaks_late = 0;
 
 // One chunk to the device, with pacing, underrun accounting and input polling.
 void push_chunk(const float *lr, int frames) {
@@ -1140,15 +1210,20 @@ void push_chunk(const float *lr, int frames) {
         int queued = SDL_GetAudioStreamQueued(g_audio) / 8;
         g_ast.chunks++;
         if (queued == 0) g_ast.empty++;
-        const uint64_t short_pulls = g_device_short.load(std::memory_order_relaxed);
-        if (queued == 0 || short_pulls != g_short_seen) {
-            // self-tuning: an underrun means the machine needs more lead on this host. Not while
-            // the game boots (its loads, the display's pacing settling), and not for a stall no
-            // lead would cover
-            if (t >= g_tune_from && gap < 100 && g_target_frames < g_rate * 30 / 1000)
-                g_target_frames += g_rate / 1000;   // +1 ms, up to 30 ms
-            g_short_seen = short_pulls;
+        // what was left of the queue as this chunk came (the device takes it in whole buffers, so
+        // estimated from the queue after the last chunk and the time since)
+        const double left = g_queued_after * 1000.0 / (g_rate * g_ratio) - gap;
+        const float need = (float)(g_target_frames * 1000.0 / g_rate - left + g_device_frames * 1000.0 / g_rate);
+        if (t >= g_tune_from) {
+            if (!g_audio_fixed && gap < 100) g_tuner.add(t, need);
+            g_late.add(need, gap);
         }
+        if (g_log_stalls)
+            if (const uint64_t s = g_device_short.load(std::memory_order_relaxed); s != g_breaks) {
+                fprintf(stderr, "break: frame %llu, %llu short pulls, %.2f ms since the last chunk, queue after it %.2f ms, "
+                                "target %.1f ms\n", (unsigned long long)core().frame_count(), (unsigned long long)(s - g_breaks),
+                        gap, g_queued_after * 1000.0 / g_rate, g_target_frames * 1000.0 / g_rate);
+            }
         if (queued < g_rate / 1000) {   // under 1 ms left: about to crackle
             g_ast.low++;
             for (int c = 0; c < prof::NCAT; c++) g_ast.low_ns[c] += (uint64_t)prof::ns((prof::Cat)c);
@@ -1159,6 +1234,8 @@ void push_chunk(const float *lr, int frames) {
             }
         }
     }
+    g_breaks = g_device_short.load(std::memory_order_relaxed);
+    g_breaks_late = g_device_short_late.load(std::memory_order_relaxed);
     SDL_PutAudioStreamData(g_audio, lr, frames * 8);
     // audio is the clock: wait while more than the target is queued, polling controls
     // (with display pacing, the display is the clock, and with a core whose sound comes once
@@ -1171,7 +1248,9 @@ void push_chunk(const float *lr, int frames) {
     prof::g_wait_ticks += prof::ticks() - w0;
     poll();
     prof::reset();
+    g_late.wait_mark = prof::g_wait_ticks;
     g_last_push_end = prof::now_ns();
+    g_queued_after = SDL_GetAudioStreamQueued(g_audio) / 8;
 }
 
 // The emulated sound hardware may deliver a few samples at a time (the SPU catching
@@ -1180,7 +1259,10 @@ void push_chunk(const float *lr, int frames) {
 std::vector<float> g_pending;
 
 void audio_push(const float *lr, int frames) {
-    if (!g_audio) return;
+    if (!g_audio) {   // before the window opens (Firebeat's skipped BIOS time): still the machine's sound
+        g_machine_frames += (uint64_t)frames;
+        return;
+    }
     {   // DC blocker, 1-pole high-pass at 5 Hz (y = x - x1 + R y1), then the volume, held to full scale
         const double r = 1.0 - 6.283185307179586 * 5.0 / g_rate;
         g_out.resize(2 * (size_t)frames);
@@ -1203,23 +1285,37 @@ void audio_push(const float *lr, int frames) {
 
 std::string audio_describe() {
     if (!g_audio) return "no audio device";
-    char b[2048];
+    char b[4096], tuned[160];
+    if (g_audio_fixed) snprintf(tuned, sizeof tuned, "fixed");
+    else snprintf(tuned, sizeof tuned, "self-tuning: %.1f to %.1f ms over the run", g_tuner.lo * 1000.0 / g_rate, g_tuner.hi * 1000.0 / g_rate);
     int n = snprintf(b, sizeof b,
-                     "audio: %s, device buffer %d frames (%.1f ms), queue target %d frames (%.1f ms, after self-tuning)\n"
+                     "audio: %s, device buffer %d frames (%.1f ms), queue target at the end %d frames (%.1f ms; %s)\n"
                      "audio: %llu chunks, %llu ran low (<1 ms queued), %llu found the queue empty; worst gap %.1f ms\n"
                      "audio: the device pulled %llu times, %llu of them more than was queued (a break in the sound), %llu after the first 10 s\n"
                      "audio: host work per chunk  <1:%llu <2:%llu <4:%llu <8:%llu <16:%llu <32:%llu <64:%llu >=64:%llu ms\n"
                      "audio: during low chunks:",
-                     g_audio_output.c_str(), g_device_frames, g_device_frames * 1000.0 / g_rate, g_target_frames, g_target_frames * 1000.0 / g_rate,
+                     g_audio_output.c_str(), g_device_frames, g_device_frames * 1000.0 / g_rate, g_target_frames, g_target_frames * 1000.0 / g_rate, tuned,
                      (unsigned long long)g_ast.chunks, (unsigned long long)g_ast.low, (unsigned long long)g_ast.empty,
-                     g_ast.worst_gap_ms, (unsigned long long)g_device_pulls.load(), (unsigned long long)g_device_short.load(),
-                     (unsigned long long)g_device_short_late.load(),
+                     g_ast.worst_gap_ms, (unsigned long long)g_device_pulls.load(), (unsigned long long)g_breaks,
+                     (unsigned long long)g_breaks_late,
                      (unsigned long long)g_ast.gap_hist[0], (unsigned long long)g_ast.gap_hist[1],
                      (unsigned long long)g_ast.gap_hist[2], (unsigned long long)g_ast.gap_hist[3],
                      (unsigned long long)g_ast.gap_hist[4], (unsigned long long)g_ast.gap_hist[5],
                      (unsigned long long)g_ast.gap_hist[6], (unsigned long long)g_ast.gap_hist[7]);
     for (int c = 0; c < prof::NCAT; c++)
         n += snprintf(b + n, sizeof b - n, " %s %.0f ms", prof::NAMES[c], g_ast.low_ns[c] / 1e6);
+    if (g_late.worst[0].need > 0) {
+        n += snprintf(b + n, sizeof b - n, "\naudio: the latest chunks (the lead each needed; the time since the chunk "
+                                           "before, the pacing's waits in it, and the host's work, present including waits):");
+        for (const LateChunks::Late &l : g_late.worst) {
+            if (l.need <= 0) break;
+            n += snprintf(b + n, sizeof b - n, "%s frame %llu %.1f ms (%.1f, waiting %.1f", &l == g_late.worst ? "" : ";",
+                          (unsigned long long)l.frame, l.need, l.gap, l.wait);
+            for (int c = 0; c < prof::NCAT; c++)
+                if (l.cat[c] >= 0.05f) n += snprintf(b + n, sizeof b - n, ", %s %.1f", prof::NAMES[c], l.cat[c]);
+            n += snprintf(b + n, sizeof b - n, ")");
+        }
+    }
 #ifdef _WIN32
     if (wasapi::active()) n += snprintf(b + n, sizeof b - n, "\n%s", wasapi::describe().c_str());
     if (asio::active()) n += snprintf(b + n, sizeof b - n, "\n%s", asio::describe().c_str());

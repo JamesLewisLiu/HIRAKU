@@ -243,7 +243,12 @@ SettingsDialog::SettingsDialog(QWidget *parent) : QDialog(parent) {
     m_audioMs->setRange(2, 30);
     m_audioMs->setSuffix(" ms");
     m_audioMs->setValue(s.value("audio/ms", 8).toInt());
-    m_audioMs->setToolTip("The audio queue the game starts with. It grows by itself after an underrun (docs/PLAY.md, Latency).");
+    m_audioMs->setToolTip("The sound's lead over the device, and its least: it grows by itself while frames keep "
+                          "coming late on this PC, and comes back down when they stop (docs/PLAY.md, Latency).");
+    m_audioFixed = new QCheckBox("Fixed: never more (a rare break in the sound instead)");
+    m_audioFixed->setChecked(s.value("audio/fixed", false).toBool());
+    m_audioFixed->setToolTip("The queue stays at this setting all game long: the least delay on every sound, and "
+                             "a click whenever a frame comes later than it covers.");
     m_volume = new QSpinBox;
     m_volume->setRange(-20, 20);
     m_volume->setSuffix(" dB");
@@ -251,7 +256,8 @@ SettingsDialog::SettingsDialog(QWidget *parent) : QDialog(parent) {
     m_volume->setToolTip("Louder or quieter than the machine makes it, for every game (6 dB: twice as loud). "
                          "Some games, Keyboardmania among them, are quiet next to others; as in MAME.");
     fa->addRow("Volume:", m_volume);
-    fa->addRow("Starting audio queue:", m_audioMs);
+    fa->addRow("Audio queue:", m_audioMs);
+    fa->addRow("", m_audioFixed);
     m_audioDevice = new QComboBox;
     const QString device = s.value("audio/device").toString();
 #ifdef _WIN32
@@ -297,7 +303,7 @@ SettingsDialog::SettingsDialog(QWidget *parent) : QDialog(parent) {
     m_audioBuffer->setCurrentIndex(std::max(0, m_audioBuffer->findData(s.value("audio/buffer", 0).toInt())));
     m_audioBuffer->setToolTip("The sound device's buffer (the sound server's quantum; on Windows in exclusive mode the device's own; with a Linux card alone, its "
                               "period: HIRAKU keeps four of them queued on the card, which USB cards need). Smaller is "
-                              "sooner, until it crackles; the queue above grows by itself after a crackle. Times at 48 kHz.");
+                              "sooner, until it crackles; the audio queue above tunes itself to it. Times at 48 kHz.");
     fa->addRow("Device buffer:", m_audioBuffer);
     m_fineSound = new QCheckBox("Sound every millisecond on System 573 and Twinkle (not MAME's)");
     m_fineSound->setChecked(s.value("audio/soundEveryMs", true).toBool());
@@ -516,6 +522,7 @@ void SettingsDialog::accept() {
     s.setValue("video/crtBeamGain", m_beamGain->value());
     s.setValue("video/picture", m_picture->currentData().toString());
     s.setValue("audio/ms", m_audioMs->value());
+    s.setValue("audio/fixed", m_audioFixed->isChecked());
     s.setValue("audio/volumeDb", m_volume->value());
     s.setValue("audio/soundEveryMs", m_fineSound->isChecked());
     s.setValue("audio/device", m_audioDevice->currentData().toString());

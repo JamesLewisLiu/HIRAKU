@@ -27,6 +27,8 @@ void window_set_audio_asio(const std::string &driver);
 // loses any steady offset (a DC blocker, as a cabinet's amplifier's coupling capacitors), so a chip
 // stuck at full scale can't push the rest into clipping. Neither changes --wav or --digest.
 void window_set_volume(double db);
+// Before window_open: the audio queue target stays where window_open set it (no self-tuning)
+void window_set_audio_fixed(bool on);
 // Before window_open: each monitor of a machine with several (Core::screens: Keyboardmania's
 // two) in a window of its own, for a monitor each; player 2's goes on the next display
 void window_set_split(bool on);

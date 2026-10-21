@@ -238,7 +238,9 @@ An UltimatePopnController (CrazyRedMachine's) needs none of this on Linux: its b
 
 On exit, the console prints the buffer it actually got.
 
-**The queue tunes itself.** It starts at `--audio-ms` (8) and grows by 1 ms after each underrun, up to 30 ms, so it settles at the smallest crackle-free lead this PC needs. An underrun is the sound device asking for more than is queued, counted where it happens (a core whose sound comes once per frame, as the Python games', runs dry between frames and is full again by the next one). The first 10 s don't count (the game's boot, its loads, the display's pacing settling), nor does a stall of 100 ms or more, which no lead would cover. The exit report prints where the queue settled, the device's breaks (all, and after the first 10 s) and the worst stall.
+**The queue tunes itself.** `--audio-ms` (8; launcher: Settings > Audio > Audio queue) is where it starts and the least it goes to. As each piece of sound comes, HIRAKU works out the lead it needed: how little was left of the queue, plus one device buffer (the device takes whole buffers, so less than one left breaks the sound). The queue is then kept at what covers all but the two worst seconds of the last minute, up to 30 ms. It grows while frames keep coming late on this PC and comes back down when they stop; a rare stall that no sensible lead covers breaks the sound once instead of adding to every keysound for the rest of the game. The first 10 s don't count (the game's boot, its loads, the display's pacing settling), nor does a stall of 100 ms or more. `--audio-fixed` (the Fixed box) keeps the queue at `--audio-ms` all game long: the least delay, and a click whenever a frame comes later than it covers.
+
+The exit report prints where the queue ended and its range over the run, the device's breaks (all, and after the first 10 s, counting only breaks the sound came back from, not the empty pulls after the game stops), and the run's three latest moments: the frame, the lead it needed and where the time went (`waiting` is the display pacing's own waits; `present` includes them). `HK_LOG_STALLS=1` prints each break, and each second's needed lead, as it happens.
 
 **Sound server settings:** the first reports came before the performance fixes in this release. Re-test with the defaults first. On PipeWire the server quantum adds its own latency; a smaller one (`PIPEWIRE_LATENCY=256/48000`) is worth trying, but only if the default is already clean.
 
@@ -256,7 +258,7 @@ instead. `--audio-buffer N` sets the device buffer in frames (default 128, 2.7 m
 through ALSA itself, keeping a ring of four periods full (at 64 frames, 256 frames or 5.3 ms): a
 USB card's driver starves on fewer and plays stale sound without reporting it, which made SDL's
 own ALSA output (two periods) unusable on USB cards below 384 frames. Smaller is sooner, until it
-crackles; the queue above still grows by itself after an underrun. The exit report's first
+crackles; the queue above still tunes itself to it. The exit report's first
 `audio:` line says what was opened, and with a card alone, an `audio: the card took ...` line
 says whether it kept pace (100 %) and how often it ran dry.
 
