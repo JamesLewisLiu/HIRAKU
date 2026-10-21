@@ -16,7 +16,10 @@
 #ifdef __linux__
 #include <sched.h>
 #include <sys/prctl.h>
+#include <fcntl.h>
+#include <sys/mman.h>
 #include <sys/resource.h>
+#include <sys/syscall.h>
 #include <unistd.h>
 #elif defined(_WIN32)
 #ifndef NOMINMAX
@@ -755,6 +758,79 @@ static void raise_threads_rtkit(int nice) {
     }
 }
 #endif
+
+void preload_media() {
+#ifdef __linux__
+    // the files the machine has open now (its media), and the binary itself (the recompiled code is
+    // most of it: a page first run is otherwise read from the disk then, a seek on a hard disk)
+    std::vector<std::string> files;
+    std::error_code ec;
+    if (auto exe = std::filesystem::canonical("/proc/self/exe", ec); !ec) files.push_back(exe.string());
+    for (const auto &e : std::filesystem::directory_iterator("/proc/self/fd", ec)) {
+        auto t = std::filesystem::read_symlink(e.path(), ec);
+        if (ec || t.empty() || t.string()[0] != '/' || t.string().rfind("/dev/", 0) == 0 || t.string().rfind("/proc/", 0) == 0 ||
+            t.string().rfind("/sys/", 0) == 0)
+            continue;
+        if (!std::filesystem::is_regular_file(t, ec) || std::find(files.begin(), files.end(), t.string()) != files.end()) continue;
+        files.push_back(t.string());
+    }
+    std::thread([files] {
+        setpriority(PRIO_PROCESS, (id_t)gettid(), 19);   // behind everything; the disk too: idle class (bfq, mq-deadline honour it)
+        syscall(SYS_ioprio_set, 1 /* IOPRIO_WHO_PROCESS */, (int)gettid(), 3 << 13 /* IOPRIO_CLASS_IDLE */);
+        constexpr uint64_t MOST = 1ull << 30;   // a file up to 1 GB (a disc's or a ROM's; not a hard disk's image)
+        // and locked there where RLIMIT_MEMLOCK allows (a PC short of memory otherwise takes the pages
+        // back: under memory pressure, a page of code run the first time in minutes was read again)
+        rlimit ml{};
+        getrlimit(RLIMIT_MEMLOCK, &ml);
+        uint64_t budget = ml.rlim_cur == RLIM_INFINITY ? UINT64_MAX : (uint64_t)ml.rlim_cur;
+        if (const long pages = sysconf(_SC_PHYS_PAGES); pages > 0) budget = std::min(budget, (uint64_t)pages * 4096 / 16);   // at most 1/16 of the RAM
+        const uint64_t t0 = prof::now_ns();
+        uint64_t total = 0, locked = 0;
+        int n = 0;
+        std::vector<char> buf(4 << 20);
+        for (size_t k = 0; k < files.size(); k++) {
+            const std::string &f = files[k];
+            std::error_code e2;
+            const uint64_t size = std::filesystem::file_size(f, e2);
+            if (e2 || size == 0 || size > MOST) continue;
+            bool done = false;
+            if (k == 0 && locked + size <= budget) {   // the binary: its own mappings (code and data), locked
+                if (FILE *maps = fopen("/proc/self/maps", "r")) {
+                    char line[4096];
+                    uint64_t got = 0;
+                    while (fgets(line, sizeof line, maps)) {
+                        unsigned long a, b;
+                        char perm[8];
+                        int at = 0;
+                        if (sscanf(line, "%lx-%lx %7s %*s %*s %*s %n", &a, &b, perm, &at) < 3 || !at) continue;
+                        std::string path = line + at;
+                        while (!path.empty() && (path.back() == '\n' || path.back() == ' ')) path.pop_back();
+                        if (path == f && perm[0] == 'r' && mlock((void *)a, b - a) == 0) got += b - a;
+                    }
+                    fclose(maps);
+                    if (got) locked += got, done = true;
+                }
+            } else if (k > 0 && locked + size <= budget) {   // a medium: mapped, locked, kept for the run
+                if (int fd = open(f.c_str(), O_RDONLY | O_CLOEXEC); fd >= 0) {
+                    void *p = mmap(nullptr, size, PROT_READ, MAP_SHARED, fd, 0);
+                    close(fd);
+                    if (p != MAP_FAILED && mlock(p, size) == 0) locked += size, done = true;
+                    else if (p != MAP_FAILED) munmap(p, size);
+                }
+            }
+            if (!done) {   // read into the page cache, at least
+                FILE *fp = fopen(f.c_str(), "rb");
+                if (!fp) continue;
+                while (fread(buf.data(), 1, buf.size(), fp) == buf.size()) {}
+                fclose(fp);
+            }
+            total += size, n++;
+        }
+        fprintf(stderr, "preload: %d files, %.0f MB (the game's binary and media up to 1 GB) in memory in %.1f s, %.0f MB of it "
+                        "locked there\n", n, total / 1e6, (prof::now_ns() - t0) / 1e9, locked / 1e6);
+    }).detach();
+#endif
+}
 
 std::string raise_priority() {
     if (std::string gm = gamemode_start(); !gm.empty()) fprintf(stderr, "%s\n", gm.c_str());

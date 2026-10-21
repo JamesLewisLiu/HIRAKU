@@ -35,6 +35,11 @@ void window_set_audio_fixed(bool on);
 // above normal. A line for the log. (A sound card of its own,
 // --audio-device, is written by a real-time thread regardless.)
 std::string raise_priority();
+// After the machine has opened its media: the game's binary and the files it has open, up to 1 GB
+// each, read into the page cache by a thread of the lowest CPU and disk priority, so that play
+// doesn't wait on the disk for a page of code run the first time or a disc's sector (on a hard disk,
+// a seek each: 10-60 ms). Linux
+void preload_media();
 // Before window_open: each monitor of a machine with several (Core::screens: Keyboardmania's
 // two) in a window of its own, for a monitor each; player 2's goes on the next display
 void window_set_split(bool on);

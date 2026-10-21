@@ -396,6 +396,9 @@ int main(int argc, char **argv) {
 #endif
     if (!machine.init(opt)) return 1;
 #ifdef HK_WITH_SDL
+    if (window_scale) host::preload_media();
+#endif
+#ifdef HK_WITH_SDL
     if (!lights_file.empty() || !lights_socket.empty()) host::lights_init(game, machine.family(), lights_file, lights_socket);
 #else
     if (!lights_file.empty() || !lights_socket.empty()) fprintf(stderr, "this build has no lights (needs SDL3)\n");
