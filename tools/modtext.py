@@ -11,7 +11,7 @@
         a mod.toml with a [[patch]] for every line given a fourth column, its translation: the
         text there replaced, in the game's Shift-JIS (Microsoft's, cp932: the games' ～ and
         － are its), padded with zeros. A translation longer than its room is refused (say
-        less, or move the text: a patch of the code that points to it).
+        less, or move the text: a patch of the code that points to it). A newline is \\n.
 
 The patches name the bytes they replace, so they wait for the program to be loaded and apply
 to that game only. Edit text.tsv in any editor that keeps tabs.
@@ -66,7 +66,7 @@ def main():
         lo, hi = (int(a[2], 0), int(a[3], 0)) if len(a) == 4 else (0, len(d))
         print("# address\troom\ttext\t(translation)")
         for at, room, text in strings(d, lo, min(hi, len(d)), everything):
-            print("0x%08x\t%d\t%s" % (at, room, text.replace("\t", " ")))
+            print("0x%08x\t%d\t%s" % (at, room, text.replace("\t", " ").replace("\n", "\\n")))
         return
     if len(a) != 3:
         sys.exit(__doc__)
@@ -80,14 +80,15 @@ def main():
         f = line.split("\t")
         if len(f) < 4 or not f[3]:
             continue
-        at, room, orig, new = int(f[0], 0), int(f[1]), f[2], f[3]
+        at, room = int(f[0], 0), int(f[1])
+        orig, new = f[2].replace("\\n", "\n"), f[3].replace("\\n", "\n")
         o, r = orig.encode("cp932"), new.encode("cp932")
         if len(r) + 1 > room:
             print("%s:%d: %r takes %d bytes, the room is %d" % (a[2], n, new, len(r) + 1, room), file=sys.stderr)
             bad += 1
             continue
         size = max(len(o), len(r)) + 1
-        print("[[patch]]                      # %s -> %s" % (orig, new))
+        print("[[patch]]                      # %s -> %s" % (f[2], f[3]))
         print("address = 0x%08x" % at)
         print('original = "%s"' % (o + bytes(size - len(o))).hex())
         print('replace = "%s"\n' % (r + bytes(size - len(r))).hex())

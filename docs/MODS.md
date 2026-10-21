@@ -93,7 +93,7 @@ pop'n music 11:
 - its pictures aren't in pop'n music 14's file system (`tools/popnfs.py` finds no directory on
   its disk) but in packs: the textures (u32 size and LZSS, as pop'n 14's, unencrypted, of the
   same "GC" pictures), then an index: u32 size, u16 1, u16 the textures' count, u32 0x1a0, their
-  names from 0x20 (32 bytes each: `/MS/0.GCZ`), then at 0x1a0 the sprites' names and, 4-aligned
+  names from 0x20 (32 bytes each: `/MS/0.GCZ`), then at 0x1a0 the sprites' names and, 8-aligned
   after them, a rectangle each (four u16s: x, y, w, h, the textures stacked 512 rows apart).
   `HK_PY_DISK_LOG` shows which packs a screen reads. The mode select's lettering is in `/CMN`
   (from 0x6378c00: STAGE, SELECT, DESIDE, SKIP_T, the courses' names CN_*) and `/MS` (0xd50b600:
@@ -118,6 +118,37 @@ pop'n music 11:
 - found by a marker mod: every Japanese string tagged `#n` and the game played through. Tag
   only what lies in the data (4-byte aligned, three or more Japanese characters, from
   0x200000): a few code bytes read as Japanese, and changing those hangs the boot.
+
+pop'n music 10 and 9 work the same way (the same comment line and the same OSUSUME quiz records
+and answer pool, many of the texts pop'n music 11's own, so its translations carry over by text):
+- pop'n music 10's song table is 0x48-byte records around 0x34fc70 (390, 349 comments), each
+  pointing to its genre, banner name and comment, then 0x10 further its `S_BANA_n`; its comment
+  line is pop'n music 11's (full-width cells, then a ticker);
+- pop'n music 9's is 0x60-byte records from 0x2351b0 (324, the last a stub), each starting with
+  a word, then `0x01fe0000 | index`, with the genre at +0x38, the banner name at +0x3c and the
+  comment at +0x40. Its newest songs' strings sit right after the table, away from the older
+  ones. Its comment line uses a narrower font: more letters fit;
+- both games' menus, captions and genre lists are pictures, in pop'n music 11's packs (the
+  same index and LZSS textures; pop'n music 9 names them its own way: `/CMN`, `/FONT`,
+  `/BANA_S`; pop'n music 10 `/256_CMN`, `/256_FONT`, `/256_S_BANA1`), so the same picture work
+  applies;
+- pop'n music 10's pictures, done for its English mod: the genre labels (`/256_S_BANA1` and 2,
+  122x40 pills, black lettering over the song's logo, faded and dithered; the song table holds
+  Konami's own English name for every genre), the interface's lettering (`/256_CMN` at the mode
+  select and `/256_CMN2` from boot: the scroll's instructions, the course names, the bottom bar's
+  captions), the caption strips (`/MS`, `/BS`: pop'n music 11's `/MS/1` strips, shown here) and
+  OSUSUME's (`/OS`). Some sprites are drawn with another palette than the pack's own (the bottom
+  bar's captions are): redrawn, a sprite keeps to the palette entries it already uses. The
+  palettes have no partly clear colours, so a lettering's outer edge is hard; anti-aliasing goes
+  between the ink, its edge and its outline. `HK_PY_DISK_LOG` finds a screen's textures: the run
+  of reads that ends at a pack's index;
+- pop'n music 9's packs index differently: u32 size, u16 version (0x200 and up), u16 the
+  textures' count, then four offsets; texture names from 0x18 and no sprite names: the sprites
+  are the numbered rectangles (four u16s each) after the first offset's u32 count. Its menus
+  (`/MS`, `/CMN`), genre labels (`/BANA_S`, 122x34 cells, cell 0 POPS, cell i+1 the song table's
+  record i) and OSUSUME (`/OS`, the question heading put together from big single characters)
+  are all 16-bit pictures.
+
 A translation mod's patches carry the Japanese they replace (that's how they know their game), so
 such a mod is Konami's text too: share it as a mod, never in HIRAKU's own folders.
 
