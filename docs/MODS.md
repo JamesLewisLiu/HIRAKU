@@ -406,6 +406,16 @@ animation, each with a white twin for the flash), the button select `image/butto
 select's EASY/HARD board `image/enjoy_ms`, the bottom bar's button guides `image/256_cmn` and the
 how-to-play `image/256_tutorial` (each phrase in pieces that animate on their own, most with a
 white `_BG` shape behind).
+Where the rectangles start after a `system.idx`'s sprite names varies from folder to folder
+(2 to 12 bytes on): the start that gives rectangles that fit the textures and don't overlap is
+the right one. pop'n music 14 keeps much of its text in the program's memory too (the program
+runs from 0x1700000): the song table is 700 records of 0x30 bytes from 0x193d7e8, each with its
+genre at +0x10 and its comment at +0x14 (the comment line is the CHALLENGE song select's ticker,
+which takes plain ASCII; ENJOY's song select has none); and around it the EXPERT courses'
+descriptions, the random-song menus, the norma explanations, the card and network messages, the
+characters' quips, names and items, and the story mode's narration (split across strings in the
+middle of words: the highest address is read first). Leave alone the name entry's tables and
+its list of refused words at the end of that area, which the game compares input with.
 
 ## Cheats
 
