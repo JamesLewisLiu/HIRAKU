@@ -90,6 +90,17 @@ pop'n music 11:
   newline is dropped); the answers use a narrow font, about 12 letters to a box, and a longer
   one spills past its edges, readable. The button select's two captions are text as well
   (0x2e2ed8, 0x2e2ef0);
+- its pictures aren't in pop'n music 14's file system (`tools/popnfs.py` finds no directory on
+  its disk) but in packs: the textures (u32 size and LZSS, as pop'n 14's, unencrypted, of the
+  same "GC" pictures), then an index: u32 size, u16 1, u16 the textures' count, u32 0x1a0, their
+  names from 0x20 (32 bytes each: `/MS/0.GCZ`), then at 0x1a0 the sprites' names and, 4-aligned
+  after them, a rectangle each (four u16s: x, y, w, h, the textures stacked 512 rows apart).
+  `HK_PY_DISK_LOG` shows which packs a screen reads. The mode select's lettering is in `/CMN`
+  (from 0x6378c00: STAGE, SELECT, DESIDE, SKIP_T, the courses' names CN_*) and `/MS` (0xd50b600:
+  the cards; 0xd533200: caption strips that pop'n 11 doesn't seem to show). A changed picture
+  goes back as `[[bytes]]` at its texture's place, packed no longer than the original: an
+  optimal-parse LZSS packs Konami's own textures about 2 % smaller, room enough for new
+  lettering;
 - found by a marker mod: every Japanese string tagged `#n` and the game played through. Tag
   only what lies in the data (4-byte aligned, three or more Japanese characters, from
   0x200000): a few code bytes read as Japanese, and changing those hangs the boot.
