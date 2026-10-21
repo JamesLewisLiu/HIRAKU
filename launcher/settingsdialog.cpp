@@ -302,7 +302,7 @@ SettingsDialog::SettingsDialog(QWidget *parent) : QDialog(parent) {
 #endif
     m_audioBuffer->setCurrentIndex(std::max(0, m_audioBuffer->findData(s.value("audio/buffer", 0).toInt())));
     m_audioBuffer->setToolTip("The sound device's buffer (the sound server's quantum; on Windows in exclusive mode the device's own; with a Linux card alone, its "
-                              "period: HIRAKU keeps four of them queued on the card, which USB cards need). Smaller is "
+                              "period: HIRAKU keeps two of them queued on the card, four on a USB card, which needs them). Smaller is "
                               "sooner, until it crackles; the audio queue above tunes itself to it. Times at 48 kHz.");
     fa->addRow("Device buffer:", m_audioBuffer);
     m_fineSound = new QCheckBox("Sound every millisecond on System 573 and Twinkle (not MAME's)");

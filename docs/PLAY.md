@@ -255,9 +255,10 @@ held it and didn't get it back after: no sound from it for the desktop until it 
 If the sound server still has the card open anyway, the game says so and uses the default
 instead. `--audio-buffer N` sets the device buffer in frames (default 128, 2.7 ms at
 48 kHz): the sound server's quantum, or the card's period. On a card of its own HIRAKU writes
-through ALSA itself, keeping a ring of four periods full (at 64 frames, 256 frames or 5.3 ms): a
-USB card's driver starves on fewer and plays stale sound without reporting it, which made SDL's
-own ALSA output (two periods) unusable on USB cards below 384 frames. Smaller is sooner, until it
+through ALSA itself, keeping a ring of periods full: two on an onboard card (at 64 frames, 128
+frames or 2.7 ms), four on a USB card (at 64, 5.3 ms): a USB card's driver starves on fewer and
+plays stale sound without reporting it, which made SDL's own ALSA output (two periods) unusable on
+USB cards below 384 frames. `HK_ALSA_PERIODS=N` sets the number. Smaller is sooner, until it
 crackles; the queue above still tunes itself to it. The exit report's first
 `audio:` line says what was opened, and with a card alone, an `audio: the card took ...` line
 says whether it kept pace (100 %) and how often it ran dry.

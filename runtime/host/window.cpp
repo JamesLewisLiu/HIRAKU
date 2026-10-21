@@ -8,6 +8,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstring>
+#include <filesystem>
 #include <string>
 #include <vector>
 #include <cstdlib>
@@ -339,10 +340,12 @@ bool open_second(const std::string &title, int scale, bool fullscreen) {
 
 namespace {
 // A sound card of our own (--audio-device): HIRAKU writes to it through ALSA itself, as aplay does,
-// a period at a time into a ring of four kept full. SDL's own ALSA output keeps a ring of two
-// periods, and a USB card's driver starves on that, playing stale sound without reporting it (a
-// USB S/PDIF adapter played 4 s of sound in 6.6 s at 64 frames x 2, in 4.1 s at 64 x 4; at 64 x 3
-// still 5.2). libasound is loaded at run time, as SDL loads it: no build dependency.
+// a period at a time into a ring kept full: of four periods on a USB card, two on others. SDL's own
+// ALSA output keeps a ring of two, and a USB card's driver starves on that, playing stale sound
+// without reporting it (a USB S/PDIF adapter played 4 s of sound in 6.6 s at 64 frames x 2, in
+// 4.1 s at 64 x 4; at 64 x 3 still 5.2); an onboard HDA card plays two in time, and each period
+// left out of the ring is that much sooner. libasound is loaded at run time, as SDL loads it: no
+// build dependency.
 namespace alsa {
 struct pcm;
 struct hw;
@@ -601,11 +604,16 @@ void run(SDL_AudioStream *stream) {
         }
     unsigned rate = (unsigned)src.freq;
     uframes p = (uframes)period, ring = 0;
+    // a USB card (its /proc/asound entry has a usbid), or one we can't tell: four periods
+    const int card = reserve::card_of(device);
+    const bool usb = card < 0 || std::filesystem::exists("/proc/asound/card" + std::to_string(card) + "/usbid");
+    int periods = usb ? 4 : 2;
+    if (const char *n = getenv("HK_ALSA_PERIODS"); n && atoi(n) >= 2) periods = atoi(n);
     if (e >= 0 && !fname) e = -22;
     if (e >= 0) e = api.set_channels(g_pcm, h, 2);
     if (e >= 0) e = api.set_rate_near(g_pcm, h, &rate, nullptr);
     if (e >= 0) e = api.set_period_near(g_pcm, h, &p, nullptr);
-    if (e >= 0) ring = 4 * p, e = api.set_buffer_near(g_pcm, h, &ring);
+    if (e >= 0) ring = (uframes)periods * p, e = api.set_buffer_near(g_pcm, h, &ring);
     if (e >= 0) e = api.hw_params(g_pcm, h);
     if (e >= 0) api.get_period(h, &p, nullptr), api.get_buffer(h, &ring);
     api.hw_free(h);
@@ -619,7 +627,8 @@ void run(SDL_AudioStream *stream) {
     dst.freq = (int)rate;
     stream = SDL_CreateAudioStream(&src, &dst);
     char b[160];
-    snprintf(b, sizeof b, "%s, %u Hz, ring %lu frames (%.1f ms) in periods of %lu", fname, rate, ring, ring * 1000.0 / rate, p);
+    snprintf(b, sizeof b, "%s, %u Hz, ring %lu frames (%.1f ms) in periods of %lu%s", fname, rate, ring, ring * 1000.0 / rate, p,
+             !usb ? "" : card >= 0 ? ", four for a USB card" : ", four (which card it is unknown)");
     what = b;
     // the ring full of silence, then the thread keeps it full
     std::vector<uint8_t> zero((size_t)ring * g_frame_bytes, 0);
@@ -809,7 +818,11 @@ struct StartToSound {
 } g_start_to_sound;
 
 // Display pacing: steer the sound's playback rate to the game's speed, keeping the queue at its
-// target where it is lowest (as the burst starts).
+// target where it is lowest (as the burst starts). The device's clock is not the system's (a card's
+// crystal: 0.1-0.3 % off): a part learnt over seconds (g_steer_i) takes that up, or the queue settles
+// short of its target by as much as it does (a card 0.25 % off: at half of it), and the lead tuner,
+// reading the shortfall as late frames, raised the target, and with it the shortfall, to 30 ms.
+double g_steer_i = 0;
 void steer_audio() {
     if (!g_audio) return;
     double q_ms = SDL_GetAudioStreamQueued(g_audio) / 8 * 1000.0 / (g_rate * g_ratio);
@@ -826,7 +839,13 @@ void steer_audio() {
         q_ms = target_ms;
     }
     double e = std::clamp((q_ms - target_ms) / target_ms, -1.0, 1.0);
-    double r = pacing::speed() * (1.0 + 0.005 * e);
+    g_steer_i = std::clamp(g_steer_i + 0.00002 * e, -0.005, 0.005);   // a frame at a time: 0.12 % a second at e = 1 (60 Hz)
+    double r = pacing::speed() * (1.0 + 0.005 * e + g_steer_i);
+    if (g_log_stalls) {
+        static uint64_t last = 0;
+        if (const uint64_t t = prof::now_ns(); t - last > 1'000'000'000ull)
+            last = t, fprintf(stderr, "steer: queue %.2f ms, target %.2f, ratio %.5f (learnt %+.4f %%)\n", q_ms, target_ms, r, g_steer_i * 100);
+    }
     if (std::fabs(r - g_ratio) > 1e-6) SDL_SetAudioStreamFrequencyRatio(g_audio, (float)r), g_ratio = r;
 }
 
