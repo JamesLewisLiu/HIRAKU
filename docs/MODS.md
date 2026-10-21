@@ -106,6 +106,15 @@ pop'n music 11:
   12-13), palette 0 clear, 193-207 the black outline, 210-255 the yellow body by coverage;
   trimmed to each glyph's ink it sets English proportionally. Few edge levels (four) pack
   smaller than smooth ones, which matters when a texture's room is tight;
+- the song select's genre list is pictures: `/256_S_BANA1` (index 0x25bd600, six 8-bit
+  textures from 0x2558e00, one strip of 104x26 cells cut every 512 rows, so some cells span two
+  textures). Cell S_BANA_n is the n-th record of the song table (POPS, the one before
+  S_BANA_000's, is 0). Each cell keeps its own colours (a body colour, a fringe at the strokes'
+  left and right ends), and the game recolours them as it draws, so redrawn lettering takes the
+  cell's own colours, every pixel the nearest of those the cell already uses;
+- OSUSUME's pictures (instructions board, station sign, answer strips L01-L05, the difficulty
+  arrow, "this one!", the curry levels) are `/OS` (index 0xf53e800, five 16-bit textures from
+  0xf4ad000);
 - found by a marker mod: every Japanese string tagged `#n` and the game played through. Tag
   only what lies in the data (4-byte aligned, three or more Japanese characters, from
   0x200000): a few code bytes read as Japanese, and changing those hangs the boot.
