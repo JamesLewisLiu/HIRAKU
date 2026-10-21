@@ -416,6 +416,11 @@ descriptions, the random-song menus, the norma explanations, the card and networ
 characters' quips, names and items, and the story mode's narration (split across strings in the
 middle of words: the highest address is read first). Leave alone the name entry's tables and
 its list of refused words at the end of that area, which the game compares input with.
+pop'n music 13 Carnival is laid out the same way, its program's data a little lower: the song
+table is 649 records of 0x38 bytes from 0x1941940 (genre and comment pointers at the start of
+each), most of its comments and messages the same text as pop'n music 14's, and its own set of
+characters' reactions. Its pictures are the same kind of folders (`modeselect`, `buttonselect`,
+`enjoy`, `256_card13`, `norma`, `hariai`, `expert_sel`, `result_e`), drawn in its circus style.
 
 ## Cheats
 
