@@ -27,8 +27,8 @@ The disk (worked out from the loader, boot record C, and the game's program):
     each character, least significant first; case doesn't count. The game opens disk0:image/...,
     the loader looks up image/... (with any "./" taken out).
   - a file is either encrypted (a 4-byte tag such as 13G0, its plain length as a u32, then
-    Blowfish in CBC mode, the key and IV picked by the tag from a table in the loader; the IV's
-    two words are stored little-endian) or not; the game decrypts when the tag is one it knows.
+    Blowfish in CBC mode, the key and IV picked by the tag from a table in the loader, the chain
+    started over from the IV every 0x19000 bytes; the IV's two words are stored little-endian) or not; the game decrypts when the tag is one it knows.
     What's left is, for pictures and the rest the game reads through its loader (FUN_01730418),
     a u32 unpacked size and an LZSS stream (4 KB window from 0xfee, flag bits LSB first, 1 = a
     literal, 0 = 2 bytes: offset low 8 | (high nibble << 4), length = low nibble + 3); a
@@ -148,6 +148,9 @@ class Blowfish:
         return bytes(out)
 
 
+CHUNK = 0x19000   # the encryption's CBC chain starts over from the IV every this many bytes
+
+
 class Disk:
     def __init__(self, path):
         self.img = pythonfs.open_image(path)
@@ -198,12 +201,15 @@ class Disk:
         key, iv = keys[b[:4]]
         n = struct.unpack_from("<I", b, 4)[0]
         body = b[8:8 + (len(b) - 8) // 8 * 8]
+        # CBC restarted from the IV every CHUNK bytes (the game decrypts in pieces of that size)
         try:
             from cryptography.hazmat.decrepit.ciphers.algorithms import Blowfish as BF
             from cryptography.hazmat.primitives.ciphers import Cipher, modes
-            plain = Cipher(BF(key), modes.CBC(iv)).decryptor().update(body)
+            dec = lambda part: Cipher(BF(key), modes.CBC(iv)).decryptor().update(part)
         except ImportError:
-            plain = Blowfish(key, *self._bf).decrypt_cbc(body, iv)
+            bf = Blowfish(key, *self._bf)
+            dec = lambda part: bf.decrypt_cbc(part, iv)
+        plain = b"".join(dec(body[at:at + CHUNK]) for at in range(0, len(body), CHUNK))
         return (plain if whole else plain[:n]), True
 
     def form(self, e, head=None):

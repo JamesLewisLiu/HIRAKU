@@ -398,6 +398,15 @@ the slot's number. `tools/popnsong.py IMAGE list` lists the 749 songs' slots and
 `tools/popnsong.py IMAGE extract SLOT OUT` writes a slot's keysounds, charts, music and preview
 (PLAN.md section 20). Mods can't add or change songs yet.
 
+Its menus' pictures are lettered sprites: each folder's `system.idx` names them and gives their
+rectangles as pop'n music 11's pack index does (without its leading size word; the rectangles
+8-byte aligned), so a translation edits the PNGs at those rectangles. The mode select is
+`image/mode_sel` (cards, captions, the blue/red button lines, cut into pieces for their exit
+animation, each with a white twin for the flash), the button select `image/button_sel`, the song
+select's EASY/HARD board `image/enjoy_ms`, the bottom bar's button guides `image/256_cmn` and the
+how-to-play `image/256_tutorial` (each phrase in pieces that animate on their own, most with a
+white `_BG` shape behind).
+
 ## Cheats
 
 `tools/modimport.py GAME FILE OUTDIR` turns a PCSX2 patch file (`.pnach`) or a MAME cheat file

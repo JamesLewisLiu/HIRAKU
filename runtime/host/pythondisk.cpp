@@ -349,7 +349,8 @@ const Files::Keys &Files::keys() const {
     return *keys_;
 }
 
-// Blowfish in CBC mode, the key's tables made from the loader's starting ones; every whole block
+// Blowfish in CBC mode, the key's tables made from the loader's starting ones, the chain started
+// over from the IV every 0x19000 bytes; every whole block
 std::vector<uint8_t> Files::decrypt(const std::vector<uint8_t> &b) const {
     const Keys &k = keys();
     const std::string tag((const char *)b.data(), 4);
@@ -377,6 +378,8 @@ std::vector<uint8_t> Files::decrypt(const std::vector<uint8_t> &b) const {
     uint32_t pl = be((const uint8_t *)kv->second.data()), pr = be((const uint8_t *)kv->second.data() + 4);
     std::vector<uint8_t> out;
     for (size_t at = 8; at + 8 <= b.size(); at += 8) {
+        if ((at - 8) % 0x19000 == 0)   // the chain starts over from the IV every 0x19000 bytes
+            pl = be((const uint8_t *)kv->second.data()), pr = be((const uint8_t *)kv->second.data() + 4);
         const uint32_t cl = be(&b[at]), cr = be(&b[at + 4]);
         uint32_t x = cl, y = cr;
         for (int i = 17; i > 1; i--) x ^= P[i], y ^= F(x), std::swap(x, y);
