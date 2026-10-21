@@ -81,7 +81,18 @@ pop'n music 11:
   the line); it types itself out, then scrolls as a ticker, so a comment may be as long as its
   room: twice as many letters as the Japanese it replaces;
 - the genre list beside it, the song titles and the title bar during play are pictures; the
-  table's genre names aren't what the list shows.
+  table's genre names aren't what the list shows;
+- OSUSUME mode's quiz is text too: 359 records of 0x1ec bytes from 0x2e3138 (the last two,
+  from 0x30df58, are its closing questions), each a question in 0x80 bytes, a u32 answer count
+  and five answers of 0x40 bytes followed by 8 bytes of data; then a pool of 149 answers 0x42
+  bytes apart from 0x30e330 (one question draws from it; its own text is at 0x2cbaf0). The
+  question is one line of wide cells, about 27 letters, with no wrapping or scrolling (a
+  newline is dropped); the answers use a narrow font, about 12 letters to a box, and a longer
+  one spills past its edges, readable. The button select's two captions are text as well
+  (0x2e2ed8, 0x2e2ef0);
+- found by a marker mod: every Japanese string tagged `#n` and the game played through. Tag
+  only what lies in the data (4-byte aligned, three or more Japanese characters, from
+  0x200000): a few code bytes read as Japanese, and changing those hangs the boot.
 A translation mod's patches carry the Japanese they replace (that's how they know their game), so
 such a mod is Konami's text too: share it as a mod, never in HIRAKU's own folders.
 
