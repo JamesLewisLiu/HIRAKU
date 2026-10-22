@@ -402,9 +402,27 @@ typedef HRESULT(WINAPI *CreateDevice_t)(IDirect3D9 *, UINT, D3DDEVTYPE, HWND, DW
                                         IDirect3DDevice9 **);
 typedef HRESULT(WINAPI *Reset_t)(IDirect3DDevice9 *, D3DPRESENT_PARAMETERS *);
 typedef HRESULT(WINAPI *Present_t)(IDirect3DDevice9 *, const RECT *, const RECT *, HWND, const RGNDATA *);
+typedef HRESULT(WINAPI *CreateTexture_t)(IDirect3DDevice9 *, UINT, UINT, UINT, DWORD, D3DFORMAT, D3DPOOL, IDirect3DTexture9 **,
+                                         HANDLE *);
 static CreateDevice_t g_CreateDevice;
 static Reset_t g_Reset;
 static Present_t g_Present;
+static CreateTexture_t g_CreateTexture;
+
+// A texture the game draws into in a 16-bit format Wine's OpenGL can't render to (pop'n 16:
+// A4R4G4B4, its sprites' texture group never made and the game faulting at start-up): made as
+// A8R8G8B8 instead (the game draws into it, so its own bytes' layout isn't needed)
+static HRESULT WINAPI my_CreateTexture(IDirect3DDevice9 *d, UINT w, UINT h, UINT levels, DWORD usage, D3DFORMAT fmt, D3DPOOL pool,
+                                       IDirect3DTexture9 **tex, HANDLE *shared) {
+    HRESULT r = g_CreateTexture(d, w, h, levels, usage, fmt, pool, tex, shared);
+    if (FAILED(r) && (usage & D3DUSAGE_RENDERTARGET) &&
+        (fmt == D3DFMT_A4R4G4B4 || fmt == D3DFMT_X4R4G4B4 || fmt == D3DFMT_A1R5G5B5 || fmt == D3DFMT_X1R5G5B5)) {
+        static int said;
+        if (!said++) hk_log("hiraku-pc: a render target in format %d refused: made as A8R8G8B8", (int)fmt);
+        r = g_CreateTexture(d, w, h, levels, usage, D3DFMT_A8R8G8B8, pool, tex, shared);
+    }
+    return r;
+}
 
 static void *patch_slot(void **slot, void *to) {
     DWORD old;
@@ -625,6 +643,8 @@ static HRESULT WINAPI my_CreateDevice(IDirect3D9 *self, UINT adapter, D3DDEVTYPE
         if (was) g_Reset = (Reset_t)was;
         was = patch_slot(&vt[17], (void *)my_Present);
         if (was) g_Present = (Present_t)was;
+        was = patch_slot(&vt[23], (void *)my_CreateTexture);
+        if (was) g_CreateTexture = (CreateTexture_t)was;
     } else {
         hk_log("hiraku-pc: CreateDevice failed (%#lx)", (unsigned long)r);
     }
