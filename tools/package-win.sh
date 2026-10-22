@@ -42,6 +42,14 @@ if [ -n "${HK_PYTHON_WIN:-}" ]; then
   cp "$HK_PYTHON_WIN"/hiraku-python.exe "$d/bin/"
   cp -r "$HK_PYTHON_WIN"/resources "$d/bin/resources"
 fi
+# the Visual C++ runtime (MSVCP140.dll, VCRUNTIME140.dll...) isn't part of Windows: whatever in
+# bin\ links it must find it in bin\ (Wine has its own copy, so a run under Wine can't tell)
+objdump=$(command -v llvm-objdump || command -v x86_64-w64-mingw32-objdump)
+for f in "$d"/bin/*.exe "$d"/bin/*.dll; do
+  for n in $("$objdump" -p "$f" | awk '/DLL Name:/ {print $3}' | grep -iE '^(msvcp|vcruntime|concrt)'); do
+    ls "$d/bin" | grep -qix "$n" || { echo "package-win: $(basename "$f") needs $n, which isn't in bin" >&2; exit 1; }
+  done
+done
 # Python for tools/ingest.py and unlock.py: python.org's embeddable one (tools/win-deps.sh), so
 # adding a game needs nothing installed (the launcher looks for hiraku\python\python.exe first)
 py=$root/out/win-deps/python

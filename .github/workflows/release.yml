@@ -109,6 +109,14 @@ jobs:
             -DENABLE_QT_UI=OFF -DENABLE_TESTS=OFF -DUSE_LINKED_FFMPEG=OFF -DDISABLE_ADVANCE_SIMD=ON ^
             "-DHIRAKU_DIR=%cd%\hiraku" || exit /b
           cmake --build reliquary\build --target hiraku-python || exit /b
+          rem the Visual C++ runtime it links (MSVCP140, VCRUNTIME140, VCRUNTIME140_1), the version its
+          rem headers are: not part of Windows itself, and an older one in System32 crashes it (v0.3.0,
+          rem built with 14.51, in MSVCP140.dll 14.29 as spice2x's installs it: from 14.40 on, the
+          rem STL's std::mutex needs a runtime as new). Wine has its own, so a run under Wine can't tell
+          for /d %%d in ("%VCToolsRedistDir%x64\Microsoft.VC14*.CRT") do set "CRT=%%d"
+          if not defined CRT exit /b 1
+          mkdir crt
+          for %%f in (msvcp140.dll vcruntime140.dll vcruntime140_1.dll) do copy /y "%CRT%\%%f" crt\ || exit /b
       # what the package takes: hiraku-python.exe, the DLLs it loads, PCSX2's resources\
       - name: Assemble
         shell: bash
@@ -118,6 +126,7 @@ jobs:
           cp reliquary/build/hiraku-python/hiraku-python.exe python-win/
           cp reliquary/deps/bin/*.dll python-win/
           cp SDL3-3.4.18/lib/x64/SDL3.dll python-win/
+          cp crt/*.dll python-win/
           cp -r reliquary/bin/resources python-win/resources
       - uses: actions/upload-artifact@v7
         with:
