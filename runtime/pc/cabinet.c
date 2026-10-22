@@ -480,6 +480,8 @@ static HMODULE g_self;
 static void *hook_for(const char *dll, const char *fn) {
     if (!_stricmp(dll, "ws2_32.dll") || !_stricmp(dll, "wsock32.dll")) return hk_net_hook(fn);   // net.c
     if (!_stricmp(dll, "iphlpapi.dll")) return hk_net_card_hook(fn);
+    if (!_stricmp(dll, "libsocket.dll") || !_stricmp(dll, "libavs-win32.dll")) return hk_vsock_hook(fn);   // vsock.c
+    if (!_stricmp(dll, "libcomm.dll")) return hk_comm_hook(fn);
     static const struct { const char *dll, *fn; void *to; } hooks[] = {
         {"kernel32.dll", "CreateFileA", (void *)my_CreateFileA},
         {"kernel32.dll", "CreateDirectoryA", (void *)my_CreateDirectoryA},

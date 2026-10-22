@@ -699,6 +699,61 @@ reader with its own 10-key; the PIN is checked by the server.
 - **Not done yet:** `expire`, `bindcard`, `cardreis.altercard` (`playerdata conv`: below, "One
   card for all").
 
+**pop'n music 15 ADVENTURE** (`G15:J:A:A:2007091800`, a Windows PC: `popn15.exe` through hiraku-pc,
+PLAN.md §30; checked in HIRAKU under Wine: a new player registered and a credit saved, the card
+read back, a pop'n 14 player carried over, an expert course ranked, two cabinets in NET TAISEN). Addresses are `popn15.exe`'s. Its network library is
+`libavs-win32` (ea3), which names every field it misses on its debug output (`W:psmap`, `apply:
+cannot get url`).
+- **Start-up:** services must also list `pcbevent` and a `keepalive` (router, center and server it
+  pings); `facility.get` must give every field the library imports, with types (`<portfw><globalip
+  __type="ip4">`, `<globalport __type="u16">`, `<public><flag __type="u8">`, `<share>...`), or
+  5-2009. Then `pcbevent put`, `package list`, `G15 game_get`. hiraku-pc gives the game a network
+  card of its own and answers its pings (runtime/pc/net.c).
+- **The module** is the game's model, its methods `type_method` (a table at `0x568700`: builder and
+  parser each): `game_get`, `game_active`, `playerdata_get/new/set/score/conv/expire`,
+  `rank_exp-entry`, `rank_exp-get`. Every `<b>` answer has `f_compress="1"` (the LZSS of pop'n 13,
+  `0x4b7a10`), required by the parser even for small data.
+- **`G15 game_get`** (`0x49dcb0`, into `0xc4d3a8`): `phase` (0-2, the cabinet's own unless the
+  server's is higher, `0x427130`), `net_event` (0-3, NET TAISEN), `ir_ranking` (`0x427110`: 1
+  INTERNET RANKING, the expert courses' boards and the stage scores to beat; 2 the ADVENTURE map,
+  "kojin_map", playerdata's `private`; 4 and 5 other ranking periods), `shop_event_ranking`,
+  `message`, and NET TAISEN's `local_matching_enable matching_sec ojama_gauge_rate cpu_level`
+  (10) `downlimit_win downlimit_class job_exp_rate cpu_higher_release job_sp_rate` (26), the rates
+  in percent (below, "NET TAISEN"). HIRAKU answers `ir_ranking` 2 and `net_event` 1, or the data
+  folder's `ir_ranking-G15`, `net_event-G15`, `phase-G15`.
+- **A card's life** (the card flow `0x485e80`-`0x488d60`): `cardmng.inquire` (`binded`: the card
+  has a pop'n 15 player) and `authpass`, `playerdata_expire`; a card with no player then gets
+  `inquire model="F14:J:A:A"` and, if `binded` 1 and `expired` 0 there, `playerdata_get
+  model="F14"`: pop'n 14's record (0xdb8). The game shows it ("このデータを引き継ぎますか?", the
+  medals counted from both records' song words by the same index, `0x482d70`) and on YES sends
+  `playerdata_conv ref_id card_id name`, whose answer is the new pop'n 15 record; else the name
+  entry and `playerdata_new ref_id card_id name ea_passwd`. `bindmodel`, then `inquire update="1"`
+  and `game_active`. Status 109 to a get: no player.
+- **The record**, 0xb38 bytes (get, new and conv answers; decoded at `0x49e6c0`, loaded and
+  bounded at `0x4819f0` into `0x238bc08`): 0x00 the name (Shift-JIS, 13), 0x1a the mode, 0x1b the
+  buttons (-1 none), 0x1c the option (32 bits), 0x20 the character (0xffff none), 0x22 the last song
+  chosen, 0x24 its chart, 0x25 its category (0xffff/0xff none), 0x27 `skin_flag`, 0x28 `skin_count`
+  (7), 0x30 the 20 most played songs (a music select folder; 0xffff none), 0x58 a 16-bit word per
+  song (763): pop'n 12's two-bit marks per chart in the low byte, played flags 0x100-0x4000;
+  0x650 and 0x790 per expert course (20) its four stages' scores, the player's best and the scores
+  to beat (`0x4266ce`); 0x8d0 a word per expert course (`expert_data`); 0x8f8 the ADVENTURE map
+  (`count record_time record_count`, `mapinfo` 8, `event` 32 bytes at 0x924, `point` 0x944,
+  `element` 0x946, `position` 0x947, as `0x476940` loads it); 0x948 the NET TAISEN credits played
+  (not sent: the server counts them; the first ones explain more, `0x459e2f`); 0x94a-0xb37 NET
+  TAISEN (as pop'n 14's fields, other places: below).
+- **`G15 playerdata_set`** sends what the credit changed (`0x49ef10`, from the block `0x5dab20` the
+  game fills from the record and the credit): `option chara_num mode_num music_num sheet_num
+  category_num botton_num skin_flag skin_count expert_course_num expert_data`, a `<music music_num
+  sheet_num data score/>` per song played (`data` the song's new word), `<private .../>` (the map)
+  and `<netvs .../>`. HIRAKU writes each into the record where the loader reads it, keeps each
+  chart's best score (`pscore-G15-REF`) and the plays per song (`pplays-G15-REF`, for 0x30).
+- **`G15 playerdata_score`** `music_num sheet_num s_challenge`: `<G15 score/>`, the chart's best
+  (shared with pop'n 12-14 as theirs are).
+- **`G15 rank_exp-entry`** `ref_id course_num chara_num option stage_score cool great good bad combo
+  shop_name pref`: `update entry rank hi_score hi_cool`, as pop'n 14's. **`rank_exp-get`** (no
+  attributes): the boards, 22 courses of 0x1e4 bytes as pop'n 14's (`0x427e40`, 0x2998 bytes at
+  `0xc4ead8`), no shop board, LZSS'd whole.
+
 ## One card for all (pop'n music 9–14)
 
 Each pop'n carries a player over from the one before: it reads the older game's card, asks the
@@ -917,6 +972,56 @@ different PCs meet online through `hiraku-eamuse`'s relay (below, "Online").
 | pop'n 14 (0xdb8) | music_num 0xbdc (2), sheet_num 0xbde, category_num 0xbdf, badge 0xbe0, caption 0xbe1, job_num 0xbe2, class 0xbe3, class_skill 0xbe4, class_start 0xbe5, class_upgrade 0xbe6, record 0xbe7, member_name 0xbfb (×3, 13), member_pref 0xc70 (×3), ojama_condition 0xc79 (×51), job_var 0xd66 (2), job_exp 0xd68 (×9, 4), set_ojama 0xda5 (×3), get_ojama_hi 0xda8 (4), get_ojama_lo 0xdac (4), item_hi 0xdb0 (4), item_lo 0xdb4 (4) |
 
   pop'n 13 and 14 also send `reset`, which isn't in the record (the loaders don't read it back).
+
+### pop'n music 15 (a PC game)
+
+pop'n 15's NET TAISEN is the same design on Windows: `globbyc.dll` (the lobby) and `libcomm.dll`
+(the cabinets' messages), both on `libsocket.dll`, a thin layer over Winsock (32 sockets by number,
+four-byte addresses and a port, blocking or not with a timeout, no select). Checked in HIRAKU with
+two cabinets (hiraku-pc, Wine) on one hiraku-eamuse: the second finds the first in the lobby, both
+show MATCHING with each other and a CPU, and they battle.
+
+- **The mode:** `G15 game_get net_event` 1-3 offers NET対戦 on the mode wheel with a card in
+  (`0x448d23`); the number goes into the lobby entry. HIRAKU's server answers 1 (the data folder's
+  `net_event-G15` to change it, 0 for none). Then ROOM SELECT, JOB SELECT, music select, and
+  MATCHING.
+- **The lobby** (globbyc): `globby://host:port/` from services, as pop'n 12-14; the same packets
+  (`lob0`, the length, a CRC-16/X-25 with its own field 0, the sequence number, the kind), but an
+  answer's header byte 11 counts its entries, which follow with no zero entry. Kinds: 0 register
+  (an entry's body as pop'n 12's: rooms, address, port, seconds, the cabinet's own address and
+  port), 1 read (a room mask: the entries), 2 erase (address, port), and 3 **participate**: the
+  entry, answered with the others already in its rooms. With none, the game stays entered as the
+  host for `matching_sec` seconds; with some, it asks one to join (`0x4a3440`). HIRAKU's lobby keeps
+  pop'n 15's apart from pop'n 12-14's (port 5741, `Lobby::PC_PORT`).
+- **The cabinets' messages** (libcomm, `CommInit("G15")`): UDP, from port 30000 to the other's 5700,
+  each `"G15"`, a type, the length, a CRC, the sender's address and ports, a sequence number, the
+  data: type 6 asks to join, 7 acknowledges, 5 the players' data, 4 every frame or so in the battle;
+  type 1 a broadcast at start-up for cabinets of the same shop (port 2096). The game's own address
+  is `avs_net_ctrl(0)` (the network card), its address for the world `ea3_query(8)` (facility's
+  portfw `globalip`), and `matching_sec` must be more than 0 or a cabinet leaves the lobby at once.
+- **game_get's battle settings:** `local_matching_enable`, `matching_sec` (HIRAKU: 1, 30),
+  `ojama_gauge_rate` and `cpu_level` (×10) in percent of the game's own (100), `downlimit_win` and
+  `downlimit_class` (the wins that keep a class once reached, and how far below it a player may
+  fall, `0x48e5a2`: 0 and 0 keep every player at their best class), and `job_sp_rate` (×26: the
+  jobs' special abilities, chances in percent and amounts, `0x42d0a0`). **Konami's values for
+  these aren't known**; HIRAKU's are guesses that keep the game as it plays alone (100 %), and 0
+  for `job_sp_rate` (the specials off). Each can be set in the data folder (`NAME-G15`, its value
+  as the attribute's text). `job_exp_rate`, `cpu_higher_release` and `shop_event_ranking` are read
+  but never used.
+- **In HIRAKU** (`runtime/pc/vsock.c`): libsocket's calls are served by the DLL over HIRAKU's relay
+  (as for pop'n 12-14 online): one TCP connection, an address 10.57.x.y for the cabinet (given to
+  the game as its card's and its portfw address); datagrams to the lobby go as they are, to another
+  cabinet with a one-byte kind, and TCP connections (the library's `CommTcpHost`/`CommTcpClient`;
+  not seen used so far) as open/opened/data/closed messages. Alone (no `-url`), hiraku-pc runs a
+  relay and lobby of its own: the game finds nobody and battles CPUs.
+- **After the credit:** `<netvs>` as pop'n 14's fields, the record's places from `0x4a4dc0`; and
+  on `playerdata_set` itself `matching` (how many players the match had, `0x4a43b0`) and
+  `room_num`, statistics the record doesn't keep. Checked: two cabinets' credits saved, each with
+  the match's three members (the CPU's name too), class skill, job experience and record:
+
+| game | field: record offset (× count, bytes each) |
+|---|---|
+| pop'n 15 (0xb38) | music_num 0x94a (2), sheet_num 0x94c, category_num 0x94d, badge 0x94e, caption 0x94f, job_num 0x950, class 0x951, class_skill 0x952, class_start 0x953, class_upgrade 0x954, record 0x955, member_name 0x969 (×3, 13), member_pref 0x9de (×3), ojama_condition 0x9e7 (×51), job_var 0xad6 (2), job_exp 0xad8 (×13, 4), set_ojama 0xb25 (×3), get_ojama_hi 0xb28 (4), get_ojama_lo 0xb2c (4), item_hi 0xb30 (4), item_lo 0xb34 (4) |
 
 ## GuitarFreaks and DrumMania V (Konami Python 2)
 

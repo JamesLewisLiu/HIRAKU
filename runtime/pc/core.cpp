@@ -59,6 +59,8 @@ extern char **environ;
 #include "host/popnio.h"
 #include "pc/link.h"
 #include "python/easerver.h"
+#include "python/lobby.h"
+#include "python/netrelay.h"
 #include "shell/cabinet.h"
 #include "shell/core.h"
 #include "shell/eaoptions.h"
@@ -425,6 +427,8 @@ private:
             const sockaddr_in *in = (const sockaddr_in *)res->ai_addr;
             inet_ntop(AF_INET, &in->sin_addr, ip, sizeof ip);
             set_env("HK_PC_EA", std::string(ip) + ":" + std::to_string(ntohs(in->sin_port)));
+            // NET TAISEN: hiraku-eamuse's relay, at its lobby's port (runtime/pc/vsock.c)
+            set_env("HK_PC_RELAY", std::string(ip) + ":" + std::to_string(hk::py::Lobby::PORT));
             freeaddrinfo(res);
             printf("e-AMUSEMENT: online, %s\n", ea_.http_url().c_str());
             return true;
@@ -448,6 +452,9 @@ private:
             return false;
         }
         set_env("HK_PC_EA", "127.0.0.1:" + std::to_string(ntohs(sa.sin_port)));
+        // NET TAISEN's lobby and relay, this cabinet's own (with nobody else there, the game
+        // battles its CPUs)
+        if (relay_.start("127.0.0.1", 0)) set_env("HK_PC_RELAY", "127.0.0.1:" + std::to_string(relay_.port()));
         printf("e-AMUSEMENT: HIRAKU's server, data in %s\n", dir.c_str());
         std::thread([this] { serve(); }).detach();
         return true;
@@ -620,6 +627,7 @@ private:
     std::string game_, family_ = "pcpopn", exe_, program_, save_, run_prog_, run_e_, link_path_, wine_ = "wine";
     hk::EaOptions ea_;
     std::unique_ptr<hk::py::EamuseServer> server_;
+    hk::py::RelayServer relay_;
     int listen_ = -1;
     hk_pc_link *link_ = nullptr;
     FrameHook frame_hook_;

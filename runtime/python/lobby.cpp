@@ -40,7 +40,7 @@ std::vector<uint8_t> Lobby::handle(const uint8_t *d, size_t n, double now) {
     auto same = [](const Entry &e, const uint8_t *addr, uint16_t port) { return std::memcmp(e.addr, addr, 4) == 0 && e.port == port; };
 
     std::vector<uint8_t> out(HEADER, 0);
-    if (kind == 0 && n >= 0x28) {   // entry: kept for its seconds, again on each entry
+    auto enter = [&] {   // an entry, kept for its seconds, again on each entry
         Entry e;
         e.rooms = be32(body);
         std::memcpy(e.addr, body + 4, 4);
@@ -49,10 +49,12 @@ std::vector<uint8_t> Lobby::handle(const uint8_t *d, size_t n, double now) {
         std::memcpy(e.own, body + 12, 16);
         std::erase_if(entries_, [&](const Entry &o) { return same(o, e.addr, e.port); });
         entries_.push_back(e);
-    } else if (kind == 1 && n >= 0x10) {   // list: the cabinets in a room of the mask, then a zero entry
-        const uint32_t rooms = be32(body);
+    };
+    // the cabinets in a room of the mask, then a zero entry (pop'n 15: counted in the header's byte
+    // 11 instead), but `except`
+    auto list = [&](uint32_t rooms, const uint8_t *except) {
         for (const Entry &e : entries_) {
-            if (!(e.rooms & rooms)) continue;
+            if (!(e.rooms & rooms) || (except && same(e, except, be16(except + 4)))) continue;
             if (out.size() + 2 * ENTRY > MAX_ANSWER) break;
             uint8_t r[ENTRY] = {};
             r[0] = (uint8_t)(e.rooms >> 24); r[1] = (uint8_t)(e.rooms >> 16); r[2] = (uint8_t)(e.rooms >> 8); r[3] = (uint8_t)e.rooms;
@@ -60,10 +62,19 @@ std::vector<uint8_t> Lobby::handle(const uint8_t *d, size_t n, double now) {
             put16(r + 8, e.port);
             std::memcpy(r + 10, e.own, 16);
             out.insert(out.end(), r, r + ENTRY);
+            if (pc_) out[11]++;
         }
-        out.resize(out.size() + ENTRY, 0);
+        if (!pc_) out.resize(out.size() + ENTRY, 0);
+    };
+    if (kind == 0 && n >= 0x28) {   // entry
+        enter();
+    } else if (kind == 1 && n >= 0x10) {   // list
+        list(be32(body), nullptr);
     } else if (kind == 2 && n >= 0x14) {   // leave
         std::erase_if(entries_, [&](const Entry &e) { return same(e, body, be16(body + 4)); });
+    } else if (pc_ && kind == 3 && n >= 0x28) {   // pop'n 15's participate: an entry, and the others there
+        enter();
+        list(be32(body), body + 4);
     } else {
         return {};
     }

@@ -196,9 +196,10 @@ if(HK_PC_DLL_CC)
       COMMAND ${HK_PC_DLL_CC} --target=i686-w64-mingw32 -O2 -Wall -Wextra -fuse-ld=lld -static -shared
               -o ${CMAKE_BINARY_DIR}/pc/${dll}.dll ${CMAKE_SOURCE_DIR}/runtime/pc/${dll}.c
               ${CMAKE_SOURCE_DIR}/runtime/pc/cabinet.c ${CMAKE_SOURCE_DIR}/runtime/pc/dsound.c
-              ${CMAKE_SOURCE_DIR}/runtime/pc/net.c ${CMAKE_SOURCE_DIR}/runtime/pc/${dll}.def -lpsapi -lgdi32 -ldxguid -lws2_32 -liphlpapi
+              ${CMAKE_SOURCE_DIR}/runtime/pc/net.c ${CMAKE_SOURCE_DIR}/runtime/pc/vsock.c ${CMAKE_SOURCE_DIR}/runtime/pc/${dll}.def
+              -lpsapi -lgdi32 -ldxguid -lws2_32 -liphlpapi
       DEPENDS runtime/pc/${dll}.c runtime/pc/${dll}.def runtime/pc/cabinet.c runtime/pc/cabinet.h runtime/pc/link.h
-              runtime/pc/dsound.c runtime/pc/net.c
+              runtime/pc/dsound.c runtime/pc/net.c runtime/pc/vsock.c
       COMMENT "pc/${dll}.dll (32-bit)")
     list(APPEND HK_PC_DLLS ${CMAKE_BINARY_DIR}/pc/${dll}.dll)
   endforeach()

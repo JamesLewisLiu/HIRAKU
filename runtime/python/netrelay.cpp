@@ -160,6 +160,9 @@ bool RelayServer::start(const std::string &bind_addr, uint16_t port) {
         listen_fd_ = -1;
         return false;
     }
+    socklen_t len = sizeof sa;
+    getsockname(listen_fd_, (sockaddr *)&sa, &len);
+    port_ = ntohs(sa.sin_port);
     thread_ = std::thread([this] { run(); });
     thread_.detach();
     return true;
@@ -173,7 +176,7 @@ void RelayServer::run() {
     };
     std::map<int, Cabinet> cabinets;
     uint32_t next = FIRST;
-    Lobby lobby;
+    Lobby lobby, pc_lobby(true);   // pop'n 12-14's, the PC games' (Lobby::PC_PORT)
     const auto t0 = std::chrono::steady_clock::now();
     auto say = [&](const std::string &s) { if (log) log("relay: " + s); };
     for (;;) {
@@ -227,10 +230,10 @@ void RelayServer::run() {
                     if (o.greeted && o.address == k.dst) to = ofd;
                 if (to >= 0) {
                     if (!send_packet(to, k)) gone.push_back(to);
-                } else if (k.dport == Lobby::PORT) {   // the lobby, at the address the game sent to
+                } else if (k.dport == Lobby::PORT || k.dport == Lobby::PC_PORT) {   // a lobby, at the address the game sent to
                     const double now = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
-                    std::vector<uint8_t> r = lobby.handle(k.data.data(), k.data.size(), now);
-                    if (!r.empty() && !send_packet(fd, {k.dst, k.src, Lobby::PORT, k.sport, std::move(r)})) gone.push_back(fd);
+                    std::vector<uint8_t> r = (k.dport == Lobby::PORT ? lobby : pc_lobby).handle(k.data.data(), k.data.size(), now);
+                    if (!r.empty() && !send_packet(fd, {k.dst, k.src, k.dport, k.sport, std::move(r)})) gone.push_back(fd);
                     if (log) {
                         static const char *kinds[] = {"entry", "list", "leave"};
                         const int kind = k.data.size() > 10 ? k.data[10] : -1;

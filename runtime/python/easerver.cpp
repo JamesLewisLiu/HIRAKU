@@ -591,7 +591,9 @@ std::string EamuseServer::answer(const Call &c, const Request &r, const std::str
 // courses, no shop board. Little-endian.
 std::string EamuseServer::rank_table(const std::string &game) {
     const bool p11 = game == "D11", p13 = game == "E13", p14 = game == "F14", pref_first = game != "C20";
-    std::string t(p11 ? 0x1f80 : p13 ? 0x22a4 : p14 ? 0x1894 : 0x1f30, '\0');
+    // pop'n 15: 22 courses (0x2998 bytes, its check of the table 0x427e40), no shop board
+    const bool p15 = game == "G15";
+    std::string t(p11 ? 0x1f80 : p13 ? 0x22a4 : p14 ? 0x1894 : p15 ? 0x2998 : 0x1f30, '\0');
     auto put32 = [&](size_t at, uint32_t v) { for (int k = 0; k < 4; k++) t[at + k] = (char)(v >> (8 * k) & 255); };
     auto bytes = [](const std::string &v) {   // the requests send names as hex Shift-JIS
         std::string out;
@@ -607,7 +609,7 @@ std::string EamuseServer::rank_table(const std::string &game) {
     };
     const Board b{nullptr, "card_id", EXP_KEEP, "score", "cool", 10};
     const std::vector<Record> all = from_lines(read_file(game + "-rank-exp"));
-    for (int course = 0; course < (p14 ? 13 : 15); course++) {
+    for (int course = 0; course < (p14 ? 13 : p15 ? 22 : 15); course++) {
         std::vector<Record> board;
         for (const Record &e : all)
             if (attr(e, "course") == std::to_string(course)) board.push_back(e);
@@ -623,8 +625,8 @@ std::string EamuseServer::rank_table(const std::string &game) {
             put32(e + 0x14, (uint32_t)num(board[i], "cool"));
         }
     }
-    if (p14) {   // no shop board
-        while (!t.empty() && t.back() == '\0') t.pop_back();
+    if (p14 || p15) {   // no shop board; pop'n 15's comes whole (LZSS, in answer_g15)
+        while (p14 && !t.empty() && t.back() == '\0') t.pop_back();
         return t;
     }
     std::vector<Record> shops = from_lines(read_file(game + "-rank-shop"));
@@ -914,8 +916,11 @@ std::string EamuseServer::answer_later(const std::string &game, const Request &r
         // The PC pop'n games (G15: pop'n 15, runtime/pc/): the same keepalive, its router where the
         // cabinet's card says it is (192.168.0.1, runtime/pc/net.c), its other addresses this machine;
         // HIRAKU's DLL answers their pings
+        // and NET TAISEN's lobby (the PC games' own: Lobby::PC_PORT, at the relay, which the DLL
+        // reaches whatever the address: runtime/pc/vsock.c)
         if (game == "G15")
-            items += "<item name=\"pcbevent\" url=\"http://" + esc(host) + "/\"/>"
+            items += "<item name=\"globby\" url=\"globby://" + esc(host.substr(0, host.find(':'))) + ":" + std::to_string(Lobby::PC_PORT) + "/\"/>"
+                     "<item name=\"pcbevent\" url=\"http://" + esc(host) + "/\"/>"
                      "<item name=\"keepalive\" url=\"http://127.0.0.1/keepalive?pa=127.0.0.1&amp;ia=127.0.0.1&amp;"
                      "ga=192.168.0.1&amp;ma=127.0.0.1&amp;t1=2&amp;t2=10\"/>";
         return "<services expire=\"600\" status=\"0\">" + items + "</services>";
@@ -968,6 +973,16 @@ std::string EamuseServer::answer_later(const std::string &game, const Request &r
             std::string ref = refid_of(id);
             const bool fresh = ref.empty();
             if (fresh) ref = add(id);
+            // pop'n 15 asks for its own player (binded 0: the card has none yet, the game makes one
+            // or carries pop'n 14's over) and, with model="F14:...", for pop'n 14's (binded 1 and
+            // expired 0: the game asks for it, playerdata_get model="F14")
+            if (game == "G15") {
+                const std::string model = attr(r.attrs, "model").substr(0, 3);
+                const bool binded = model.empty() ? read_file("pdata-G15-" + ref).size() == 0xb38
+                                    : model == "F14" && read_file("pdata-F14-" + ref).size() == 0xdb8;
+                return "<cardmng status=\"0\" refid=\"" + ref + "\" binded=\"" + (binded ? "1" : "0") +
+                       "\" expired=\"0\" newflag=\"" + (fresh ? "1" : "0") + "\"/>";
+            }
             return "<cardmng status=\"0\" refid=\"" + ref + "\" binded=\"" + (fresh ? "0" : "1") +
                    "\" expired=\"0\" newflag=\"" + (fresh ? "1" : "0") + "\"/>";
         }
@@ -1091,6 +1106,7 @@ std::string EamuseServer::answer_later(const std::string &game, const Request &r
         }
         return "<portfw status=\"0\"/>";
     }
+    if (m == game && game == "G15") return answer_g15(r);
     if (m == game) return answer_game(game, r);   // pop'n 11 on: <D11 type=.. method=..>
     return "";
 }
@@ -1204,6 +1220,9 @@ const SongRanges SONGS[] = {
     {"E12", {{0, 243}, {247, 251}, {253, 253}, {255, 256}, {258, 259}, {261, 261}, {264, 327}, {330, 336}, {339, 391}, {393, 427}, {429, 594}}},
     {"E13", {{0, 243}, {247, 251}, {253, 253}, {255, 256}, {258, 259}, {261, 261}, {264, 327}, {330, 336}, {339, 391}, {393, 427}, {429, 648}}},
     {"F14", {{0, 243}, {247, 251}, {253, 253}, {255, 256}, {258, 259}, {261, 261}, {264, 327}, {330, 336}, {339, 391}, {393, 427}, {429, 699}}},
+    // pop'n 15 numbers songs as 14 (its summary of a pop'n 14 player, 0x482d70, reads both
+    // records' words by the same index) and has room for 763 (0x2fb, its loader 0x4819f0)
+    {"G15", {{0, 243}, {247, 251}, {253, 253}, {255, 256}, {258, 259}, {261, 261}, {264, 327}, {330, 336}, {339, 391}, {393, 427}, {429, 762}}},
 };
 
 bool has_song(const std::string &game, size_t n) {
@@ -1235,6 +1254,7 @@ Words words_of(const std::string &game) {
     if (game == "E12") return {0x3c, 2};
     if (game == "E13") return {0x28, 4};
     if (game == "F14") return {0x24, 4};
+    if (game == "G15") return {0x58, 2};
     return {0x416, 1};   // C00: a byte a song
 }
 
@@ -1292,6 +1312,7 @@ std::vector<uint8_t> EamuseServer::shared_marks(const std::string &card) const {
         {"E12", read_file("pdata-E12-" + card)},
         {"E13", safe_name(ref) ? read_file("pdata-E13-" + ref) : ""},
         {"F14", safe_name(ref) ? read_file("pdata-F14-" + ref) : ""},
+        {"G15", safe_name(ref) ? read_file("pdata-G15-" + ref) : ""},
     };
     for (const Source &s : sources)
         for (size_t n = 0; n < SONG_MAX && !s.data.empty(); n++)
@@ -1339,9 +1360,11 @@ long EamuseServer::shared_score(const std::string &game, const std::string &key,
     // the songs pop'n 14 gave new ids (and some new levels): its charts of them its own
     static const std::set<long> F14_ANEW = {450, 451, 452, 455, 457, 460, 461, 462, 465, 466, 469, 477, 478, 481, 484, 485, 487, 492};
     long best = 0;
-    for (const char *g : {"E12", "E13", "F14"}) {
+    // (pop'n 15 numbers its songs as 14: those songs are 14's and 15's alike)
+    auto renumbered = [](const std::string &g) { return g == "F14" || g == "G15"; };
+    for (const char *g : {"E12", "E13", "F14", "G15"}) {
         const std::string &who = std::string(g) == "E12" ? card : ref;
-        const bool other = game != g, f14 = game == "F14" || std::string(g) == "F14";
+        const bool other = game != g, f14 = renumbered(game) != renumbered(g);
         if (!safe_name(who) || (other && (!has_song(game, (size_t)n) || !has_song(g, (size_t)n) || (f14 && F14_ANEW.count(n))))) continue;
         for (const Record &e : from_lines(read_file(std::string("pscore-") + g + "-" + who)))
             if (attr(e, "num") == song && attr(e, "sheet") == sheet) best = std::max(best, num(e, "score"));
@@ -1598,6 +1621,286 @@ std::string EamuseServer::answer_playerdata(const std::string &game, const Reque
         return open + " f_compress=\"1\"><b>" + base64(lzss(rec)) + "</b></" + game + ">";
     }
     // tmp, renew: not yet
+    return open + "/>";
+}
+
+// pop'n 15 ADVENTURE (G15: popn15.exe through hiraku-pc, docs/EAMUSE3.md). Its module's methods
+// are type_method (game_get, playerdata_get...); the method table is at 0x568700, each with its
+// request builder and answer parser. The player is a record of 0xb38 bytes, sent LZSS'd in <b>
+// with f_compress="1" (get, new and conv: decoded into 0x2234150, copied to the card's own copy
+// and loaded at 0x4819f0, which bounds every field) and kept here as pdata-G15-<ref id>. set sends
+// the credit's changes as attributes and children (built at 0x49ef10 from the set block 0x5dab20,
+// which the game fills from the record: 0x482460-0x482b20, 0x4a4dc0 for netvs), merged into the
+// record where the loader reads them:
+//   0x00 name (Shift-JIS, 13)   0x1a mode_num        0x1b botton_num   0x1c option (32 bits)
+//   0x20 chara_num (16)         0x22 music_num (16), 0x24 sheet_num, 0x25 category_num: the last
+//   song chosen ("MUSIC %d PLAYDATA %d CATEGORY %d", 0x456f63)   0x27 skin_flag
+//   0x28 skin_count (7 bytes)   0x30 the 20 most played songs (16 bits each, 0xffff none: a music
+//   select folder, 0x456a0f; the server's to count)   0x58 a 16-bit word per song (763): the
+//   two-bit clear marks of the four charts in the low byte, as pop'n 12, and played flags above
+//   0x650, 0x790: per expert course (20), its four stages' scores: the player's best, and the
+//   course's best player's (the server's, from rank_exp-entry)
+//   0x8d0 expert_data, a word per expert course (expert_course_num)
+//   0x8f8 private (the ADVENTURE map, game_get ir_ranking 2, 0x476940): count, record_time,
+//   record_count, mapinfo (8, 32 bits each), event (32 bytes at 0x924), point (16) 0x944,
+//   element 0x946, position 0x947
+//   0x948 the NET TAISEN credits played (the server's count), then NET TAISEN's fields (netvs,
+//   below; as pop'n 14's in other places). set's matching (how many players the match had) and
+//   room_num are the operator's statistics, not kept
+std::string EamuseServer::answer_g15(const Request &r) {
+    const std::string &f = r.method;
+    const std::string open = "<G15 status=\"0\"";
+    constexpr size_t RECORD = 0xb38, SONGS = 0x2fb;
+    auto list = [](const std::string &v) {   // "a,b,c"
+        std::vector<long> out;
+        for (size_t at = 0; at <= v.size() && !v.empty();) {
+            out.push_back(std::strtol(v.c_str() + at, nullptr, 10));
+            const size_t comma = v.find(',', at);
+            if (comma == std::string::npos) break;
+            at = comma + 1;
+        }
+        return out;
+    };
+    auto setting = [&](const char *name, long fallback) {   // the owner's choice, a file in the data folder
+        const std::string v = read_file(std::string(name) + "-G15");
+        return v.empty() ? fallback : std::strtol(v.c_str(), nullptr, 10);
+    };
+
+    if (f == "game_get") {
+        // phase (0-2, the songs' event stage, 0x427130: the cabinet's own unless the server's is
+        // higher; left out, it is the cabinet's); ir_ranking (0x427110), the event the
+        // e-AMUSEMENT players see: 1 INTERNET RANKING (the expert courses' boards, rank_exp-get),
+        // 2 ADVENTURE (the map: playerdata's private), 4 and 5 the rankings' other periods;
+        // net_event (0-3, 0x4270f0): NET TAISEN from 1, on unless the data folder says 0 (its lobby
+        // entries carry the number)
+        std::string a;
+        if (const long ph = setting("phase", -1); ph >= 0) a += " phase=\"" + std::to_string(ph) + "\"";
+        a += " ir_ranking=\"" + std::to_string(setting("ir_ranking", 2)) + "\"";
+        a += " net_event=\"" + std::to_string(setting("net_event", 1)) + "\"";
+        // NET TAISEN's settings, each the data folder's NAME-G15 if there is one: cabinets of one
+        // shop may meet; a cabinet stays in the lobby matching_sec seconds for others to join it
+        // (0: it leaves at once and battles CPUs); ojama_gauge_rate and cpu_level (10, the CPUs'
+        // strength) in percent of the game's own (0x42e4b0, 0x42f4b3); downlimit_win and
+        // downlimit_class, the wins that keep a class reached and how far below it a player may
+        // fall (0x48e5a2: 0 and 0, never below the best); job_sp_rate (26: the jobs' special
+        // abilities, chances in percent and amounts, 0x42d0a0) Konami's values aren't known: 0
+        // leaves the specials off. job_exp_rate, cpu_higher_release, shop_event_ranking: read,
+        // never used.
+        static const struct { const char *name, *value; } netvs[] = {
+            {"local_matching_enable", "1"}, {"matching_sec", "30"}, {"ojama_gauge_rate", "100"},
+            {"cpu_level", "100,100,100,100,100,100,100,100,100,100"}, {"downlimit_win", "0"}, {"downlimit_class", "0"},
+            {"job_sp_rate", "0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0"}, {"job_exp_rate", "100"}};
+        for (const auto &n : netvs) {
+            std::string v = read_file(std::string(n.name) + "-G15");
+            while (!v.empty() && std::isspace((unsigned char)v.back())) v.pop_back();
+            a += std::string(" ") + n.name + "=\"" + esc(v.empty() ? n.value : v) + "\"";
+        }
+        return open + a + " message=\"" + esc(message()) + "\"/>";
+    }
+    // the expert courses' board; its entries keep their four stages' scores for the records
+    std::vector<const char *> keep = EXP_KEEP;
+    keep.push_back("stage_score");
+    const Board board{"G15-rank-exp", "ref_id", keep, "score", "cool", 10};
+    if (f == "rank_exp-entry") {   // an expert course played: course_num, stage_score (4), cool... (0x49fec0)
+        const Board &b = board;
+        const Entered e = enter(b, r);
+        return open + " update=\"" + std::string(e.update ? "1" : "0") + "\" entry=\"" + std::to_string(e.entries) + "\" rank=\"" +
+               std::to_string(e.place) + "\" hi_score=\"" + esc(attr(e.kept, "score")) + "\" hi_cool=\"" + esc(attr(e.kept, "cool")) + "\"/>";
+    }
+    if (f == "rank_exp-get")   // the courses' boards, 0x2998 bytes LZSS'd (0x4a03d0)
+        return open + " f_compress=\"1\"><b>" + base64(lzss(rank_table("G15"))) + "</b></G15>";
+    if (f.compare(0, 11, "playerdata_") != 0) return open + "/>";   // game_active, playerdata_expire
+
+    const std::string ref = attr(r.attrs, "ref_id");
+    if (!safe_name(ref)) return "<G15 status=\"1\"/>";
+    const std::string file = "pdata-G15-" + ref, scores_file = "pscore-G15-" + ref, plays_file = "pplays-G15-" + ref;
+    std::string rec = read_file(file);
+    auto put16 = [&](size_t at, long v) { if (at + 2 <= rec.size()) { rec[at] = (char)(v & 255); rec[at + 1] = (char)(v >> 8 & 255); } };
+    auto put32 = [&](size_t at, long v) { put16(at, v & 0xffff); put16(at + 2, v >> 16 & 0xffff); };
+    auto set_name = [&](const std::string &name) {
+        for (size_t i = 0; i < 13; i++) rec[i] = i < name.size() && i < 12 ? name[i] : 0;
+    };
+    auto fresh = [&] {   // a player with nothing yet, as the game clears its own (0x482060)
+        rec.assign(RECORD, 0);
+        rec[0x1b] = (char)0xff;   // no buttons chosen
+        put16(0x20, 0xffff);      // no character
+        put16(0x22, 0xffff);      // no song chosen
+        rec[0x25] = (char)0xff;
+        for (size_t i = 0; i < 20; i++) put16(0x30 + 2 * i, 0xffff);
+        rec[0x947] = 1;           // the ADVENTURE map's start
+    };
+    auto answer = [&] { return open + " f_compress=\"1\"><b>" + base64(lzss(rec)) + "</b></G15>"; };
+    auto pin = [&](const std::string &pass) {   // the card's PIN, if it has none yet (cardmng authpass checks it)
+        std::vector<Record> cards = from_lines(read_file("cards"));
+        bool changed = false;
+        for (Record &c : cards)
+            if (attr(c, "refid") == ref && attr(c, "pass").empty() && !pass.empty()) { c["pass"] = pass; changed = true; }
+        if (!changed) return;
+        std::string out;
+        for (const Record &c : cards) out += to_line(c);
+        write_file("cards", out);
+    };
+
+    if (f == "playerdata_get") {   // 109: none (the game goes on to make one, 0x4866e3)
+        // model="F14": pop'n 14's player of this card, as 14 keeps it (0xdb8, the game shows it and
+        // asks to carry it over: playerdata_conv)
+        if (attr(r.attrs, "model") == "F14") {
+            const std::string old = read_file("pdata-F14-" + ref);
+            if (old.size() != 0xdb8) return "<G15 status=\"109\"/>";
+            return open + " f_compress=\"1\"><b>" + base64(lzss(old)) + "</b></G15>";
+        }
+        if (rec.size() != RECORD) return "<G15 status=\"109\"/>";
+        // the card's clear marks from the other pop'n games (one card for all)
+        for (const Record &c : from_lines(read_file("cards")))
+            if (attr(c, "refid") == ref && safe_name(attr(c, "cardid"))) rec = with_shared_marks("G15", attr(c, "cardid"), rec);
+        // the most played songs, most first
+        std::vector<Record> plays = from_lines(read_file(plays_file));
+        std::stable_sort(plays.begin(), plays.end(), [&](const Record &x, const Record &y) { return num(x, "count") > num(y, "count"); });
+        for (size_t i = 0; i < 20; i++) put16(0x30 + 2 * i, i < plays.size() ? num(plays[i], "num") : 0xffff);
+        // the 20 expert courses' stage scores: 0x790 the course's best player's, the scores to beat
+        // while the INTERNET RANKING runs (0x4266ce), and 0x650 the player's own best
+        const std::vector<Record> entries = from_lines(read_file("G15-rank-exp"));
+        for (size_t c = 0; c < 20; c++) {
+            const Record *top = nullptr, *own = nullptr;
+            for (const Record &e : entries) {
+                if (attr(e, "course") != std::to_string(c)) continue;
+                if (!top || better(board, e, *top)) top = &e;
+                if (attr(e, "who") == ref) own = &e;
+            }
+            const std::vector<long> mine = own ? list(attr(*own, "stage_score")) : std::vector<long>(),
+                                    best = top ? list(attr(*top, "stage_score")) : std::vector<long>();
+            for (size_t st = 0; st < 4; st++) {
+                put32(0x650 + 16 * c + 4 * st, st < mine.size() ? mine[st] : 0);
+                put32(0x790 + 16 * c + 4 * st, st < best.size() ? best[st] : 0);
+            }
+        }
+        return answer();
+    }
+    if (f == "playerdata_new") {   // name, ea_passwd (0x49e960)
+        fresh();
+        set_name(attr(r.attrs, "name"));
+        pin(attr(r.attrs, "ea_passwd"));
+        write_file(file, rec);
+        return answer();
+    }
+    // conv (name): the pop'n 14 player the game was given (get model="F14") carried over. The
+    // songs keep their numbers (0x482d70 reads both records' words by the same index): pop'n 14's
+    // 32-bit word's low half, its marks and played flags, as pop'n 15's word.
+    if (f == "playerdata_conv") {
+        const std::string old = read_file("pdata-F14-" + ref);
+        if (old.size() != 0xdb8) return "<G15 status=\"109\"/>";
+        fresh();
+        set_name(attr(r.attrs, "name"));
+        for (size_t n = 0; n < SONGS && 0x24 + 4 * n + 2 <= old.size(); n++)
+            put16(0x58 + 2 * n, ((uint8_t)old[0x24 + 4 * n] | (uint8_t)old[0x25 + 4 * n] << 8) & 0x7fff);
+        write_file(file, rec);
+        return answer();
+    }
+    if (f == "playerdata_score") {   // music_num sheet_num s_challenge: score (0x49ece0)
+        return open + " score=\"" + std::to_string(shared_score("G15", ref, attr(r.attrs, "music_num"), attr(r.attrs, "sheet_num"))) + "\"/>";
+    }
+    if (f != "playerdata_set") return open + "/>";
+
+    if (rec.size() != RECORD) fresh();
+    auto has = [&](const std::map<std::string, std::string> &m, const char *k) { return m.count(k) && attr(m, k) != "-1"; };
+    const auto &a = r.attrs;
+    if (has(a, "option")) put32(0x1c, num(a, "option"));
+    if (has(a, "chara_num")) put16(0x20, num(a, "chara_num"));
+    if (has(a, "mode_num")) rec[0x1a] = (char)num(a, "mode_num");
+    if (has(a, "botton_num")) rec[0x1b] = (char)num(a, "botton_num");
+    if (has(a, "music_num")) put16(0x22, num(a, "music_num"));
+    if (has(a, "sheet_num")) rec[0x24] = (char)num(a, "sheet_num");
+    if (has(a, "category_num")) rec[0x25] = (char)num(a, "category_num");
+    if (has(a, "skin_flag")) rec[0x27] = (char)num(a, "skin_flag");
+    if (has(a, "skin_count")) {
+        const std::vector<long> v = list(attr(a, "skin_count"));
+        for (size_t i = 0; i < 7 && i < v.size(); i++) rec[0x28 + i] = (char)v[i];
+    }
+    if (has(a, "expert_course_num") && has(a, "expert_data")) {
+        const long c = num(a, "expert_course_num");
+        if (c >= 0 && c < 20) put16(0x8d0 + 2 * (size_t)c, num(a, "expert_data"));
+    }
+    // the songs played: their word into the record; the score kept if better; a play counted
+    std::vector<Record> scores = from_lines(read_file(scores_file)), plays = from_lines(read_file(plays_file));
+    for (size_t at = r.inner.find("<music"); at != std::string::npos; at = r.inner.find("<music", at + 1)) {
+        std::map<std::string, std::string> m;
+        bool sc = false;
+        read_attrs(r.inner, at + 6, m, &sc);
+        const long n = num(m, "music_num");
+        if (n < 0 || n >= (long)SONGS) continue;
+        if (m.count("data")) put16(0x58 + 2 * (size_t)n, num(m, "data") & 0x7fff);
+        const std::string song = std::to_string(n), sheet = attr(m, "sheet_num");
+        bool found = false;
+        for (Record &e : scores)
+            if (attr(e, "num") == song && attr(e, "sheet") == sheet) {
+                found = true;
+                if (num(m, "score") > num(e, "score")) e["score"] = attr(m, "score");
+            }
+        if (!found && m.count("score")) scores.push_back({{"num", song}, {"sheet", sheet}, {"score", attr(m, "score")}});
+        found = false;
+        for (Record &e : plays)
+            if (attr(e, "num") == song) { e["count"] = std::to_string(num(e, "count") + 1); found = true; }
+        if (!found) plays.push_back({{"num", song}, {"count", "1"}});
+    }
+    std::string t;
+    for (const Record &e : scores) t += to_line(e);
+    if (!scores.empty()) write_file(scores_file, t);
+    t.clear();
+    for (const Record &e : plays) t += to_line(e);
+    if (!plays.empty()) write_file(plays_file, t);
+    // the ADVENTURE map (<private>), each attribute where the loader 0x476940 reads it
+    if (const size_t pv = r.inner.find("<private"); pv != std::string::npos) {
+        std::map<std::string, std::string> m;
+        bool sc = false;
+        read_attrs(r.inner, pv + 8, m, &sc);
+        if (m.count("count")) put32(0x8f8, num(m, "count"));
+        if (m.count("record_time")) put32(0x8fc, num(m, "record_time"));
+        if (m.count("record_count")) put32(0x900, num(m, "record_count"));
+        const std::vector<long> map = list(attr(m, "mapinfo")), ev = list(attr(m, "event"));
+        for (size_t i = 0; i < 8 && i < map.size(); i++) put32(0x904 + 4 * i, map[i]);
+        for (size_t i = 0; i < 32 && i < ev.size(); i++) rec[0x924 + i] = (char)ev[i];
+        if (m.count("point")) put16(0x944, num(m, "point"));
+        if (m.count("element")) rec[0x946] = (char)num(m, "element");
+        if (m.count("position")) rec[0x947] = (char)num(m, "position");
+    }
+    // NET TAISEN (<netvs>): as pop'n 14's, its places those 0x4a4dc0 reads for the next set
+    struct Field { const char *name; size_t at; int count, width; };   // width: bytes, or 13 for a name
+    static const Field netvs15[] = {
+        {"music_num", 0x94a, 1, 2}, {"sheet_num", 0x94c, 1, 1}, {"category_num", 0x94d, 1, 1}, {"badge", 0x94e, 1, 1},
+        {"caption", 0x94f, 1, 1}, {"job_num", 0x950, 1, 1}, {"class", 0x951, 1, 1}, {"class_skill", 0x952, 1, 1},
+        {"class_start", 0x953, 1, 1}, {"class_upgrade", 0x954, 1, 1}, {"record", 0x955, 1, 1},
+        {"member_name", 0x969, 3, 13}, {"member_pref", 0x9de, 3, 1}, {"ojama_condition", 0x9e7, 51, 1},
+        {"job_var", 0xad6, 1, 2}, {"job_exp", 0xad8, 13, 4}, {"set_ojama", 0xb25, 3, 1},
+        {"get_ojama_hi", 0xb28, 1, 4}, {"get_ojama_lo", 0xb2c, 1, 4}, {"item_hi", 0xb30, 1, 4}, {"item_lo", 0xb34, 1, 4}};
+    if (const size_t nv = r.inner.find("<netvs"); nv != std::string::npos) {
+        std::map<std::string, std::string> m;
+        bool sc = false;
+        read_attrs(r.inner, nv + 6, m, &sc);
+        // 0x948, the NET TAISEN credits played, isn't sent: the server counts them (the game's
+        // first ones explain more, 0x459e2f: none, fewer than 5)
+        const long played = (uint8_t)rec[0x948] | (uint8_t)rec[0x949] << 8;
+        put16(0x948, played < 0xffff ? played + 1 : played);
+        for (const Field &fd : netvs15) {
+            if (!m.count(fd.name)) continue;
+            const std::string v = attr(m, fd.name);
+            size_t at = 0;
+            for (int i = 0; i < fd.count; i++) {
+                const size_t comma = v.find(',', at);
+                const std::string one = v.substr(at, comma == std::string::npos ? std::string::npos : comma - at);
+                const size_t place = fd.at + (size_t)i * (size_t)fd.width;
+                if (place + (size_t)fd.width > rec.size()) break;
+                if (fd.width == 13)
+                    for (size_t b = 0; b < 13; b++) rec[place + b] = b < one.size() && b < 12 ? one[b] : 0;
+                else {
+                    const long n = std::strtol(one.c_str(), nullptr, 10);
+                    for (int b = 0; b < fd.width; b++) rec[place + (size_t)b] = (char)(n >> (8 * b) & 255);
+                }
+                if (comma == std::string::npos) break;
+                at = comma + 1;
+            }
+        }
+    }
+    write_file(file, rec);
     return open + "/>";
 }
 

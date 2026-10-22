@@ -85,13 +85,15 @@ private:
     std::string answer_gfdmv(const std::string &game, const Request &r);
     std::string answer_game(const std::string &game, const Request &r);
     std::string answer_playerdata(const std::string &game, const Request &r);
+    // pop'n 15 (G15, a PC game: runtime/pc/): <G15 method="type_method" ...>
+    std::string answer_g15(const Request &r);
     // One card for all (docs/EAMUSE3.md): every chart's best clear mark over all the pop'n games
     // a card has played, by song (pop'n 12's word low byte: two bits a chart), and a game's own
     // player data with them put in
     std::vector<uint8_t> shared_marks(const std::string &card) const;
     std::string with_shared_marks(const std::string &game, const std::string &card, std::string data) const;
-    // and a chart's best score over pop'n 12-14 (key: the asking game's player, its card for 12,
-    // its ref id for 13 and 14)
+    // and a chart's best score over pop'n 12-15 (key: the asking game's player, its card for 12,
+    // its ref id for 13 on)
     long shared_score(const std::string &game, const std::string &key, const std::string &song, const std::string &sheet) const;
     std::string rank_get(const Board &b, const Request &r);
     static std::string item(const Board &b, const std::map<std::string, std::string> &entry, size_t place);

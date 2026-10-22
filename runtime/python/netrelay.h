@@ -56,13 +56,15 @@ private:
 // The server's side (hiraku-eamuse): accepts cabinets and passes datagrams, on a thread of its own
 class RelayServer {
 public:
-    // listen at bind_addr:port; false: a message was printed
+    // listen at bind_addr:port (0: any free one); false: a message was printed
     bool start(const std::string &bind_addr, uint16_t port);
+    uint16_t port() const { return port_; }   // where it listens
     std::function<void(const std::string &)> log;
 
 private:
     void run();
     int listen_fd_ = -1;
+    uint16_t port_ = 0;
     std::thread thread_;
 };
 

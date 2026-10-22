@@ -24,8 +24,17 @@ namespace hk::py {
 
 class Lobby {
 public:
+    // pc: pop'n 15's dialect (globbyc.dll): an answer's header byte 11 counts its entries, which
+    // follow with no zero one after; and a kind 3, participate (an entry's body: the cabinets
+    // already in its rooms, the asker left out; the game then joins one, or enters itself, kind 0,
+    // and waits for them)
+    explicit Lobby(bool pc = false) : pc_(pc) {}
+
     // The port HIRAKU's lobby listens on (the services list's globby URL names it)
     static constexpr uint16_t PORT = 5740;
+    // The PC pop'n games' lobby (pop'n 15 on, runtime/pc/vsock.c), at the relay too: apart, so a
+    // PC cabinet never meets a pop'n 12-14 one
+    static constexpr uint16_t PC_PORT = 5741;
 
     // One datagram in, at `now` seconds; the answer (empty: none, the request was malformed)
     std::vector<uint8_t> handle(const uint8_t *d, size_t n, double now);
@@ -39,6 +48,7 @@ private:
         double until = 0;
     };
     std::vector<Entry> entries_;
+    bool pc_;
 };
 
 }  // namespace hk::py

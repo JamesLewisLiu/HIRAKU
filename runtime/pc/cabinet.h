@@ -32,6 +32,10 @@ uint32_t hk_card_seq(void);     // moves on with each card: hiraku-pc's and the 
 // The network's calls that lead to e-AMUSEMENT (net.c): the hook for a ws2_32 call, or NULL
 void *hk_net_hook(const char *fn);
 void *hk_net_card_hook(const char *fn);   // iphlpapi's
+// NET TAISEN through HIRAKU's relay (vsock.c): the hook for one of libsocket's calls, or for
+// libavs's ea3_query and avs_net_ctrl, or NULL
+void *hk_vsock_hook(const char *fn);
+void *hk_comm_hook(const char *fn);   // libcomm's, for HK_PC_NET_LOG
 // HIRAKU's DirectSound (dsound.c): the game's, when HIRAKU's window shows it
 long __stdcall hk_DirectSoundCreate8(const void *device, void **out, void *outer);
 long __stdcall hk_DirectSoundCreate(const void *device, void **out, void *outer);
