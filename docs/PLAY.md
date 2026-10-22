@@ -1091,4 +1091,4 @@ From pop'n music 15 on, the games are Windows programs. HIRAKU runs Konami's own
 
 **Not yet:** a check on real Windows and with a real board or reader.
 
-**pop'n music 16, 17, 18 (started):** add them as pop'n 15 (their folders hold `prog` and `data`). pop'n 17 and 18 start and reach their titles; pop'n 18 goes online with HIRAKU's server and takes coins and cards, but its players aren't kept yet, and pop'n 17 stops at the network check (5-2009). pop'n 16's program stops at start-up. Work in progress: PLAN.md section 30, PC-6.
+**pop'n music 16, 17, 18 (started):** add them as pop'n 15 (their folders hold `prog` and `data`). pop'n 17 and 18 play online with HIRAKU's server: coins, a card (a new player with a name, the player kept from credit to credit), songs. What a credit changes in a player (their marks, scores, unlocks) isn't kept yet. pop'n 16's program stops at start-up. Work in progress: PLAN.md section 30, PC-6.
