@@ -8,7 +8,7 @@ It can also show them over the game's picture (below), with no hardware at all.
 
 ## The lights over the picture (F9)
 
-Press **F9** in a game, or start it with `--lights-overlay` (launcher: Settings > "Show the game's lights over its picture"), for a panel at the window's top left:
+Press **F9** in a game, or start it with `--lights-overlay` (launcher: Settings > Cabinet I/O > "Show the game's lights over its picture"), for a panel at the window's top left:
 - every lamp HIRAKU decodes for that cabinet, grouped as in the table below;
 - each lamp's output number in brackets: the bit in the board's output register (`[16]`), or the register and bit where the board has several (`[1.6]`), as `runtime/shell/cabinet.cpp` lists them;
 - a square filled in the lamp's colour while the game has it lit (from its name: Blue, Red, Yellow, Pink...; amber otherwise), empty while it's off;

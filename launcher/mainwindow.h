@@ -15,6 +15,7 @@ class QLabel;
 class QLineEdit;
 class QPlainTextEdit;
 class QTreeWidget;
+class QTreeWidgetItem;
 class UpdateCheck;
 
 class MainWindow : public QMainWindow {
@@ -35,6 +36,9 @@ private:
     void updateActions();
     void showDetails();
     const Game *selected() const;
+    QList<QTreeWidgetItem *> gameItems() const;   // the list's games (not their series' and systems' rows)
+    QTreeWidgetItem *itemFor(const QString &id) const;
+    void selectGame(QTreeWidgetItem *it);         // ... with its series opened to show it
     const Game *find(const QString &id) const;
     QStringList arguments(const Game &g) const;
     void stop();
@@ -44,6 +48,8 @@ private:
 
     QList<Game> m_games;
     QTreeWidget *m_list;
+    QStringList m_collapsed;     // the series and systems the player closed (ui/collapsed)
+    bool m_arranging = false;    // the list being filled or filtered: not the player opening a series
     QLabel *m_details;
     QLineEdit *m_filter;
     QPlainTextEdit *m_log;

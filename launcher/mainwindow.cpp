@@ -4,7 +4,10 @@
 #include <QAction>
 #include <QApplication>
 #include <QClipboard>
+#include <QCollator>
+#include <algorithm>
 #include <cstdio>
+#include <functional>
 
 #include <QCloseEvent>
 #include <QDragEnterEvent>
@@ -23,12 +26,14 @@
 #include <QHeaderView>
 #include <QLabel>
 #include <QLineEdit>
+#include <QMap>
 #include <QMenu>
 #include <QMenuBar>
 #include <QMessageBox>
 #include <QPlainTextEdit>
 #include <QPushButton>
 #include <QScrollArea>
+#include <QSet>
 #include <QSplitter>
 #include <QStatusBar>
 #include <QTimer>
@@ -50,20 +55,9 @@
 
 namespace {
 
-enum Col { Title, Series, Year, Status, NCols };
-
-// Sorts by the clicked column, then series, year and title
-class GameItem : public QTreeWidgetItem {
-public:
-    using QTreeWidgetItem::QTreeWidgetItem;
-    bool operator<(const QTreeWidgetItem &o) const override {
-        int c = treeWidget() ? treeWidget()->sortColumn() : 0;
-        auto key = [c](const QTreeWidgetItem &i) {
-            return QStringList{i.text(c), i.text(Series), i.text(Year), i.text(Title)}.join('\x1f');
-        };
-        return QString::localeAwareCompare(key(*this), key(o)) < 0;
-    }
-};
+enum Col { Title, Year, Status, NCols };
+// a series' or a system's row: its key in ui/collapsed ("pop'n music", "pop'n music/Firebeat")
+constexpr int GroupRole = Qt::UserRole + 1;
 
 bool lightsFileUsed(const QString &path) {
     QFile f(path);
@@ -110,9 +104,10 @@ MainWindow::MainWindow() {
     setAcceptDrops(true);
     auto *refreshAct = new QAction(QIcon::fromTheme("view-refresh"), "Refresh", this);
     refreshAct->setShortcut(QKeySequence::Refresh);
-    m_showAll = new QAction("Show games that are not installed", this);
+    m_showAll = new QAction("Show games not added yet", this);
+    m_showAll->setToolTip("Every game HIRAKU runs, with what each needs to be added");
     m_showAll->setCheckable(true);
-    m_showAll->setChecked(cfg::settings().value("ui/showAll", true).toBool());
+    m_showAll->setChecked(cfg::settings().value("ui/showAll", false).toBool());
 
     connect(m_play, &QAction::triggered, this, [this] {
         if (auto *g = selected()) play(g->id);
@@ -135,6 +130,7 @@ MainWindow::MainWindow() {
     connect(m_showAll, &QAction::toggled, this, [this](bool on) {
         cfg::settings().setValue("ui/showAll", on);
         applyFilter();
+        showDetails();
     });
 
     // ---- toolbar ----
@@ -178,21 +174,22 @@ MainWindow::MainWindow() {
     m_filter->setClearButtonEnabled(true);
     m_filter->setMaximumWidth(240);
     tb->addWidget(m_filter);
-    connect(m_filter, &QLineEdit::textChanged, this, &MainWindow::applyFilter);
+    connect(m_filter, &QLineEdit::textChanged, this, [this] {
+        applyFilter();
+        updateActions();
+        showDetails();
+    });
 
-    // ---- the list and the details under it ----
+    // ---- the list (series, the systems they ran on, their games) and the details under it ----
     m_list = new QTreeWidget;
     m_list->setColumnCount(NCols);
-    m_list->setHeaderLabels({"Title", "Series", "Year", "Status"});
-    m_list->setRootIsDecorated(false);
+    m_list->setHeaderLabels({"Title", "Year", "Status"});
     m_list->setUniformRowHeights(true);
     m_list->setIconSize(QSize(32, 32));
-    m_list->setSortingEnabled(true);
     m_list->setAlternatingRowColors(true);
     m_list->setContextMenuPolicy(Qt::CustomContextMenu);
     m_list->header()->setStretchLastSection(false);
     m_list->header()->setSectionResizeMode(Title, QHeaderView::Stretch);
-    m_list->header()->setSectionResizeMode(Series, QHeaderView::ResizeToContents);
     m_list->header()->setSectionResizeMode(Year, QHeaderView::ResizeToContents);
     m_list->header()->setSectionResizeMode(Status, QHeaderView::ResizeToContents);
     connect(m_list, &QTreeWidget::itemDoubleClicked, this, [this] {
@@ -203,6 +200,17 @@ MainWindow::MainWindow() {
         showDetails();
     });
     connect(m_list, &QTreeWidget::customContextMenuRequested, this, &MainWindow::contextMenu);
+    // a series or system the player closes stays closed (not one closed or opened by a search)
+    m_collapsed = cfg::settings().value("ui/collapsed").toStringList();
+    auto remember = [this](QTreeWidgetItem *it, bool open) {
+        const QString key = it->data(Title, GroupRole).toString();
+        if (m_arranging || key.isEmpty() || !m_filter->text().trimmed().isEmpty()) return;
+        m_collapsed.removeAll(key);
+        if (!open) m_collapsed << key;
+        cfg::settings().setValue("ui/collapsed", m_collapsed);
+    };
+    connect(m_list, &QTreeWidget::itemExpanded, this, [remember](QTreeWidgetItem *it) { remember(it, true); });
+    connect(m_list, &QTreeWidget::itemCollapsed, this, [remember](QTreeWidgetItem *it) { remember(it, false); });
 
     m_details = new QLabel;
     m_details->setWordWrap(true);
@@ -324,11 +332,8 @@ MainWindow::MainWindow() {
         bool ok = st == QProcess::NormalExit && (code == 0 || !added.isEmpty());
         QStringList titles;   // the games by name, and the first one added selected
         for (const QString &id : added) titles << (find(id) ? find(id)->title : id);
-        for (int k = 0; ok && !added.isEmpty() && k < m_list->topLevelItemCount(); k++)
-            if (m_list->topLevelItem(k)->data(Title, Qt::UserRole).toString() == added.first()) {
-                m_list->setCurrentItem(m_list->topLevelItem(k));
-                break;
-            }
+        if (ok && !added.isEmpty())
+            if (auto *it = itemFor(added.first()); it && !it->isHidden()) selectGame(it);
         QString msg = ok ? "Added: " + titles.join(", ") + (titles.size() == 1 ? ". It is ready to play." : ".")
                          : "The files could not be added.";
         if (!errors.isEmpty()) msg += "\n\n" + errors.join("\n");
@@ -369,8 +374,6 @@ MainWindow::MainWindow() {
     restoreGeometry(cfg::settings().value("ui/geometry").toByteArray());
     restoreState(cfg::settings().value("ui/state").toByteArray());
     refresh();
-    m_list->sortByColumn(cfg::settings().value("ui/sortColumn", Series).toInt(),
-                         (Qt::SortOrder)cfg::settings().value("ui/sortOrder", Qt::AscendingOrder).toInt());
 }
 
 void MainWindow::closeEvent(QCloseEvent *e) {
@@ -386,8 +389,6 @@ void MainWindow::closeEvent(QCloseEvent *e) {
     auto &s = cfg::settings();
     s.setValue("ui/geometry", saveGeometry());
     s.setValue("ui/state", saveState());
-    s.setValue("ui/sortColumn", m_list->sortColumn());
-    s.setValue("ui/sortOrder", (int)m_list->header()->sortIndicatorOrder());
     if (auto *g = selected()) s.setValue("ui/lastGame", g->id);
     e->accept();
 }
@@ -395,29 +396,87 @@ void MainWindow::closeEvent(QCloseEvent *e) {
 void MainWindow::refresh() {
     QString keep = selected() ? selected()->id : cfg::settings().value("ui/lastGame").toString();
     m_games = scanGames();
-    m_list->clear();
+    // series by series, each system's games by year and title
+    QList<Shelf> shelves;
+    QMap<QString, QSet<QString>> systemsOf;
     for (const Game &g : m_games) {
-        auto *it = new GameItem(m_list);
+        shelves << shelf(g);
+        systemsOf[shelves.last().series] << shelves.last().system;
+    }
+    QList<int> order;
+    for (int k = 0; k < m_games.size(); k++) order << k;
+    QCollator titles;   // pop'n music 9 before pop'n music 10
+    titles.setNumericMode(true);
+    std::stable_sort(order.begin(), order.end(), [&](int a, int b) {
+        const Shelf &x = shelves[a], &y = shelves[b];
+        if (x.seriesOrder != y.seriesOrder) return x.seriesOrder < y.seriesOrder;
+        if (x.series != y.series) return x.series < y.series;
+        if (x.systemOrder != y.systemOrder) return x.systemOrder < y.systemOrder;
+        if (m_games[a].year != m_games[b].year) return m_games[a].year < m_games[b].year;
+        return titles.compare(m_games[a].title, m_games[b].title) < 0;
+    });
+    m_arranging = true;
+    m_list->clear();
+    QMap<QString, QTreeWidgetItem *> groups;
+    QTreeWidgetItem *kept = nullptr;
+    QFont bold = m_list->font();
+    bold.setBold(true);
+    const QColor grey = m_list->palette().color(QPalette::Disabled, QPalette::Text);
+    for (int k : order) {
+        const Game &g = m_games[k];
+        const Shelf &sh = shelves[k];
+        // a series on one system alone has no row for it: the series' row names it
+        const bool oneSystem = systemsOf[sh.series].size() == 1;
+        QTreeWidgetItem *&top = groups[sh.series];
+        if (!top) {
+            top = new QTreeWidgetItem(m_list);
+            top->setText(Title, oneSystem ? sh.series + "  ·  " + sh.system : sh.series);
+            top->setIcon(Title, familyIcon(g.family));
+            top->setFont(Title, bold);
+            top->setForeground(Status, grey);
+            top->setData(Title, GroupRole, sh.series);
+        }
+        QTreeWidgetItem *parent = top;
+        if (!oneSystem) {
+            QTreeWidgetItem *&sys = groups[sh.series + "/" + sh.system];
+            if (!sys) {
+                sys = new QTreeWidgetItem(top);
+                sys->setText(Title, sh.system);
+                sys->setForeground(Status, grey);
+                sys->setData(Title, GroupRole, sh.series + "/" + sh.system);
+            }
+            parent = sys;
+        }
+        auto *it = new QTreeWidgetItem(parent);
         it->setText(Title, g.title);
         it->setIcon(Title, familyIcon(g.family));
-        it->setText(Series, cfg::familyName(g.family));
         it->setText(Year, g.year);
         it->setText(Status, g.statusText());
         it->setData(Title, Qt::UserRole, g.id);
         it->setToolTip(Title, g.id + (g.mame.isEmpty() ? QString() : "  (MAME: " + g.mame + ")"));
         if (g.status != Game::Ready) {
-            QColor grey = m_list->palette().color(QPalette::Disabled, QPalette::Text);
             for (int c = 0; c < NCols; c++) it->setForeground(c, grey);
         } else {
             it->setForeground(Status, QColor(0x2e, 0x9e, 0x4a));
         }
-        if (g.id == keep) m_list->setCurrentItem(it);
+        if (g.id == keep) kept = it;
     }
+    m_arranging = false;
     applyFilter();
-    if (!m_list->currentItem() || m_list->currentItem()->isHidden())
-        for (int k = 0; k < m_list->topLevelItemCount(); k++)
-            if (!m_list->topLevelItem(k)->isHidden()) {
-                m_list->setCurrentItem(m_list->topLevelItem(k));
+    // the game picked last, else the first one shown; in an open series either way (a series the
+    // player closed stays closed)
+    auto shown = [](QTreeWidgetItem *it) {
+        bool on = !it->isHidden();
+        for (auto *p = it->parent(); on && p; p = p->parent()) on = !p->isHidden() && p->isExpanded();
+        return on;
+    };
+    if (kept && shown(kept)) {
+        m_list->setCurrentItem(kept);
+        m_list->scrollToItem(kept);
+    } else
+        for (QTreeWidgetItem *it : gameItems())
+            if (shown(it)) {
+                m_list->setCurrentItem(it);
                 break;
             }
     int ready = 0;
@@ -428,16 +487,63 @@ void MainWindow::refresh() {
 }
 
 void MainWindow::applyFilter() {
-    QString f = m_filter->text().trimmed();
-    for (int k = 0; k < m_list->topLevelItemCount(); k++) {
-        auto *it = m_list->topLevelItem(k);
-        const Game *g = find(it->data(Title, Qt::UserRole).toString());
-        bool show = g && (m_showAll->isChecked() || (g->status != Game::NotInstalled && g->status != Game::Unavailable));
-        if (show && !f.isEmpty())
-            show = g->title.contains(f, Qt::CaseInsensitive) || g->id.contains(f, Qt::CaseInsensitive) ||
-                   cfg::familyName(g->family).contains(f, Qt::CaseInsensitive) || g->year.contains(f);
-        it->setHidden(!show);
-    }
+    const QString f = m_filter->text().trimmed();
+    auto shows = [&](const Game *g) {
+        if (!g || (!m_showAll->isChecked() && (g->status == Game::NotInstalled || g->status == Game::Unavailable)))
+            return false;
+        if (f.isEmpty()) return true;
+        const Shelf sh = shelf(*g);
+        return g->title.contains(f, Qt::CaseInsensitive) || g->id.contains(f, Qt::CaseInsensitive) ||
+               sh.series.contains(f, Qt::CaseInsensitive) || sh.system.contains(f, Qt::CaseInsensitive) ||
+               cfg::familyName(g->family).contains(f, Qt::CaseInsensitive) || g->year.contains(f);
+    };
+    m_arranging = true;
+    // a series' or system's row: hidden with none of its games shown; its count of them; open
+    // while searching, else as the player left it
+    std::function<QPair<int, int>(QTreeWidgetItem *)> visit = [&](QTreeWidgetItem *it) -> QPair<int, int> {
+        if (it->childCount() == 0) {
+            const Game *g = find(it->data(Title, Qt::UserRole).toString());
+            const bool show = shows(g);
+            it->setHidden(!show);
+            return {show ? 1 : 0, show && g->status == Game::Ready ? 1 : 0};
+        }
+        QPair<int, int> n{0, 0};
+        for (int k = 0; k < it->childCount(); k++) {
+            auto c = visit(it->child(k));
+            n.first += c.first, n.second += c.second;
+        }
+        it->setHidden(n.first == 0);
+        it->setText(Status, n.first == n.second ? QString("%1 game%2").arg(n.first).arg(n.first == 1 ? "" : "s")
+                                                : QString("%1 of %2 ready").arg(n.second).arg(n.first));
+        it->setExpanded(!f.isEmpty() || !m_collapsed.contains(it->data(Title, GroupRole).toString()));
+        return n;
+    };
+    for (int k = 0; k < m_list->topLevelItemCount(); k++) visit(m_list->topLevelItem(k));
+    m_arranging = false;
+}
+
+QList<QTreeWidgetItem *> MainWindow::gameItems() const {
+    QList<QTreeWidgetItem *> out;
+    std::function<void(QTreeWidgetItem *)> walk = [&](QTreeWidgetItem *it) {
+        for (int k = 0; k < it->childCount(); k++) {
+            if (it->child(k)->childCount()) walk(it->child(k));
+            else out << it->child(k);
+        }
+    };
+    walk(m_list->invisibleRootItem());
+    return out;
+}
+
+QTreeWidgetItem *MainWindow::itemFor(const QString &id) const {
+    for (QTreeWidgetItem *it : gameItems())
+        if (it->data(Title, Qt::UserRole).toString() == id) return it;
+    return nullptr;
+}
+
+void MainWindow::selectGame(QTreeWidgetItem *it) {
+    for (auto *p = it->parent(); p; p = p->parent()) p->setExpanded(true);
+    m_list->setCurrentItem(it);
+    m_list->scrollToItem(it);
 }
 
 const Game *MainWindow::find(const QString &id) const {
@@ -475,9 +581,20 @@ static void copyTree(const QString &from, const QString &to) {
 void MainWindow::showDetails() {
     const Game *g = selected();
     if (!g) {
-        m_details->setText(m_games.isEmpty() ? "No games found in " + cfg::rootDir().toHtmlEscaped() +
-                                                   "/games. Is the HIRAKU folder right (Settings)?"
-                                             : QString());
+        bool any = false;
+        for (QTreeWidgetItem *it : gameItems()) any = any || !it->isHidden();
+        const QString f = m_filter->text().trimmed();
+        m_details->setText(m_games.isEmpty()
+                               ? "No games found in " + cfg::rootDir().toHtmlEscaped() +
+                                     "/games. Is the HIRAKU folder right (Settings)?"
+                           : any ? QString()
+                           : !f.isEmpty() ? "No game matches <b>" + f.toHtmlEscaped() + "</b>."
+                           : m_showAll->isChecked()
+                               ? QString()
+                               : "<p><b>No games added yet.</b></p><p>Drop a game's files on this window (its MAME "
+                                 "ROM set, CHDs or disc images, or a Konami Python game's folder), or File &gt; Add "
+                                 "game files. HIRAKU recognises the game by its contents.</p><p>View &gt; Show games "
+                                 "not added yet lists every game HIRAKU runs, and what each one needs.</p>");
         return;
     }
     QString h = "<b>" + g->title.toHtmlEscaped() + "</b>";

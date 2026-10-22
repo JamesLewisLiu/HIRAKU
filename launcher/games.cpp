@@ -20,7 +20,8 @@ void readManifest(const QString &path, Game &g) {
     QTextStream in(&f);
     bool first = true;
     static const QRegularExpression kv(R"(^\s*([A-Za-z_]+)\s*=\s*"([^"]*)\")");
-    static const QRegularExpression head(R"(^#\s*.*\),\s*(.+?)\s+(\d{4})\s*$)");   // "# Title (CODE), Konami 2002"
+    // "# Title (CODE), Konami 2002", maybe with more after a colon ("Konami 1998: generated from ...")
+    static const QRegularExpression head(R"(^#\s*.*\),\s*([^:]+?)\s+(\d{4})(?:/\d{4})?\s*(?::.*)?$)");
     while (!in.atEnd()) {
         QString line = in.readLine();
         if (first) {
@@ -63,8 +64,8 @@ QString Game::howTo() const {
     const bool source = QFileInfo::exists(root + "/CMakeLists.txt");
     if (status == Unavailable) {
         if (core == "python")
-            return QString("%1 is a Konami Python game. This HIRAKU package has no Konami Python core yet: "
-                           "it comes with HIRAKU built from source for now (docs/PLAY.md, Konami Python).")
+            return QString("%1 is a Konami Python game, and this HIRAKU package has no hiraku-python, which runs "
+                           "them. Is the binaries folder right (Settings)?")
                 .arg(title);
         if (core.isEmpty() || core == "firebeat")
             return QString("This HIRAKU package has no hiraku-firebeat, which runs the Firebeat games. Is the "
@@ -201,6 +202,34 @@ QList<Game> scanGames() {
         out.push_back(g);
     }
     return out;
+}
+
+Shelf shelf(const Game &g) {
+    // the series, in the order Konami started them
+    static const QList<QPair<QString, QStringList>> series = {
+        {"beatmania", {"djbm", "bm3"}},
+        {"beatmania IIDX", {"iidx"}},
+        {"pop'n music", {"djpopn", "djpstage", "popn", "pypopn", "pcpopn"}},
+        {"Dance Dance Revolution", {"ddr", "ddrsolo"}},
+        {"GuitarFreaks", {"gtrf"}},
+        {"DrumMania", {"drmn"}},
+        {"Keyboardmania", {"kbm"}},
+        {"ParaParaParadise", {"ppp"}},
+        {"Dance Maniax", {"dmx"}},
+        {"Mambo a GoGo", {"mambo"}},
+    };
+    // the systems, by their first game's year
+    static const QList<QPair<QString, QString>> systems = {
+        {"djmain", "DJ Main"}, {"sys573", "System 573"}, {"twinkle", "Twinkle"},
+        {"firebeat", "Firebeat"}, {"python", "Konami Python"}, {"pc", "PC"},
+    };
+    Shelf s{g.family, g.core, (int)series.size(), (int)systems.size()};
+    for (int k = 0; k < series.size(); k++)
+        if (series[k].second.contains(g.family)) s.series = series[k].first, s.seriesOrder = k;
+    const QString core = g.core.isEmpty() ? "firebeat" : g.core;
+    for (int k = 0; k < systems.size(); k++)
+        if (systems[k].first == core) s.system = systems[k].second, s.systemOrder = k;
+    return s;
 }
 
 QIcon familyIcon(const QString &family) {

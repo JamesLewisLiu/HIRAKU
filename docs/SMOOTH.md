@@ -42,7 +42,7 @@ refresh):
   or Wayland without fifo-v1), or with display sync off, nothing changes;
 - the exit report says how many it showed (`video: smooth motion: N in-between pictures shown`).
 
-Use it: `--smooth-motion` (display sync on, the default), or the launcher's Settings > "Smooth
+Use it: `--smooth-motion` (display sync on, the default), or the launcher's Settings > Display > "Smooth
 motion (DJ Main and Firebeat games)". Any refresh rate works, 144 Hz too, and the game keeps its
 exact speed and pitch (without smooth motion, display sync speeds pop'n 4-8 up 2.6 % to fit
 60/120/240 Hz, and leaves DJ Main's 58.00 Hz, 3.4 % off, juddering). The faster the display, the
@@ -260,7 +260,7 @@ only the part of the tube the beam sweeps during it, and lets the rest fade: the
 gamma-corrected, spread over as few refreshes as each pixel's brightness allows (bright pixels over
 more, so the picture keeps most of its brightness).
 
-- **On:** Settings > Video > Motion > "CRT beam", or `--crt-beam` (`--crt-beam-gamma`,
+- **On:** Settings > Display > Motion > "CRT beam", or `--crt-beam` (`--crt-beam-gamma`,
   `--crt-beam-gain`). It replaces smooth motion's in-between pictures: both use the frame's other
   refreshes.
 - **Needs** what smooth motion needs (display sync, a picture every refresh: Windows, or Wayland

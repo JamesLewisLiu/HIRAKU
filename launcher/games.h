@@ -23,3 +23,11 @@ struct Game {
 
 QList<Game> scanGames();
 QIcon familyIcon(const QString &family);
+
+// Where a game sits in the launcher's list: its series (pop'n music), then the system it runs on
+// (DJ Main, Firebeat, Konami Python...); the orders are the series' and the systems' own, by date
+struct Shelf {
+    QString series, system;
+    int seriesOrder = 0, systemOrder = 0;
+};
+Shelf shelf(const Game &g);

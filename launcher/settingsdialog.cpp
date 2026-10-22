@@ -25,6 +25,8 @@
 #include <QSpinBox>
 #include <QScrollArea>
 #include <QScrollBar>
+#include <QStyle>
+#include <QTabWidget>
 #include <QVBoxLayout>
 
 #ifdef _WIN32
@@ -146,11 +148,29 @@ static QList<QPair<QString, QString>> alsaPlaybackDevices() {
 SettingsDialog::SettingsDialog(QWidget *parent) : QDialog(parent) {
     setWindowTitle("Settings");
     auto &s = cfg::settings();
-    // the groups scroll (a small screen: 640x480 too, launcher/fit.h), OK and Cancel stay below
-    auto *body = new QWidget;
-    auto *v = new QVBoxLayout(body);
+    // a tab for each kind of setting; a tab's groups scroll (a small screen: 640x480 too,
+    // launcher/fit.h), OK and Cancel stay below
+    auto *tabs = new QTabWidget;
+    QList<QWidget *> bodies;
+    auto page = [&](const QString &name, const QString &about = QString()) {
+        auto *body = new QWidget;
+        auto *l = new QVBoxLayout(body);
+        if (!about.isEmpty()) {
+            auto *note = new QLabel(about);
+            note->setWordWrap(true);
+            l->addWidget(note);
+        }
+        auto *scroll = new QScrollArea;
+        scroll->setWidget(body);
+        scroll->setWidgetResizable(true);
+        scroll->setFrameShape(QFrame::NoFrame);
+        tabs->addTab(scroll, name);
+        bodies << body;
+        return l;
+    };
 
-    auto *video = new QGroupBox("Video");
+    QVBoxLayout *v = page("Display");
+    auto *video = new QGroupBox("Window");
     auto *fv = new QFormLayout(video);
     m_scale = new QSpinBox;
     m_scale->setRange(1, 6);
@@ -165,6 +185,9 @@ SettingsDialog::SettingsDialog(QWidget *parent) : QDialog(parent) {
     m_splitScreens->setToolTip("The cabinet has a monitor for each player. Player 2's window opens on the next display; "
                                "with fullscreen, each fills its own. F11 toggles the window with the keyboard.");
     fv->addRow("", m_splitScreens);
+    v->addWidget(video);
+    auto *frames = new QGroupBox("Frames and picture");
+    fv = new QFormLayout(frames);
     m_displaySync = new QCheckBox("Smooth frames on a 60, 120 or 240 Hz display");
     m_displaySync->setChecked(s.value("video/displaySync", true).toBool());
     m_displaySync->setToolTip("The games run at their own rates (pop'n 58.49 Hz, beatmania III 59.94 Hz), which a "
@@ -212,8 +235,13 @@ SettingsDialog::SettingsDialog(QWidget *parent) : QDialog(parent) {
     bh->addWidget(m_beamGain);
     bh->addStretch(1);
     fv->addRow("CRT beam:", beamRow);
-    auto beamShown = [this, beamRow] { beamRow->setEnabled(m_motion->currentData().toString() == "beam"); };
+    // motion and the beam need smooth frames (each frame held for whole refreshes) on
+    auto beamShown = [this, beamRow] {
+        m_motion->setEnabled(m_displaySync->isChecked());
+        beamRow->setEnabled(m_displaySync->isChecked() && m_motion->currentData().toString() == "beam");
+    };
     connect(m_motion, &QComboBox::currentIndexChanged, this, beamShown);
+    connect(m_displaySync, &QCheckBox::toggled, this, beamShown);
     beamShown();
     m_picture = new QComboBox;
     m_picture->addItem("Off: sharp pixels", "off");
@@ -235,10 +263,13 @@ SettingsDialog::SettingsDialog(QWidget *parent) : QDialog(parent) {
         if (d.exec() == QDialog::Accepted) m_picture->setCurrentIndex(std::max(0, m_picture->findData(picture::globalMode())));
     });
     fv->addRow("Picture:", pic);
-    v->addWidget(video);
+    v->addWidget(frames);
 
-    auto *audio = new QGroupBox("Audio");
+    v = page("Audio");
+    auto *audio = new QGroupBox("Output");
     auto *fa = new QFormLayout(audio);
+    auto *latency = new QGroupBox("Latency");
+    auto *fq = new QFormLayout(latency);
     m_audioMs = new QSpinBox;
     m_audioMs->setRange(2, 30);
     m_audioMs->setSuffix(" ms");
@@ -255,15 +286,14 @@ SettingsDialog::SettingsDialog(QWidget *parent) : QDialog(parent) {
     m_volume->setValue(s.value("audio/volumeDb", 0).toInt());
     m_volume->setToolTip("Louder or quieter than the machine makes it, for every game (6 dB: twice as loud). "
                          "Some games, Keyboardmania among them, are quiet next to others; as in MAME.");
-    fa->addRow("Volume:", m_volume);
-    fa->addRow("Audio queue:", m_audioMs);
-    fa->addRow("", m_audioFixed);
+    fq->addRow("Audio queue:", m_audioMs);
+    fq->addRow("", m_audioFixed);
     m_priority = new QCheckBox("Ahead of other programs (higher priority, and GameMode if installed)");
     m_priority->setChecked(s.value("system/priority", true).toBool());
     m_priority->setToolTip("The game's threads run ahead of other programs (a browser, a build), so a busy PC "
                            "doesn't delay its frames and sound; the sound server and the desktop keep theirs. "
                            "A sound card of its own (Output) is written by a real-time thread either way.");
-    fa->addRow("", m_priority);
+    fq->addRow("", m_priority);
     m_audioDevice = new QComboBox;
     const QString device = s.value("audio/device").toString();
 #ifdef _WIN32
@@ -311,6 +341,7 @@ SettingsDialog::SettingsDialog(QWidget *parent) : QDialog(parent) {
                               "period: HIRAKU keeps two of them queued on the card, four on a USB card, which needs them). Smaller is "
                               "sooner, until it crackles; the audio queue above tunes itself to it. Times at 48 kHz.");
     fa->addRow("Device buffer:", m_audioBuffer);
+    fa->addRow("Volume:", m_volume);
     m_fineSound = new QCheckBox("Sound every millisecond on System 573 and Twinkle (not MAME's)");
     m_fineSound->setChecked(s.value("audio/soundEveryMs", true).toBool());
     m_fineSound->setToolTip("MAME hands these machines' sound on 50 times a second, which adds up to 20 ms of "
@@ -318,13 +349,18 @@ SettingsDialog::SettingsDialog(QWidget *parent) : QDialog(parent) {
                             "Twinkle (beatmania IIDX) the keysounds then start when the game triggers them, so the "
                             "sound no longer matches MAME's. On by default; off is MAME's timing (--mame-sound; "
                             "docs/PLAY.md, Latency).");
-    fa->addRow("", m_fineSound);
+    fq->addRow("", m_fineSound);
+    v->addWidget(audio);
+    v->addWidget(latency);
+    auto *kbm = new QGroupBox("Keyboardmania");
+    auto *fk = new QFormLayout(kbm);
     m_soundfont = new QLineEdit(s.value("audio/soundfont").toString());
     m_soundfont->setPlaceholderText("default: the system's General MIDI SoundFont");
-    fa->addRow("Keyboardmania SoundFont:", withBrowse(m_soundfont, false, this));
-    v->addWidget(audio);
+    m_soundfont->setToolTip("The instruments of Keyboardmania's MIDI out (its keyboards' sound when a song plays them).");
+    fk->addRow("SoundFont:", withBrowse(m_soundfont, false, this));
+    v->addWidget(kbm);
 
-    auto *lights = new QGroupBox("Lights");
+    auto *lights = new QGroupBox("Lights");   // on the Cabinet I/O page
     auto *fl = new QVBoxLayout(lights);
     m_socket = new QCheckBox("Publish lamps on a local socket (live view in Lights, external LED tools)");
     m_socket->setChecked(s.value("lights/socket", true).toBool());
@@ -337,10 +373,12 @@ SettingsDialog::SettingsDialog(QWidget *parent) : QDialog(parent) {
     auto *path = new QLabel("Socket: <tt>" + cfg::lightsSocket().toHtmlEscaped() + "</tt> (protocol: docs/LIGHTS.md)");
     path->setTextInteractionFlags(Qt::TextSelectableByMouse);
     fl->addWidget(path);
-    v->addWidget(lights);
 
     // as spicecfg's Network page, with its option names, so a spice2x setup carries over
-    auto *ea = new QGroupBox("e-AMUSEMENT (Konami Python: pop'n music 9-14)");
+    v = page("e-AMUSEMENT", "For the Konami Python games (pop'n music 9-14, DrumMania V and V2) and the PC games "
+                            "(pop'n music 15-18), with spice2x's option names. The game's e-AMUSEMENT must be ON "
+                            "in its test mode.");
+    auto *ea = new QGroupBox("Server");
     auto *fe = new QFormLayout(ea);
     m_eaUrl = new QLineEdit(s.value("eamuse/url", s.value("eamuse/server")).toString());
     m_eaUrl->setPlaceholderText("empty: the server inside HIRAKU (-ea)");
@@ -357,6 +395,9 @@ SettingsDialog::SettingsDialog(QWidget *parent) : QDialog(parent) {
     m_pcbid->setPlaceholderText("the game's own (pop'n 9: 01401401000100045FEF)");
     m_pcbid->setToolTip("-p: the cabinet's PCBID, 20 hex digits, for a server that only takes the machines it knows.");
     fe->addRow("PCBID:", m_pcbid);
+    v->addWidget(ea);
+    auto *cards = new QGroupBox("Cards");
+    fe = new QFormLayout(cards);
     for (int n = 0; n < 2; n++) {
         m_card[n] = new QLineEdit(s.value(QString("eamuse/card%1").arg(n)).toString());
         m_card[n]->setValidator(new QRegularExpressionValidator(hex16, m_card[n]));
@@ -373,10 +414,10 @@ SettingsDialog::SettingsDialog(QWidget *parent) : QDialog(parent) {
     m_autocard->setCurrentIndex(std::max(0, m_autocard->findData(s.value("eamuse/autocard", "off").toString())));
     m_autocard->setToolTip("-autocard: the card is put in whenever the reader waits for one, so Insert needn't be pressed.");
     fe->addRow("Auto Card Insert:", m_autocard);
-    v->addWidget(ea);
+    v->addWidget(cards);
 
     // real readers, as spice2x's -reader, -scard and -cardio (runtime/host/readers.h)
-    auto *rd = new QGroupBox("Card readers (pop'n music 9-14, GuitarFreaks, DrumMania)");
+    auto *rd = new QGroupBox("Card readers (pop'n music 9-18, GuitarFreaks, DrumMania)");
     auto *fr = new QFormLayout(rd);
     QStringList ports;
 #ifdef Q_OS_WIN
@@ -421,7 +462,8 @@ SettingsDialog::SettingsDialog(QWidget *parent) : QDialog(parent) {
     fr->addRow("", m_cardio);
     v->addWidget(rd);
 
-    auto *cab = new QGroupBox("Cabinet I/O");
+    v = page("Cabinet I/O");
+    auto *cab = new QGroupBox("I/O boards");
     auto *fc = new QFormLayout(cab);
     m_bio2 = new QComboBox;
     m_bio2->setEditable(true);
@@ -464,7 +506,9 @@ SettingsDialog::SettingsDialog(QWidget *parent) : QDialog(parent) {
 #endif
     fc->addRow("  its ezusb.dll:", withBrowse(m_popnioDll, false, this, "Choose an ezusb.dll", "ezusb.dll (ezusb*.dll);;All files (*)"));
     v->addWidget(cab);
+    v->addWidget(lights);
 
+    v = page("General");
     auto *paths = new QGroupBox("Folders");
     auto *fp = new QFormLayout(paths);
     m_root = new QLineEdit(s.value("paths/root").toString());
@@ -481,8 +525,6 @@ SettingsDialog::SettingsDialog(QWidget *parent) : QDialog(parent) {
     m_nvram = new QLineEdit(s.value("paths/nvram").toString());
     m_nvram->setPlaceholderText(cfg::portable() ? "default: user/data in the HIRAKU folder" : "default: ~/.local/share/hiraku");
     fp->addRow("Saves (NVRAM):", withBrowse(m_nvram, true, this));
-    v->addWidget(paths);
-
     auto *adv = new QGroupBox("Launcher");
     auto *fx = new QFormLayout(adv);
     m_hideLauncher = new QCheckBox("Hide the launcher while a game runs");
@@ -499,24 +541,30 @@ SettingsDialog::SettingsDialog(QWidget *parent) : QDialog(parent) {
     m_extra->setPlaceholderText("e.g. --bios-seconds 21.65");
     fx->addRow("Extra arguments:", m_extra);
     v->addWidget(adv);
+    v->addWidget(paths);
 
     auto *bb = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
     connect(bb, &QDialogButtonBox::accepted, this, &SettingsDialog::accept);
     connect(bb, &QDialogButtonBox::rejected, this, &QDialog::reject);
-    auto *scroll = new QScrollArea;
-    scroll->setWidget(body);
-    scroll->setWidgetResizable(true);
-    scroll->setFrameShape(QFrame::NoFrame);
-    // long lists (sound devices, readers) shrink to the dialog instead of widening it
-    for (QComboBox *c : body->findChildren<QComboBox *>()) {
-        c->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
-        c->setMinimumContentsLength(16);
+    // number boxes as wide as their numbers, not the dialog
+    for (QSpinBox *b : {m_scale, m_volume, m_audioMs}) b->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    QSize most;
+    for (QWidget *body : bodies) {
+        static_cast<QVBoxLayout *>(body->layout())->addStretch(1);   // the groups at the top of their tab
+        // long lists (sound devices, readers) shrink to the dialog instead of widening it
+        for (QComboBox *c : body->findChildren<QComboBox *>()) {
+            c->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
+            c->setMinimumContentsLength(16);
+        }
+        most = most.expandedTo(body->sizeHint());
     }
+    tabs->setCurrentIndex(std::clamp(s.value("ui/settingsTab", 0).toInt(), 0, tabs->count() - 1));
+    connect(tabs, &QTabWidget::currentChanged, this, [](int k) { cfg::settings().setValue("ui/settingsTab", k); });
     auto *outer = new QVBoxLayout(this);
-    outer->addWidget(scroll);
+    outer->addWidget(tabs);
     outer->addWidget(bb);
-    // as tall as the groups, as the screen allows (fit.h shrinks it), as wide as they are
-    resize(body->sizeHint().width() + scroll->verticalScrollBar()->sizeHint().width() + 24, body->sizeHint().height() + 60);
+    // as the largest tab, as the screen allows (fit.h shrinks it)
+    resize(most.width() + tabs->style()->pixelMetric(QStyle::PM_ScrollBarExtent) + 40, most.height() + 110);
 }
 
 void SettingsDialog::accept() {

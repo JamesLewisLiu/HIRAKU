@@ -34,7 +34,7 @@ CHDs need room once unpacked:
 ## Updating a release package
 
 A release package's launcher looks for a new release on GitHub when it starts (Options >
-Settings > Launcher turns that off), and says so above the game list. **What's new…** shows the
+Settings > General turns that off), and says so above the game list. **What's new…** shows the
 release notes; **Update and restart** downloads the package for your system, checks it against
 GitHub's SHA-256, and closes the launcher. `tools/update.py`, run from the new package, then puts
 the new files in and starts the launcher again. It never touches `dumps/`, `user/` or `out/`.
@@ -74,7 +74,7 @@ The launcher is the easy way:
 build/cmake/hiraku
 ```
 
-Pick the game and press **Play**. **Controls** and **Lights** map your keyboard, controllers and controller LEDs, and **Settings** holds the window, audio and folder options. A game that isn't ready shows what it still needs. On a first boot, the game's test-mode steps are shown under the list.
+The list goes by series (beatmania, pop'n music, DDR...), then the systems a series ran on (pop'n music: DJ Main, Firebeat, Konami Python, PC), then the games by year; a series or system you close stays closed. It shows the games you've added; **View > Show games not added yet** lists every game HIRAKU runs, and what each one needs. Pick the game and press **Play**. **Controls** and **Lights** map your keyboard, controllers and controller LEDs, and **Settings** has a tab for each kind of option: Display, Audio, e-AMUSEMENT, Cabinet I/O and General (the launcher and its folders). On a first boot, the game's test-mode steps are shown under the list.
 
 Or start a game directly:
 
@@ -198,7 +198,7 @@ By hand: write a bindings file and pass `--bindings FILE`. See `docs/bindings-bm
 
 ### Card readers
 
-A real e-AMUSEMENT card reader can stand in for the cabinet's: a card held to it becomes that player's card in the game and is put to the game's reader, and its 10-key is the game's. That works in pop'n music 9–14 (one reader, player 1's) and in GuitarFreaks and DrumMania with their card units (`--npu`). A card's number is its 16 hex digits. A pop'n card is the save folder's `cards/NUMBER.bin` or IC card NUMBER, as `-card0` would make it; a 573 card unit's is `cards/NUMBER.bin`. Set the readers in the launcher's **Settings > Card readers**, or give the options yourself (`runtime/host/readers.h`), as spice2x spells them:
+A real e-AMUSEMENT card reader can stand in for the cabinet's: a card held to it becomes that player's card in the game and is put to the game's reader, and its 10-key is the game's. That works in pop'n music 9–14 (one reader, player 1's) and in GuitarFreaks and DrumMania with their card units (`--npu`). A card's number is its 16 hex digits. A pop'n card is the save folder's `cards/NUMBER.bin` or IC card NUMBER, as `-card0` would make it; a 573 card unit's is `cards/NUMBER.bin`. Set the readers in the launcher's **Settings > e-AMUSEMENT > Card readers**, or give the options yourself (`runtime/host/readers.h`), as spice2x spells them:
 
 - `--reader PATH`: a Konami e-AMUSEMENT reader (the ICCA/ICCB/ICCC readers spice2x's `-reader` drives) on a USB-serial adapter. Use its `/dev/serial/by-id/...` name, which stays the same whichever socket it's in. A second `--reader` is player 2's. Serial ports belong to the `uucp` group on Arch and CachyOS (`dialout` elsewhere): `sudo usermod -aG uucp $USER`, then log in again. The reader's 00 key is Enter in games whose 10-key has no 00.
 - `--scard`: NFC readers such as the ACR122U, through PC/SC. Needs `pcsc-lite` and `ccid`, and the service running: `systemctl enable --now pcscd.socket`. If the kernel's `pn533_usb` driver takes the ACR122U first, blacklist it (`echo "blacklist pn533_usb" | sudo tee /etc/modprobe.d/no-pn533.conf`). A card that isn't an e-AMUSEMENT PASS (FeliCa, a phone) gets an `E00401…` number, as spice2x's `-scardfix` does.
@@ -321,7 +321,7 @@ runs the game on the display's refreshes:
 - The console says what it chose (`display sync: on: 60.00 Hz display, 1 refresh per frame, the
   game at +2.6 % speed`), and the exit report's `video: display sync` line how it went.
 
-**Motion on a fast display** (launcher: Settings > Motion; DJ Main, Firebeat, Twinkle and System
+**Motion on a fast display** (launcher: Settings > Display > Motion; DJ Main, Firebeat, Twinkle and System
 573 games). Both need Wayland with the fifo protocol (KWin 6.7), or Windows (new, checked under
 Wine only). See docs/SMOOTH.md.
 - **Smooth motion** (`--smooth-motion`): the game runs at its exact speed on any display (144 Hz
@@ -559,7 +559,7 @@ analyze/ghidra.sh kbm && analyze/prep.py kbm && ninja -C build/cmake hiraku-kbm
 ```
 
 **Screens:** both portrait monitors are shown side by side (MAME's ROT270), at their shape: 3:2 together.
-With two displays, **Settings > Video > each player's monitor in its own window** (or `--split-screens`) opens player 2's in a second window on the next display; with fullscreen, each fills its own display. F11 toggles the window with the keyboard. The sound, the inputs and the update banner stay with player 1's window. On Wayland the compositor places windows itself: drag player 2's to its display, then F11.
+With two displays, **Settings > Display > each player's monitor in its own window** (or `--split-screens`) opens player 2's in a second window on the next display; with fullscreen, each fills its own display. F11 toggles the window with the keyboard. The sound, the inputs and the update banner stay with player 1's window. On Wayland the compositor places windows itself: drag player 2's to its display, then F11.
 
 **First boot:** the backup data is blank (E161) and, on some versions, the sound flash too. Press **F2** for test mode:
 - **1 / 2** move the cursor;
