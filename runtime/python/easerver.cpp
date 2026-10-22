@@ -2305,17 +2305,67 @@ std::string EamuseServer::answer_j39(const std::string &game, const Request &r) 
         list("open_point", MAP + 0xfb, 29, 1);
         if (m.count("point")) rec[MAP + 0x118] = (char)num(m, "point");
     }
+    // 16's NET TAISEN (<netvs>): the record's last 0x1f0 bytes (0x6594), pop'n 15's fields in other
+    // places, as 0x43bf30 copies them to set's block; 0x6594 counts the NET credits (the server's to
+    // count). A block not begun (0 credits) gets the game's defaults first (0x43c180), as the game
+    // does itself
+    if (const size_t nv = r.inner.find("<netvs"); p16 && nv != std::string::npos) {
+        std::map<std::string, std::string> m;
+        bool sc = false;
+        read_attrs(r.inner, nv + 6, m, &sc);
+        constexpr size_t NV = 0x6594;
+        const long credits = (uint8_t)rec[NV] | (uint8_t)rec[NV + 1] << 8;
+        if (credits == 0) {
+            std::fill(rec.begin() + NV, rec.begin() + NV + 0x1f0, '\0');
+            put16(0x6596, 0x30e), rec[0x6599] = 0xb, rec[0x659b] = 0x38, put32(0x65a0, 0x1000000), rec[0x65ae] = 0xf;
+            std::fill(rec.begin() + 0x6643, rec.begin() + 0x6643 + 51, '\x32');
+            rec[0x66ed] = 1, rec[0x66ee] = 0x10, rec[0x66ef] = 0x23, put16(0x6732, 1);
+            for (size_t i = 0; i < 5; i++) put16(0x6758 + 2 * i, 0xffff), put16(0x6772 + 2 * i, 0xffff), put16(0x6762 + 3 * i, 0xffff), rec[0x6764 + 3 * i] = (char)0xff;
+            rec[0x6771] = 1, put32(0x677c, 0x18), put32(0x6780, 0xf001f);
+        }
+        put16(NV, credits < 0xffff ? credits + 1 : credits);
+        struct Field { const char *name; size_t at; int count, width; };   // width: bytes, or 13 for a name
+        static const Field netvs16[] = {
+            {"music_num", 0x6596, 1, 2}, {"sheet_num", 0x6598, 1, 1}, {"category_num", 0x6599, 1, 1}, {"badge", 0x659a, 1, 1},
+            {"title_select", 0x659b, 1, 1}, {"title_0", 0x659c, 1, 4}, {"title_1", 0x65a0, 1, 4}, {"title_2", 0x65a4, 1, 4},
+            {"title_3", 0x65a8, 1, 4}, {"job_num", 0x65ac, 1, 1}, {"class", 0x65ad, 1, 1}, {"class_skill", 0x65ae, 1, 1},
+            {"class_start", 0x65af, 1, 1}, {"class_upgrade", 0x65b0, 1, 1}, {"record", 0x65b1, 1, 1},
+            {"member_name", 0x65c5, 3, 13}, {"member_pref", 0x663a, 3, 1}, {"ojama_condition", 0x6643, 51, 1},
+            {"set_ojama", 0x66ed, 3, 1}, {"job_var", 0x6732, 1, 2}, {"job_exp", 0x6734, 9, 4}, {"recommend", 0x6771, 1, 1},
+            {"get_ojama_hi", 0x677c, 1, 4}, {"get_ojama_lo", 0x6780, 1, 4}};
+        for (const Field &fd : netvs16) {
+            if (!m.count(fd.name)) continue;
+            const std::string v = attr(m, fd.name);
+            size_t from = 0;
+            for (int i = 0; i < fd.count; i++) {
+                const size_t comma = v.find(',', from);
+                const std::string one = v.substr(from, comma == std::string::npos ? std::string::npos : comma - from);
+                const size_t place = fd.at + (size_t)i * (size_t)fd.width;
+                if (fd.width == 13)
+                    for (size_t b = 0; b < 13; b++) rec[place + b] = b < one.size() && b < 12 ? one[b] : '\0';
+                else
+                    for (int b = 0; b < fd.width; b++) rec[place + (size_t)b] = (char)(std::strtol(one.c_str(), nullptr, 10) >> (8 * b) & 255);
+                if (comma == std::string::npos) break;
+                from = comma + 1;
+            }
+        }
+    }
     // 18's NET TAISEN (<netvs>), where the loader reads them (0x4606a0-0x460e90): what a player has
     // won (ojama, items: two 32-bit words each; titles: five), experience (clamped by the loader),
     // the last battle's song, chart and category, the title shown, the skill (15 to start), the 51
     // ojama conditions, the ojama and items set, the four parameters, the event points. Checked
     // against the game's own copy, which it fills with a new player's defaults. Not placed yet:
     // room, room_start, room_upgrade, record, member_name/pref, recommend_ojama, used_*
-    if (const size_t nv = r.inner.find("<netvs"); !packed && nv != std::string::npos) {
+    // 17's the same, 4 bytes before (no titles won): checked against its loader (0x4411c0)
+    if (const size_t nv = r.inner.find("<netvs"); !p16 && nv != std::string::npos) {
         std::map<std::string, std::string> m;
         bool sc = false;
         read_attrs(r.inner, nv + 6, m, &sc);
         struct Field { const char *name; size_t at; int count, width; };
+        static const Field netvs17[] = {
+            {"exp", 0xa3c, 1, 4}, {"music_num", 0xa42, 1, 2}, {"sheet_num", 0xa94, 1, 1}, {"category_num", 0xa95, 1, 1},
+            {"title_select", 0xa96, 1, 1}, {"room_skill", 0xa99, 1, 1}, {"ojama_condition", 0xb47, 51, 1},
+            {"set_ojama", 0xbf1, 3, 1}, {"set_item", 0xbf7, 2, 1}, {"parameter", 0xbf9, 4, 1}};
         static const Field netvs18[] = {
             {"get_ojama_0", 0x13c8, 1, 4}, {"get_ojama_1", 0x13cc, 1, 4}, {"get_item_0", 0x13d0, 1, 4}, {"get_item_1", 0x13d4, 1, 4},
             {"get_title_0", 0x13e8, 1, 4}, {"get_title_1", 0x13ec, 1, 4}, {"get_title_2", 0x13f0, 1, 4}, {"get_title_3", 0x13f4, 1, 4},
@@ -2323,7 +2373,8 @@ std::string EamuseServer::answer_j39(const std::string &game, const Request &r) 
             {"category_num", 0x1455, 1, 1}, {"set_title", 0x1456, 1, 1}, {"room_skill", 0x1459, 1, 1},
             {"ojama_condition", 0x1507, 51, 1}, {"set_ojama", 0x15b1, 3, 1}, {"set_item", 0x15b7, 2, 1},
             {"parameter", 0x15b9, 4, 1}, {"event_point", 0x15bd, 1, 1}};
-        for (const Field &fd : netvs18) {
+        for (const Field &fd : p17 ? std::vector<Field>(std::begin(netvs17), std::end(netvs17))
+                                   : std::vector<Field>(std::begin(netvs18), std::end(netvs18))) {
             if (!m.count(fd.name)) continue;
             const std::string v = attr(m, fd.name);
             size_t from = 0;
