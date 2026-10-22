@@ -6,6 +6,7 @@
 #include <QClipboard>
 #include <QCollator>
 #include <algorithm>
+#include <csignal>
 #include <cstdio>
 #include <functional>
 
@@ -32,9 +33,11 @@
 #include <QMessageBox>
 #include <QPlainTextEdit>
 #include <QPushButton>
+#include <QInputDialog>
 #include <QScrollArea>
 #include <QSet>
 #include <QSplitter>
+#include <QStackedWidget>
 #include <QStatusBar>
 #include <QTimer>
 #include <QToolBar>
@@ -59,6 +62,37 @@ enum Col { Title, Year, Status, NCols };
 // a series' or a system's row: its key in ui/collapsed ("pop'n music", "pop'n music/Firebeat")
 constexpr int GroupRole = Qt::UserRole + 1;
 
+// why a game stopped, in words: a Windows exception or a Unix signal, else its exit code
+QString exitReason(int code, QProcess::ExitStatus st) {
+#ifdef Q_OS_WIN
+    switch ((quint32)code) {
+    case 0xC0000005: return "an access violation (0xC0000005): it used memory it doesn't have";
+    case 0xC000001D: return "an illegal instruction (0xC000001D): it uses an instruction this CPU doesn't have";
+    case 0xC0000135: return "a DLL it needs is missing (0xC0000135)";
+    case 0xC0000139: return "a DLL it loaded is older than it needs (0xC0000139: a function is missing)";
+    case 0xC0000142: return "a DLL it loaded failed to start (0xC0000142)";
+    case 0xC0000409: return "it stopped itself on a fatal error (0xC0000409)";
+    case 0xC00000FD: return "a stack overflow (0xC00000FD)";
+    case 0xC0000374: return "a corrupted heap (0xC0000374)";
+    case 0xC0000094: return "a division by zero (0xC0000094)";
+    case 0x80000003: return "a failed assertion or a breakpoint (0x80000003)";
+    case 3: return "it aborted (exit code 3: a failed assertion or a fatal error)";
+    }
+    if (st == QProcess::CrashExit) return QString("it crashed (exception 0x%1)").arg((quint32)code, 8, 16, QChar('0')).toUpper();
+#else
+    if (st == QProcess::CrashExit) switch (code) {
+        case SIGSEGV: return "a segmentation fault (SIGSEGV): it used memory it doesn't have";
+        case SIGILL: return "an illegal instruction (SIGILL): it uses an instruction this CPU doesn't have";
+        case SIGABRT: return "it aborted (SIGABRT: a failed assertion or a fatal error)";
+        case SIGBUS: return "a bus error (SIGBUS): a file it had mapped went away, or a bad memory access";
+        case SIGFPE: return "an arithmetic error (SIGFPE)";
+        case SIGKILL: return "it was killed (SIGKILL): by the system when memory runs out, or by another program";
+        default: return QString("it crashed (signal %1)").arg(code);
+        }
+#endif
+    return QString("it exited with code %1").arg(code);
+}
+
 bool lightsFileUsed(const QString &path) {
     QFile f(path);
     if (!f.open(QIODevice::ReadOnly)) return false;
@@ -68,6 +102,11 @@ bool lightsFileUsed(const QString &path) {
 }
 
 }  // namespace
+
+static bool installCassette(const Game &g);
+static bool installCd(const Game &g);
+static QString nvramSeed(const Game &g);
+static bool firstBoot(const Game &g);
 
 MainWindow::MainWindow() {
     setWindowTitle(upd::currentVersion().isEmpty() ? QString("HIRAKU") : "HIRAKU " + upd::currentVersion());
@@ -221,9 +260,49 @@ MainWindow::MainWindow() {
     details->setWidgetResizable(true);
     details->setFrameShape(QFrame::NoFrame);
     details->setWidget(m_details);
+    m_detailsPane = details;
 
+    // with no game added, the list's place says how to add one
+    auto *empty = new QWidget;
+    {
+        auto *ev = new QVBoxLayout(empty);
+        ev->addStretch(1);
+        auto *head = new QLabel("<b>No games added yet</b>");
+        head->setAlignment(Qt::AlignCenter);
+        QFont big = head->font();
+        big.setPointSizeF(big.pointSizeF() * 1.4);
+        head->setFont(big);
+        ev->addWidget(head);
+        auto *how = new QLabel("Add a game from your own dumps: its MAME ROM set (.zip, .7z), CHDs or disc images, or a "
+                               "Konami Python game's folder. HIRAKU recognises the game by its contents. You can also "
+                               "drop them on this window.");
+        how->setWordWrap(true);
+        how->setAlignment(Qt::AlignCenter);
+        how->setMaximumWidth(520);
+        auto *howRow = new QHBoxLayout;
+        howRow->addStretch(1);
+        howRow->addWidget(how);
+        howRow->addStretch(1);
+        ev->addLayout(howRow);
+        auto *buttons = new QHBoxLayout;
+        buttons->addStretch(1);
+        auto *bFiles = new QPushButton(QIcon::fromTheme("list-add"), "Add game files…");
+        connect(bFiles, &QPushButton::clicked, addFiles, &QAction::trigger);
+        auto *bFolder = new QPushButton(QIcon::fromTheme("folder-new"), "Add a game folder…");
+        connect(bFolder, &QPushButton::clicked, addFolder, &QAction::trigger);
+        auto *bAll = new QPushButton("Show every game HIRAKU runs");
+        bAll->setToolTip("With what each one needs (View > Show games not added yet)");
+        connect(bAll, &QPushButton::clicked, m_showAll, [this] { m_showAll->setChecked(true); });
+        for (auto *b : {bFiles, bFolder, bAll}) buttons->addWidget(b);
+        buttons->addStretch(1);
+        ev->addLayout(buttons);
+        ev->addStretch(2);
+    }
+    m_listStack = new QStackedWidget;
+    m_listStack->addWidget(m_list);
+    m_listStack->addWidget(empty);
     auto *split = new QSplitter(Qt::Vertical);
-    split->addWidget(m_list);
+    split->addWidget(m_listStack);
     split->addWidget(details);
     split->setStretchFactor(0, 3);
     split->setStretchFactor(1, 1);
@@ -279,6 +358,13 @@ MainWindow::MainWindow() {
     });
     file->addSeparator();
     file->addAction("Quit", QKeySequence::Quit, this, &QWidget::close);
+    // the picked game's own menu (what right-clicking it shows)
+    auto *gameMenu = menuBar()->addMenu("&Game");
+    connect(gameMenu, &QMenu::aboutToShow, this, [this, gameMenu] {
+        gameMenu->clear();
+        if (const Game *g = selected()) fillGameMenu(gameMenu, *g);
+        else gameMenu->addAction("Pick a game in the list first")->setEnabled(false);
+    });
     auto *opts = menuBar()->addMenu("&Options");
     opts->addAction(m_controls);
     opts->addAction(m_lights);
@@ -360,6 +446,8 @@ MainWindow::MainWindow() {
         m_stopping = false;
         if (isHidden()) show();
         updateActions();
+        gameChanged();   // its saves now exist: no longer a first boot
+        if (!ok) exitReport(title, code, st);
     });
     connect(&m_proc, &QProcess::errorOccurred, this, [this](QProcess::ProcessError e) {
         if (e != QProcess::FailedToStart) return;
@@ -451,17 +539,14 @@ void MainWindow::refresh() {
         it->setText(Title, g.title);
         it->setIcon(Title, familyIcon(g.family));
         it->setText(Year, g.year);
-        it->setText(Status, g.statusText());
         it->setData(Title, Qt::UserRole, g.id);
         it->setToolTip(Title, g.id + (g.mame.isEmpty() ? QString() : "  (MAME: " + g.mame + ")"));
-        if (g.status != Game::Ready) {
+        if (g.status != Game::Ready)
             for (int c = 0; c < NCols; c++) it->setForeground(c, grey);
-        } else {
-            it->setForeground(Status, QColor(0x2e, 0x9e, 0x4a));
-        }
         if (g.id == keep) kept = it;
     }
     m_arranging = false;
+    refreshStatuses();
     applyFilter();
     // the game picked last, else the first one shown; in an open series either way (a series the
     // player closed stays closed)
@@ -520,6 +605,43 @@ void MainWindow::applyFilter() {
     };
     for (int k = 0; k < m_list->topLevelItemCount(); k++) visit(m_list->topLevelItem(k));
     m_arranging = false;
+    showEmpty();
+}
+
+void MainWindow::showEmpty() {
+    bool any = false;
+    for (QTreeWidgetItem *it : gameItems()) any = any || !it->isHidden();
+    const bool empty = !any && !m_games.isEmpty() && m_filter->text().trimmed().isEmpty() && !m_showAll->isChecked();
+    m_listStack->setCurrentIndex(empty ? 1 : 0);
+    m_detailsPane->setVisible(!empty);
+}
+
+// A ready game's status says what its next start does differently: a first boot, an install, mods
+static QString statusOf(const Game &g, bool *notable) {
+    *notable = false;
+    if (g.status != Game::Ready) return g.statusText();
+    QStringList notes;
+    if (installCassette(g) || installCd(g)) notes << "Installs at the next start", *notable = true;
+    else if (firstBoot(g)) notes << "First boot", *notable = true;
+    if (const int n = cfg::modsOn(g.id).size()) notes << (n == 1 ? QString("1 mod") : QString("%1 mods").arg(n));
+    if (!cfg::settings().value("gameArgs/" + g.id).toString().isEmpty()) notes << "own arguments";
+    return notes.isEmpty() ? QString("Ready") : notes.join(", ");
+}
+
+void MainWindow::refreshStatuses() {
+    for (QTreeWidgetItem *it : gameItems()) {
+        const Game *g = find(it->data(Title, Qt::UserRole).toString());
+        if (!g) continue;
+        bool notable;
+        it->setText(Status, statusOf(*g, &notable));
+        if (g->status == Game::Ready)   // green, amber where the next start is special
+            it->setForeground(Status, notable ? QColor(0xc0, 0x80, 0x10) : QColor(0x2e, 0x9e, 0x4a));
+    }
+}
+
+void MainWindow::gameChanged() {
+    refreshStatuses();
+    showDetails();
 }
 
 QList<QTreeWidgetItem *> MainWindow::gameItems() const {
@@ -589,12 +711,7 @@ void MainWindow::showDetails() {
                                      "/games. Is the HIRAKU folder right (Settings)?"
                            : any ? QString()
                            : !f.isEmpty() ? "No game matches <b>" + f.toHtmlEscaped() + "</b>."
-                           : m_showAll->isChecked()
-                               ? QString()
-                               : "<p><b>No games added yet.</b></p><p>Drop a game's files on this window (its MAME "
-                                 "ROM set, CHDs or disc images, or a Konami Python game's folder), or File &gt; Add "
-                                 "game files. HIRAKU recognises the game by its contents.</p><p>View &gt; Show games "
-                                 "not added yet lists every game HIRAKU runs, and what each one needs.</p>");
+                                          : QString());   // no game added: the list's place says how (showEmpty)
         return;
     }
     QString h = "<b>" + g->title.toHtmlEscaped() + "</b>";
@@ -625,10 +742,12 @@ void MainWindow::showDetails() {
                  "When it says the install is done, stop it and play again: it then boots from the game's CD.</p>";
         h += "<p>Saves: <tt>" + cfg::saveDir(g->id).toHtmlEscaped() + "</tt>" + (fresh ? " (none yet)" : "") + "</p>";
         if (const QString mods = ModsDialog::summary(g->id); !mods.isEmpty())
-            h += "<p><b>Mods on:</b> " + mods.toHtmlEscaped() + " (right-click: Mods…)</p>";
+            h += "<p><b>Mods on:</b> " + mods.toHtmlEscaped() + " (Game &gt; Mods…)</p>";
         QString m = picture::mode(g->id);
         bool own = cfg::settings().contains("picture/" + g->id) || QFileInfo::exists(picture::configDir(g->id));
-        if (UnlocksDialog::available(g->id)) h += "<p>Unlocks and codes: right-click the game &gt; Unlocks.</p>";
+        if (UnlocksDialog::available(g->id)) h += "<p>Unlocks and codes: Game &gt; Unlocks… (or right-click the game).</p>";
+        if (const QString own = cfg::settings().value("gameArgs/" + g->id).toString(); !own.isEmpty())
+            h += "<p>Its own arguments: <tt>" + own.toHtmlEscaped() + "</tt> (Game &gt; Arguments…)</p>";
         h += QString("<p>Picture: %1%2</p>")
                  .arg(m == "full"    ? "CRT full (crt-royale)"
                       : m == "light" ? "CRT light (crt-guest-advanced-fast)"
@@ -645,6 +764,14 @@ void MainWindow::showDetails() {
 static QString nvramSeed(const Game &g) {
     QString d = cfg::rootDir() + "/dumps/" + g.id + "/nvram-seed";
     return QFileInfo(d).isDir() ? d : QString();
+}
+
+// No saves yet, and none to start from: the game's next start is a first boot, as on a new cabinet.
+// Keyboardmania, ParaParaParadise: until test mode has written the sound flash.
+static bool firstBoot(const Game &g) {
+    bool fresh = !QFileInfo::exists(cfg::nvramDir(g.id));
+    if (!fresh && (g.family == "kbm" || g.family == "ppp")) fresh = !QFileInfo::exists(cfg::nvramDir(g.id) + "/flash1.bin");
+    return fresh && nvramSeed(g).isEmpty();
 }
 
 // A System 573 game that installs from CD with an install cassette (ddr3mj): its first boot (no
@@ -714,7 +841,9 @@ QStringList MainWindow::arguments(const Game &g) const {
     if (s.value("lights/overlay", false).toBool()) a << "--lights-overlay";   // runtime/host/lampview.h
     QString sf = s.value("audio/soundfont").toString();
     if (g.family == "kbm" && !sf.isEmpty()) a << "--soundfont" << sf;
-    if (g.core == "python") a << "--renderer" << "vk";   // Vulkan GS: less CPU than the software one (PLAN.md section 23)
+    // the Konami Python games' GS (Settings > Display): Vulkan by default, less CPU than the
+    // software one (PLAN.md section 23)
+    if (g.core == "python") a << "--renderer" << s.value("video/pythonRenderer", "vk").toString();
     if (g.core == "python" || g.core == "pc") {   // e-AMUSEMENT, as spice2x's options (runtime/shell/eaoptions.h, docs/EAMUSE3.md)
         const QString url = s.value("eamuse/url", s.value("eamuse/server")).toString();
         if (!url.isEmpty()) a << "-url" << url;
@@ -745,7 +874,8 @@ QStringList MainWindow::arguments(const Game &g) const {
     if (installCassette(g)) a << "--cassette" << "install";
     if (installCd(g)) a << "--cd" << "install";
     a << UnlocksDialog::macroArguments(g.id);   // codes typed at every start
-    a << QProcess::splitCommand(s.value("game/extraArgs").toString());
+    a << QProcess::splitCommand(s.value("game/extraArgs").toString());   // every game's (Settings > General)
+    a << QProcess::splitCommand(s.value("gameArgs/" + g.id).toString());  // ... then this one's (Game menu)
     return a;
 }
 
@@ -774,6 +904,7 @@ void MainWindow::play(const QString &id) {
         return;
     }
     m_log->clear();
+    m_runOutput.clear();
     openRunLog(g->id);
     // the first start of a game with saves to start from: they become its saves
     if (QString seed = nvramSeed(*g); !seed.isEmpty() && !QFileInfo::exists(cfg::nvramDir(g->id))) {
@@ -825,56 +956,61 @@ void MainWindow::contextMenu(const QPoint &pos) {
     m_list->setCurrentItem(it);
     const Game *g = selected();
     if (!g) return;
-    QString id = g->id, title = g->title, family = g->family;
     QMenu menu;
-    menu.addAction(m_play);
-    menu.addAction("Mods…", this, [this, id, title] {
+    fillGameMenu(&menu, *g);
+    menu.exec(m_list->viewport()->mapToGlobal(pos));
+}
+
+void MainWindow::fillGameMenu(QMenu *menu, const Game &g) {
+    QString id = g.id, title = g.title, family = g.family;
+    menu->addAction(m_play);
+    menu->addAction("Mods…", this, [this, id, title] {
         ModsDialog d(id, title, this);
-        if (d.exec() == QDialog::Accepted) showDetails();
+        if (d.exec() == QDialog::Accepted) gameChanged();
     });
-    menu.addSeparator();
-    menu.addAction(QIcon::fromTheme("input-gaming"), "Controls for " + cfg::controlsSetName(cfg::controlsSet(family)) + "…", this, [this, family] {
+    menu->addSeparator();
+    menu->addAction(QIcon::fromTheme("input-gaming"), "Controls for " + cfg::controlsSetName(cfg::controlsSet(family)) + "…", this, [this, family] {
         controls(family);
     });
-    menu.addAction("Lights for " + cfg::familyName(family) + "…", this, [this, family] {
+    menu->addAction("Lights for " + cfg::familyName(family) + "…", this, [this, family] {
         LightsDialog d(family, this);
         d.exec();
     });
-    menu.addAction(QIcon::fromTheme("video-display"), "Picture for " + title + "…", this, [this, id, title] {
+    menu->addAction(QIcon::fromTheme("video-display"), "Picture for " + title + "…", this, [this, id, title] {
         PictureDialog d(id, title, true, this);
         if (d.exec() == QDialog::Accepted) showDetails();
     });
     if (UnlocksDialog::available(id))
-        menu.addAction(QIcon::fromTheme("unlock", QIcon::fromTheme("object-unlocked")), "Unlocks…", this, [this, id, title] {
+        menu->addAction(QIcon::fromTheme("unlock", QIcon::fromTheme("object-unlocked")), "Unlocks…", this, [this, id, title] {
             UnlocksDialog d(id, title, m_running == id, this);
             d.exec();
         });
-    if (g->installCassette) {
-        auto *inst = menu.addAction("Boot once with the install cassette", this, [this, id](bool on) {
+    if (g.installCassette) {
+        auto *inst = menu->addAction("Boot once with the install cassette", this, [this, id](bool on) {
             if (on) cfg::settings().setValue("cassette/" + id, "install");
             else cfg::settings().remove("cassette/" + id);
-            showDetails();
+            gameChanged();
         });
         inst->setCheckable(true);
         inst->setChecked(cfg::settings().value("cassette/" + id).toString() == "install");
         inst->setToolTip("For an install that stopped before it was done (the game then shows ERROR 147)");
     }
-    if (hasInstallCd(*g)) {
-        auto *cd = menu.addAction("Boot once with the install CD", this, [this, id](bool on) {
+    if (hasInstallCd(g)) {
+        auto *cd = menu->addAction("Boot once with the install CD", this, [this, id](bool on) {
             if (on) cfg::settings().setValue("cd/" + id, "install");
             else cfg::settings().remove("cd/" + id);
-            showDetails();
+            gameChanged();
         });
         cd->setCheckable(true);
         cd->setChecked(cfg::settings().value("cd/" + id).toString() == "install");
         cd->setToolTip("To install again, or finish an install that stopped before it was done");
     }
-    menu.addSeparator();
+    menu->addSeparator();
     QString nv = cfg::nvramDir(id);
-    auto *open = menu.addAction(QIcon::fromTheme("folder-open"), "Open the save folder", this,
+    auto *open = menu->addAction(QIcon::fromTheme("folder-open"), "Open the save folder", this,
                                 [nv] { QDesktopServices::openUrl(QUrl::fromLocalFile(nv)); });
     open->setEnabled(QFileInfo::exists(nv));
-    auto *reset = menu.addAction(QIcon::fromTheme("edit-delete"), "Reset save data…", this, [this, nv, title, id] {
+    auto *reset = menu->addAction(QIcon::fromTheme("edit-delete"), "Reset save data…", this, [this, nv, title, id] {
         if (m_running == id) {
             QMessageBox::information(this, title, "Stop the game first.");
             return;
@@ -884,18 +1020,29 @@ void MainWindow::contextMenu(const QPoint &pos) {
                                            "\n\nThe next start is a first boot, as on a new cabinet.");
         if (r != QMessageBox::Yes) return;
         if (!QFile::moveToTrash(nv)) QMessageBox::warning(this, title, "Could not move " + nv + " to the trash.");
-        showDetails();
+        gameChanged();
     });
     reset->setEnabled(QFileInfo::exists(nv));
-    menu.addSeparator();
-    if (g->status == Game::Ready) {
-        QStringList args = arguments(*g);
+    menu->addSeparator();
+    menu->addAction("Arguments for " + title + "…", this, [this, id, title] {
+        bool ok = false;
+        const QString now = cfg::settings().value("gameArgs/" + id).toString();
+        const QString a = QInputDialog::getText(this, title,
+                                                "Arguments for " + title + " alone, added after those for every game "
+                                                "(Settings > General):",
+                                                QLineEdit::Normal, now, &ok);
+        if (!ok) return;
+        if (a.trimmed().isEmpty()) cfg::settings().remove("gameArgs/" + id);
+        else cfg::settings().setValue("gameArgs/" + id, a.trimmed());
+        gameChanged();
+    })->setToolTip("Command-line options for this game only (docs/PLAY.md lists them)");
+    if (g.status == Game::Ready) {
+        QStringList args = arguments(g);
         for (QString &a : args)
             if (a.contains(' ')) a = "'" + a + "'";
-        QString cmd = g->exe + " " + args.join(' ');
-        menu.addAction("Copy the command line", this, [cmd] { QApplication::clipboard()->setText(cmd); });
+        QString cmd = g.exe + " " + args.join(' ');
+        menu->addAction("Copy the command line", this, [cmd] { QApplication::clipboard()->setText(cmd); });
     }
-    menu.exec(m_list->viewport()->mapToGlobal(pos));
 }
 
 void MainWindow::dragEnterEvent(QDragEnterEvent *e) {
@@ -989,7 +1136,8 @@ void MainWindow::openRunLog(const QString &game) {
     const QString name = QDateTime::currentDateTime().toString("yyyyMMdd-HHmmss") + "-" + game + ".log";
     QStringList old = QDir(dir).entryList({"*.log"}, QDir::Files, QDir::Name);   // oldest first (by name: the time)
     while (old.size() >= cfg::kRunLogs) QFile::remove(dir + "/" + old.takeFirst());
-    m_runLog = new QFile(dir + "/" + name);
+    m_lastRunLog = dir + "/" + name;
+    m_runLog = new QFile(m_lastRunLog);
     if (!m_runLog->open(QIODevice::WriteOnly | QIODevice::Text)) {
         delete m_runLog;
         m_runLog = nullptr;
@@ -1006,6 +1154,10 @@ void MainWindow::closeRunLog() {
 }
 
 void MainWindow::log(const QString &text) {
+    if (!m_running.isEmpty()) {   // the game's output, its last 64 KB, for exitReport
+        m_runOutput += text;
+        if (m_runOutput.size() > 65536) m_runOutput.remove(0, m_runOutput.size() - 49152);
+    }
     if (m_echo) { fputs(text.toLocal8Bit().constData(), stderr); fflush(stderr); }
     if (m_runLog) {
         m_runLog->write(text.toUtf8());
@@ -1014,4 +1166,35 @@ void MainWindow::log(const QString &text) {
     m_log->moveCursor(QTextCursor::End);
     m_log->insertPlainText(text);
     m_log->moveCursor(QTextCursor::End);
+}
+
+// A game that stopped by itself with an error: why, in words, its last messages, and its log
+void MainWindow::exitReport(const QString &title, int code, QProcess::ExitStatus st) {
+    // the messages that say what went wrong (an error, an assertion...), else the last ones
+    static const QRegularExpression bad("error|assert|fail|fatal|abort|exception|missing|not found|cannot|can't|could not|unable",
+                                        QRegularExpression::CaseInsensitiveOption);
+    QStringList lines, last;
+    for (const QString &l : m_runOutput.split('\n')) {
+        const QString t = l.trimmed();
+        if (t.isEmpty() || t.startsWith("---")) continue;
+        last << t;
+        if (bad.match(t).hasMatch()) lines << t;
+    }
+    if (lines.isEmpty()) lines = last;
+    lines = lines.mid(std::max<qsizetype>(0, lines.size() - 6));
+    for (QString &l : lines)
+        if (l.size() > 200) l = l.left(200) + "…";
+    QMessageBox box(this);
+    box.setIcon(QMessageBox::Warning);
+    box.setWindowTitle(title);
+    box.setText(QString("%1 stopped: %2.").arg(title, exitReason(code, st)));
+    box.setInformativeText((lines.isEmpty() ? QString("It wrote nothing.") : "Its last messages:\n\n" + lines.join('\n')) +
+                           "\n\nThe whole log is in the log pane, and in the run's log file (Help > Open the last "
+                           "runs' logs): send that file when you report the problem.");
+    QPushButton *open = nullptr;
+    if (!m_lastRunLog.isEmpty() && QFileInfo::exists(m_lastRunLog))
+        open = box.addButton("Open the log file", QMessageBox::ActionRole);
+    box.addButton(QMessageBox::Close);
+    box.exec();
+    if (open && box.clickedButton() == open) QDesktopServices::openUrl(QUrl::fromLocalFile(m_lastRunLog));
 }

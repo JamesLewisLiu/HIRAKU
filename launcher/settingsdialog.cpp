@@ -264,6 +264,28 @@ SettingsDialog::SettingsDialog(QWidget *parent) : QDialog(parent) {
     });
     fv->addRow("Picture:", pic);
     v->addWidget(frames);
+    auto *py = new QGroupBox("Konami Python games (pop'n music 9-14, DrumMania V and V2)");
+    auto *fy = new QFormLayout(py);
+    m_pyRenderer = new QComboBox;
+    // (not OpenGL: PCSX2's needs a window of its own, and the core draws without one)
+    m_pyRenderer->addItem("Vulkan (the default)", "vk");
+#ifdef Q_OS_WIN
+    m_pyRenderer->addItem("Direct3D 11", "dx11");
+    m_pyRenderer->addItem("Direct3D 12", "dx12");
+#endif
+    m_pyRenderer->addItem("Software: the CPU draws (the most CPU)", "sw");
+    m_pyRenderer->setCurrentIndex(std::max(0, m_pyRenderer->findData(s.value("video/pythonRenderer", "vk").toString())));
+#ifdef Q_OS_WIN
+    m_pyRenderer->setToolTip("How PCSX2's GS draws the PS2's pictures (--renderer). Vulkan takes the least CPU. If these "
+                             "games crash or show nothing on this PC, its graphics driver may not get on with Vulkan: "
+                             "try Direct3D 11, then Software (which still shows its picture through Direct3D).");
+#else
+    m_pyRenderer->setToolTip("How PCSX2's GS draws the PS2's pictures (--renderer). Vulkan takes the least CPU. If these "
+                             "games crash or show nothing on this PC, try Software (it still needs a Vulkan driver to "
+                             "show its picture).");
+#endif
+    fy->addRow("Graphics:", m_pyRenderer);
+    v->addWidget(py);
 
     v = page("Audio");
     auto *audio = new QGroupBox("Output");
@@ -539,7 +561,9 @@ SettingsDialog::SettingsDialog(QWidget *parent) : QDialog(parent) {
     fx->addRow("", m_checkUpdates);
     m_extra = new QLineEdit(s.value("game/extraArgs").toString());
     m_extra->setPlaceholderText("e.g. --bios-seconds 21.65");
-    fx->addRow("Extra arguments:", m_extra);
+    m_extra->setToolTip("Command-line options for every game (docs/PLAY.md lists them). For one game alone: Game > "
+                        "Arguments… (or right-click it).");
+    fx->addRow("Arguments (every game):", m_extra);
     v->addWidget(adv);
     v->addWidget(paths);
 
@@ -583,6 +607,7 @@ void SettingsDialog::accept() {
     s.setValue("video/crtBeamGamma", m_beamGamma->value());
     s.setValue("video/crtBeamGain", m_beamGain->value());
     s.setValue("video/picture", m_picture->currentData().toString());
+    s.setValue("video/pythonRenderer", m_pyRenderer->currentData().toString());
     s.setValue("audio/ms", m_audioMs->value());
     s.setValue("audio/fixed", m_audioFixed->isChecked());
     s.setValue("system/priority", m_priority->isChecked());

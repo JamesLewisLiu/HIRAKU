@@ -18,6 +18,7 @@ private:
     QSpinBox *m_scale, *m_audioMs, *m_volume;
     QCheckBox *m_fullscreen, *m_splitScreens, *m_displaySync, *m_fineSound, *m_audioFixed, *m_priority, *m_audioExclusive = nullptr, *m_socket, *m_lightsOverlay, *m_hideLauncher, *m_checkUpdates;
     QComboBox *m_picture, *m_audioDevice, *m_audioBuffer;
+    QComboBox *m_pyRenderer;                // the Konami Python games' GS: Vulkan, OpenGL, software
     QComboBox *m_motion;                    // on a fast display: frames held, smooth motion, the CRT beam
     QDoubleSpinBox *m_beamGamma, *m_beamGain;
     QLineEdit *m_soundfont, *m_root, *m_bin, *m_nvram, *m_extra;

@@ -423,6 +423,10 @@ public:
         if (name == "--renderer") {
             const std::string v = value();
             renderer_ = v == "vk" ? GSRendererType::VK : v == "gl" ? GSRendererType::OGL : GSRendererType::SW;
+#ifdef _WIN32
+            if (v == "dx11") renderer_ = GSRendererType::DX11;
+            if (v == "dx12") renderer_ = GSRendererType::DX12;
+#endif
             return true;
         }
         if (name == "--interp") { interp_ = true; return true; }
@@ -463,6 +467,7 @@ public:
     }
     std::string options_help() const override {
         return "  --renderer sw|vk|gl  the GS renderer: software (default: what the oracle runs), Vulkan or OpenGL\n"
+               "                       (OpenGL needs a window of its own: not with HIRAKU's); Windows: also dx11, dx12\n"
                "  --interp             every CPU interpreted (EE, IOP, VU0, VU1), as the oracle's --interp\n"
                "  --pcsx2-log          the emulator's own log on stderr\n"
                "  --no-picture         don't read the GS's pictures back (black frames; for measuring)\n"
@@ -830,9 +835,20 @@ public:
         // Reliquary writes the BBSRAM, dongles and disk overlay as the game goes
         fflush(nullptr);
     }
+    const char *renderer_name() const {
+        switch (renderer_) {
+        case GSRendererType::SW: return "software";
+        case GSRendererType::VK: return "Vulkan";
+#ifdef _WIN32
+        case GSRendererType::DX11: return "Direct3D 11";
+        case GSRendererType::DX12: return "Direct3D 12";
+#endif
+        default: return "OpenGL";
+        }
+    }
     void report() override {
         printf("python: %llu frames (%.1f s), renderer %s%s, run files in %s\n", (unsigned long long)frame_,
-               seconds(), renderer_ == GSRendererType::SW ? "software" : renderer_ == GSRendererType::VK ? "Vulkan" : "OpenGL",
+               seconds(), renderer_name(),
                interp_ ? ", interpreters" : "", run_dir_.c_str());
         if (gs_waits_)   // host timing: "profile:" lines are not compared by tools/regress.py
             printf("profile: python: waited for the GS on %llu frames, %.1f ms in all\n", (unsigned long long)gs_waits_, gs_wait_ms_);

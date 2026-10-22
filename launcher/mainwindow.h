@@ -13,6 +13,8 @@ class QDockWidget;
 class QFile;
 class QLabel;
 class QLineEdit;
+class QMenu;
+class QStackedWidget;
 class QPlainTextEdit;
 class QTreeWidget;
 class QTreeWidgetItem;
@@ -43,17 +45,26 @@ private:
     QStringList arguments(const Game &g) const;
     void stop();
     void contextMenu(const QPoint &pos);
+    void fillGameMenu(QMenu *menu, const Game &g);   // the game's menu: the Game menu, and right-click
+    void refreshStatuses();                          // the Status column (first boot, mods...)
+    void gameChanged();                              // ... and the details, after a change to the game's setup
+    void showEmpty();                                // no game added: the list's place says how to add one
+    void exitReport(const QString &title, int code, QProcess::ExitStatus st);   // why a game stopped, and its log
     void controls(const QString &family);   // the Controls dialog, which can end by starting a game to try them
     void log(const QString &text);
 
     QList<Game> m_games;
     QTreeWidget *m_list;
+    QStackedWidget *m_listStack;   // the list, or the page shown while no game is added
+    QWidget *m_detailsPane;        // the details under the list (hidden with that page)
     QStringList m_collapsed;     // the series and systems the player closed (ui/collapsed)
     bool m_arranging = false;    // the list being filled or filtered: not the player opening a series
     QLabel *m_details;
     QLineEdit *m_filter;
     QPlainTextEdit *m_log;
     QFile *m_runLog = nullptr;   // the running game's log file (cfg::logsDir): what the log pane gets
+    QString m_lastRunLog;        // ... its path, kept after the game ends
+    QString m_runOutput;         // the running game's output (its tail), for why it stopped
     void openRunLog(const QString &game);
     void closeRunLog();
     QDockWidget *m_logDock;

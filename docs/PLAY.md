@@ -74,7 +74,7 @@ The launcher is the easy way:
 build/cmake/hiraku
 ```
 
-The list goes by series (beatmania, pop'n music, DDR...), then the systems a series ran on (pop'n music: DJ Main, Firebeat, Konami Python, PC), then the games by year; a series or system you close stays closed. It shows the games you've added; **View > Show games not added yet** lists every game HIRAKU runs, and what each one needs. Pick the game and press **Play**. **Controls** and **Lights** map your keyboard, controllers and controller LEDs, and **Settings** has a tab for each kind of option: Display, Audio, e-AMUSEMENT, Cabinet I/O and General (the launcher and its folders). On a first boot, the game's test-mode steps are shown under the list.
+The list goes by series (beatmania, pop'n music, DDR...), then the systems a series ran on (pop'n music: DJ Main, Firebeat, Konami Python, PC), then the games by year; a series or system you close stays closed. It shows the games you've added; **View > Show games not added yet** lists every game HIRAKU runs, and what each one needs. Pick the game and press **Play**. **Controls** and **Lights** map your keyboard, controllers and controller LEDs, and **Settings** has a tab for each kind of option: Display, Audio, e-AMUSEMENT, Cabinet I/O and General (the launcher and its folders). On a first boot, the game's test-mode steps are shown under the list, and the Status column says what a game's next start does differently (First boot, Installs at the next start, its mods). The **Game** menu (or right-clicking a game) has what is the game's own: Mods, Unlocks, Picture, the install cassette or CD, its save folder, and **Arguments…**, command-line options for that game alone. If a game stops with an error, the launcher says why (a crash, a missing DLL, an instruction the CPU doesn't have) with the game's last messages, and opens its log file for you to send.
 
 Or start a game directly:
 
@@ -999,7 +999,7 @@ tools/ingest.py ~/Downloads/konami-python-1-collection/kpython1/popn9.py1
 build/cmake/hiraku-popn9 --window --renderer vk
 ```
 
-- `--renderer vk` draws with Vulkan: less CPU. The default, `sw` (software), is what the reference runs. `tools/regress.py` checks both.
+- `--renderer vk` draws with Vulkan: less CPU. The default, `sw` (software), is what the reference runs. `tools/regress.py` checks both. On Windows, `dx11` and `dx12` draw with Direct3D. `gl` (OpenGL) doesn't work here: PCSX2's needs a window of its own.
 - `--autoplay` (pop'n music 9 only, for now) makes the game play every song itself, as in its attract demo: every note GREAT, the buttons ignored during songs. It's a mod for testing what clears unlock (events, HITASURA, Gambler Z); scores and e-AMUSEMENT rankings count it like any play.
 - Each frame's picture is shown at the end of that frame: 4 frames from a button to the picture, the game's own. `--picture-overlap` shows the previous frame's instead, so the GS works alongside the CPU: a little less time per frame on a slow PC, for a frame (16.7 ms) more latency.
 - **The picture is progressive.** The pop'n games draw for an interlaced TV: each frame only the lines of the field the TV shows (the GS's SCANMSK), the other half staying a frame old. Shown progressive, that combs on everything that moves; PCSX2's deinterlacing guesses, and notes flicker in thickness. HIRAKU has the GS draw every line of every frame instead, as a 480p game would: the game runs the same (its sound is identical), only the pictures differ. `--interlaced` keeps the games' own drawing (the regression cases use it, to match the reference).
@@ -1067,7 +1067,7 @@ In test mode, blue (buttons 4/6) moves and red (5) selects; I/O CHECK > INPUT CH
 - pop'n 12–14 start in ENJOY mode with 5 buttons selected; blue moves to 9.
 - The pop'n 11 dump has a damaged first sector (a PC wrote a blank partition table there); HIRAKU and Reliquary read the boot header's backup copy.
 
-**From the launcher:** drop the `.py1` (or the set's folder) on its window; it passes `--renderer vk` for Python games.
+**From the launcher:** drop the `.py1` (or the set's folder) on its window. It draws them with Vulkan; **Settings > Display > Konami Python games** has Software, and on Windows Direct3D 11 and 12, for a PC whose graphics driver doesn't get on with Vulkan.
 
 **On another PC:** `tools/package.sh` takes the Python binaries along with Reliquary's resources and the libraries built for it; `tools/pack-data.py DEST popn9` copies the game's data, CHD included (2.4 GB).
 
