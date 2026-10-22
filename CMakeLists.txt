@@ -374,7 +374,7 @@ if(SDL3_FOUND)
   message(STATUS "hiraku: SDL3 front end enabled")
   # hiraku-pc: the PC games, Konami's own programs, as a core of HIRAKU's shell (runtime/pc/core.cpp,
   # PLAN.md section 30); its DLLs are the hiraku-pc-dlls above
-  add_executable(hiraku-pc runtime/main.cpp runtime/pc/core.cpp runtime/core/sampler.cpp runtime/python/easerver.cpp
+  add_executable(hiraku-pc runtime/main.cpp runtime/pc/core.cpp runtime/core/sampler.cpp runtime/python/easerver.cpp runtime/python/kbin.cpp
                  runtime/python/lobby.cpp runtime/python/netrelay.cpp)
   target_link_libraries(hiraku-pc PRIVATE hiraku_host hiraku_shell)
   target_compile_definitions(hiraku-pc PRIVATE HK_ROOT="${CMAKE_SOURCE_DIR}")
@@ -524,10 +524,13 @@ target_link_libraries(hiraku_sys573 PUBLIC hiraku_mame573 hiraku_cabinet)
 # hiraku-eamuse: the e-AMUSEMENT server on the network, for several cabinets (tools/eamuse/server.cpp):
 # the System 573's and the Python core's (docs/EAMUSE3.md); plain C++, no emulator
 add_executable(hiraku-eamuse tools/eamuse/server.cpp runtime/sys573/eagfdm.cpp runtime/eamuse/protocol.cpp
-  runtime/eamuse/lan.cpp runtime/eamuse/server.cpp runtime/eamuse/remote.cpp runtime/python/easerver.cpp
+  runtime/eamuse/lan.cpp runtime/eamuse/server.cpp runtime/eamuse/remote.cpp runtime/python/easerver.cpp runtime/python/kbin.cpp
   runtime/python/lobby.cpp runtime/python/netrelay.cpp)
 target_include_directories(hiraku-eamuse PRIVATE runtime)
 target_link_libraries(hiraku-eamuse PRIVATE hiraku_sys Threads::Threads)
+# runtime/python/kbin.h (binary XML, LZ77): tests/eamuse/test_kbin.cpp, exit 0 when all hold
+add_executable(hiraku-test-kbin EXCLUDE_FROM_ALL tests/eamuse/test_kbin.cpp runtime/python/kbin.cpp)
+target_include_directories(hiraku-test-kbin PRIVATE runtime)
 target_compile_options(hiraku_sys573 PRIVATE -O2 -Wno-unused-parameter)
 hk_pgo(sys573 hiraku_mame573)
 

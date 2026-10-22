@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // A local e-AMUSE3 server for Python 1 pop'n (easerver.h).
 #include "python/easerver.h"
+#include "python/kbin.h"
 #include "python/lobby.h"
 #include "shell/sys.h"
 
@@ -1941,6 +1942,16 @@ std::string EamuseServer::handle(const std::string &req) {
     const std::string head = req.substr(0, head_end), info = header(head, "X-Eamuse-Info");
     std::string body = head_end == std::string::npos ? "" : req.substr(head_end + 4);
     if (!info.empty()) rc4(key(info), body);
+    // packed (X-Compress: lz77), and binary XML (pop'n 18's libavs: kbin.h), read as text; the
+    // answer goes back in kind
+    std::string packing = header(head, "X-Compress");
+    for (char &ch : packing) ch = (char)std::tolower((unsigned char)ch);
+    if (packing == "lz77") body = kbin::lz77_unpack(body);
+    const bool binary = kbin::is_binary(body);
+    if (binary) {
+        std::string text;
+        if (kbin::to_text(body, text)) body = text;
+    }
     Call c;
     std::string xml;
     if (parse(body, c)) {
@@ -1954,13 +1965,26 @@ std::string EamuseServer::handle(const std::string &req) {
         }
         xml += "</response>";
     }
-    if (log) log(std::string("e-AMUSE3 call") + (info.empty() ? " (plain): " : ": ") + body + "\ne-AMUSE3 answer: " + (xml.empty() ? "(not understood)" : xml));
+    if (log) {   // a binary body in hex
+        std::string shown = body;
+        if (!body.empty() && (unsigned char)body[0] != '<') {
+            static const char *hx = "0123456789abcdef";
+            shown.clear();
+            for (unsigned char ch : body) shown += hx[ch >> 4], shown += hx[ch & 15];
+        }
+        log(std::string("e-AMUSE3 call") + (info.empty() ? " (plain): " : ": ") + shown + "\ne-AMUSE3 answer: " + (xml.empty() ? "(not understood)" : xml));
+    }
     if (xml.empty()) return "HTTP/1.0 400 Bad Request\r\nContent-Length: 0\r\n\r\n";
-    return reply(req, xml);
+    return reply(req, xml, binary);
 }
 
-std::string EamuseServer::reply(const std::string &req, std::string xml) {
+std::string EamuseServer::reply(const std::string &req, std::string xml, bool binary) {
     const std::string info = header(req.substr(0, req.find("\r\n\r\n")), "X-Eamuse-Info");
+    std::string packing;
+    if (binary) {   // a binary call: a binary answer, not packed
+        std::string bin;
+        if (kbin::from_text(xml, bin)) xml = bin, packing = "X-Compress: none\r\n";
+    }
     // Answer in kind: an encrypted call gets an encrypted answer; a plain one (ntp, rank, ...: their
     // packets have no cipher) a plain answer with no X-Eamuse-Info, which the game insists on (0x190290).
     std::string info_line;
@@ -1971,7 +1995,7 @@ std::string EamuseServer::reply(const std::string &req, std::string xml) {
         info_line = "X-Eamuse-Info: " + out_info + "\r\n";
     }
     return "HTTP/1.0 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: " + std::to_string(xml.size()) +
-           "\r\n" + info_line + "\r\n" + xml;
+           "\r\n" + info_line + packing + "\r\n" + xml;
 }
 
 void EamuseServer::edit(std::string &m, const std::function<void(std::string &)> &fn) {

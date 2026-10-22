@@ -45,8 +45,9 @@ public:
     static void edit(std::string &message, const std::function<void(std::string &body)> &fn);
     // Every name="..." in xml set to value.
     static void set_attr(std::string &xml, const std::string &name, const std::string &value);
-    // An answer to `request` with this XML (<response>...</response>), in kind as handle()'s.
-    std::string reply(const std::string &request, std::string xml);
+    // An answer to `request` with this XML (<response>...</response>), in kind as handle()'s
+    // (binary: the call was binary XML, and so is the answer)
+    std::string reply(const std::string &request, std::string xml, bool binary = false);
 
 public:
     struct Board;   // a ranking (easerver.cpp)
