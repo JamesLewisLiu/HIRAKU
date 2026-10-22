@@ -570,8 +570,53 @@ static void wait_for_go(void) {
     l->go_count = l->go_count + 1;
 }
 
+// debug HK_DBG_REC=[=]PTRADDR:SIZE:DIR[,...] (= the address is the buffer's): each buffer a pointer has held, dumped
+// when it changes (DIR\\rec<n>_<buffer>_f<frame>.bin): how a game keeps what the server sent it
+static void dbg_records(void) {
+    static int on = -1;
+    static struct { uintptr_t ptr; size_t size; char dir[MAX_PATH]; const uint8_t *bufs[8]; uint32_t last[8], nbufs; int direct; } w[4];
+    static uint32_t nw, n;
+    if (on < 0) {
+        const char *e = getenv("HK_DBG_REC");
+        on = 0;
+        while (e && nw < 4) {
+            unsigned p, z;
+            int used = 0;
+            const int direct = *e == '=';   // =ADDR: the buffer itself, not a pointer to it
+            if (sscanf(e + direct, "%x:%x:%259[^,]%n", &p, &z, w[nw].dir, &used) != 3) break;
+            used += direct;
+            w[nw].ptr = p, w[nw].size = z, w[nw].direct = direct, nw++, on = 1;
+            hk_log("hiraku-pc: debug: watching the buffers at %08x (%x bytes) into %s", p, z, w[nw - 1].dir);
+            e = e[used] == ',' ? e + used + 1 : NULL;
+        }
+    }
+    for (uint32_t i = 0; on > 0 && i < nw; i++) {
+        if (!present((const uint8_t *)w[i].ptr, 4)) continue;
+        const uint8_t *now = w[i].direct ? (const uint8_t *)w[i].ptr : *(const uint8_t *const *)w[i].ptr;
+        uint32_t k = 0;
+        while (k < w[i].nbufs && w[i].bufs[k] != now) k++;
+        if (now && k == w[i].nbufs && w[i].nbufs < 8) {
+            w[i].bufs[w[i].nbufs++] = now;
+            hk_log("hiraku-pc: debug: %08x holds %p", (unsigned)w[i].ptr, (const void *)now);
+        }
+        for (k = 0; k < w[i].nbufs; k++) {
+            const uint8_t *rec = w[i].bufs[k];
+            if (!present(rec, w[i].size)) continue;
+            uint32_t h = 2166136261u;
+            for (size_t j = 0; j < w[i].size; j++) h = (h ^ rec[j]) * 16777619u;
+            if (h == w[i].last[k]) continue;
+            w[i].last[k] = h;
+            char f[MAX_PATH + 48];
+            snprintf(f, sizeof f, "%s\\rec%03u_%08x_f%u.bin", w[i].dir, n++, (unsigned)(uintptr_t)rec, (unsigned)hk_link()->frames);
+            FILE *o = fopen(f, "wb");
+            if (o) fwrite(rec, 1, w[i].size, o), fclose(o);
+        }
+    }
+}
+
 static HRESULT WINAPI my_Present(IDirect3DDevice9 *d, const RECT *src, const RECT *dst, HWND wnd, const RGNDATA *dirty) {
     if (g_npatches) apply_patches();   // before the next frame runs
+    dbg_records();
     if (host_shows()) {   // HIRAKU's window shows it, at the time its pacing chooses
         struct hk_pc_link *l = hk_link();
         if (capture(d)) {
