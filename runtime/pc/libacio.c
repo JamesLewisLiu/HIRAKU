@@ -33,7 +33,20 @@ static struct {
     uint32_t keys_last;
 } g;
 
-#define CARD_HELD_MS 2000
+// a card stays in the reader that long after it was held there: 2 s for pop'n 15, 10 s from
+// pop'n 16 on (pop'n 18 reads it seconds after its ENTRY screen asks for it: a card gone by then
+// leaves it checking for good); HK_PC_CARD_MS another time
+static DWORD card_held_ms(void) {
+    static DWORD ms;
+    if (!ms) {
+        char exe[MAX_PATH];
+        GetModuleFileNameA(NULL, exe, MAX_PATH);
+        const char *base = strrchr(exe, '\\');
+        ms = _stricmp(base ? base + 1 : exe, "popn15.exe") ? 10000 : 2000;
+        if (getenv("HK_PC_CARD_MS")) ms = (DWORD)atoi(getenv("HK_PC_CARD_MS"));
+    }
+    return ms;
+}
 
 // HK_PC_USB_LOG: the reader's calls as the game makes them (each change)
 static void trace(const char *what, int a, int b) {
@@ -44,7 +57,7 @@ static void trace(const char *what, int a, int b) {
     if (!on) return;
     snprintf(now, sizeof now, "%s %d %d", what, a, b);
     if (strcmp(now, last)) hk_log("acio: %s", now), strcpy(last, now);
-}   // a card stays in the reader that long after it was held there
+}
 
 static void update(void) {
     struct hk_pc_link *l = hk_link();
@@ -76,7 +89,8 @@ static void update(void) {
         g.card_at = GetTickCount();
         hk_log("hiraku-pc: a card at the reader");
     }
-    if (g.card_at && GetTickCount() - g.card_at <= CARD_HELD_MS) {
+    const DWORD in_for = g.card_at ? GetTickCount() - g.card_at : 0;
+    if (g.card_at && in_for <= card_held_ms()) {
         g.state = ACTIVE;
         g.st.front_sensor = g.st.rear_sensor = 1;
     } else {   // no card (or taken away): the reader closed and empty, as spice2x reports it; a
@@ -155,6 +169,7 @@ API char ac_io_icca_get_status(void *out, int unit) {
     return 1;
 }
 API char ac_io_icca_get_uid(int unit, char *card) {
+    trace("get_uid", unit, g.state);
     (void)unit;
     memcpy(card, g.st.uid, 8);
     return g.state != ERR_GETUID;

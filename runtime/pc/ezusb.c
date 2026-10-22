@@ -46,7 +46,31 @@ int CALL usb_pad_read(unsigned long *bits) {
 // wildly (as bemanitools' shim once did; seen by crazyredmachine). Nothing is written: the game's
 // zeroed buffer says "no samples", and it reads the pad from usbPadRead.
 int CALL usb_pad_read_last(uint8_t *p) {
-    (void)p;
+    // pop'n 16 on read their buttons in play from these: a counter that moves on with each sample
+    // the board took (the game takes those since its last look, at most 6 a frame), then the ten
+    // latest samples, newest first, buttons 1-9 in bits 0-8 (pop'n 18: 0x4fed10, 0x4fec90). Here a
+    // sample at each read. pop'n 15 doesn't read them, and is left as it was
+    static int samples = -1;
+    static uint8_t counter;
+    static uint16_t last[10];
+    if (samples < 0) {
+        char exe[MAX_PATH];
+        GetModuleFileNameA(NULL, exe, MAX_PATH);
+        const char *base = strrchr(exe, '\\');
+        samples = _stricmp(base ? base + 1 : exe, "popn15.exe") != 0;
+    }
+    if (!samples || !p) return 0;
+    if (usb_log()) {
+        static DWORD t0, n;
+        n++;
+        if (!t0) t0 = GetTickCount();
+        if (GetTickCount() - t0 >= 10000) hk_log("usb: usbPadReadLast %lu times in 10 s", n), n = 0, t0 = GetTickCount();
+    }
+    memmove(last + 1, last, sizeof last - sizeof *last);
+    last[0] = (uint16_t)(hk_pad_now() >> 8 & 0x1ff);
+    counter++;
+    p[0] = counter, p[1] = 0;
+    for (int i = 0; i < 10; i++) p[2 + 2 * i] = (uint8_t)last[i], p[3 + 2 * i] = (uint8_t)(last[i] >> 8);
     return 0;
 }
 int CALL usb_lamp(int bits) {

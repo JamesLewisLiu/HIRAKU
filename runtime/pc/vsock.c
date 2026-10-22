@@ -516,7 +516,10 @@ typedef int(__cdecl *avs_net_ctrl_t)(int what, void *buf, int size);
 
 static int __cdecl my_ea3_query(int what, int index, void *buf, int size) {
     static ea3_query_t real;
-    if (!real) real = (ea3_query_t)(void *)GetProcAddress(GetModuleHandleA("libavs-win32.dll"), "ea3_query");
+    if (!real) {   // libavs's own, or (pop'n 17 on) its e-AMUSEMENT half's
+        HMODULE ea3 = GetModuleHandleA("libavs-win32-ea3.dll");
+        real = (ea3_query_t)(void *)GetProcAddress(ea3 ? ea3 : GetModuleHandleA("libavs-win32.dll"), "ea3_query");
+    }
     const int r = real ? real(what, index, buf, size) : -1;
     if (what == 8 && buf && size >= 4 && relay()) {   // the portfw address (the router as the world sees it)
         put_addr((unsigned char *)buf, g_addr);

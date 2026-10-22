@@ -160,10 +160,21 @@ uint32_t hk_pad_now(void) {
         read_at_go = l->go_count;
         l->pad_read_us = us_since_go(l);
     }
-    escape_quits();
-    uint32_t b = l->pad;
-    for (int i = 0; i < 32; i++)
-        if (key_down(l->keys[i][0]) || key_down(l->keys[i][1])) b |= 1u << i;
+    // the keyboard (each key a call that Wine may take to its server): read at most once a
+    // millisecond, however often the game reads its pad (pop'n 18 reads it many times a frame)
+    static uint32_t keys;
+    static LARGE_INTEGER keys_at, qpf;
+    LARGE_INTEGER now;
+    if (!qpf.QuadPart) QueryPerformanceFrequency(&qpf);
+    QueryPerformanceCounter(&now);
+    if (!keys_at.QuadPart || now.QuadPart - keys_at.QuadPart >= qpf.QuadPart / 1000) {
+        keys_at = now;
+        escape_quits();
+        keys = 0;
+        for (int i = 0; i < 32; i++)
+            if (key_down(l->keys[i][0]) || key_down(l->keys[i][1])) keys |= 1u << i;
+    }
+    uint32_t b = l->pad | keys;
     l->game_alive++;
     b |= (scripted() & ~(1u << 22)) | coin_switch();
     static uint32_t was;

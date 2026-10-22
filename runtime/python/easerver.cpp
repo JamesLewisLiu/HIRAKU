@@ -987,6 +987,11 @@ std::string EamuseServer::answer_later(const std::string &game, const Request &r
             // pop'n 15 asks for its own player (binded 0: the card has none yet, the game makes one
             // or carries pop'n 14's over) and, with model="F14:...", for pop'n 14's (binded 1 and
             // expired 0: the game asks for it, playerdata_get model="F14")
+            if (game == "J39") {   // pop'n 18: its own player, as pop'n 15's (answer_j39)
+                const bool binded = read_file("pdata-J39-" + ref).size() == 0x1700;
+                return "<cardmng status=\"0\" refid=\"" + ref + "\" binded=\"" + (binded ? "1" : "0") +
+                       "\" expired=\"0\" newflag=\"" + (fresh ? "1" : "0") + "\"/>";
+            }
             if (game == "G15") {
                 const std::string model = attr(r.attrs, "model").substr(0, 3);
                 const bool binded = model.empty() ? read_file("pdata-G15-" + ref).size() == 0xb38
@@ -1118,6 +1123,7 @@ std::string EamuseServer::answer_later(const std::string &game, const Request &r
         return "<portfw status=\"0\"/>";
     }
     if (m == game && game == "G15") return answer_g15(r);
+    if (game == "J39" && (m == "game" || m == "playerdata")) return answer_j39(r);
     if (m == game) return answer_game(game, r);   // pop'n 11 on: <D11 type=.. method=..>
     return "";
 }
@@ -2024,6 +2030,68 @@ void EamuseServer::set_attr(std::string &xml, const std::string &name, const std
         if (e == std::string::npos) return;
         xml.replace(b, e - b, value);
     }
+}
+
+
+// pop'n 18 せんごく列伝 (J39: popn18.exe through hiraku-pc). Its calls come as binary XML (kbin.h),
+// modules game and playerdata (method tables 0x6a6800, 0x6a6858). game.get's parser (0x453a70)
+// reads game_phase, ir_phase, event_phase, netvs_phase, license_phase, psp_phase, psp_sale_month,
+// psp_sale_day, local_matching_enable, matching_sec, boss_diff, boss_battle_point (each the data
+// folder's NAME-J39 if there is one). playerdata.get's (0x454810) copies <b>, the player's record
+// of 0x1700 bytes, whole, and unpacks <hiscore>: 0x1ab7 scores (977 songs x 7 charts) of 17 bits,
+// one after another (0x456570); new (0x454ac0) answers the record. set (0x454bf0) sends the
+// credit's changes as attributes and children (music, license, private, netvs, boss): kept as sent
+// (pset-J39-<ref>) until their places in the record are worked out.
+std::string EamuseServer::answer_j39(const Request &r) {
+    const std::string &m = r.module, &f = r.method;
+    constexpr size_t RECORD = 0x1700, SCORES = 0x1ab7, SCORE_BITS = 17;
+    auto hex = [](const std::string &b) {
+        static const char *hx = "0123456789abcdef";
+        std::string o;
+        for (unsigned char ch : b) o += hx[ch >> 4], o += hx[ch & 15];
+        return o;
+    };
+    if (m == "game" && f == "get") {
+        struct Field { const char *name; long value; };
+        // guesses but matching_sec (pop'n 15's): to be worked out from each one's users
+        static const Field fields[] = {{"game_phase", 2}, {"ir_phase", 0}, {"event_phase", 1}, {"netvs_phase", 1},
+                                       {"license_phase", 1}, {"psp_phase", 0}, {"psp_sale_month", 1}, {"psp_sale_day", 1},
+                                       {"local_matching_enable", 1}, {"matching_sec", 120}, {"boss_diff", 0}, {"boss_battle_point", 0}};
+        std::string a;
+        for (const Field &fd : fields) {
+            const std::string v = read_file(std::string(fd.name) + "-J39");
+            a += std::string(" ") + fd.name + "=\"" + std::to_string(v.empty() ? fd.value : std::strtol(v.c_str(), nullptr, 10)) + "\"";
+        }
+        return "<game status=\"0\"" + a + "/>";
+    }
+    if (m == "game") return "<game status=\"0\"/>";   // active
+    const std::string ref = attr(r.attrs, "ref_id");
+    if (!safe_name(ref)) return "<playerdata status=\"1\"/>";
+    const std::string file = "pdata-J39-" + ref;
+    std::string rec = read_file(file);
+    auto answer = [&] {
+        const std::string scores((SCORES * SCORE_BITS + 7) / 8, '\0');
+        return "<playerdata status=\"0\"><b __type=\"bin\">" + hex(rec) + "</b><hiscore __type=\"bin\">" + hex(scores) +
+               "</hiscore></playerdata>";
+    };
+    if (f == "new") {   // the name (Shift-JIS, 12 bytes) first, as pop'n 12-15's records
+        rec.assign(RECORD, '\0');
+        const std::string name = attr(r.attrs, "name");
+        for (size_t i = 0; i < name.size() && i < 12; i++) rec[i] = name[i];
+        write_file(file, rec);
+        return answer();
+    }
+    if (f == "get") {
+        if (rec.size() != RECORD) return "<playerdata status=\"109\"/>";
+        return answer();
+    }
+    if (f == "set") {   // kept as sent, a line each credit
+        std::string line = "attrs";
+        for (const auto &[k, v] : r.attrs) line += " " + k + "=" + v;
+        write_file("pset-J39-" + ref, read_file("pset-J39-" + ref) + line + "\n" + r.inner + "\n");
+        return "<playerdata status=\"0\"/>";
+    }
+    return "<playerdata status=\"0\"/>";   // expire, friend, conversion: nothing yet
 }
 
 }  // namespace hk::py
