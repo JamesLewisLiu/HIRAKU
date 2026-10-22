@@ -107,6 +107,11 @@ static void update(void) {
         g.state = START;
         g.st.front_sensor = g.st.rear_sensor = 0;
         memset(g.st.uid, 0, 8);
+    } else if (g.card_at && g.ejected_at && GetTickCount() - g.ejected_at <= MOUTH_MS + 2000) {
+        // then asleep: pop'n 18's ENTRY, its card pushed out before a credit (the player backed
+        // out), waits for SLEEP or READY instead (0x46885d, 0x468967)
+        g.state = SLEEP;
+        g.st.front_sensor = g.st.rear_sensor = 0;
     } else if (g.card_at && !g.ejected_at && in_for <= card_held_ms()) {
         g.state = ACTIVE;
         g.st.front_sensor = g.st.rear_sensor = 1;
