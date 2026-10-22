@@ -226,13 +226,8 @@ void poll() {
             lampview::toggle();
             continue;
         }
-        if (e.type == SDL_EVENT_KEY_DOWN && !e.key.repeat && e.key.key == SDLK_F8 && g_gl) {   // F8: the shader's settings
-            shaderview::toggle();
+        if (shaderview::event(e, g_mode, g_gl != nullptr))   // F8: the shader's settings (its controls: not the game's)
             continue;
-        }
-        if ((e.type == SDL_EVENT_KEY_DOWN || e.type == SDL_EVENT_KEY_UP) && shaderview::shown() &&
-            shaderview::key(e.key, g_mode))
-            continue;   // the panel's keys, while it's shown: not the game's
         if (e.type == SDL_EVENT_KEY_DOWN && !e.key.repeat && e.key.key == SDLK_F10 && g_gl)   // F10: off, light, full, lola
             g_mode = g_mode == picture::Mode::off     ? picture::Mode::light
                    : g_mode == picture::Mode::light ? picture::Mode::full
@@ -296,6 +291,10 @@ void window_set_picture(const std::string &mode, const std::string &shaders_dir,
 
 void window_set_display_sync(bool on) { g_display_sync = on; }
 void window_set_lights_overlay(bool on) { lampview::set_shown(on); }
+bool window_set_shader_key(const std::string &spec) {
+    const size_t eq = spec.find('=');
+    return eq != std::string::npos && shaderview::set_control(spec.substr(0, eq), spec.substr(eq + 1));
+}
 void window_set_smooth_motion(bool on) { g_smooth_motion = on, pacing::set_smooth_motion(on || g_beam); }
 void window_set_beam(bool on, float gamma, float gain) {
     g_beam = on, g_beam_gamma = gamma, g_beam_gain = gain;

@@ -28,6 +28,10 @@ namespace hk::host {
 
 void input_init(const std::string &bindings_file);   // "" = defaults only
 void input_event(const SDL_Event &e);
+// One binding (a bindings file's spelling: "key:F8", "joy[DAO FPS]:button3", "joy0:hat0 up",
+// "joy0:axis1+") against an event: 1 it's pressed (a key's auto-repeat too), -1 released, 0 not this
+// binding (host/shaderview.h's controls)
+int input_binding_event(const std::string &binding, const SDL_Event &e);
 void input_joystick_added(unsigned int instance_id);   // hot-plugged controller
 void input_joystick_removed(unsigned int instance_id); // unplugged
 void input_update(double elapsed_ms);                 // turntable keys, analog axes

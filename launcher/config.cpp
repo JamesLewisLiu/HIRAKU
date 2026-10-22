@@ -191,6 +191,21 @@ QStringList python() {
 #endif
 }
 
+const QList<ShaderKey> &shaderKeys() {
+    static const QList<ShaderKey> k = {
+        {"show", "Show it, move it, hide it", "key:F8"},
+        {"up", "Previous setting", "key:Up"},
+        {"down", "Next setting", "key:Down"},
+        {"less", "Less", "key:Left"},
+        {"more", "More", "key:Right"},
+        {"saved", "Back to the saved value", "key:Backspace"},
+        {"default", "Back to the default", "key:Delete"},
+        {"save", "Save for all games", "key:Return"},
+        {"save_game", "Save for this game", ""},
+    };
+    return k;
+}
+
 QString familyName(const QString &family) {
     if (family == "bm3") return "beatmania III";
     if (family == "popn") return "pop'n music (Firebeat)";

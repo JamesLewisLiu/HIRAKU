@@ -44,6 +44,11 @@ QString exeName(const QString &base);      // a program's file name: base, or ba
 QStringList python();
 
 QString familyName(const QString &family); // "pop'n music"
+// The in-game shader settings' controls (runtime/host/shaderview.h): their actions, in order,
+// each with its label and its default binding ("" none); the launcher's own are
+// shaderKeys/<action> (absent: the default), passed on as --shader-key ACTION=BINDING
+struct ShaderKey { const char *action, *label, *binding; };
+const QList<ShaderKey> &shaderKeys();
 QList<QPair<QString, QStringList>> familySeries();   // ("beatmania", {djbm, iidx, bm3}), ...
 QStringList families();                    // every family, in familySeries() order
 

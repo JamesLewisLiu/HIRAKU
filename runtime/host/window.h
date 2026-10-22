@@ -55,6 +55,10 @@ void window_set_smooth_motion(bool on);
 void window_set_beam(bool on, float gamma = 2.2f, float gain = 0.7f);
 // --lights-overlay: the game's lights over its picture from the start (F9 toggles it; host/lampview.h)
 void window_set_lights_overlay(bool on);
+// --shader-key ACTION=BINDING: one of the in-game shader settings' controls (host/shaderview.h:
+// show, up, down, less, more, saved, default, save, save_game), as a bindings file spells it
+// ("key:F8", "joy[DAO FPS]:button3"; empty: none); repeatable. False: no such action.
+bool window_set_shader_key(const std::string &spec);
 bool window_open(const char *title, int scale, const std::string &bindings, int audio_target_ms, bool fullscreen = false,
                  int audio_rate = 44100);
 // Present one frame; then sleep so that `virtual_seconds` does not run ahead

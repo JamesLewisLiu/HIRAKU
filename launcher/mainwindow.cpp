@@ -818,6 +818,9 @@ QStringList MainWindow::arguments(const Game &g) const {
     // the picture mode, and its settings: all games', then the game's (picturedialog.h)
     a << "--picture" << picture::mode(g.id) << "--picture-config" << picture::configDir() << "--picture-config"
       << picture::configDir(g.id);
+    for (const cfg::ShaderKey &k : cfg::shaderKeys())   // the in-game shader settings' controls (Settings > Display)
+        if (s.contains(QString("shaderKeys/") + k.action))
+            a << "--shader-key" << QString("%1=%2").arg(k.action, s.value(QString("shaderKeys/") + k.action).toString());
     a << "--audio-ms" << QString::number(s.value("audio/ms", 8).toInt());
     if (s.value("audio/fixed", false).toBool()) a << "--audio-fixed";
     if (!s.value("system/priority", true).toBool()) a << "--normal-priority";

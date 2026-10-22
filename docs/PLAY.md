@@ -146,7 +146,11 @@ Shift, ten steps at a time); Backspace puts back the saved value, Delete the def
 saves the changes for all games, **Shift+Enter** for this game alone, into the same files the
 launcher's Picture dialog keeps (a game started from the launcher; on the command line, give a
 folder with `--picture-config DIR`). Amber values differ from the default, and a star marks a change
-not saved yet. While the panel is shown, the game doesn't get those keys; Esc still quits. It's
+not saved yet. **Settings > Display** maps each of its controls to another key or to a controller's
+button, hat or axis, as the Controls dialog does (so a cabinet's buttons can drive it; with a
+keyboard, Shift still does ten steps, or saves for this game); on the command line,
+`--shader-key ACTION=BINDING` (show, up, down, less, more, saved, default, save, save_game). While
+the panel is shown, the game doesn't get its controls; Esc still quits. It's
 drawn small (8x8 letters, 316x370), so it fits a 640x480 screen; larger windows draw it two, three
 times as big.
 

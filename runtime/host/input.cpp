@@ -198,6 +198,29 @@ void input_event(const SDL_Event &e) {
         }
 }
 
+int input_binding_event(const std::string &binding, const SDL_Event &e) {
+    Binding b;
+    if (!parse_binding(binding, b)) return 0;
+    switch (e.type) {
+    case SDL_EVENT_KEY_DOWN:
+    case SDL_EVENT_KEY_UP:
+        return b.src == Src::key && e.key.key == b.key ? (e.type == SDL_EVENT_KEY_DOWN ? 1 : -1) : 0;
+    case SDL_EVENT_JOYSTICK_BUTTON_DOWN:
+    case SDL_EVENT_JOYSTICK_BUTTON_UP:
+        if (b.src == Src::button && from(b, e.jbutton.which) && e.jbutton.button == b.index)
+            return e.type == SDL_EVENT_JOYSTICK_BUTTON_DOWN ? 1 : -1;
+        return 0;
+    case SDL_EVENT_JOYSTICK_HAT_MOTION:
+        if (b.src == Src::hat && from(b, e.jhat.which) && e.jhat.hat == b.index) return (e.jhat.value & b.hat_dir) ? 1 : -1;
+        return 0;
+    case SDL_EVENT_JOYSTICK_AXIS_MOTION:
+        if ((b.src == Src::axis_neg || b.src == Src::axis_pos) && from(b, e.jaxis.which) && e.jaxis.axis == b.index)
+            return (b.src == Src::axis_neg ? e.jaxis.value < -16384 : e.jaxis.value > 16384) ? 1 : -1;
+        return 0;
+    default: return 0;
+    }
+}
+
 void input_update(double ms) {
     for (int p = 0; p < 2; p++) {
         std::string base = p == 0 ? "P1 Turntable" : "P2 Turntable";

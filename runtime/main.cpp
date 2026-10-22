@@ -50,6 +50,9 @@
 //                       cycles them. --crt is --picture light
 //     --picture-config DIR  read DIR/<shader>.params over the shader's settings (repeatable,
 //                       later ones win; `name = value` lines; read again when they change)
+//     --shader-key ACTION=BINDING  a control of the shader's settings in the game (F8: show, up,
+//                       down, less, more, saved, default, save, save_game), as --bindings spells it
+//                       ("key:F8", "joy[DAO FPS]:button3"); repeatable; host/shaderview.h
 //     --bindings FILE   controls (see runtime/host/input.h)
 //     --lights FILE     drive HID controller LEDs from the cabinet lamps (see runtime/host/lights.h)
 //     --lights-socket P publish the lamps on a UNIX socket at path P, or on TCP at HOST:PORT (docs/LIGHTS.md)
@@ -269,7 +272,7 @@ int main(int argc, char **argv) {
     std::string wav_path, digest_path, script_path, bindings, nvram_dir, lights_file, lights_socket;
     bool fullscreen = false;
     std::string picture_mode = "off";
-    std::vector<std::string> picture_config;
+    std::vector<std::string> picture_config, shader_keys;
     std::vector<std::string> macro_specs;
     bool display_sync = true, smooth_motion = false, lights_overlay = false, crt_beam = false;
     float beam_gamma = 2.2f, beam_gain = 0.7f;
@@ -310,6 +313,7 @@ int main(int argc, char **argv) {
         else if (a == "--crt") picture_mode = "light";
         else if (a == "--picture") picture_mode = val();
         else if (a == "--picture-config") picture_config.push_back(val());
+        else if (a == "--shader-key") shader_keys.push_back(val());
         else if (a == "--macro") macro_specs.push_back(val());
         else if (a == "--display-sync") display_sync = val() != "off";
         else if (a == "--smooth-motion") smooth_motion = true;
@@ -472,6 +476,8 @@ int main(int argc, char **argv) {
     host::window_set_smooth_motion(smooth_motion);
     host::window_set_beam(crt_beam, beam_gamma, beam_gain);
     host::window_set_lights_overlay(lights_overlay);
+    for (const std::string &k : shader_keys)
+        if (!host::window_set_shader_key(k)) fprintf(stderr, "--shader-key %s: not ACTION=BINDING with a known action\n", k.c_str());
     host::window_set_audio_output(audio_device, audio_buffer, audio_exclusive);
     host::window_set_audio_asio(audio_asio);
     host::window_set_volume(volume_db);

@@ -11,6 +11,7 @@
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QFormLayout>
+#include <QGridLayout>
 #include <QGroupBox>
 #include <QHBoxLayout>
 #include <QLabel>
@@ -27,13 +28,16 @@
 #include <QScrollBar>
 #include <QStyle>
 #include <QTabWidget>
+#include <QToolButton>
 #include <QVBoxLayout>
 
 #ifdef _WIN32
 #include <SDL3/SDL.h>
 #endif
 
+#include "capturedialog.h"
 #include "config.h"
+#include "inputs.h"
 #include "updater.h"
 
 #include <QFile>
@@ -286,6 +290,52 @@ SettingsDialog::SettingsDialog(QWidget *parent) : QDialog(parent) {
 #endif
     fy->addRow("Graphics:", m_pyRenderer);
     v->addWidget(py);
+    // the shader's settings in the game (runtime/host/shaderview.h): a key or a controller's
+    // button for each of its controls, as in Controls
+    auto *sk = new QGroupBox("The shader's settings while playing (F8)");
+    auto *gk = new QGridLayout(sk);
+    auto *skNote = new QLabel("A panel beside the picture: pick a setting, change it, see it at once, save it. A key or a "
+                              "controller's button for each (with the keyboard, Shift does ten steps, or saves for this game).");
+    skNote->setWordWrap(true);
+    gk->addWidget(skNote, 0, 0, 1, 3);
+    QList<QPair<QString, QPushButton *>> skButtons;
+    auto shown = [](const QString &b) { return b.isEmpty() ? QString("none") : describeBinding(b); };
+    int row = 1;
+    for (const cfg::ShaderKey &k : cfg::shaderKeys()) {
+        const QString action = k.action, label = k.label;
+        m_shaderKeys[action] = s.value("shaderKeys/" + action, QString(k.binding)).toString();
+        auto *b = new QPushButton(shown(m_shaderKeys[action]));
+        b->setAutoDefault(false);
+        b->setToolTip("Click, then press the key or the controller's button");
+        connect(b, &QPushButton::clicked, this, [this, b, action, label, shown] {
+            CaptureDialog d(label + "  (the shader's settings, F8)", false, this);
+            if (d.exec() != CaptureDialog::Captured || d.result().isEmpty()) return;
+            m_shaderKeys[action] = d.result();
+            b->setText(shown(d.result()));
+        });
+        auto *none = new QToolButton;
+        none->setText("✕");
+        none->setAutoRaise(true);
+        none->setToolTip("No control for it");
+        connect(none, &QToolButton::clicked, this, [this, b, action, shown] {
+            m_shaderKeys[action].clear();
+            b->setText(shown(QString()));
+        });
+        gk->addWidget(new QLabel(label + ":"), row, 0);
+        gk->addWidget(b, row, 1);
+        gk->addWidget(none, row, 2);
+        skButtons.append({action, b});
+        row++;
+    }
+    auto *skDefaults = new QPushButton("Defaults");
+    skDefaults->setAutoDefault(false);
+    connect(skDefaults, &QPushButton::clicked, this, [this, skButtons, shown] {
+        for (const cfg::ShaderKey &k : cfg::shaderKeys()) m_shaderKeys[k.action] = k.binding;
+        for (const auto &[action, b] : skButtons) b->setText(shown(m_shaderKeys[action]));
+    });
+    gk->addWidget(skDefaults, row, 1, Qt::AlignLeft);
+    gk->setColumnStretch(1, 1);
+    v->addWidget(sk);
 
     v = page("Audio");
     auto *audio = new QGroupBox("Output");
@@ -608,6 +658,10 @@ void SettingsDialog::accept() {
     s.setValue("video/crtBeamGain", m_beamGain->value());
     s.setValue("video/picture", m_picture->currentData().toString());
     s.setValue("video/pythonRenderer", m_pyRenderer->currentData().toString());
+    for (const cfg::ShaderKey &k : cfg::shaderKeys()) {   // only what differs from the defaults
+        if (m_shaderKeys.value(k.action) == k.binding) s.remove(QString("shaderKeys/") + k.action);
+        else s.setValue(QString("shaderKeys/") + k.action, m_shaderKeys.value(k.action));
+    }
     s.setValue("audio/ms", m_audioMs->value());
     s.setValue("audio/fixed", m_audioFixed->isChecked());
     s.setValue("system/priority", m_priority->isChecked());

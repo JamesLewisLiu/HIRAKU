@@ -9,6 +9,8 @@
 #include <cstring>
 #include <string>
 
+#include "input.h"
+
 namespace hk::host::shaderview {
 
 namespace {
@@ -206,46 +208,92 @@ void toggle() {
 bool shown() { return g_side != 0; }
 bool on_left() { return g_side == 2; }
 
-bool key(const SDL_KeyboardEvent &k, picture::Mode mode) {
-    if (!g_side || (k.mod & (SDL_KMOD_ALT | SDL_KMOD_CTRL | SDL_KMOD_GUI))) return false;   // Alt+Enter: fullscreen
-    switch (k.key) {
-    case SDLK_UP: case SDLK_DOWN: case SDLK_PAGEUP: case SDLK_PAGEDOWN: case SDLK_HOME: case SDLK_END:
-    case SDLK_LEFT: case SDLK_RIGHT: case SDLK_BACKSPACE: case SDLK_DELETE: case SDLK_RETURN: case SDLK_KP_ENTER:
-        break;
-    default:
-        return false;
+const std::vector<std::string> &actions() {
+    static const std::vector<std::string> a = {"show", "up", "down", "less", "more", "saved", "default", "save", "save_game"};
+    return a;
+}
+
+namespace {
+// each action's bindings (the defaults: the keyboard's)
+std::vector<std::vector<std::string>> g_controls = {
+    {"key:F8"}, {"key:Up"}, {"key:Down"}, {"key:Left"}, {"key:Right"}, {"key:Backspace"}, {"key:Delete"},
+    {"key:Return", "key:Keypad Enter"}, {}};
+std::vector<bool> g_given(9, false);   // set_control gave the action's (it replaces the default)
+}  // namespace
+
+bool set_control(const std::string &action, const std::string &binding) {
+    const auto &a = actions();
+    const size_t i = std::find(a.begin(), a.end(), action) - a.begin();
+    if (i == a.size()) return false;
+    if (!g_given[i]) g_controls[i].clear(), g_given[i] = true;
+    if (!binding.empty()) g_controls[i].push_back(binding);
+    return true;
+}
+
+static bool paging(const SDL_Event &e, picture::Mode mode);
+
+bool event(const SDL_Event &e, picture::Mode mode, bool can_show) {
+    if (paging(e, mode)) return true;
+    const bool is_key = e.type == SDL_EVENT_KEY_DOWN || e.type == SDL_EVENT_KEY_UP;
+    if (is_key && (e.key.mod & (SDL_KMOD_ALT | SDL_KMOD_CTRL | SDL_KMOD_GUI))) return false;   // Alt+Enter: fullscreen
+    int act = -1, how = 0;
+    for (size_t i = 0; i < g_controls.size() && act < 0; i++)
+        for (const std::string &b : g_controls[i])
+            if (int r = input_binding_event(b, e)) {
+                act = (int)i, how = r;
+                break;
+            }
+    if (act < 0) return false;
+    if (act == 0) {   // show: on the right, the left, hidden
+        if (!can_show) return false;
+        if (how > 0 && !(is_key && e.key.repeat)) toggle();
+        return true;
     }
-    if (k.type != SDL_EVENT_KEY_DOWN) return true;   // its key-ups aren't the game's either
+    if (!g_side) return false;   // hidden: the game's
+    if (how < 0) return true;    // its releases aren't the game's either
     std::vector<picture::Setting> list;
     if (!picture::settings(mode, list) || list.empty()) return true;
     place(list);
     if (g_sel < 0) return true;
-    const bool shift = k.mod & SDL_KMOD_SHIFT;
+    const bool shift = is_key && (e.key.mod & SDL_KMOD_SHIFT);
     const picture::Setting &st = list[g_sel];
-    switch (k.key) {
-    case SDLK_UP: g_sel = settle(list, g_sel - 1, -1); break;
-    case SDLK_DOWN: g_sel = settle(list, g_sel + 1, 1); break;
-    case SDLK_PAGEUP: g_sel = settle(list, g_sel - (ROWS - 1), -1); break;
-    case SDLK_PAGEDOWN: g_sel = settle(list, g_sel + (ROWS - 1), 1); break;
-    case SDLK_HOME: g_sel = settle(list, 0, 1); break;
-    case SDLK_END: g_sel = settle(list, (int)list.size() - 1, -1); break;
-    case SDLK_LEFT:
-    case SDLK_RIGHT: {
+    switch (act) {
+    case 1: g_sel = settle(list, g_sel - (shift ? ROWS - 1 : 1), -1); break;
+    case 2: g_sel = settle(list, g_sel + (shift ? ROWS - 1 : 1), 1); break;
+    case 3:
+    case 4: {
         const float step = st.step > 0 ? st.step : 0.01f;
-        float v = st.value + (k.key == SDLK_RIGHT ? 1 : -1) * step * (shift ? 10 : 1);
+        float v = st.value + (act == 4 ? 1 : -1) * step * (shift ? 10 : 1);
         v = std::clamp(v, st.min, st.max);
         v = std::clamp(st.min + std::round((v - st.min) / step) * step, st.min, st.max);   // on the step's grid
         picture::set_setting(mode, st.name, v);
         break;
     }
-    case SDLK_BACKSPACE: picture::set_setting(mode, st.name, st.saved); break;
-    case SDLK_DELETE: picture::set_setting(mode, st.name, st.preset); break;
-    default: {   // Enter
-        picture::save_settings(mode, shift, g_msg);
+    case 5: picture::set_setting(mode, st.name, st.saved); break;
+    case 6: picture::set_setting(mode, st.name, st.preset); break;
+    default:   // save: all games (Shift: this game); save_game: this game
+        picture::save_settings(mode, act == 8 || shift, g_msg);
         g_msg_until = SDL_GetTicks() + 4000;
         break;
     }
-    }
+    g_dirty = true;
+    return true;
+}
+
+// The keyboard's own moves through the list while it's shown: Page Up/Down, Home, End
+static bool paging(const SDL_Event &e, picture::Mode mode) {
+    if (!g_side || (e.type != SDL_EVENT_KEY_DOWN && e.type != SDL_EVENT_KEY_UP)) return false;
+    const SDL_Keycode k = e.key.key;
+    if (k != SDLK_PAGEUP && k != SDLK_PAGEDOWN && k != SDLK_HOME && k != SDLK_END) return false;
+    if (e.type == SDL_EVENT_KEY_UP) return true;
+    std::vector<picture::Setting> list;
+    if (!picture::settings(mode, list) || list.empty()) return true;
+    place(list);
+    if (g_sel < 0) return true;
+    g_sel = k == SDLK_PAGEUP     ? settle(list, g_sel - (ROWS - 1), -1)
+          : k == SDLK_PAGEDOWN ? settle(list, g_sel + (ROWS - 1), 1)
+          : k == SDLK_HOME     ? settle(list, 0, 1)
+                               : settle(list, (int)list.size() - 1, -1);
     g_dirty = true;
     return true;
 }
