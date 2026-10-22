@@ -66,8 +66,12 @@ if [ ! -f "$deps/.done" ]; then
   touch "$deps/.done"
 fi
 
-# the core alone: PCSX2's own interface off (no Qt), FFmpeg loaded at run time, HIRAKU's SDL3
-cmake -S "$src" -B "$build" -G Ninja -DCMAKE_BUILD_TYPE=Release \
+# the core alone: PCSX2's own interface off (no Qt), FFmpeg loaded at run time, HIRAKU's SDL3;
+# for any x86-64 CPU with SSE4.1, as PCSX2's own releases (and the Windows job): its renderer in
+# SSE4, AVX and AVX2 copies, picked at run time. Without DISABLE_ADVANCE_SIMD it builds with
+# -march=native, for the build machine's CPU: on the runner's AMD EPYC, v0.2.0's and v0.3.0's
+# hiraku-python got SSE4a instructions, which no Intel CPU has (it stops on them)
+cmake -S "$src" -B "$build" -G Ninja -DCMAKE_BUILD_TYPE=Release -DDISABLE_ADVANCE_SIMD=ON \
   -DCMAKE_C_COMPILER="${CC:-clang}" -DCMAKE_CXX_COMPILER="${CXX:-clang++}" \
   -DCMAKE_PREFIX_PATH="$deps;$linux_deps" -DCMAKE_BUILD_RPATH='$ORIGIN/lib' \
   `# an RPATH, not a RUNPATH: it also finds the bundled libraries' own (libwebp's libsharpyuv)` \
@@ -75,6 +79,9 @@ cmake -S "$src" -B "$build" -G Ninja -DCMAKE_BUILD_TYPE=Release \
   -DENABLE_QT_UI=OFF -DENABLE_TESTS=OFF -DUSE_LINKED_FFMPEG=OFF -DWAYLAND_SCANNER=OFF -DHK_PCSC_DLOPEN=ON \
   -DHIRAKU_DIR="$root"
 cmake --build "$build" -j "$jobs" --target hiraku-python
+# no instruction some x86-64 CPUs lack: AMD's SSE4a (extrq, insertq), AVX-512 (zmm registers)
+bad=$(objdump -d --no-show-raw-insn "$build/bin/hiraku-python" | grep -cE '\s(extrq|insertq)\s|%zmm' || true)
+[ "$bad" = 0 ] || { echo "release-python-linux: $bad instructions not every x86-64 CPU has" >&2; exit 1; }
 # libpcap (PCSX2's network adapter links it) goes in the package: Debian and Ubuntu call it
 # libpcap.so.0.8, Fedora and Arch libpcap.so.1. In the deps' lib/, tools/package.sh takes it along.
 pcap=$(ldd "$build/bin/hiraku-python" | awk '/libpcap\.so/ {print $3}')
