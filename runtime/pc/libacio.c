@@ -29,24 +29,31 @@ static struct {
     int state;
     uint32_t seen_seq;   // the link's card_seq last taken
     DWORD card_at;       // when a card was held there (GetTickCount), 0: none
+    DWORD ejected_at;    // the slot reader: when the game pushed it out (EJECT), 0: not
     uint8_t key_serial;
     uint32_t keys_last;
 } g;
 
-// a card stays in the reader that long after it was held there: 2 s for pop'n 15, 10 s from
-// pop'n 16 on (pop'n 18 reads it seconds after its ENTRY screen asks for it: a card gone by then
-// leaves it checking for good); HK_PC_CARD_MS another time
-static DWORD card_held_ms(void) {
-    static DWORD ms;
-    if (!ms) {
+// pop'n 15's reader is read with a card held to it: it stays there 2 s (HK_PC_CARD_MS another
+// time). From pop'n 16 on the cabinet's reader is a slot: the card stays in until the game pushes
+// it out (workflow EJECT, at the credit's end), then a moment at the slot's mouth (the front sensor
+// only: "take your card"), then it's taken
+static int slot_reader(void) {
+    static int slot = -1;
+    if (slot < 0) {
         char exe[MAX_PATH];
         GetModuleFileNameA(NULL, exe, MAX_PATH);
         const char *base = strrchr(exe, '\\');
-        ms = _stricmp(base ? base + 1 : exe, "popn15.exe") ? 10000 : 2000;
-        if (getenv("HK_PC_CARD_MS")) ms = (DWORD)atoi(getenv("HK_PC_CARD_MS"));
+        slot = _stricmp(base ? base + 1 : exe, "popn15.exe") != 0;
     }
+    return slot;
+}
+static DWORD card_held_ms(void) {
+    static DWORD ms;
+    if (!ms) ms = getenv("HK_PC_CARD_MS") ? (DWORD)atoi(getenv("HK_PC_CARD_MS")) : slot_reader() ? 0xffffffffu : 2000;
     return ms;
 }
+#define MOUTH_MS 1500
 
 // HK_PC_USB_LOG: the reader's calls as the game makes them (each change)
 static void trace(const char *what, int a, int b) {
@@ -87,10 +94,20 @@ static void update(void) {
         g.seen_seq = seq;
         memcpy(g.st.uid, (const void *)l->card_uid, 8);
         g.card_at = GetTickCount();
+        g.ejected_at = 0;
         hk_log("hiraku-pc: a card at the reader");
     }
     const DWORD in_for = g.card_at ? GetTickCount() - g.card_at : 0;
-    if (g.card_at && in_for <= card_held_ms()) {
+    if (g.card_at && g.ejected_at && GetTickCount() - g.ejected_at <= MOUTH_MS) {   // out, at the mouth
+        g.state = EJECT_CHECK;
+        g.st.front_sensor = 1, g.st.rear_sensor = 0;
+    } else if (g.card_at && g.ejected_at && GetTickCount() - g.ejected_at <= MOUTH_MS + 1000) {
+        // taken: the reader starts again, empty (pop'n 18's "take your card" waits for START or
+        // INIT with the front sensor clear: 0x49aa06, 0x49a6e0, 0x450ec0)
+        g.state = START;
+        g.st.front_sensor = g.st.rear_sensor = 0;
+        memset(g.st.uid, 0, 8);
+    } else if (g.card_at && !g.ejected_at && in_for <= card_held_ms()) {
         g.state = ACTIVE;
         g.st.front_sensor = g.st.rear_sensor = 1;
     } else {   // no card (or taken away): the reader closed and empty, as spice2x reports it; a
@@ -197,7 +214,13 @@ API int ac_io_icca_workflow(int w, int unit) {
     case SLEEP: g.state = SLEEP; break;
     case INIT: g.state = READY; break;
     case START: g.state = g.card_at ? ACTIVE : READY; break;
-    case EJECT: g.card_at = 0; break;
+    case EJECT:
+        if (slot_reader() && g.card_at) {   // pushed out: the player takes it in a moment
+            if (!g.ejected_at) g.ejected_at = GetTickCount();
+        } else {
+            g.card_at = 0;
+        }
+        break;
     case CLOSE_EJECT: g.state = g.card_at ? EJECT_CHECK : SLEEP; break;
     case CLOSE_END: g.state = SLEEP; break;
     case GET_USERID: g.state = GET_USERID; break;

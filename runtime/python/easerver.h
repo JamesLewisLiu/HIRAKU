@@ -88,8 +88,8 @@ private:
     std::string answer_playerdata(const std::string &game, const Request &r);
     // pop'n 15 (G15, a PC game: runtime/pc/): <G15 method="type_method" ...>
     std::string answer_g15(const Request &r);
-    // pop'n 18 (J39, a PC game: runtime/pc/): modules game and playerdata, binary XML
-    std::string answer_j39(const Request &r);
+    // pop'n 17 and 18 (I17, J39, PC games: runtime/pc/): modules game and playerdata, binary XML
+    std::string answer_j39(const std::string &game, const Request &r);
     // One card for all (docs/EAMUSE3.md): every chart's best clear mark over all the pop'n games
     // a card has played, by song (pop'n 12's word low byte: two bits a chart), and a game's own
     // player data with them put in
