@@ -3,7 +3,9 @@
 // Mods (docs/MODS.md): folders with a mod.toml, laid over the game as it runs. load() reads them
 // before the machine starts (their media ranges go to shell/overlay.h, so the core's images see
 // them from the first read); frame() puts their memory patches in place, once a frame.
+#include <cstdint>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace hk::mods {
@@ -23,5 +25,19 @@ void display_rate(double hz);
 
 // The mods loaded, for the log: "name version (folder)"
 std::vector<std::string> describe();
+
+// For a core whose game runs as a program of its own (the PC games: core().mem() has nothing),
+// what the mods change there, for the core to hand to the game's process:
+// - the memory patches (not those tied to a [[rate]]), at the program's own addresses;
+// - the game's files that a mod's file takes the place of, in a folder medium of machine.txt
+//   (the PC games' data=): the game's file -> the mod's, absolute paths.
+struct MemoryPatch {
+    std::string mod;
+    uint32_t address = 0;
+    std::vector<uint8_t> original, replace;   // original empty: written every frame (a cheat)
+    bool once = false;
+};
+std::vector<MemoryPatch> memory_patches();
+std::vector<std::pair<std::string, std::string>> folder_files();
 
 }  // namespace hk::mods

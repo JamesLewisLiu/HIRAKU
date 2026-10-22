@@ -125,6 +125,7 @@ struct Mod {
 std::vector<Patch> g_patches;
 std::vector<Rate> g_rates;
 std::vector<Mod> g_mods;
+std::map<std::string, std::string> g_folder_files;   // a folder medium's file -> the mod's (folder_files())
 
 std::string read_file(const std::string &path) {
     std::ifstream f(path, std::ios::binary);
@@ -248,6 +249,39 @@ std::string utf8(const std::filesystem::path &p, bool generic = false) {
     return std::string(s.begin(), s.end());
 }
 
+// `rel` in `folder` (a folder medium: the PC games' data), its name's case as the folder has it
+// (the mod's may differ, as Windows doesn't mind); "" if it isn't there
+std::string in_folder(const std::string &folder, const std::string &rel) {
+    namespace fs = std::filesystem;
+    fs::path at = fs_path(folder);
+    std::string part, rest = rel;
+    while (!rest.empty()) {
+        const size_t slash = rest.find('/');
+        part = rest.substr(0, slash);
+        rest = slash == std::string::npos ? "" : rest.substr(slash + 1);
+        if (part.empty() || part == "." || part == "..") return {};
+        std::error_code ec;
+        if (fs::exists(at / fs_path(part), ec)) {
+            at /= fs_path(part);
+            continue;
+        }
+        bool found = false;
+        for (auto it = fs::directory_iterator(at, ec); !ec && it != fs::directory_iterator(); ++it) {
+            const std::string name = utf8(it->path().filename());
+            bool same = name.size() == part.size();
+            for (size_t i = 0; same && i < name.size(); i++) same = std::tolower((unsigned char)name[i]) == std::tolower((unsigned char)part[i]);
+            if (same) {
+                at = it->path();
+                found = true;
+                break;
+            }
+        }
+        if (!found) return {};
+    }
+    std::error_code ec;
+    return fs::is_regular_file(at, ec) ? utf8(at) : std::string();
+}
+
 // A mod folder's files laid over the game's media by their paths, as ifs_layeredfs lays a mod's
 // folder over a PC game's data: a file at image/kc/kc_001.gzz in the folder is that file on the
 // game's disk (or a disc's DATA/TITLE.BIN on an ISO 9660 disc), and a PNG at image/kc/kc_001.png
@@ -272,9 +306,14 @@ void lay_files(const std::string &dir, const std::string &name, const std::set<s
     }
     if (files.empty()) return;
     std::sort(files.begin(), files.end());
-    // the game's media this can lay files over: Konami Python disks and ISO 9660 discs
-    std::set<std::string> images;
-    for (const auto &[key, path] : medium_paths) images.insert(path);
+    // the game's media this can lay files over: Konami Python disks and ISO 9660 discs, and the PC
+    // games' folders (their files taken by the game's process from the mod's folder instead)
+    std::set<std::string> images, folders;
+    for (const auto &[key, path] : medium_paths) {
+        std::error_code ec;
+        if (std::filesystem::is_directory(fs_path(path), ec)) folders.insert(path);
+        else images.insert(path);
+    }
     for (const std::string &image : images)
         if (!python_disks.count(image))
             if (auto disk = pythondisk::Files::open(image)) python_disks[image] = std::move(disk);
@@ -282,6 +321,18 @@ void lay_files(const std::string &dir, const std::string &name, const std::set<s
     std::string first_left_out;
     for (const std::string &rel : files) {
         const std::string label = name + ": " + rel;
+        bool in_a_folder = false;
+        for (const std::string &folder : folders)
+            if (const std::string game_file = in_folder(folder, rel); !game_file.empty()) {
+                g_folder_files[game_file] = dir + "/" + rel;
+                in_a_folder = true;
+                break;
+            }
+        if (in_a_folder) continue;
+        if (images.empty()) {
+            if (!left_out++) first_left_out = rel;
+            continue;
+        }
         const std::string data = read_file(dir + "/" + rel);
         std::vector<uint8_t> bytes(data.begin(), data.end());
         bool laid = false;
@@ -446,6 +497,9 @@ bool load(const std::vector<std::string> &dirs, const std::string &game, const s
                     const std::string medium = str("medium", true);
                     auto it = medium_paths.find(medium);
                     if (it == medium_paths.end()) fail("no medium '" + medium + "' in dumps/" + game + "/machine.txt");
+                    std::error_code ec;
+                    if (std::filesystem::is_directory(fs_path(it->second), ec))
+                        fail("'" + medium + "' is a folder: its files are changed whole ([[file]], or the files at their paths)");
                     char what[64];
                     snprintf(what, sizeof what, ": %s bytes at 0x%llx", medium.c_str(), (unsigned long long)num("offset"));
                     overlay::add(it->second, num("offset"), from(), mod.name + what);
@@ -454,6 +508,17 @@ bool load(const std::vector<std::string> &dirs, const std::string &game, const s
                     const std::string medium = str("medium", true);
                     auto it = medium_paths.find(medium);
                     if (it == medium_paths.end()) fail("no medium '" + medium + "' in dumps/" + game + "/machine.txt");
+                    std::error_code ec;
+                    if (std::filesystem::is_directory(fs_path(it->second), ec)) {   // a PC game's folder: the file, whole
+                        const std::string game_file = in_folder(it->second, str("path", true));
+                        if (game_file.empty()) fail("no " + str("path", true) + " in " + it->second);
+                        const std::string f = str("from", true);
+                        if (f.find("..") != std::string::npos) fail("'from' is a file inside the mod's folder");
+                        if (!std::filesystem::is_regular_file(fs_path(dir + "/" + f), ec)) fail("'from' file " + f + " not found");
+                        named.insert(f);
+                        g_folder_files[game_file] = dir + "/" + f;
+                        continue;
+                    }
                     try {
                         const std::string label = mod.name + ": " + str("path", true);
                         auto data = from();
@@ -556,6 +621,17 @@ void frame() {
         }
         if (p.once) p.done = true;
     }
+}
+
+std::vector<MemoryPatch> memory_patches() {
+    std::vector<MemoryPatch> out;
+    for (const Patch &p : g_patches)
+        if (!p.while_rate) out.push_back({p.mod, p.address, p.original, p.replace, p.once});
+    return out;
+}
+
+std::vector<std::pair<std::string, std::string>> folder_files() {
+    return {g_folder_files.begin(), g_folder_files.end()};
 }
 
 std::vector<std::string> describe() {

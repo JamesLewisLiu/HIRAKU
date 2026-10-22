@@ -13,6 +13,10 @@
 //   HK_PC_HZ      the most pictures a second the game shows (its monitor's rate, default 60): a
 //                 window shows as many as the desktop's refresh would let a game made for 60 Hz
 //   HK_PC_LOG     a file for the DLLs' log (default: standard error)
+//   HK_PC_FILES   mods: a file of "GAME'S PATH<tab>MOD'S FILE" lines, the game's files a mod's take
+//                 the place of (whole)
+//   HK_PC_PATCHES mods: a file of "ADDRESS ONCE ORIGINAL REPLACE" lines (hex; ORIGINAL "-": none),
+//                 memory patches put in place as docs/MODS.md says, before each picture
 //   HK_PAD_SCRIPT for tests: a file of "SECONDS BITS MS" lines, the pad bits held MS milliseconds
 //                 that many seconds after the board started (bit 22: a coin)
 #pragma once
@@ -39,3 +43,6 @@ void *hk_comm_hook(const char *fn);   // libcomm's, for HK_PC_NET_LOG
 // HIRAKU's DirectSound (dsound.c): the game's, when HIRAKU's window shows it
 long __stdcall hk_DirectSoundCreate8(const void *device, void **out, void *outer);
 long __stdcall hk_DirectSoundCreate(const void *device, void **out, void *outer);
+// A picture's sound mixed into the link's ring at once, as the picture is counted (link.h:
+// audio_frame_end); nothing before the game makes its DirectSound
+void hk_dsound_picture(void);

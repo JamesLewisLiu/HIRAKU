@@ -6,12 +6,14 @@
 // through a shared file (runtime/pc/link.h): the controls in, the lamps and the game's pictures out.
 // The pictures come in lockstep: the game draws one and waits; the shell shows it in HIRAKU's window
 // (scale, full screen, the CRT pictures, the beam simulator) and lets the next one start when its
-// pacing says so, as for an emulated machine. The game's own window stays hidden. Its sound is
-// mixed by HIRAKU's DirectSound in the DLL (runtime/pc/dsound.c), 735 frames (44.1 kHz) for each
-// frame shown, and played through HIRAKU's sound output like an emulated machine's.
+// pacing says so, as for an emulated machine: the game reads its controls as the shell's frame
+// starts and its picture goes to the next refresh. The game's own window stays hidden. Its sound
+// is mixed by HIRAKU's DirectSound in the DLL (runtime/pc/dsound.c), 735 frames (44.1 kHz) with
+// each picture, and played through HIRAKU's sound output like an emulated machine's.
 //
 // Options of its own: --wine PROGRAM (Linux: the Wine to run it with, default `wine` from the PATH),
-// and e-AMUSEMENT's, as spice2x's (shell/eaoptions.h): -url, -card0 / -card1. Without -url the
+// --game-ahead (the game draws its next picture while the shell shows this one: a frame's more
+// time to draw, a frame later on the screen), and e-AMUSEMENT's, as spice2x's (shell/eaoptions.h): -url, -card0 / -card1. Without -url the
 // e-AMUSEMENT server is HIRAKU's own (runtime/python/easerver.h, pop'n 9-14's), on this machine,
 // with the pop'n games' shared folder (one card for all); the DLL leads the game's network library
 // to it (runtime/pc/net.c). HK_PC_EA_LOG=1 prints each call in clear.
@@ -55,6 +57,7 @@
 extern char **environ;
 #endif
 
+#include "host/mods.h"
 #include "host/pacing.h"
 #include "host/popnio.h"
 #include "pc/link.h"
@@ -124,6 +127,61 @@ uint64_t file_size(const std::string &p) {
     return f ? (uint64_t)f.tellg() : UINT64_MAX;
 }
 
+// MD5 (RFC 1321), of a file: the games' lists of their files (dat.bin) hold their files' MD5s
+std::string md5_file(const std::string &path) {
+    static const uint32_t K[64] = {
+        0xd76aa478, 0xe8c7b756, 0x242070db, 0xc1bdceee, 0xf57c0faf, 0x4787c62a, 0xa8304613, 0xfd469501, 0x698098d8, 0x8b44f7af,
+        0xffff5bb1, 0x895cd7be, 0x6b901122, 0xfd987193, 0xa679438e, 0x49b40821, 0xf61e2562, 0xc040b340, 0x265e5a51, 0xe9b6c7aa,
+        0xd62f105d, 0x02441453, 0xd8a1e681, 0xe7d3fbc8, 0x21e1cde6, 0xc33707d6, 0xf4d50d87, 0x455a14ed, 0xa9e3e905, 0xfcefa3f8,
+        0x676f02d9, 0x8d2a4c8a, 0xfffa3942, 0x8771f681, 0x6d9d6122, 0xfde5380c, 0xa4beea44, 0x4bdecfa9, 0xf6bb4b60, 0xbebfbc70,
+        0x289b7ec6, 0xeaa127fa, 0xd4ef3085, 0x04881d05, 0xd9d4d039, 0xe6db99e5, 0x1fa27cf8, 0xc4ac5665, 0xf4292244, 0x432aff97,
+        0xab9423a7, 0xfc93a039, 0x655b59c3, 0x8f0ccc92, 0xffeff47d, 0x85845dd1, 0x6fa87e4f, 0xfe2ce6e0, 0xa3014314, 0x4e0811a1,
+        0xf7537e82, 0xbd3af235, 0x2ad7d2bb, 0xeb86d391};
+    static const int R[16] = {7, 12, 17, 22, 5, 9, 14, 20, 4, 11, 16, 23, 6, 10, 15, 21};
+    uint32_t h[4] = {0x67452301, 0xefcdab89, 0x98badcfe, 0x10325476};
+    auto block = [&](const uint8_t *b) {
+        uint32_t m[16], a = h[0], bb = h[1], c = h[2], d = h[3];
+        for (int i = 0; i < 16; i++) m[i] = (uint32_t)b[4 * i] | (uint32_t)b[4 * i + 1] << 8 | (uint32_t)b[4 * i + 2] << 16 | (uint32_t)b[4 * i + 3] << 24;
+        for (int i = 0; i < 64; i++) {
+            uint32_t f;
+            int g;
+            if (i < 16) f = (bb & c) | (~bb & d), g = i;
+            else if (i < 32) f = (d & bb) | (~d & c), g = (5 * i + 1) % 16;
+            else if (i < 48) f = bb ^ c ^ d, g = (3 * i + 5) % 16;
+            else f = c ^ (bb | ~d), g = 7 * i % 16;
+            const uint32_t t = d, x = a + f + K[i] + m[g];
+            const int r = R[i / 16 * 4 + i % 4];
+            d = c, c = bb, bb = bb + (x << r | x >> (32 - r)), a = t;
+        }
+        h[0] += a, h[1] += bb, h[2] += c, h[3] += d;
+    };
+    std::ifstream f(path, std::ios::binary);
+    if (!f) return {};
+    std::vector<uint8_t> buf(1 << 16);
+    uint64_t total = 0;
+    size_t have = 0;
+    for (;;) {
+        f.read((char *)buf.data() + have, (std::streamsize)(buf.size() - have));
+        const size_t got = (size_t)f.gcount();
+        total += got;
+        have += got;
+        const size_t whole = have / 64 * 64;
+        for (size_t i = 0; i < whole; i += 64) block(&buf[i]);
+        memmove(buf.data(), buf.data() + whole, have - whole);
+        have -= whole;
+        if (!got) break;
+    }
+    uint8_t tail[128] = {};
+    memcpy(tail, buf.data(), have);
+    tail[have] = 0x80;
+    const size_t len = have < 56 ? 64 : 128;
+    for (int i = 0; i < 8; i++) tail[len - 8 + i] = (uint8_t)((total * 8) >> (8 * i));
+    for (size_t i = 0; i < len; i += 64) block(tail + i);
+    std::string out(16, '\0');
+    for (int i = 0; i < 16; i++) out[i] = (char)(h[i / 4] >> (8 * (i % 4)));
+    return out;
+}
+
 // Windows' name for a path of this machine: Wine's Z: is the root
 std::string win_path(std::string p) {
 #ifndef _WIN32
@@ -149,6 +207,10 @@ public:
             wine_ = value();
             return true;
         }
+        if (name == "--game-ahead") {
+            ahead_ = true;
+            return true;
+        }
         std::string error;
         if (ea_.option(name, value, &error)) {
             if (!error.empty()) {
@@ -160,12 +222,15 @@ public:
         return false;
     }
     std::string options_help() const override {
-        return std::string("  --wine PROGRAM       Linux: the Wine that runs the game (default: wine, from the PATH)\n") +
+        return std::string("  --wine PROGRAM       Linux: the Wine that runs the game (default: wine, from the PATH)\n"
+                           "  --game-ahead         the game draws its next picture while this one is shown: a frame\n"
+                           "                       later from the controls to the screen, for a PC too slow otherwise\n") +
                hk::EaOptions::help();
     }
 
     bool init(const Options &o) override {
         game_ = o.game;
+        window_ = o.window;
         const std::string dumps = o.root + "/dumps/" + game_;
         auto m = read_machine(dumps + "/machine.txt");
         auto path_of = [&](const std::string &key) {
@@ -208,6 +273,7 @@ public:
                     return false;
                 }
         }
+        if (!hand_mods(drive, data, prog_name)) return false;
         std::string error;
         ea_.read_card_files(save_, &error);
         if (!error.empty()) fprintf(stderr, "%s\n", error.c_str());
@@ -257,6 +323,7 @@ public:
     void set_frame_hook(FrameHook h) override { frame_hook_ = std::move(h); }
     void set_audio_sink(AudioSink s) override { audio_sink_ = std::move(s); }
     int audio_rate() const override { return HK_PC_AUDIO_RATE; }
+    bool audio_per_frame() const override { return true; }   // each picture brings its frame's sound
     void set_on_fatal(std::function<void()> f) override { on_fatal_ = std::move(f); }
     double native_rate() const override { return HZ; }
     int monitor_khz() const override { return 31; }   // a PC's VGA monitor
@@ -267,6 +334,26 @@ public:
     void report() override {
         printf("hiraku-pc: %llu frames shown, %llu of them again while the game drew none\n", (unsigned long long)frame_,
                (unsigned long long)repeats_);
+        // Where a frame's time goes, from the game's start (frame_go) to its picture in the shell's
+        // hands; the shell's "video:" line goes on from its frame start (here: the same moment,
+        // unless --game-ahead) to the display
+        auto stat = [](std::vector<float> v) {
+            if (v.empty()) return std::string("-");
+            std::sort(v.begin(), v.end());
+            double sum = 0;
+            for (float x : v) sum += x;
+            char b[64];
+            snprintf(b, sizeof b, "mean %.2f ms, p99 %.2f", sum / (double)v.size(), (double)v[v.size() * 99 / 100]);
+            return std::string(b);
+        };
+        if (!go_to_shell_.empty())
+            printf("hiraku-pc: the game's frame (%s), from its start: its controls read %s; its picture drawn and read back %s; "
+                   "in the shell's hands %s\n",
+                   ahead_ ? "drawn ahead" : "started with the shell's", stat(pad_read_).c_str(), stat(drawn_).c_str(),
+                   stat(go_to_shell_).c_str());
+        if (!key_to_sound_.empty() && getenv("HK_PC_KEYLOG"))   // rough: the next sound the game starts after a press
+            printf("hiraku-pc: a button down to its sound handed to the sound output (%zu presses): %s\n", key_to_sound_.size(),
+                   stat(key_to_sound_).c_str());
     }
 
     // The game runs; each picture it draws goes to the shell, which shows it and paces. While it
@@ -296,6 +383,9 @@ public:
                     stop_game();
                     link_->frame_seq = 0;
                     link_->frame_go = 0;
+                    link_->sound_on = 0;   // the game's sound starts again
+                    link_->audio_frame_end = 0;
+                    sound_on_ = false;
                     seen = 0;
                     if (!start_game()) fatal();
                 }
@@ -305,30 +395,39 @@ public:
             if (seq != seen) {
                 std::atomic_thread_fence(std::memory_order_acquire);
                 seen = seq;
-                // a copy, and the game goes on to its next picture while this one is shown, as it did
-                // on its own monitor (drawing the next frame while one is scanned out)
                 const int w = (int)link_->frame_w, h = (int)link_->frame_h;
                 const bool ok = w > 0 && h > 0 && (uint32_t)w <= HK_PC_MAX_W && (uint32_t)h <= HK_PC_MAX_H;
                 if (ok) picture_.assign(link_pixels(), link_pixels() + (size_t)w * h);
-                link_->frame_go = seq;
+                timed(now);
+                if (ahead_) go(seq);   // the next picture drawn while this one is shown, for the frame after
                 if (ok) show(picture_.data(), w, h);
                 else show(nullptr, 0, 0);
                 // Without display sync the sound paces, as for the emulated machines; until the game's
-                // sound starts, the game's 60 a second on a steady grid
-                if (!hk::host::pacing::active() && !link_->audio_made) {
+                // sound starts, and with no window at all, the game's 60 a second on a steady grid
+                if (!hk::host::pacing::active() && (!link_->audio_made || !window_)) {
                     const auto period = std::chrono::nanoseconds((long long)(1e9 / HZ));
                     const auto t = std::chrono::steady_clock::now();
                     due_ = due_ == std::chrono::steady_clock::time_point{} || t - due_ > std::chrono::milliseconds(100) ? t : due_ + period;
                     if (due_ > t) std::this_thread::sleep_until(due_);
                 }
+                // the shell's next frame starts: the game's too (it reads its controls, draws)
+                if (!ahead_) go(seq);
                 last = std::chrono::steady_clock::now();
             } else if (now - last > std::chrono::microseconds(1000000 / (int)HZ)) {
+                // no picture (starting, loading): the last again
                 show(last_rgb_ ? last_rgb_ : black_.data(), last_w_, last_h_);
                 repeats_++;
                 last = now;
+            } else if (sound_on_ && !ahead_ && now - go_at_ > std::chrono::microseconds(1000000 / (int)HZ / 2) &&
+                       (int32_t)(sound_for(frame_ + 1) - link_->audio_made) > 0) {
+                // the picture is late (half a frame): its frame's sound goes on without it, before
+                // the sound output runs dry (the game's sounds of this frame come with the next)
+                sound_until(sound_for(frame_ + 1));
+                take_sound();
             } else if (!take_sound()) {
-                std::this_thread::sleep_for(std::chrono::microseconds(200));
+                std::this_thread::sleep_for(std::chrono::microseconds(100));
             }
+            if (!patches_.empty()) patches_said();
             if (getenv("HK_PC_RATE") && now - rate_from > std::chrono::seconds(10)) {   // how the game keeps up
                 const double sec = std::chrono::duration<double>(now - rate_from).count();
                 fprintf(stderr, "hiraku-pc: the game drew %.2f pictures a second, %llu shown again\n", (seq - rate_pictures) / sec,
@@ -354,6 +453,7 @@ public:
         if (name.rfind("P1 Button ", 0) == 0) {
             const int k = std::atoi(name.c_str() + 10);
             if (k < 1 || k > 9) return false;
+            if (value && !(link_->pad & HK_PC_PAD_BUTTON(k))) pressed_at_ = std::chrono::steady_clock::now();
             bit(link_->pad, HK_PC_PAD_BUTTON(k));
         } else if (name == "Test") {
             bit(link_->pad, HK_PC_PAD_TEST);
@@ -436,7 +536,10 @@ private:
         // the server's files: the pop'n games' shared folder beside the saves (in the saves' default
         // place), so a card's player carries from one to the next; with --nvram elsewhere, its own
         const std::string saves = hk::user_data_dir(root);
-        const std::string dir = save_ == saves + "/" + game_ ? saves + "/eamuse" : save_ + "/eamuse";
+        // (a game with mods keeps its saves beside the clean game's, <game>+<mod>: its players are the
+        // network's, the same)
+        const std::string mine = saves + "/" + game_;
+        const std::string dir = save_ == mine || save_.rfind(mine + "+", 0) == 0 ? saves + "/eamuse" : save_ + "/eamuse";
         hk::sys::make_dir(dir);
         server_ = std::make_unique<hk::py::EamuseServer>(dir);
         server_->now = [] { return (int64_t)time(nullptr) + 9 * 3600; };   // the cabinet's clock: Japan's
@@ -497,22 +600,120 @@ private:
         }
     }
 
+    // Mods (docs/MODS.md) to the game's process: their memory patches (HK_PC_PATCHES) and the
+    // game's files a mod's take the place of (HK_PC_FILES). A data file changed so gets the mod's
+    // MD5 in the program's copy of dat.bin, the list the game checks its data by (a twentieth of
+    // the files each boot: 5-1503 otherwise)
+    bool hand_mods(const std::string &drive, const std::string &data, const std::string &prog_name) {
+        auto slashes = [](std::string p) {
+            for (char &c : p)
+                if (c == '\\') c = '/';
+            return p;
+        };
+        auto lower = [](std::string p) {
+            for (char &c : p) c = (char)std::tolower((unsigned char)c);
+            return p;
+        };
+        std::map<std::string, std::string> md5_of;   // the game's path, lower case -> the mod file's MD5
+        std::string list;
+        for (const auto &[game_file, mod_file] : hk::mods::folder_files()) {
+            const std::string g = slashes(game_file);
+            std::string as;
+            for (const auto &[dir, name] : {std::pair{slashes(data), drive + "\\data"}, std::pair{slashes(program_), drive + "\\prog\\" + prog_name}})
+                if (g.size() > dir.size() && g.compare(0, dir.size(), dir) == 0 && g[dir.size()] == '/') as = name + g.substr(dir.size());
+            if (as.empty()) continue;
+            for (char &c : as)
+                if (c == '/') c = '\\';
+            list += as + "\t" + win_path(mod_file) + "\n";
+            md5_of[lower(as)] = md5_file(mod_file);
+        }
+        std::ofstream(save_ + "/mods-files.txt", std::ios::trunc) << list;
+        set_env("HK_PC_FILES", list.empty() ? "" : win_path(save_ + "/mods-files.txt"));
+        // dat.bin: a count, then each file's MD5 (16 bytes) and its path (D:\..., ending in a zero);
+        // the program's own each time (no mods: as it was)
+        if (file_size(program_ + "/dat.bin") != UINT64_MAX) {
+            std::ifstream in(program_ + "/dat.bin", std::ios::binary);
+            std::string d((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+            size_t changed = 0;
+            for (size_t at = 4; at + 16 < d.size() && !md5_of.empty();) {
+                const size_t end = d.find('\0', at + 16);
+                if (end == std::string::npos) break;
+                auto it = md5_of.find(lower(d.substr(at + 16, end - at - 16)));
+                if (it != md5_of.end() && it->second.size() == 16) d.replace(at, 16, it->second), changed++;
+                at = end + 1;
+            }
+            std::ofstream(run_prog_ + "/dat.bin", std::ios::binary | std::ios::trunc) << d;
+            if (changed) printf("mods: %zu of the game's files changed in its list of its files (dat.bin)\n", changed);
+        }
+        // the patches: "ADDRESS ONCE ORIGINAL REPLACE" (hex; "-": no original, a cheat)
+        patches_ = hk::mods::memory_patches();
+        if (patches_.size() > 256) {
+            fprintf(stderr, "mods: %zu memory patches; a PC game takes 256\n", patches_.size());
+            return false;
+        }
+        std::string text;
+        auto hex = [](const std::vector<uint8_t> &b) {
+            std::string h;
+            char x[3];
+            for (uint8_t v : b) snprintf(x, sizeof x, "%02x", v), h += x;
+            return h.empty() ? std::string("-") : h;
+        };
+        for (const auto &p : patches_) {
+            char a[32];
+            snprintf(a, sizeof a, "%08x %d ", p.address, p.once ? 1 : 0);
+            text += a + hex(p.original) + " " + hex(p.replace) + "\n";
+        }
+        std::ofstream(save_ + "/mods-patches.txt", std::ios::trunc) << text;
+        set_env("HK_PC_PATCHES", text.empty() ? "" : win_path(save_ + "/mods-patches.txt"));
+        if (!list.empty() || !text.empty())
+            printf("mods: %zu of the game's files and %zu memory patches go to the game\n", md5_of.size(), patches_.size());
+        return true;
+    }
+
+    // A patch the game's process put in place: said once (as the other cores' mods::frame says it)
+    void patches_said() {
+        for (size_t i = 0; i < patches_.size(); i++)
+            if (link_->patch_done[i] && !patch_said_[i]) {
+                patch_said_[i] = true;
+                fprintf(stderr, "mods: %s: patch at 0x%08x (%zu bytes) in place\n", patches_[i].mod.c_str(), patches_[i].address,
+                        patches_[i].replace.size());
+            }
+    }
+
     const uint32_t *link_pixels() const { return (const uint32_t *)((const char *)link_ + HK_PC_PIXELS); }
 
-    // A frame's sound is asked for as the frame's time passes (a 44.1th of a millisecond each), not
-    // all at its start: what the game starts during the frame is mixed a millisecond later, and the
-    // sound reaches the output smoothly. Over a frame, 735 frames: the sound stays with the pictures
-    void ask_sound() {
-        const auto now = std::chrono::steady_clock::now();
-        const double into = std::chrono::duration<double>(now - frame_at_).count();
-        const uint32_t step = HK_PC_AUDIO_RATE / 60, part = (uint32_t)std::min<double>(step, into * HK_PC_AUDIO_RATE);
-        const uint32_t want = sound_frame_end_ - step + part;
-        if ((int32_t)(want - link_->audio_want) > 0) link_->audio_want = want;
+    // The game may draw its next frame (it waits in its Present for this), to be shown in the
+    // shell's next frame (with --game-ahead, the one after): that frame's sound comes with it
+    void go(uint32_t seq) {
+        link_->audio_frame_end = sound_on_ ? sound_for(frame_ + (ahead_ ? 2 : 1)) : 0;
+        std::atomic_thread_fence(std::memory_order_release);
+        link_->frame_go = seq;
+        go_at_ = std::chrono::steady_clock::now();
+    }
+
+    // The game's sound, a frame's (735 frames) for each frame shown: where it ends with frame `f`
+    uint32_t sound_for(uint64_t f) const { return sound_base_ + (uint32_t)f * (HK_PC_AUDIO_RATE / 60); }
+
+    // The sound mixed at least to `end`: the DLL's mixer asked (audio_want moved on, never back),
+    // and given a few milliseconds (it naps a millisecond)
+    void sound_until(uint32_t end) {
+        for (uint32_t want = link_->audio_want; (int32_t)(end - want) > 0;)
+            if (__atomic_compare_exchange_n(&link_->audio_want, &want, end, false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST)) break;
+        const auto until = std::chrono::steady_clock::now() + std::chrono::milliseconds(3);
+        while ((int32_t)(end - link_->audio_made) > 0 && std::chrono::steady_clock::now() < until)
+            std::this_thread::sleep_for(std::chrono::microseconds(100));
+    }
+
+    // A picture came at `now`: its frame's times (the DLL's, and since go() here)
+    void timed(std::chrono::steady_clock::time_point now) {
+        if (go_at_ == std::chrono::steady_clock::time_point{} || go_to_shell_.size() >= 1u << 20) return;
+        go_to_shell_.push_back(std::chrono::duration<float, std::milli>(now - go_at_).count());
+        pad_read_.push_back(link_->pad_read_us / 1000.0f);
+        drawn_.push_back(link_->drawn_us / 1000.0f);
     }
 
     // The sound mixed so far, to the shell's output (HIRAKU's: device, latency, pacing). true if any
     bool take_sound() {
-        ask_sound();
         const uint32_t made = link_->audio_made, taken = link_->audio_taken;
         if (made == taken || !audio_sink_) return false;
         std::atomic_thread_fence(std::memory_order_acquire);
@@ -524,16 +725,34 @@ private:
             at += n;
             link_->audio_taken = at;
         }
+        // a button's sound handed on: the time since the button went down (here; the DLL's own
+        // keys aren't timed)
+        const uint32_t ks = link_->key_sound_seq;
+        if (ks != key_seen_) {
+            std::atomic_thread_fence(std::memory_order_acquire);
+            if ((int32_t)(at - link_->key_sound_at) > 0) {
+                key_seen_ = ks;
+                if (pressed_at_ != std::chrono::steady_clock::time_point{} && key_to_sound_.size() < 1u << 20) {
+                    key_to_sound_.push_back(std::chrono::duration<float, std::milli>(std::chrono::steady_clock::now() - pressed_at_).count());
+                    if (getenv("HK_PC_KEYLOG"))
+                        fprintf(stderr, "key: frame %llu, %.2f ms\n", (unsigned long long)frame_, (double)key_to_sound_.back());
+                }
+                pressed_at_ = {};
+            }
+        }
         return true;
     }
 
+    // The picture to the shell, with its frame's sound: a frame's for every frame shown (the DLL
+    // mixed it as the game counted the picture; for a picture again, or a late one, it's asked for)
     void show(const uint32_t *rgb, int w, int h) {
-        // the frame before's sound all asked for; this frame's from now (ask_sound), unless the DLL has
-        // fallen behind (no sound yet, the game restarting) by a fifth of a second
-        if ((int32_t)(sound_frame_end_ - link_->audio_want) > 0) link_->audio_want = sound_frame_end_;
-        if (link_->audio_want - link_->audio_made < HK_PC_AUDIO_RATE / 5) sound_frame_end_ = link_->audio_want + HK_PC_AUDIO_RATE / 60;
-        frame_at_ = std::chrono::steady_clock::now();
-        if (!link_->audio_made && audio_sink_) {   // no sound from the game yet (starting): a frame's silence
+        if (!sound_on_ && link_->sound_on) {   // the game's sound starts: from this frame on
+            sound_on_ = true;
+            sound_base_ = link_->audio_made - (uint32_t)frame_ * (HK_PC_AUDIO_RATE / 60);
+        }
+        if (sound_on_) {
+            sound_until(sound_for(frame_ + 1));
+        } else if (audio_sink_) {   // no sound from the game yet (starting): a frame's silence
             silence_.assign(2 * (HK_PC_AUDIO_RATE / 60), 0.0f);
             audio_sink_(silence_.data(), HK_PC_AUDIO_RATE / 60);
         }
@@ -632,8 +851,17 @@ private:
     hk_pc_link *link_ = nullptr;
     FrameHook frame_hook_;
     AudioSink audio_sink_;
-    uint32_t sound_frame_end_ = 0;   // the sound asked for by the end of the frame being shown
-    std::chrono::steady_clock::time_point frame_at_{};
+    std::vector<hk::mods::MemoryPatch> patches_;   // the mods' (hand_mods)
+    bool patch_said_[256] = {};
+    bool ahead_ = false;   // --game-ahead
+    bool window_ = false;  // HIRAKU's window shows the game (Options::window)
+    bool sound_on_ = false;
+    uint32_t sound_base_ = 0;   // sound_for()
+    std::chrono::steady_clock::time_point go_at_{};
+    std::vector<float> go_to_shell_, pad_read_, drawn_;   // ms, per picture (report)
+    std::chrono::steady_clock::time_point pressed_at_{};   // a button went down (set_input)
+    uint32_t key_seen_ = 0;
+    std::vector<float> key_to_sound_;   // ms, per press (report)
     std::function<void()> on_fatal_;
     uint64_t frame_ = 0, repeats_ = 0;
     std::vector<uint32_t> black_, picture_;

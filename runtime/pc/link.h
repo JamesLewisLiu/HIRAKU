@@ -6,14 +6,17 @@
 // DLLs are C, built 32-bit.
 //
 // The pictures go in step: the game draws one, the DLL copies it to the pixels, counts it in
-// frame_seq and waits for frame_go = frame_seq. hiraku-pc gives that once it has its copy, and shows
-// the picture at the moment its pacing chooses (runtime/host/pacing.h) while the game draws the next:
-// the game a frame ahead of the screen, as on its own monitor, and never further.
+// frame_seq and waits for frame_go = frame_seq. hiraku-pc shows the picture, and gives that when
+// its pacing (runtime/host/pacing.h) starts the next frame, as an emulated machine's frame starts:
+// the game reads its controls then and draws at once, its picture shown at the next refresh. With
+// --game-ahead, hiraku-pc gives it as soon as it has its copy: the game draws the next while this
+// one is shown (a frame ahead of the screen, as on its own monitor, never further), a frame later
+// from the controls to the screen but with a whole frame for its drawing.
 #pragma once
 #include <stdint.h>
 
 #define HK_PC_LINK_MAGIC 0x4b50484bu   // "HKPK"
-#define HK_PC_LINK_VERSION 3u
+#define HK_PC_LINK_VERSION 4u
 
 // The pad's bits, as Konami's ezusb.dll gives them to pop'n music (usbPadRead)
 #define HK_PC_PAD_SERVICE (1u << 6)
@@ -54,6 +57,24 @@ struct hk_pc_link {
     volatile uint32_t audio_want;   // hiraku-pc: frames of sound asked for since the start
     volatile uint32_t audio_made;   // the DLL: frames mixed into the ring since the start
     volatile uint32_t audio_taken;  // hiraku-pc: frames taken out of the ring
+    // A picture's sound comes with it: hiraku-pc sets audio_frame_end to the sound's end at the
+    // frame that picture will be shown in, and the DLL, as the game counts the picture, moves
+    // audio_want there and mixes, so what the game started while making it (a keysound, with the
+    // controls read) comes with it. 0: not so. The DLL sets sound_on once the game has its sound
+    volatile uint32_t audio_frame_end;
+    volatile uint32_t sound_on;
+    // The DLL, for each picture: microseconds from frame_go seen to the game's first read of its
+    // pad, and to the picture counted (hiraku-pc's exit report)
+    volatile uint32_t pad_read_us, drawn_us;
+    // The DLL: where in the ring (audio_made then) the first sound the game started after a button
+    // went down begins, counted in key_sound_seq (hiraku-pc's exit report: a button to its sound)
+    volatile uint32_t key_sound_at, key_sound_seq;
+    // Between the DLLs' own state (each of HIRAKU's DLLs has its own copy of the cabinet's code:
+    // the pad is read in ezusb.dll's, the hooks are the first loaded's): frame_go seen (counted,
+    // and when, the low 32 bits of QueryPerformanceCounter), and buttons gone down
+    volatile uint32_t go_count, go_qpc, key_edges;
+    // Mods (HK_PC_PATCHES): the DLL sets patch_done[i] once the i-th memory patch is in place
+    volatile uint8_t patch_done[256];
 };
 
 #define HK_PC_PIXELS 4096u                         // where the pixels start in the file

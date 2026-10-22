@@ -345,6 +345,30 @@ log and does nothing.
   sooner or later (pop'n music 14's title loop then shows a different animation; the play case
   joins up again once a song starts).
 
+## The PC games
+
+pop'n music 15 and later are Windows programs that HIRAKU runs as they are (PLAN.md section 30),
+so their memory and files are the game's own process's, not an emulated machine's:
+- **Patches** go to HIRAKU's DLL in the game (a list in the save folder, `mods-patches.txt`),
+  which looks at each one as the program is loaded (before any of its code runs) and before each
+  picture, with the same rules: `original` there, `replace` goes in (read-only pages too: code,
+  constant text); `once`; no `original`, written every time (a cheat). The log (`mods: ... patch
+  at ... in place`) says when the game's process has put one in. `[[rate]]` doesn't apply (the
+  game draws at the cabinet's 60 a second), nor patches tied to one.
+- **Files**: the PC games' mods are folders of files at their paths, as
+  [ifs_layeredfs](https://github.com/mon/ifs_layeredfs) has them for the later games: a file at
+  `<mod>/a/b` is the game's `data/a/b` (any case). The game opens the mod's file instead, whole,
+  any length (`mods-files.txt` in the save folder lists them; the save folder's `pc.log` says when
+  the game first opens each). `[[file]]` with `medium = "data"` and the file's `path` under it
+  does the same from a file elsewhere in the mod. `[[bytes]]` doesn't apply (no disk image).
+- **The game's check of its data**: pop'n music 15 keeps an MD5 of every data file in its
+  program folder's `dat.bin` and checks a twentieth of them at each boot (error 5-1503 when one
+  differs). HIRAKU runs the program from a copy in the save folder, and writes that copy's
+  `dat.bin` at each start from the program's own, with the mods' files' MD5s for the files they
+  replace: the check passes, and a game without mods is checked against Konami's list as it was.
+- pop'n music 15's data files have scrambled names (`data/mbyukaomrfknhnko/...`); which file is
+  what is the mod's business, as for any game.
+
 ## Per core
 
 | core | patches | media |
@@ -354,6 +378,7 @@ log and does nothing.
 | Firebeat | data and code: the program runs translated ahead of time (recompiled, or the executor's steps), so a function a patch changes runs interpreted from its next call on (the log names it) | CDs, the SPU's disk or DVD |
 | Konami Python 1 | data and code (the EE recompiler's blocks over a patch are cleared) | the hard disk, the CF card (PCSX2 Reliquary's reads, through `Hiraku::disk_read`); files by name on pop'n music 14's disk |
 | Konami Python 2 | data and code | not yet (its disk is PCSX2's DEV9 ATA) |
+| PC (pop'n music 15 on) | data and code, at the program's own addresses (`popn15.exe` from 0x400000, as a disassembler shows it); HIRAKU's DLL puts them in place inside the game's process, as the program loads and before each of its pictures | the game's files, whole: a file in the mod's folder at its path under the game's `data` folder (or `[[file]]` with `medium = "data"`) is read instead of the game's |
 
 Checked (2026-10-19): pop'n music 14, a test-menu string patched once its program had loaded,
 and the disk's boot header laid over with its own bytes (the play case's digest unchanged, the

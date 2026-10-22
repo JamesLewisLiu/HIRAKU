@@ -136,14 +136,32 @@ static uint32_t coin_switch(void) {
     return 0;
 }
 
+// Microseconds since frame_go was last seen (link.h: go_qpc, set in this DLL or the other)
+static uint32_t us_since_go(struct hk_pc_link *l) {
+    static LARGE_INTEGER f;
+    LARGE_INTEGER now;
+    if (!f.QuadPart) QueryPerformanceFrequency(&f);
+    QueryPerformanceCounter(&now);
+    return (uint32_t)((uint64_t)(uint32_t)((uint32_t)now.QuadPart - l->go_qpc) * 1000000 / (uint64_t)f.QuadPart);
+}
+
 uint32_t hk_pad_now(void) {
     struct hk_pc_link *l = hk_link();
+    static uint32_t read_at_go;   // the game's first read of its pad in a frame: when (pad_read_us)
+    if (read_at_go != l->go_count) {
+        read_at_go = l->go_count;
+        l->pad_read_us = us_since_go(l);
+    }
     escape_quits();
     uint32_t b = l->pad;
     for (int i = 0; i < 32; i++)
         if (key_down(l->keys[i][0]) || key_down(l->keys[i][1])) b |= 1u << i;
     l->game_alive++;
-    return b | (scripted() & ~(1u << 22)) | coin_switch();
+    b |= (scripted() & ~(1u << 22)) | coin_switch();
+    static uint32_t was;
+    if (b & ~was & 0x1ff00) l->key_edges = l->key_edges + 1;   // a button down: its sound is the next started
+    was = b;
+    return b;
 }
 
 uint32_t hk_coins_now(void) {
@@ -197,9 +215,50 @@ static void read_map(void) {
     }
 }
 
+// --- mods (docs/MODS.md): the game's files a mod's file takes the place of (HK_PC_FILES)
+
+static struct { char *game, *mod; int said; } *g_files;
+static int g_nfiles;
+
+static char *read_text(const char *path) {
+    FILE *f = path && *path ? fopen(path, "rb") : NULL;
+    if (!f) return NULL;
+    fseek(f, 0, SEEK_END);
+    const long n = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    char *t = (char *)malloc((size_t)n + 1);
+    t[fread(t, 1, (size_t)n, f)] = 0;
+    fclose(f);
+    return t;
+}
+
+static void read_files(void) {
+    char *t = read_text(getenv("HK_PC_FILES"));
+    for (char *line = t ? strtok(t, "\r\n") : NULL; line; line = strtok(NULL, "\r\n")) {
+        char *tab = strchr(line, '\t');
+        if (!tab) continue;
+        *tab = 0;
+        g_files = realloc(g_files, sizeof *g_files * (size_t)(g_nfiles + 1));
+        g_files[g_nfiles].game = line, g_files[g_nfiles].mod = tab + 1, g_files[g_nfiles].said = 0;
+        g_nfiles++;
+    }
+    if (g_nfiles) hk_log("hiraku-pc: mods: %d of the game's files are a mod's", g_nfiles);
+}
+
 // The path the game asked for, or where HK_PC_MAP sends it (in buf)
 static const char *mapped(const char *p, char *buf) {
     if (!p) return p;
+    for (int i = 0; i < g_nfiles; i++) {   // a mod's file instead of the game's
+        const char *a = p, *b = g_files[i].game;
+        for (; *a && *b; a++, b++) {
+            const char x = *a == '/' ? '\\' : *a;
+            if ((x | 0x20) != (*b | 0x20) && x != *b) break;
+        }
+        if (!*a && !*b && strlen(g_files[i].mod) < MAX_PATH) {
+            if (!g_files[i].said) g_files[i].said = 1, hk_log("hiraku-pc: mods: %s from %s", p, g_files[i].mod);
+            return strcpy(buf, g_files[i].mod);
+        }
+    }
     for (int i = 0; i < g_nmap; i++) {
         const size_t n = g_map[i].n;
         size_t k = 0;
@@ -248,6 +307,69 @@ static BOOL WINAPI my_MoveFileA(LPCSTR from, LPCSTR to) {
 static DWORD WINAPI my_GetFullPathNameA(LPCSTR p, DWORD n, LPSTR out, LPSTR *file) {
     char b[MAX_PATH];
     return GetFullPathNameA(mapped(p, b), n, out, file);
+}
+
+static int g_waitlog = -1;   // HK_PC_WAITLOG (below)
+static void waits_report(void);
+
+// --- mods: memory patches (HK_PC_PATCHES), each in place whenever its original bytes are there
+// (or, without original bytes, every time: a cheat), once if asked; at the program's own addresses
+
+static struct patch { uint8_t *at, *original, *replace; size_t n; int once, done; } *g_patches;
+static int g_npatches;
+
+static int unhex(const char *h, uint8_t **out) {
+    const size_t n = strlen(h) / 2;
+    *out = (uint8_t *)malloc(n ? n : 1);
+    for (size_t i = 0; i < n; i++) {
+        unsigned v;
+        if (sscanf(h + 2 * i, "%2x", &v) != 1) return -1;
+        (*out)[i] = (uint8_t)v;
+    }
+    return (int)n;
+}
+
+static void read_patches(void) {
+    char *t = read_text(getenv("HK_PC_PATCHES"));
+    for (char *line = t ? strtok(t, "\r\n") : NULL; line && g_npatches < 256; line = strtok(NULL, "\r\n")) {
+        unsigned long addr;
+        int once;
+        char orig[2048], repl[2048];
+        if (sscanf(line, "%lx %d %2047s %2047s", &addr, &once, orig, repl) != 4) continue;
+        struct patch p = {(uint8_t *)(uintptr_t)addr, NULL, NULL, 0, once, 0};
+        const int n = unhex(repl, &p.replace);
+        if (n <= 0 || (strcmp(orig, "-") && unhex(orig, &p.original) != n)) continue;
+        p.n = (size_t)n;
+        g_patches = realloc(g_patches, sizeof *g_patches * (size_t)(g_npatches + 1));
+        g_patches[g_npatches++] = p;
+    }
+    if (g_npatches) hk_log("hiraku-pc: mods: %d memory patches", g_npatches);
+}
+
+// Whether [p, p + n) is all there to read (committed, not a guard or no-access page)
+static int present(const uint8_t *p, size_t n) {
+    for (const uint8_t *end = p + n; p < end;) {
+        MEMORY_BASIC_INFORMATION mi;
+        if (!VirtualQuery(p, &mi, sizeof mi) || mi.State != MEM_COMMIT || (mi.Protect & (PAGE_NOACCESS | PAGE_GUARD))) return 0;
+        p = (const uint8_t *)mi.BaseAddress + mi.RegionSize;
+    }
+    return 1;
+}
+
+static void apply_patches(void) {
+    for (int i = 0; i < g_npatches; i++) {
+        struct patch *p = &g_patches[i];
+        if (p->done || !present(p->at, p->n) || !memcmp(p->at, p->replace, p->n)) continue;   // gone, not there, in place
+        if (p->original && memcmp(p->at, p->original, p->n)) continue;   // not loaded (yet): wait
+        DWORD old;
+        VirtualProtect(p->at, p->n, PAGE_EXECUTE_READWRITE, &old);
+        memcpy(p->at, p->replace, p->n);
+        VirtualProtect(p->at, p->n, old, &old);
+        FlushInstructionCache(GetCurrentProcess(), p->at, p->n);
+        if (!hk_link()->patch_done[i]) hk_log("hiraku-pc: mods: patch at %p (%u bytes) in place", (void *)p->at, (unsigned)p->n);
+        hk_link()->patch_done[i] = 1;
+        if (p->once) p->done = 1;
+    }
 }
 
 // --- Direct3D 9: a window instead of the whole screen, and the game's own rate
@@ -315,15 +437,16 @@ static IDirect3DSurface9 *g_readback;
 static UINT g_rb_w, g_rb_h;
 static D3DFORMAT g_rb_fmt;
 
-static void capture(IDirect3DDevice9 *d) {
+static int capture(IDirect3DDevice9 *d) {
     struct hk_pc_link *l = hk_link();
     IDirect3DSurface9 *bb = NULL;
-    if (FAILED(IDirect3DDevice9_GetBackBuffer(d, 0, 0, D3DBACKBUFFER_TYPE_MONO, &bb))) return;
+    int ok = 0;
+    if (FAILED(IDirect3DDevice9_GetBackBuffer(d, 0, 0, D3DBACKBUFFER_TYPE_MONO, &bb))) return 0;
     D3DSURFACE_DESC desc;
     IDirect3DSurface9_GetDesc(bb, &desc);
     if (desc.Width > HK_PC_MAX_W || desc.Height > HK_PC_MAX_H) {
         IDirect3DSurface9_Release(bb);
-        return;
+        return 0;
     }
     if (!g_readback || g_rb_w != desc.Width || g_rb_h != desc.Height || g_rb_fmt != desc.Format) {
         if (g_readback) IDirect3DSurface9_Release(g_readback);
@@ -332,7 +455,7 @@ static void capture(IDirect3DDevice9 *d) {
                                                                 &g_readback, NULL))) {
             hk_log("hiraku-pc: can't read the pictures back (%ux%u, format %d)", desc.Width, desc.Height, (int)desc.Format);
             IDirect3DSurface9_Release(bb);
-            return;
+            return 0;
         }
         g_rb_w = desc.Width, g_rb_h = desc.Height, g_rb_fmt = desc.Format;
         hk_log("hiraku-pc: the pictures go to HIRAKU's window (%ux%u, format %d)", desc.Width, desc.Height, (int)desc.Format);
@@ -363,10 +486,33 @@ static void capture(IDirect3DDevice9 *d) {
         }
         IDirect3DSurface9_UnlockRect(g_readback);
         l->frame_w = desc.Width, l->frame_h = desc.Height;
-        MemoryBarrier();
-        l->frame_seq = l->frame_seq + 1;
+        ok = 1;
     }
     IDirect3DSurface9_Release(bb);
+    return ok;
+}
+
+// A fifth of a millisecond's nap. Sleep(1) is a millisecond under Wine and more on Windows, all of
+// it between hiraku-pc starting a frame and the game reading its controls; ntdll's NtDelayExecution
+// takes 100 ns units (Wine sleeps that long; Windows to its timer's resolution, asked for at 0.5 ms)
+typedef LONG(NTAPI *NtDelayExecution_t)(BOOLEAN, PLARGE_INTEGER);
+typedef LONG(NTAPI *NtSetTimerResolution_t)(ULONG, BOOLEAN, PULONG);
+
+static void nap(void) {
+    static NtDelayExecution_t delay;
+    static int looked;
+    if (!looked) {
+        looked = 1;
+        HMODULE nt = GetModuleHandleA("ntdll.dll");
+        delay = nt ? (NtDelayExecution_t)(void *)GetProcAddress(nt, "NtDelayExecution") : NULL;
+        NtSetTimerResolution_t res = nt ? (NtSetTimerResolution_t)(void *)GetProcAddress(nt, "NtSetTimerResolution") : NULL;
+        ULONG cur;
+        if (res) res(5000, TRUE, &cur);
+    }
+    LARGE_INTEGER t;
+    t.QuadPart = -2000;   // relative, 200 us
+    if (delay) delay(FALSE, &t);
+    else Sleep(1);
 }
 
 // Until hiraku-pc has shown the picture and its pacing lets the next frame start (or a quarter of
@@ -376,17 +522,29 @@ static void wait_for_go(void) {
     const uint32_t seq = l->frame_seq;
     const DWORD t0 = GetTickCount();
     for (int spins = 0; l->frame_go != seq; spins++) {
-        if (GetTickCount() - t0 > 250) return;
+        if (GetTickCount() - t0 > 250) break;
         if (spins < 200) YieldProcessor();
         else if (spins < 400) SwitchToThread();
-        else Sleep(1);
+        else nap();
     }
+    LARGE_INTEGER t;
+    QueryPerformanceCounter(&t);
+    l->go_qpc = (uint32_t)t.QuadPart;
+    l->go_count = l->go_count + 1;
 }
 
 static HRESULT WINAPI my_Present(IDirect3DDevice9 *d, const RECT *src, const RECT *dst, HWND wnd, const RGNDATA *dirty) {
+    if (g_npatches) apply_patches();   // before the next frame runs
     if (host_shows()) {   // HIRAKU's window shows it, at the time its pacing chooses
-        capture(d);
-        hk_link()->frames++;
+        struct hk_pc_link *l = hk_link();
+        if (capture(d)) {
+            hk_dsound_picture();   // the frame's sound, with its picture
+            l->drawn_us = l->go_count ? us_since_go(l) : 0;
+            MemoryBarrier();
+            l->frame_seq = l->frame_seq + 1;
+        }
+        l->frames++;
+        if (g_waitlog > 0) waits_report();
         wait_for_go();
         return D3D_OK;
     }
@@ -473,6 +631,51 @@ static BOOL WINAPI my_ShowWindow(HWND w, int how) {
     return ShowWindow(w, how);
 }
 
+// --- HK_PC_WAITLOG: where the game waits between frame_go and its Present (finding its frame clock)
+
+static struct { void *site; DWORD calls; double ms; } g_waits[16];
+
+static void waited(void *site, LARGE_INTEGER t0) {
+    LARGE_INTEGER t1, f;
+    QueryPerformanceCounter(&t1);
+    QueryPerformanceFrequency(&f);
+    const double ms = (t1.QuadPart - t0.QuadPart) * 1000.0 / f.QuadPart;
+    for (int i = 0; i < 16; i++)
+        if (g_waits[i].site == site || !g_waits[i].site) {
+            g_waits[i].site = site, g_waits[i].calls++, g_waits[i].ms += ms;
+            return;
+        }
+}
+
+static void waits_report(void) {
+    static DWORD frames;
+    if (++frames % 600) return;
+    for (int i = 0; i < 16 && g_waits[i].site; i++)
+        hk_log("waitlog: site %p: %lu calls, %.1f ms a frame", g_waits[i].site, g_waits[i].calls, g_waits[i].ms / 600);
+    memset(g_waits, 0, sizeof g_waits);
+}
+
+static void WINAPI my_Sleep(DWORD ms) {
+    LARGE_INTEGER t0;
+    QueryPerformanceCounter(&t0);
+    Sleep(ms);
+    waited(__builtin_return_address(0), t0);
+}
+static DWORD WINAPI my_WaitForSingleObject(HANDLE h, DWORD ms) {
+    LARGE_INTEGER t0;
+    QueryPerformanceCounter(&t0);
+    const DWORD r = WaitForSingleObject(h, ms);
+    waited(__builtin_return_address(0), t0);
+    return r;
+}
+static DWORD WINAPI my_MsgWaitForMultipleObjects(DWORD n, const HANDLE *h, BOOL all, DWORD ms, DWORD mask) {
+    LARGE_INTEGER t0;
+    QueryPerformanceCounter(&t0);
+    const DWORD r = MsgWaitForMultipleObjects(n, h, all, ms, mask);
+    waited(__builtin_return_address(0), t0);
+    return r;
+}
+
 // --- hooking a module's imports
 
 static HMODULE g_self;
@@ -482,6 +685,10 @@ static void *hook_for(const char *dll, const char *fn) {
     if (!_stricmp(dll, "iphlpapi.dll")) return hk_net_card_hook(fn);
     if (!_stricmp(dll, "libsocket.dll") || !_stricmp(dll, "libavs-win32.dll")) return hk_vsock_hook(fn);   // vsock.c
     if (!_stricmp(dll, "libcomm.dll")) return hk_comm_hook(fn);
+    if (g_waitlog < 0) g_waitlog = getenv("HK_PC_WAITLOG") != NULL;
+    if (g_waitlog && !_stricmp(dll, "kernel32.dll") && !strcmp(fn, "Sleep")) return (void *)my_Sleep;
+    if (g_waitlog && !_stricmp(dll, "kernel32.dll") && !strcmp(fn, "WaitForSingleObject")) return (void *)my_WaitForSingleObject;
+    if (g_waitlog && !_stricmp(dll, "user32.dll") && !strcmp(fn, "MsgWaitForMultipleObjects")) return (void *)my_MsgWaitForMultipleObjects;
     static const struct { const char *dll, *fn; void *to; } hooks[] = {
         {"kernel32.dll", "CreateFileA", (void *)my_CreateFileA},
         {"kernel32.dll", "CreateDirectoryA", (void *)my_CreateDirectoryA},
@@ -499,7 +706,7 @@ static void *hook_for(const char *dll, const char *fn) {
     for (size_t i = 0; i < sizeof hooks / sizeof *hooks; i++)
         if (!_stricmp(dll, hooks[i].dll) && !strcmp(fn, hooks[i].fn)) {
             if (hooks[i].to == (void *)my_Direct3DCreate9 && !g_win_w && !g_win_full && g_hz <= 0 && !host_shows()) return NULL;
-            if (hooks[i].dll[0] == 'k' && !g_nmap) return NULL;
+            if (hooks[i].dll[0] == 'k' && !g_nmap && !g_nfiles) return NULL;
             // the window and the sound are HIRAKU's only when its window shows the game
             if ((!_stricmp(hooks[i].dll, "user32.dll") || !_stricmp(hooks[i].dll, "dsound.dll")) && !host_shows()) return NULL;
             return hooks[i].to;
@@ -571,18 +778,83 @@ static HMODULE WINAPI my_LoadLibraryA(LPCSTR p) {
     return m;
 }
 
+// The game's own frame clock: pop'n 15 waits, before each Present, until 14 ms have passed since the
+// last one (timeGetTime, then Sleep: `call reg; sub eax, last; cmp eax, 14; jae go_on`). With HIRAKU's
+// pacing starting each frame (link.h), that wait would hold the picture until the frame's end, so
+// the branch is made to always go on. Found by its shape and the game's own import slots (every
+// program date of pop'n 15 has two, at different places)
+static void *import_slot(HMODULE m, const char *dll, const char *fn) {
+    char *base = (char *)m;
+    IMAGE_NT_HEADERS *nt = (IMAGE_NT_HEADERS *)(base + ((IMAGE_DOS_HEADER *)base)->e_lfanew);
+    IMAGE_DATA_DIRECTORY *dir = &nt->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT];
+    for (IMAGE_IMPORT_DESCRIPTOR *imp = (IMAGE_IMPORT_DESCRIPTOR *)(base + dir->VirtualAddress); dir->VirtualAddress && imp->Name; imp++) {
+        if (_stricmp(base + imp->Name, dll)) continue;
+        IMAGE_THUNK_DATA *names = (IMAGE_THUNK_DATA *)(base + (imp->OriginalFirstThunk ? imp->OriginalFirstThunk : imp->FirstThunk));
+        IMAGE_THUNK_DATA *addrs = (IMAGE_THUNK_DATA *)(base + imp->FirstThunk);
+        for (; names->u1.AddressOfData; names++, addrs++)
+            if (!IMAGE_SNAP_BY_ORDINAL(names->u1.Ordinal) &&
+                !strcmp((const char *)((IMAGE_IMPORT_BY_NAME *)(base + names->u1.AddressOfData))->Name, fn))
+                return &addrs->u1.Function;
+    }
+    return NULL;
+}
+
+static int mentions(const uint8_t *p, size_t n, const void *slot) {
+    const uint32_t a = (uint32_t)(uintptr_t)slot;
+    for (size_t i = 0; i + 4 <= n; i++)
+        if (!memcmp(p + i, &a, 4)) return 1;
+    return 0;
+}
+
+static void unlimit_frames(void) {
+    HMODULE exe = GetModuleHandleA(NULL);
+    void *tgt = import_slot(exe, "winmm.dll", "timeGetTime"), *sleep = import_slot(exe, "kernel32.dll", "Sleep");
+    if (!tgt || !sleep) return;
+    char *base = (char *)exe;
+    IMAGE_NT_HEADERS *nt = (IMAGE_NT_HEADERS *)(base + ((IMAGE_DOS_HEADER *)base)->e_lfanew);
+    IMAGE_SECTION_HEADER *sec = IMAGE_FIRST_SECTION(nt);
+    int n = 0;
+    for (WORD k = 0; k < nt->FileHeader.NumberOfSections; k++, sec++) {
+        if (!(sec->Characteristics & IMAGE_SCN_MEM_EXECUTE)) continue;
+        uint8_t *code = (uint8_t *)base + sec->VirtualAddress;
+        const size_t size = sec->Misc.VirtualSize;
+        for (size_t i = 16; i + 40 < size; i++) {
+            uint8_t *p = code + i;
+            if (p[0] != 0x83 || p[1] != 0xf8 || p[2] != 0x0e || p[3] != 0x73) continue;
+            // before it: timeGetTime's slot loaded, a call through a register, a subtraction
+            int call = 0, sub = 0;
+            for (int b = 1; b <= 8; b++) call |= p[-b] == 0xff && (p[-b + 1] & 0xf8) == 0xd0, sub |= p[-b] == 0x2b;
+            if (!call || !sub || !mentions(p - 16, 16, tgt)) continue;
+            // what it skips: a Sleep
+            if (!mentions(p + 5, p[4] < 32 ? p[4] : 32, sleep)) continue;
+            DWORD old;
+            VirtualProtect(p + 3, 1, PAGE_EXECUTE_READWRITE, &old);
+            p[3] = 0xeb;   // jae -> jmp
+            VirtualProtect(p + 3, 1, old, &old);
+            FlushInstructionCache(GetCurrentProcess(), p, 4);
+            hk_log("hiraku-pc: the game's own 14 ms wait between pictures at %p: left to HIRAKU's pacing", (void *)p);
+            n++;
+        }
+    }
+    if (!n) hk_log("hiraku-pc: no frame wait of the game's own found (its pictures may come late in the frame)");
+}
+
 void hk_cabinet_start(void) {
     if (GetEnvironmentVariableA("HK_PC_STARTED", NULL, 0)) return;   // the other DLL did
     SetEnvironmentVariableA("HK_PC_STARTED", "1");
     GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
                        (LPCSTR)(void *)hk_cabinet_start, &g_self);
     read_map();
+    read_files();
+    read_patches();
     const char *w = getenv("HK_PC_WINDOW");
     if (w && !strcmp(w, "full")) g_win_full = 1;
     else if (w && sscanf(w, "%dx%d", &g_win_w, &g_win_h) != 2) g_win_w = g_win_h = 0;
     const char *hz = getenv("HK_PC_HZ");
     if (hz && *hz) g_hz = atof(hz);
     hk_link();
+    if (host_shows()) unlimit_frames();
+    if (g_npatches) apply_patches();   // the program's own code and data, as it's loaded
     patch_game_modules();
     // LoadLibraryA too, in the program, so modules loaded later get the same
     HMODULE exe = GetModuleHandleA(NULL);

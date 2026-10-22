@@ -54,7 +54,7 @@ struct buf {
 
 static CRITICAL_SECTION g_lock;
 static struct buf *g_bufs;
-static int g_started;
+static volatile int g_started;
 
 static void lock(void) { EnterCriticalSection(&g_lock); }
 static void unlock(void) { LeaveCriticalSection(&g_lock); }
@@ -141,26 +141,21 @@ static void mix(float *out, int n) {
     }
 }
 
-// As far as hiraku-pc asks, into the ring; a millisecond's nap when it has all it asked for
-static DWORD WINAPI mixer_thread(LPVOID unused) {
-    (void)unused;
+// What audio_want asks for and the ring has room for, mixed into the ring (with g_lock held: the
+// mixer thread and a picture's Present both mix). The frames mixed
+static uint32_t mix_to_want(void) {
     struct hk_pc_link *l = hk_link();
     float *ring = (float *)((char *)l + HK_PC_AUDIO);
     float chunk[2 * 512];
-    SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_TIME_CRITICAL);
+    uint32_t done = 0;
     for (;;) {
         const uint32_t want = l->audio_want, made = l->audio_made, taken = l->audio_taken;
         uint32_t n = want - made;
         const uint32_t room = HK_PC_AUDIO_FRAMES - (made - taken);
         if (n > room) n = room;
         if (n > 512) n = 512;
-        if (!n || (int32_t)(want - made) < 0) {
-            Sleep(1);
-            continue;
-        }
-        lock();
+        if (!n || (int32_t)(want - made) < 0) return done;
         mix(chunk, (int)n);
-        unlock();
         for (uint32_t i = 0; i < n; i++) {
             const uint32_t at = (made + i) & (HK_PC_AUDIO_FRAMES - 1);
             ring[2 * at] = chunk[2 * i];
@@ -168,8 +163,36 @@ static DWORD WINAPI mixer_thread(LPVOID unused) {
         }
         MemoryBarrier();
         l->audio_made = made + n;
+        done += n;
+    }
+}
+
+// As far as hiraku-pc asks, into the ring; a millisecond's nap when it has all it asked for
+static DWORD WINAPI mixer_thread(LPVOID unused) {
+    (void)unused;
+    SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_TIME_CRITICAL);
+    for (;;) {
+        lock();
+        const uint32_t n = mix_to_want();
+        unlock();
+        if (!n) Sleep(1);
     }
     return 0;
+}
+
+void hk_dsound_picture(void) {
+    struct hk_pc_link *l = hk_link();
+    const uint32_t end = l->audio_frame_end;
+    if (!g_started || !end) return;
+    lock();
+    for (;;) {   // audio_want moved on to `end` (hiraku-pc may move it too, never back)
+        const uint32_t want = l->audio_want;
+        if ((int32_t)(end - want) <= 0 ||
+            (uint32_t)InterlockedCompareExchange((volatile LONG *)&l->audio_want, (LONG)end, (LONG)want) == want)
+            break;
+    }
+    mix_to_want();
+    unlock();
 }
 
 // ---------------------------------------------------------------- IDirectSoundBuffer8, IDirectSoundNotify
@@ -292,9 +315,20 @@ static HRESULT WINAPI buf_Lock(struct buf *b, DWORD offset, DWORD bytes, void **
     return DS_OK;
 }
 
+// A button went down (link.h: key_edges, counted where the game reads its pad, maybe in the other
+// DLL): the next sound the game starts is taken for its sound (key_sound_at)
+static uint32_t g_key_seen;
+
 static HRESULT WINAPI buf_Play(struct buf *b, DWORD r1, DWORD prio, DWORD flags) {
     (void)r1, (void)prio;
     lock();
+    struct hk_pc_link *l = hk_link();
+    if (l->key_edges != g_key_seen) {   // it starts at the ring's next frame (the mixing holds the lock)
+        g_key_seen = l->key_edges;
+        l->key_sound_at = l->audio_made;
+        MemoryBarrier();
+        l->key_sound_seq = l->key_sound_seq + 1;
+    }
     b->playing = 1;
     b->looping = (flags & DSBPLAY_LOOPING) != 0;
     unlock();
@@ -477,10 +511,12 @@ long __stdcall hk_DirectSoundCreate8(const void *device, void **out, void *outer
     (void)device, (void)outer;
     if (!out) return DSERR_INVALIDPARAM;
     if (!g_started) {
-        g_started = 1;
         InitializeCriticalSection(&g_lock);
         g_buf_vt = g_buf_methods;
         g_notify_vt = g_notify_methods;
+        MemoryBarrier();
+        g_started = 1;   // (a picture's Present mixes from now on)
+        hk_link()->sound_on = 1;
         CloseHandle(CreateThread(NULL, 0, mixer_thread, NULL, 0, NULL));
         hk_log("hiraku-pc: the game's sound goes to HIRAKU (its own DirectSound, mixed at %u Hz)", OUT_RATE);
     }

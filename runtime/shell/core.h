@@ -27,6 +27,7 @@ public:
         std::string nvram_dir;   // persistent NVRAM ("" = none: every run starts from the defaults)
         bool trace = false;      // write an oracle-format MMIO trace into `out`
         bool ata_log = false;    // log disk commands
+        bool window = false;     // HIRAKU's window shows it (else headless: nothing paces but the core)
         // a file named in machine.txt: absolute, or relative to dumps/<game>/
         std::string data_path(const std::string &p) const {
             if (p.empty() || p[0] == '/') return p;

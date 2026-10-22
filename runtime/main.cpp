@@ -352,6 +352,7 @@ int main(int argc, char **argv) {
 
     if (!nvram_given && window_scale) nvram_dir = hk::user_data_dir(opt.root) + "/" + game;
     opt.nvram_dir = nvram_dir;
+    opt.window = window_scale != 0;
     if (!nvram_dir.empty()) {
         mkdirs(nvram_dir);
         printf("nvram: %s\n", nvram_dir.c_str());
