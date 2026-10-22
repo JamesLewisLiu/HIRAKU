@@ -1081,6 +1081,26 @@ show MATCHING with each other and a CPU, and they battle.
 | game | field: record offset (× count, bytes each) |
 |---|---|
 | pop'n 15 (0xb38) | music_num 0x94a (2), sheet_num 0x94c, category_num 0x94d, badge 0x94e, caption 0x94f, job_num 0x950, class 0x951, class_skill 0x952, class_start 0x953, class_upgrade 0x954, record 0x955, member_name 0x969 (×3, 13), member_pref 0x9de (×3), ojama_condition 0x9e7 (×51), job_var 0xad6 (2), job_exp 0xad8 (×13, 4), set_ojama 0xb25 (×3), get_ojama_hi 0xb28 (4), get_ojama_lo 0xb2c (4), item_hi 0xb30 (4), item_lo 0xb34 (4) |
+| pop'n 18 (0x1700) | get_ojama_0/1 0x13c8, 0x13cc (4 each), get_item_0/1 0x13d0, 0x13d4, get_title_0..4 0x13e8 (×5, 4), exp 0x13fc (4), music_num 0x1402 (2), sheet_num 0x1454, category_num 0x1455, set_title 0x1456, room_skill 0x1459 (15 to start), ojama_condition 0x1507 (×51), set_ojama 0x15b1 (×3), set_item 0x15b7 (×2), parameter 0x15b9 (×4), event_point 0x15bd; not placed yet: room, room_start, room_upgrade, record, member_name, member_pref, recommend_ojama, used_* |
+
+### pop'n music 16, 17, 18 (PC games)
+
+The same design again, built into the programs: libsocket's calls are static functions over
+Winsock (imported by ordinal), libcomm and libkernel are exported by the program, the lobby client
+is inside it. HIRAKU finds each libsocket call as the one function that calls its Winsock function
+(setsockopt twice: SO_BROADCAST, SO_RCVTIMEO) and makes it jump to vsock.c's, so the relay serves
+these games as it serves pop'n 15. The lobby dialect is pop'n 15's; each game has its own (services'
+globby URL: 16 port 5742, 17 5743, 18 5744). The messages are tagged with the model (`"J39"`).
+Checked under Wine: pop'n 18, two cabinets on one hiraku-eamuse match (MATCHING shows the other
+player and a CPU), battle, save `<netvs>`, and the next battle starts from what was saved
+(experience 601 → 1202, skill 17 → 19); pop'n 16 and 17 enter NET mode and the lobby.
+
+- **The mode:** 18 adds NET対戦 to its mode select (the fifth mode, `0x4c3817`) when online and
+  `game get netvs_phase` ≥ 1 (0-13, more NET content at higher phases); 17 when online and
+  `e_amuse_phase` ≥ 4 (`0x49adab`; its phases 0-15 open content by stages, HIRAKU answers 14);
+  16 when `netvs_phase` ≥ 1 (0-2) and the card's entry went online (`0x491c41`). The mode
+  select starts at the record's last mode (18: byte 0x1a).
+- **A lone cabinet** waits at CUSTOMIZE, recruiting, for `matching_sec` (what follows not looked at yet).
 
 ## GuitarFreaks and DrumMania V (Konami Python 2)
 
