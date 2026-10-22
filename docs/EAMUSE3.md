@@ -1020,8 +1020,9 @@ show MATCHING with each other and a CPU, and they battle.
   (as for pop'n 12-14 online): one TCP connection, an address 10.57.x.y for the cabinet (given to
   the game as its card's and its portfw address); datagrams to the lobby go as they are, to another
   cabinet with a one-byte kind, and TCP connections as open/opened/data/closed messages (the
-  library's `CommTcpHost`/`CommTcpClient`, which the game uses only in its developer test screens
-  "TCP HOST TEST"/"TCP CLIENT TEST"). `tests/pc/test_vsock.sh` checks all of it between two
+  library's `CommTcpHost`/`CommTcpClient`, which the game uses only in its developer test scenes
+  "TCP HOST TEST"/"TCP CLIENT TEST", `0x420480`/`0x4206a0`: their scene factories, `0x41e7b0` and
+  the next, are referred to nowhere in the program, so nothing a player does reaches them). `tests/pc/test_vsock.sh` checks all of it between two
   processes on one relay under Wine: the lobby, datagrams, a TCP connection both ways, a refused
   one, timeouts. Alone (no `-url`), hiraku-pc runs a
   relay and lobby of its own: the game waits `matching_sec` at CUSTOMIZE, says nobody came and
