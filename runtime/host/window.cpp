@@ -34,6 +34,7 @@
 #include "asio.h"
 #include "wasapi.h"
 #include "lampview.h"
+#include "shaderview.h"
 #include "notice.h"
 #include "picture.h"
 #include "input.h"
@@ -225,6 +226,13 @@ void poll() {
             lampview::toggle();
             continue;
         }
+        if (e.type == SDL_EVENT_KEY_DOWN && !e.key.repeat && e.key.key == SDLK_F8 && g_gl) {   // F8: the shader's settings
+            shaderview::toggle();
+            continue;
+        }
+        if ((e.type == SDL_EVENT_KEY_DOWN || e.type == SDL_EVENT_KEY_UP) && shaderview::shown() &&
+            shaderview::key(e.key, g_mode))
+            continue;   // the panel's keys, while it's shown: not the game's
         if (e.type == SDL_EVENT_KEY_DOWN && !e.key.repeat && e.key.key == SDLK_F10 && g_gl)   // F10: off, light, full, lola
             g_mode = g_mode == picture::Mode::off     ? picture::Mode::light
                    : g_mode == picture::Mode::light ? picture::Mode::full
@@ -1100,6 +1108,13 @@ static void draw_overlays(int ww, int wh) {
         int px, py, pw, ph;
         place_lights(p, ww, wh, px, py, pw, ph);
         picture::overlay(p.pixels->data(), p.w, p.h, px, py, pw, ph, 1.0f, ww, wh);
+    }
+    // host/shaderview.h's panel: at the top right (or left), whole times its size, as the lights'
+    if (shaderview::Panel p; shaderview::panel(p, g_mode)) {
+        const int k = std::max(1, std::min(wh / 540, ww * 4 / 10 / std::max(1, p.w)));
+        const int pw = p.w * k, ph = p.h * k;
+        const int px = shaderview::on_left() ? 8 * k : std::max(0, ww - pw - 8 * k);
+        picture::overlay(p.pixels->data(), p.w, p.h, px, 8 * k, pw, ph, 1.0f, ww, wh);
     }
 }
 

@@ -51,6 +51,23 @@ bool set_beam(bool on, const Beam &b = {});
 // The cabinet's monitor, in kHz of line rate (15: TV-like arcade monitors; 24: medium resolution,
 // DJ Main; 31: VGA-like, Firebeat): the shaders' settings for it (hiraku-<k>khz.params). 0: none.
 void set_monitor(int khz);
+// The settings of a mode's preset (its parameters), for changing them in the game (host/shaderview.h):
+// false while that preset isn't loaded. A heading in the list ("--- Signal ---") has min == max.
+struct Setting {
+    std::string name, label;
+    float value;           // in use
+    float saved;           // as the files give it (the shader's, HIRAKU's, the settings folders')
+    float preset;          // the shader's and HIRAKU's alone (for this monitor): the default
+    float min, max, step;
+    bool changed;          // set_setting since the last save
+};
+bool settings(Mode m, std::vector<Setting> &out);
+void set_setting(Mode m, const std::string &name, float value);   // at once, until saved or the game ends
+// Write the settings changed here into the settings folder's file (init's config_dirs): all games'
+// (the first; the game's own file then lets go of them) or this game's (the last); message says how
+// it went. The launcher's Picture dialog keeps the same files.
+bool save_settings(Mode m, bool this_game, std::string &message);
+unsigned settings_generation();   // turns when a preset's settings are read again (their files changed)
 // Load a mode's preset now (compiling its shaders takes up to a second the first time; the
 // draw that needs it otherwise does). False if it can't run here.
 bool prepare(Mode m);

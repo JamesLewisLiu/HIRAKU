@@ -12,6 +12,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
 #include <fstream>
 #include <map>
 #include <algorithm>
@@ -166,9 +167,14 @@ void mvp(float m[16], bool flip) {
 }
 
 struct Param {
-    std::string name;
+    std::string name, label;
     float def = 0, value = 0;
+    float min = 0, max = 0, step = 0;   // parameters.txt's; a heading ("--- Signal ---") has min == max
+    float preset = 0;                   // the shader's and HIRAKU's defaults (hiraku.params, -<k>khz)
+    float saved = 0;                    // ... and the settings folders' files over them
+    bool touched = false;               // changed in the game (set_setting), not saved yet
 };
+unsigned g_settings_gen = 0;   // turns when a preset's settings are read again (settings_generation)
 
 // A texture a pass can read: the frame, a frame before it (OriginalHistoryN), a pass output, a
 // pass's output a frame ago (PassFeedbackN, <alias>Feedback), a preset texture.
@@ -258,6 +264,8 @@ public:
     size_t history() const { return m_history; }   // how many frames it reads: 1 + the oldest OriginalHistoryN
     void check_params();   // read the parameter files again if one changed
     void read_params();
+    std::vector<Param> &params() { return m_params; }
+    const std::string &dir() const { return m_dir; }
     ~Chain();
 
 private:
@@ -456,26 +464,37 @@ bool Chain::link_pass(int i, const std::string &vs, const std::string &fs) {
     return true;
 }
 
+// A .params file's values over `prm`'s field `f`
+template <typename F> void apply_params(const std::string &file, std::vector<Param> &params, F field) {
+    bool ok = false;
+    auto keys = read_keys(file, &ok);
+    if (!ok) return;
+    for (auto &prm : params) {
+        auto it = keys.find(prm.name);
+        if (it == keys.end()) continue;
+        char *end = nullptr;
+        float v = strtof(it->second.c_str(), &end);
+        if (end != it->second.c_str()) field(prm) = v;
+    }
+}
+
 void Chain::read_params() {
-    for (auto &prm : m_params) prm.value = prm.def;
+    for (auto &prm : m_params) prm.saved = prm.def;
     std::vector<std::string> files = {m_dir + "/hiraku.params"};
     if (g_monitor_khz) files.push_back(m_dir + "/hiraku-" + std::to_string(g_monitor_khz) + "khz.params");
+    const size_t ours = files.size();   // the shader's own, then the settings folders'
     for (const auto &d : g_config_dirs) files.push_back(d + "/" + name + ".params");
     m_param_files.clear();
-    for (const auto &f : files) {
+    for (size_t i = 0; i < files.size(); i++) {
         struct stat st {};
-        m_param_files.push_back({f, stat(f.c_str(), &st) == 0 ? st.st_mtime : 0});
-        bool ok = false;
-        auto keys = read_keys(f, &ok);
-        if (!ok) continue;
-        for (auto &prm : m_params) {
-            auto it = keys.find(prm.name);
-            if (it == keys.end()) continue;
-            char *end = nullptr;
-            float v = strtof(it->second.c_str(), &end);
-            if (end != it->second.c_str()) prm.value = v;
-        }
+        m_param_files.push_back({files[i], stat(files[i].c_str(), &st) == 0 ? st.st_mtime : 0});
+        apply_params(files[i], m_params, [](Param &p) -> float & { return p.saved; });
+        if (i + 1 == ours)
+            for (auto &prm : m_params) prm.preset = prm.saved;
     }
+    for (auto &prm : m_params)   // a change made in the game stays until it's saved
+        if (!prm.touched) prm.value = prm.saved;
+    g_settings_gen++;
 }
 
 void Chain::check_params() {
@@ -505,8 +524,10 @@ bool Chain::load(const std::string &dir) {
             if (line.empty() || line[0] == '#') continue;
             std::istringstream ls(line);
             Param prm;
-            ls >> prm.name >> prm.def;
-            prm.value = prm.def;
+            ls >> prm.name >> prm.def >> prm.min >> prm.max >> prm.step;
+            std::getline(ls, prm.label);
+            prm.label = trim(prm.label);
+            prm.value = prm.preset = prm.saved = prm.def;
             m_params.push_back(prm);
         }
     }
@@ -924,6 +945,96 @@ void set_monitor(int khz) {
     for (auto &v : g_chain)   // the loaded presets read their settings again
         for (auto &c : v)
             if (c) c->read_params();
+}
+
+bool settings(Mode m, std::vector<Setting> &out) {
+    out.clear();
+    const auto &c = g_chain[0][(int)m];
+    if (m == Mode::off || !c) return false;
+    for (const Param &p : c->params())
+        out.push_back({p.name, p.label.empty() ? p.name : p.label, p.value, p.saved, p.preset, p.min, p.max, p.step,
+                       p.touched});
+    return true;
+}
+
+void set_setting(Mode m, const std::string &name, float value) {
+    for (auto &v : g_chain)   // both windows' (Keyboardmania's two monitors)
+        if (const auto &c = v[(int)m])
+            for (Param &p : c->params())
+                if (p.name == name) p.value = value, p.touched = true;
+}
+
+unsigned settings_generation() { return g_settings_gen; }
+
+bool save_settings(Mode m, bool this_game, std::string &message) {
+    const auto &c = g_chain[0][(int)m];
+    if (m == Mode::off || !c) return message = "No shader in use", false;
+    if (g_config_dirs.empty())
+        return message = "No settings folder: start the game from the launcher (or with --picture-config DIR)", false;
+    // the file: all games' (the first settings folder) or the game's (the last); what it holds is
+    // what differs from the files under it
+    const size_t at = this_game ? g_config_dirs.size() - 1 : 0;
+    const std::string path = g_config_dirs[at] + "/" + c->name + ".params";
+    std::vector<Param> base = c->params();
+    for (Param &p : base) p.saved = p.preset;
+    for (size_t d = 0; d < at; d++)
+        apply_params(g_config_dirs[d] + "/" + c->name + ".params", base, [](Param &p) -> float & { return p.saved; });
+    bool ok = false;
+    const auto old = read_keys(path, &ok);
+    auto number = [](const std::string &t, float def) {
+        char *end = nullptr;
+        const float v = strtof(t.c_str(), &end);
+        return end != t.c_str() ? v : def;
+    };
+    auto same = [](float a, float b) { return std::fabs(a - b) <= 1e-6f * std::max(1.0f, std::fabs(b)); };
+    std::string out;
+    char line[256];
+    std::vector<std::string> known;
+    for (size_t i = 0; i < base.size(); i++) {
+        const Param &p = c->params()[i];
+        known.push_back(p.name);
+        const auto it = old.find(p.name);
+        // changed here: its value; else as the file had it
+        const float v = p.touched ? p.value : it != old.end() ? number(it->second, base[i].saved) : base[i].saved;
+        if (same(v, base[i].saved)) continue;
+        snprintf(line, sizeof line, "%s = %.8g\n", p.name.c_str(), v);
+        out += line;
+    }
+    for (const auto &[k, v] : old)   // values for no setting of this shader stay as they are
+        if (std::find(known.begin(), known.end(), k) == known.end()) out += k + " = " + v + "\n";
+    std::error_code ec;
+    if (out.empty()) std::filesystem::remove(path, ec);
+    else {
+        std::filesystem::create_directories(g_config_dirs[at], ec);
+        std::ofstream f(path, std::ios::trunc);
+        f << "# " << c->name << ", " << (this_game ? "this game" : "all games") << ": what differs from "
+          << (this_game ? "all games" : "the defaults") << " (HIRAKU, F8 in the game)\n" << out;
+        if (!f) return message = "Could not write " + path, false;
+    }
+    // saved for all games: the game's own file lets go of what was changed here, so it shows
+    if (!this_game && g_config_dirs.size() > 1) {
+        const std::string own = g_config_dirs.back() + "/" + c->name + ".params";
+        bool had = false;
+        auto keys = read_keys(own, &had);
+        size_t n = keys.size();
+        for (const Param &p : c->params())
+            if (p.touched) keys.erase(p.name);
+        if (had && keys.size() != n) {
+            if (keys.empty()) std::filesystem::remove(own, ec);
+            else {
+                std::ofstream f(own, std::ios::trunc);
+                f << "# " << c->name << ", this game: what differs from all games (HIRAKU, F8 in the game)\n";
+                for (const auto &[k, v] : keys) f << k << " = " << v << "\n";
+            }
+        }
+    }
+    for (auto &v : g_chain)
+        if (const auto &ch = v[(int)m]) {
+            for (Param &p : ch->params()) p.touched = false;
+            ch->read_params();
+        }
+    message = std::string("Saved for ") + (this_game ? "this game" : "all games");
+    return true;
 }
 
 bool prepare(Mode m) {

@@ -94,8 +94,9 @@ The machine boots like a cabinet. The skipped BIOS time passes instantly. Then t
 | F2 | test mode, 9 service |
 | Tab (hold) | fast-forward |
 | F11, Alt+Enter | fullscreen |
-| F10 | picture: off, CRT light, CRT full |
+| F10 | picture: off, CRT light, CRT full, CRT analog |
 | F9 | the game's lights over the picture (docs/LIGHTS.md) |
+| F8 | the CRT shader's settings, changed while you play (below) |
 | Ctrl+1 … Ctrl+9 | type one of the game's codes (below) |
 | Esc | quit |
 
@@ -137,6 +138,17 @@ for the games that have a `games/<id>/macros.txt`.
 | **Analog** | Zoki's Lola Retro: the whole analog chain, the cable's signal, the TV's or monitor's electronics, a beam whose spot grows with brightness, the mask, the glass, phosphor afterglow | the heaviest |
 
 F10 cycles the four while you play, and the window's title says which one is on.
+
+**Changing them while you play (F8):** a panel with the shader's settings, the same as the
+launcher's sliders, beside the picture so you see each change at once. F8 shows it on the right,
+again on the left, a third time hides it. Up and Down pick a setting, Left and Right change it (with
+Shift, ten steps at a time); Backspace puts back the saved value, Delete the default. **Enter**
+saves the changes for all games, **Shift+Enter** for this game alone, into the same files the
+launcher's Picture dialog keeps (a game started from the launcher; on the command line, give a
+folder with `--picture-config DIR`). Amber values differ from the default, and a star marks a change
+not saved yet. While the panel is shown, the game doesn't get those keys; Esc still quits. It's
+drawn small (8x8 letters, 316x370), so it fits a 640x480 screen; larger windows draw it two, three
+times as big.
 
 **Analog's looks:** Lola Retro comes with presets, each a tube, a cable and a set-up: a consumer TV
 on SCART RGB or composite, a Trinitron on S-Video, an old TV on the antenna, a studio monitor
