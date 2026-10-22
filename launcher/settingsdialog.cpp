@@ -33,6 +33,9 @@
 
 #ifdef _WIN32
 #include <SDL3/SDL.h>
+#define NOMINMAX
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
 #endif
 
 #include "capturedialog.h"
@@ -114,6 +117,27 @@ static QStringList windowsPlaybackDevices() {
         SDL_free(ids);
     }
     if (!was) SDL_QuitSubSystem(SDL_INIT_AUDIO);
+    return out;
+}
+
+// The COM ports Windows has now ("COM3"), by number, from HKLM\HARDWARE\DEVICEMAP\SERIALCOMM. Read
+// with the registry's own calls: its value names ("\Device\VCP0") have backslashes, which
+// QSettings takes for subkeys, so through it the list came out empty.
+static QStringList windowsComPorts() {
+    QStringList out;
+    HKEY key;
+    if (RegOpenKeyExW(HKEY_LOCAL_MACHINE, L"HARDWARE\\DEVICEMAP\\SERIALCOMM", 0, KEY_READ, &key) != ERROR_SUCCESS) return out;
+    for (DWORD i = 0;; i++) {
+        wchar_t name[256], data[64];
+        DWORD nlen = 256, dlen = sizeof data, type = 0;
+        const LONG r = RegEnumValueW(key, i, name, &nlen, nullptr, &type, reinterpret_cast<BYTE *>(data), &dlen);
+        if (r == ERROR_NO_MORE_ITEMS) break;
+        if (r != ERROR_SUCCESS || type != REG_SZ) continue;
+        const QString port = QString::fromWCharArray(data, (int)(dlen / sizeof(wchar_t))).remove(QChar(0)).trimmed();
+        if (!port.isEmpty() && !out.contains(port)) out << port;
+    }
+    RegCloseKey(key);
+    std::sort(out.begin(), out.end(), [](const QString &a, const QString &b) { return a.mid(3).toInt() < b.mid(3).toInt(); });
     return out;
 }
 
@@ -493,11 +517,7 @@ SettingsDialog::SettingsDialog(QWidget *parent) : QDialog(parent) {
     auto *fr = new QFormLayout(rd);
     QStringList ports;
 #ifdef Q_OS_WIN
-    {   // the COM ports Windows has now
-        QSettings comm("HKEY_LOCAL_MACHINE\\HARDWARE\\DEVICEMAP\\SERIALCOMM", QSettings::NativeFormat);
-        for (const QString &k : comm.allKeys()) ports << comm.value(k).toString();
-        std::sort(ports.begin(), ports.end(), [](const QString &a, const QString &b) { return a.mid(3).toInt() < b.mid(3).toInt(); });
-    }
+    ports = windowsComPorts();
 #else
     // a port's /dev/serial/by-id name stays the same whichever USB socket it is in
     for (const QFileInfo &f : QDir("/dev/serial/by-id").entryInfoList(QDir::System | QDir::Files)) ports << f.absoluteFilePath();
@@ -509,7 +529,11 @@ SettingsDialog::SettingsDialog(QWidget *parent) : QDialog(parent) {
         m_reader[n]->addItem("");
         m_reader[n]->addItems(ports);
         m_reader[n]->setCurrentText(s.value(QString("readers/serial%1").arg(n)).toString());
+#ifdef Q_OS_WIN
+        m_reader[n]->lineEdit()->setPlaceholderText("none (or type its port: COM3)");
+#else
         m_reader[n]->lineEdit()->setPlaceholderText("none");
+#endif
         m_reader[n]->setToolTip("-reader: a Konami e-AMUSEMENT reader with its 10-key on a serial port (a USB-serial "
                                 "adapter). A card held to it is the player's card in the game; its 10-key is the "
                                 "game's (00 is Enter where the game has no 00).");
