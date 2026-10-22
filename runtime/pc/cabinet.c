@@ -112,27 +112,35 @@ static void escape_quits(void) {
     TerminateProcess(GetCurrentProcess(), 0);
 }
 
-// The coin mode the game set (usbCoinMode): 1 (pop'n 15 online) counts the coin switch itself, on
-// the pad's bit 22, where 3 reads the board's count (usbCoinGet)
+// The coin mode the game set (usbCoinMode): 1 (pop'n 15 online, 17 and 18 in play) and 2 (pop'n 18's
+// test mode) count the coin switch itself, on the pad's bit 22, where 3 reads the board's count
+// (usbCoinGet)
 static int g_coin_mode = 3;
 void hk_set_coin_mode(int mode) { g_coin_mode = mode; }
 
-// In mode 1, each coin is a pulse of the coin switch: on for 4 reads of the pad, off for 4
+// Then each coin is a pulse of the coin switch, as a coin mech gives it: on 60 ms, off 60 ms
+// (by time: pop'n 18 reads the pad more than once a frame, and a pulse of a few reads was too
+// short for it)
 static uint32_t coin_switch(void) {
     static uint32_t given;
-    static int phase;
+    static DWORD since;
+    static int on;
     const uint32_t coins = hk_coins_now();
-    if (g_coin_mode != 1) {
-        given = coins;
+    if (g_coin_mode != 1 && g_coin_mode != 2) {
+        given = coins, on = 0, since = 0;
         return 0;
     }
-    if (phase || given != coins) {
-        if (++phase > 8) {
-            phase = 0;
-            given++;
-        }
-        return phase <= 4 ? 1u << 22 : 0;
+    const DWORD now = GetTickCount();
+    if (since && now - since < 60) return on ? 1u << 22 : 0;
+    if (on) {   // the pulse's end: off for as long
+        on = 0, since = now, given++;
+        return 0;
     }
+    if (given != coins) {
+        on = 1, since = now;
+        return 1u << 22;
+    }
+    since = 0;
     return 0;
 }
 
@@ -676,6 +684,78 @@ static DWORD WINAPI my_MsgWaitForMultipleObjects(DWORD n, const HANDLE *h, BOOL 
     return r;
 }
 
+// --- HK_PC_AVS_LOG: libavs's file and package calls (their arguments as text where they're text,
+// and what they returned), for bringing up a game whose data comes through them
+
+static int printable(const void *p) {
+    if ((uintptr_t)p < 0x10000 || !present((const uint8_t *)p, 1)) return 0;
+    const unsigned char *s = (const unsigned char *)p;
+    int n = 0;
+    while (n < 200 && present(s + n, 1) && s[n] >= 0x20 && s[n] < 0x7f) n++;
+    return n >= 1 && present(s + n, 1) && s[n] == 0;
+}
+
+static void avs_said(const char *fn, void *const *a, intptr_t r) {
+    // the status calls a game polls every frame: said when their result changes
+    static const char *const polled[] = {"ea3_get_status", "avs_keepalive_get_status", "ea3_get_boot_status", "avs_net_ctrl"};
+    static intptr_t last[4] = {-12345, -12345, -12345, -12345};
+    for (int i = 0; i < 4; i++)
+        if (!strcmp(fn, polled[i])) {
+            intptr_t v = r;
+            if (i == 0 && present((const uint8_t *)a[0], 4) && present((const uint8_t *)a[1], 4))
+                v = r * 1000003 + *(const int *)a[0] * 1009 + *(const int *)a[1];
+            if (last[i] == v) return;
+            last[i] = v;
+        }
+    char line[1024];
+    int n = snprintf(line, sizeof line, "avs: %s(", fn);
+    for (int i = 0; i < 5 && n < 900; i++)
+        n += printable(a[i]) ? snprintf(line + n, sizeof line - (size_t)n, "%s\"%s\"", i ? ", " : "", (const char *)a[i])
+                             : snprintf(line + n, sizeof line - (size_t)n, "%s%p", i ? ", " : "", a[i]);
+    if (!strcmp(fn, "ea3_get_status") && present((const uint8_t *)a[0], 4) && present((const uint8_t *)a[1], 4))
+        n += snprintf(line + n, sizeof line - (size_t)n, " -> %d, %d", *(const int *)a[0], *(const int *)a[1]);
+    hk_log("%s) = %ld", line, (long)r);
+}
+
+typedef intptr_t(__cdecl *avs6_t)(void *, void *, void *, void *, void *, void *);
+#define AVS_LOGGED(i)                                                                                          \
+    static avs6_t g_avs_real##i;                                                                               \
+    static const char *g_avs_name##i;                                                                          \
+    static intptr_t __cdecl avs_wrap##i(void *a, void *b, void *c, void *d, void *e, void *f) {               \
+        void *args[5] = {a, b, c, d, e};                                                                       \
+        const intptr_t r = g_avs_real##i(a, b, c, d, e, f);                                                    \
+        avs_said(g_avs_name##i, args, r);                                                                      \
+        return r;                                                                                              \
+    }
+AVS_LOGGED(0) AVS_LOGGED(1) AVS_LOGGED(2) AVS_LOGGED(3) AVS_LOGGED(4) AVS_LOGGED(5) AVS_LOGGED(6) AVS_LOGGED(7)
+AVS_LOGGED(8) AVS_LOGGED(9) AVS_LOGGED(10) AVS_LOGGED(11) AVS_LOGGED(12) AVS_LOGGED(13) AVS_LOGGED(14)
+
+static void *avs_logged(const char *dll, const char *fn) {
+    static const char *const names[] = {"avs_fs_mount", "avs_fs_open", "avs_fs_lstat", "avs_fs_opendir", "avs_fs_umount",
+                                        "ea3_pkglist_open", "ea3_pkglist_get", "ea3_pkglist_next", "ea3_pkg_open_by_name",
+                                        "ea3_pkg_read", "ea3_boot", "ea3_get_boot_status", "ea3_get_status",
+                                        "avs_keepalive_get_status", "avs_keepalive_find_by_name"};
+    static avs6_t *const real[] = {&g_avs_real0, &g_avs_real1, &g_avs_real2, &g_avs_real3, &g_avs_real4, &g_avs_real5,
+                                   &g_avs_real6, &g_avs_real7, &g_avs_real8, &g_avs_real9, &g_avs_real10, &g_avs_real11,
+                                   &g_avs_real12, &g_avs_real13, &g_avs_real14};
+    static const char **const name[] = {&g_avs_name0, &g_avs_name1, &g_avs_name2, &g_avs_name3, &g_avs_name4, &g_avs_name5,
+                                        &g_avs_name6, &g_avs_name7, &g_avs_name8, &g_avs_name9, &g_avs_name10, &g_avs_name11,
+                                        &g_avs_name12, &g_avs_name13, &g_avs_name14};
+    static void *const wrap[] = {(void *)avs_wrap0, (void *)avs_wrap1, (void *)avs_wrap2, (void *)avs_wrap3,
+                                 (void *)avs_wrap4, (void *)avs_wrap5, (void *)avs_wrap6, (void *)avs_wrap7,
+                                 (void *)avs_wrap8, (void *)avs_wrap9, (void *)avs_wrap10, (void *)avs_wrap11,
+                                 (void *)avs_wrap12, (void *)avs_wrap13, (void *)avs_wrap14};
+    static int on = -1;
+    if (on < 0) on = getenv("HK_PC_AVS_LOG") != NULL;
+    if (!on) return NULL;
+    for (int i = 0; i < (int)(sizeof names / sizeof *names); i++)
+        if (!strcmp(fn, names[i])) {
+            if (!*real[i]) *real[i] = (avs6_t)(void *)GetProcAddress(GetModuleHandleA(dll), fn), *name[i] = names[i];
+            return *real[i] ? wrap[i] : NULL;
+        }
+    return NULL;
+}
+
 // --- hooking a module's imports
 
 static HMODULE g_self;
@@ -683,7 +763,10 @@ static HMODULE g_self;
 static void *hook_for(const char *dll, const char *fn) {
     if (!_stricmp(dll, "ws2_32.dll") || !_stricmp(dll, "wsock32.dll")) return hk_net_hook(fn);   // net.c
     if (!_stricmp(dll, "iphlpapi.dll")) return hk_net_card_hook(fn);
-    if (!_stricmp(dll, "libsocket.dll") || !_stricmp(dll, "libavs-win32.dll")) return hk_vsock_hook(fn);   // vsock.c
+    if (!_stricmp(dll, "libsocket.dll") || !_stricmp(dll, "libavs-win32.dll") || !_stricmp(dll, "libavs-win32-ea3.dll")) {
+        void *v = hk_vsock_hook(fn);   // vsock.c
+        return v ? v : avs_logged(dll, fn);
+    }
     if (!_stricmp(dll, "libcomm.dll")) return hk_comm_hook(fn);
     if (g_waitlog < 0) g_waitlog = getenv("HK_PC_WAITLOG") != NULL;
     if (g_waitlog && !_stricmp(dll, "kernel32.dll") && !strcmp(fn, "Sleep")) return (void *)my_Sleep;
@@ -839,11 +922,38 @@ static void unlimit_frames(void) {
     if (!n) hk_log("hiraku-pc: no frame wait of the game's own found (its pictures may come late in the frame)");
 }
 
+// HK_PC_CRASHLOG: a fault's place and the way to it, for bringing a game up (its own handler ends it
+// quietly): the registers, and the return addresses on the stack that are in the program's code
+static LONG CALLBACK crash_log(EXCEPTION_POINTERS *e) {
+    const DWORD code = e->ExceptionRecord->ExceptionCode;
+    if (code != EXCEPTION_ACCESS_VIOLATION && code != EXCEPTION_ILLEGAL_INSTRUCTION && code != EXCEPTION_INT_DIVIDE_BY_ZERO &&
+        code != EXCEPTION_STACK_OVERFLOW)
+        return EXCEPTION_CONTINUE_SEARCH;
+    static int said;
+    if (said++ >= 4) return EXCEPTION_CONTINUE_SEARCH;
+    const CONTEXT *c = e->ContextRecord;
+    hk_log("crash: %08lx at %08lx (address %08lx), eax=%08lx ebx=%08lx ecx=%08lx edx=%08lx esi=%08lx edi=%08lx ebp=%08lx esp=%08lx",
+           code, (unsigned long)c->Eip,
+           e->ExceptionRecord->NumberParameters > 1 ? (unsigned long)e->ExceptionRecord->ExceptionInformation[1] : 0ul,
+           c->Eax, c->Ebx, c->Ecx, c->Edx, c->Esi, c->Edi, c->Ebp, c->Esp);
+    char *base = (char *)GetModuleHandleA(NULL);
+    IMAGE_NT_HEADERS *nt = (IMAGE_NT_HEADERS *)(base + ((IMAGE_DOS_HEADER *)base)->e_lfanew);
+    const uintptr_t lo = (uintptr_t)base + nt->OptionalHeader.BaseOfCode, hi = lo + nt->OptionalHeader.SizeOfCode;   // its code
+    char line[1024];
+    int n = 0;
+    const uint32_t *sp = (const uint32_t *)c->Esp;
+    for (int i = 0; i < 2048 && n < (int)sizeof line - 16 && present((const uint8_t *)(sp + i), 4); i++)
+        if (sp[i] > lo && sp[i] < hi) n += snprintf(line + n, sizeof line - (size_t)n, " %08x", sp[i]);
+    hk_log("crash: the program's addresses on the stack:%s", n ? line : " none");
+    return EXCEPTION_CONTINUE_SEARCH;
+}
+
 void hk_cabinet_start(void) {
     if (GetEnvironmentVariableA("HK_PC_STARTED", NULL, 0)) return;   // the other DLL did
     SetEnvironmentVariableA("HK_PC_STARTED", "1");
     GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
                        (LPCSTR)(void *)hk_cabinet_start, &g_self);
+    if (getenv("HK_PC_CRASHLOG")) AddVectoredExceptionHandler(1, crash_log);
     read_map();
     read_files();
     read_patches();

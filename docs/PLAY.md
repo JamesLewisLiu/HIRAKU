@@ -1089,4 +1089,6 @@ From pop'n music 15 on, the games are Windows programs. HIRAKU runs Konami's own
 - **Mods:** as for the other games (right-click: Mods…; [MODS.md](MODS.md), "The PC games"): memory patches at the program's addresses, and files at their paths under the game's `data` folder, read instead of the game's own. Its check of its data passes: HIRAKU gives the modded files' MD5s to the copy of its list in the save folder.
 - **On the command line:** `bin/hiraku-pc --game popn15 --window [--fullscreen] [--picture light]`.
 
-**Not yet:** a check on real Windows and with a real board or reader; pop'n 16 and later.
+**Not yet:** a check on real Windows and with a real board or reader.
+
+**pop'n music 16, 17, 18 (started):** add them as pop'n 15 (their folders hold `prog` and `data`). pop'n 17 and 18 start and reach their titles; pop'n 18 goes online with HIRAKU's server and takes coins and cards, but its players aren't kept yet, and pop'n 17 stops at the network check (5-2009). pop'n 16's program stops at start-up. Work in progress: PLAN.md section 30, PC-6.

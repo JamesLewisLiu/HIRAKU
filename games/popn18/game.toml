@@ -1,0 +1,10 @@
+# pop'n music 18 せんごく列伝 (J39), Konami 2010: a Windows PC, as pop'n music 15 (games/popn15, PLAN.md section 30)
+id = "popn18"
+title = "pop'n music 18 せんごく列伝"
+family = "pcpopn"       # pop'n on a PC: 9 buttons, the e-AMUSEMENT reader and 10-key, the board's lamps
+core = "pc"             # Konami's own program in HIRAKU's cabinet (runtime/pc/, PLAN.md section 30)
+
+[pc]
+exe = "popn18.exe"      # in prog/<date>/, the newest date the newest program
+drive = 'D:\popn18'     # where it looks for prog\ and data\
+save_drive = 'E:\'      # its backup drive (settings, bookkeeping)

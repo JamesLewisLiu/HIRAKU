@@ -1,0 +1,10 @@
+# pop'n music 16 PARTY♪ (H16), Konami 2008: a Windows PC, as pop'n music 15 (games/popn15, PLAN.md section 30)
+id = "popn16"
+title = "pop'n music 16 PARTY♪"
+family = "pcpopn"       # pop'n on a PC: 9 buttons, the e-AMUSEMENT reader and 10-key, the board's lamps
+core = "pc"             # Konami's own program in HIRAKU's cabinet (runtime/pc/, PLAN.md section 30)
+
+[pc]
+exe = "popn16.exe"      # in prog/<date>/, the newest date the newest program
+drive = 'D:\popn16'     # where it looks for prog\ and data\
+save_drive = 'E:\'      # its backup drive (settings, bookkeeping)

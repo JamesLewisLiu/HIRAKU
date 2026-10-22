@@ -185,6 +185,43 @@ static int WSAAPI my_recvfrom(SOCKET s, char *buf, int len, int flags, struct so
     return r;
 }
 
+// The same through WSASendTo and WSARecvFrom (pop'n 18's libavs pings so; synchronous, as it calls
+// them: no overlapped I/O)
+static int WSAAPI my_WSASendTo(SOCKET s, LPWSABUF bufs, DWORD n, LPDWORD sent, DWORD flags, const struct sockaddr *to, int tolen,
+                               LPWSAOVERLAPPED ov, LPWSAOVERLAPPED_COMPLETION_ROUTINE done) {
+    const int k = pinger(s);
+    if (k < 0 || ov || done) return WSASendTo(s, bufs, n, sent, flags, to, tolen, ov, done);
+    char one[1500];
+    int len = 0;
+    for (DWORD i = 0; i < n; i++) {
+        if (len + (int)bufs[i].len > (int)sizeof one) break;
+        memcpy(one + len, bufs[i].buf, bufs[i].len);
+        len += (int)bufs[i].len;
+    }
+    const int r = my_sendto(s, one, len, (int)flags, to, tolen);
+    if (r < 0) return SOCKET_ERROR;
+    if (sent) *sent = (DWORD)r;
+    return 0;
+}
+
+static int WSAAPI my_WSARecvFrom(SOCKET s, LPWSABUF bufs, DWORD n, LPDWORD got, LPDWORD flags, struct sockaddr *from, LPINT fromlen,
+                                 LPWSAOVERLAPPED ov, LPWSAOVERLAPPED_COMPLETION_ROUTINE done) {
+    const int k = pinger(s);
+    if (k < 0 || ov || done) return WSARecvFrom(s, bufs, n, got, flags, from, fromlen, ov, done);
+    char one[1500];
+    const int r = my_recvfrom(s, one, sizeof one, flags ? (int)*flags : 0, from, fromlen);
+    if (r < 0) return SOCKET_ERROR;
+    int at = 0;
+    for (DWORD i = 0; i < n && at < r; i++) {
+        const int c = r - at < (int)bufs[i].len ? r - at : (int)bufs[i].len;
+        memcpy(bufs[i].buf, one + at, (size_t)c);
+        at += c;
+    }
+    if (got) *got = (DWORD)at;
+    if (flags) *flags = 0;
+    return 0;
+}
+
 static int WSAAPI my_closesocket(SOCKET s) {
     const int k = pinger(s);
     if (k >= 0) g_ping[k] = g_ping[--g_npings];
@@ -244,6 +281,8 @@ void *hk_net_hook(const char *fn) {
     if (!strcmp(fn, "bind")) return (void *)my_bind;
     if (!strcmp(fn, "sendto")) return (void *)my_sendto;
     if (!strcmp(fn, "recvfrom")) return (void *)my_recvfrom;
+    if (!strcmp(fn, "WSASendTo")) return (void *)my_WSASendTo;
+    if (!strcmp(fn, "WSARecvFrom")) return (void *)my_WSARecvFrom;
     if (!strcmp(fn, "closesocket")) return (void *)my_closesocket;
     return NULL;
 }

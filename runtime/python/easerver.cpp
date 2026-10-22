@@ -589,6 +589,9 @@ std::string EamuseServer::answer(const Call &c, const Request &r, const std::str
 // name (24 bytes), place, prefecture, stage, the area's words (low, high) at 0x20 and 0x24: the
 // attractions built, drawn per bit}. pop'n 14 (0x17db420, 0x1894 bytes, at 0x15f28f8): 13 such
 // courses, no shop board. Little-endian.
+// The PC pop'n games, libavs-win32's e-AMUSEMENT (runtime/pc/): pop'n 15, 16, 17, 18
+static bool pc_popn(const std::string &game) { return game == "G15" || game == "H16" || game == "I17" || game == "J39"; }
+
 std::string EamuseServer::rank_table(const std::string &game) {
     const bool p11 = game == "D11", p13 = game == "E13", p14 = game == "F14", pref_first = game != "C20";
     // pop'n 15: 22 courses (0x2998 bytes, its check of the table 0x427e40), no shop board
@@ -918,22 +921,29 @@ std::string EamuseServer::answer_later(const std::string &game, const Request &r
         // HIRAKU's DLL answers their pings
         // and NET TAISEN's lobby (the PC games' own: Lobby::PC_PORT, at the relay, which the DLL
         // reaches whatever the address: runtime/pc/vsock.c)
+        // (pop'n 16-18: H16, I17, J39, the same library; their battles aren't globby's, to find)
         if (game == "G15")
-            items += "<item name=\"globby\" url=\"globby://" + esc(host.substr(0, host.find(':'))) + ":" + std::to_string(Lobby::PC_PORT) + "/\"/>"
-                     "<item name=\"pcbevent\" url=\"http://" + esc(host) + "/\"/>"
+            items += "<item name=\"globby\" url=\"globby://" + esc(host.substr(0, host.find(':'))) + ":" + std::to_string(Lobby::PC_PORT) + "/\"/>";
+        if (pc_popn(game))
+            items += "<item name=\"pcbevent\" url=\"http://" + esc(host) + "/\"/>"
                      "<item name=\"keepalive\" url=\"http://127.0.0.1/keepalive?pa=127.0.0.1&amp;ia=127.0.0.1&amp;"
                      "ga=192.168.0.1&amp;ma=127.0.0.1&amp;t1=2&amp;t2=10\"/>";
         return "<services expire=\"600\" status=\"0\">" + items + "</services>";
     }
-    if (m == "facility" && f == "get" && game == "G15") {   // pop'n 15's library (libavs ea3_facility): every
-        // field it imports (location, line, portfw, public, share), or it fails the start-up (5-2009)
+    if (m == "facility" && f == "get" && pc_popn(game)) {   // pop'n 15's library (libavs ea3_facility): every
+        // field it imports (location, line, portfw, public, share), or it fails the start-up (5-2009);
+        // pop'n 18's (J39) also the location's name and type, the line's class and share/eacoin
+        // (its map in libavs-win32-ea3.dll, from 0x35fe0)
         return "<facility status=\"0\" expire=\"600\"><location><id>HIRAKU</id><country>JP</country>"
-               "<region>13</region></location><line><id>0</id></line><portfw><globalip __type=\"ip4\">192.168.0.2"
+               "<region>13</region><name>HIRAKU</name><type __type=\"u8\">0</type></location>"
+               "<line><id>0</id><class __type=\"u8\">0</class></line><portfw><globalip __type=\"ip4\">192.168.0.2"
                "</globalip><globalport __type=\"u16\">5700</globalport><privateport __type=\"u16\">5700</privateport>"
                "</portfw><public><flag __type=\"u8\">0</flag><name>HIRAKU</name><latitude>0</latitude>"
                "<longitude>0</longitude></public><share><url><eapass>www.ea-pass.konami.net</eapass>"
                "<arcadefan>www.konami.jp/am</arcadefan><konaminetdx>http://am.573.jp</konaminetdx>"
-               "<konamiid>http://id.konami.jp</konamiid></url><eapass><valid __type=\"u16\">1</valid></eapass></share>"
+               "<konamiid>http://id.konami.jp</konamiid></url><eapass><valid __type=\"u16\">1</valid></eapass>"
+               "<eacoin><notchamount __type=\"s32\">0</notchamount><notchcount __type=\"s32\">0</notchcount>"
+               "<supplylimit __type=\"s32\">100000</supplylimit></eacoin></share>"
                "</facility>";
     }
     if (m == "facility" && f == "get") {   // pop'n 14 (0x17d6860): the shop, as text elements in three groups

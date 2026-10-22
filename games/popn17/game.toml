@@ -1,0 +1,10 @@
+# pop'n music 17 THE MOVIE (I17), Konami 2009: a Windows PC, as pop'n music 15 (games/popn15, PLAN.md section 30)
+id = "popn17"
+title = "pop'n music 17 THE MOVIE"
+family = "pcpopn"       # pop'n on a PC: 9 buttons, the e-AMUSEMENT reader and 10-key, the board's lamps
+core = "pc"             # Konami's own program in HIRAKU's cabinet (runtime/pc/, PLAN.md section 30)
+
+[pc]
+exe = "popn17.exe"      # in prog/<date>/, the newest date the newest program
+drive = 'D:\popn17'     # where it looks for prog\ and data\
+save_drive = 'E:\'      # its backup drive (settings, bookkeeping)
