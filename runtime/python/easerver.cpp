@@ -922,9 +922,8 @@ std::string EamuseServer::answer_later(const std::string &game, const Request &r
         // HIRAKU's DLL answers their pings
         // and NET TAISEN's lobby (the PC games' own: Lobby::PC_PORT, at the relay, which the DLL
         // reaches whatever the address: runtime/pc/vsock.c)
-        // (pop'n 16-18: H16, I17, J39, the same library; their battles aren't globby's, to find)
-        if (game == "G15")
-            items += "<item name=\"globby\" url=\"globby://" + esc(host.substr(0, host.find(':'))) + ":" + std::to_string(Lobby::PC_PORT) + "/\"/>";
+        if (pc_popn(game))   // each its own (pop'n 16-18: the same lobby and libraries, built into the program)
+            items += "<item name=\"globby\" url=\"globby://" + esc(host.substr(0, host.find(':'))) + ":" + std::to_string(Lobby::pc_port(game)) + "/\"/>";
         if (pc_popn(game))
             items += "<item name=\"pcbevent\" url=\"http://" + esc(host) + "/\"/>"
                      "<item name=\"keepalive\" url=\"http://127.0.0.1/keepalive?pa=127.0.0.1&amp;ia=127.0.0.1&amp;"
@@ -1966,6 +1965,7 @@ std::string EamuseServer::handle(const std::string &req) {
     if (parse(body, c)) {
         xml = "<response>";
         for (const Request &r : c.requests) {
+            if (on_call) on_call(r.module + "." + (r.method.empty() ? attr(r.attrs, "type") : r.method));
             // module elements written out as <x ...></x> (the game's parser also takes <x .../>)
             std::string a = answer(c, r, header(head, "Host"));
             if (a.size() > 2 && a.compare(a.size() - 2, 2, "/>") == 0 && a.find('>') == a.size() - 1)
@@ -2229,6 +2229,8 @@ std::string EamuseServer::answer_j39(const std::string &game, const Request &r) 
     if (has(a, "category_num")) rec[L.option + 9] = (char)num(a, "category_num");
     if (p16 && has(a, "mode_num")) rec[0x1a] = (char)num(a, "mode_num");   // as pop'n 15's
     if (p16 && has(a, "botton_num")) rec[0x1b] = (char)num(a, "botton_num");
+    // 18's last mode, where its mode select starts (the record's 0x1a, a mode's number 0-4: 0x4c383f)
+    if (!packed && has(a, "play_mode") && num(a, "play_mode") >= 0 && num(a, "play_mode") < 5) rec[0x1a] = (char)num(a, "play_mode");
     // the songs played: their word, the score kept if better, a play counted
     std::vector<Record> plays = from_lines(read_file(plays_file));
     bool scored = false;

@@ -5,6 +5,7 @@
 #include <cstring>
 #include <fstream>
 #include <map>
+#include <mutex>
 #include <sstream>
 #include <vector>
 
@@ -34,6 +35,18 @@ FILE *g_frames = nullptr, *g_log = nullptr;
 std::string g_out;
 
 std::map<uint64_t, std::vector<std::pair<std::string, int>>> g_late;   // frame -> button changes
+
+struct On {   // on "NAME"#K +N action
+    std::string name;
+    int nth;
+    uint64_t after;
+    Action act;
+    bool done = false;
+};
+std::vector<On> g_on;
+std::mutex g_events_lock;
+std::vector<std::string> g_events;   // happened since the last frame
+std::map<std::string, int> g_seen;
 
 void set_field(const std::string &name, int64_t value) {
     if (!core().set_input(name, (int)value)) fprintf(stderr, "script: unknown input field '%s'\n", name.c_str());
@@ -119,6 +132,14 @@ bool load(const std::string &path, const std::string &out_dir) {
                 g_hash.emplace_back(t[1], (uint32_t)num(t.at(2)), (uint32_t)num(t.at(3)));
             } else if (t[0] == "at") {
                 g_at[(uint64_t)num(t.at(1))].push_back(parse_action(t, 2));
+            } else if (t[0] == "on") {   // on "NAME"[#K] +N action
+                std::string name = t.at(1);
+                int nth = 1;
+                if (const size_t h = name.rfind('#'); h != std::string::npos && h + 1 < name.size() && isdigit((unsigned char)name[h + 1]))
+                    nth = std::stoi(name.substr(h + 1)), name.resize(h);
+                const std::string &off = t.at(2);
+                if (off.empty() || off[0] != '+') throw std::runtime_error("expected: on \"NAME\" +<frames> <action>");
+                g_on.push_back({name, nth, (uint64_t)num(off.substr(1)), parse_action(t, 3)});
             } else if (t[0] == "every") {
                 g_repeat.push_back({(uint64_t)num(t.at(1)), 0, parse_action(t, 2)});
             } else if (t[0] == "from") {
@@ -163,6 +184,19 @@ bool frame(uint64_t f, const std::function<void()> &snap) {
         for (auto &[name, lo, hi] : g_hash) fprintf(g_frames, " %08x", fnv(lo, hi));
         fprintf(g_frames, "\n");
     }
+    {   // events: the lines waiting on them scheduled
+        std::vector<std::string> happened;
+        {
+            std::lock_guard<std::mutex> l(g_events_lock);
+            happened.swap(g_events);
+        }
+        for (const std::string &e : happened) {
+            const int k = ++g_seen[e];
+            if (g_log) fprintf(g_log, "f%llu event %s #%d\n", (unsigned long long)f, e.c_str(), k);
+            for (On &o : g_on)
+                if (!o.done && o.name == e && o.nth == k) o.done = true, g_at[f + o.after].push_back(o.act);
+        }
+    }
     bool keep = true;
     auto run = [&](const Action &a) {
         if (g_log) fprintf(g_log, "f%llu %s %s\n", (unsigned long long)f, a.verb.c_str(), a.field.c_str());
@@ -192,6 +226,11 @@ bool frame(uint64_t f, const std::function<void()> &snap) {
     if (auto it = g_at.find(f); it != g_at.end())
         for (auto &a : it->second) run(a);
     return keep;
+}
+
+void event(const std::string &name) {
+    std::lock_guard<std::mutex> l(g_events_lock);
+    g_events.push_back(name);
 }
 
 void close() {

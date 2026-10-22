@@ -18,6 +18,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <string>
 #include <vector>
 
 namespace hk::py {
@@ -32,9 +33,14 @@ public:
 
     // The port HIRAKU's lobby listens on (the services list's globby URL names it)
     static constexpr uint16_t PORT = 5740;
-    // The PC pop'n games' lobby (pop'n 15 on, runtime/pc/vsock.c), at the relay too: apart, so a
-    // PC cabinet never meets a pop'n 12-14 one
+    // The PC pop'n games' lobbies (runtime/pc/vsock.c), at the relay too: apart, so a PC cabinet
+    // never meets a pop'n 12-14 one, and one for each game, so versions never meet (pop'n 15
+    // 5741, 16 5742, 17 5743, 18 5744; the services list's globby URL gives each its own)
     static constexpr uint16_t PC_PORT = 5741;
+    static constexpr bool is_pc_port(uint16_t p) { return p >= PC_PORT && p < PC_PORT + 9; }
+    static uint16_t pc_port(const std::string &model) {   // G15, H16, I17, J39
+        return model == "H16" ? PC_PORT + 1 : model == "I17" ? PC_PORT + 2 : model == "J39" ? PC_PORT + 3 : PC_PORT;
+    }
 
     // One datagram in, at `now` seconds; the answer (empty: none, the request was malformed)
     std::vector<uint8_t> handle(const uint8_t *d, size_t n, double now);

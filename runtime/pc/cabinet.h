@@ -42,6 +42,8 @@ void *hk_net_card_hook(const char *fn);   // iphlpapi's
 // libavs's ea3_query and avs_net_ctrl, or NULL
 void *hk_vsock_hook(const char *fn);
 void *hk_comm_hook(const char *fn);   // libcomm's, for HK_PC_NET_LOG
+// pop'n 16-18: libsocket built into the program, its calls made jumps to the relay's (vsock.c)
+void hk_vsock_patch_program(void);
 // HIRAKU's DirectSound (dsound.c): the game's, when HIRAKU's window shows it
 long __stdcall hk_DirectSoundCreate8(const void *device, void **out, void *outer);
 long __stdcall hk_DirectSoundCreate(const void *device, void **out, void *outer);

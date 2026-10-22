@@ -176,7 +176,8 @@ void RelayServer::run() {
     };
     std::map<int, Cabinet> cabinets;
     uint32_t next = FIRST;
-    Lobby lobby, pc_lobby(true);   // pop'n 12-14's, the PC games' (Lobby::PC_PORT)
+    Lobby lobby;   // pop'n 12-14's
+    std::map<uint16_t, Lobby> pc_lobbies;   // the PC games', one each (Lobby::pc_port)
     const auto t0 = std::chrono::steady_clock::now();
     auto say = [&](const std::string &s) { if (log) log("relay: " + s); };
     for (;;) {
@@ -230,14 +231,15 @@ void RelayServer::run() {
                     if (o.greeted && o.address == k.dst) to = ofd;
                 if (to >= 0) {
                     if (!send_packet(to, k)) gone.push_back(to);
-                } else if (k.dport == Lobby::PORT || k.dport == Lobby::PC_PORT) {   // a lobby, at the address the game sent to
+                } else if (k.dport == Lobby::PORT || Lobby::is_pc_port(k.dport)) {   // a lobby, at the address the game sent to
                     const double now = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
-                    std::vector<uint8_t> r = (k.dport == Lobby::PORT ? lobby : pc_lobby).handle(k.data.data(), k.data.size(), now);
+                    Lobby &l = k.dport == Lobby::PORT ? lobby : pc_lobbies.try_emplace(k.dport, true).first->second;
+                    std::vector<uint8_t> r = l.handle(k.data.data(), k.data.size(), now);
                     if (!r.empty() && !send_packet(fd, {k.dst, k.src, k.dport, k.sport, std::move(r)})) gone.push_back(fd);
                     if (log) {
-                        static const char *kinds[] = {"entry", "list", "leave"};
+                        static const char *kinds[] = {"entry", "list", "leave", "participate"};
                         const int kind = k.data.size() > 10 ? k.data[10] : -1;
-                        say(dotted(k.src) + " lobby " + (kind >= 0 && kind < 3 ? kinds[kind] : "?"));
+                        say(dotted(k.src) + " lobby " + (kind >= 0 && kind < 4 ? kinds[kind] : "?") + " (port " + std::to_string(k.dport) + ")");
                     }
                 }
                 // anywhere else (a broadcast, a shop's LAN): nowhere

@@ -58,7 +58,13 @@ hash  <name> <lo> <hi>                # FNV-1a of RAM [lo,hi) every frame
 at <frame> <action>
 every <n> <action>                    # from frame 0
 from <frame> every <n> <action>
+on "<event>"[#k] +<n> <action>        # HIRAKU only: n frames after the event (its k-th time, default 1st)
 ```
+
+Events (`on`) come from the runtime, not MAME: hiraku-pc names each e-AMUSEMENT call as it reaches
+its server, `ea:MODULE.METHOD` (`ea:cardmng.inquire`, `ea:playerdata.get`...), so a PC game's
+script can follow the game's own pace (its boot takes as long as its disk and network allow); the
+run's `log.txt` lists each event with its frame.
 
 Actions:
 - `press "<field>" [frames=8]`
@@ -77,7 +83,7 @@ A field's name is `PORT/Field` or just `Field` when unique: beatmania's turntabl
 
 Fields are MAME input names (`"Coin 1"`, `"P1 Button 3"`). Use `PORT/name` when a name is ambiguous, e.g. `TURNTABLE_P1/Turntable`.
 
-The runtime will execute the same files, so every input is keyed to a frame and never to wall-clock time.
+The runtime will execute the same files, so every input is keyed to a frame (or, HIRAKU's `on`, to an event) and never to wall-clock time.
 
 ## Outputs
 

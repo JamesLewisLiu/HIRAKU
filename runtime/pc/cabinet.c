@@ -1040,6 +1040,7 @@ void hk_cabinet_start(void) {
     if (hz && *hz) g_hz = atof(hz);
     hk_link();
     if (host_shows()) unlimit_frames();
+    hk_vsock_patch_program();
     if (g_npatches) apply_patches();   // the program's own code and data, as it's loaded
     patch_game_modules();
     // LoadLibraryA too, in the program, so modules loaded later get the same

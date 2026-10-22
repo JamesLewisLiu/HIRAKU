@@ -28,6 +28,8 @@ public:
 
     // Each call in clear (request and answer), for HK_PY_NET_LOG.
     std::function<void(const std::string &)> log;
+    // Each call's module and method as it comes ("playerdata.get"; the core's scripts wait on them)
+    std::function<void(const std::string &)> on_call;
     // The cabinet's wall clock, as seconds since 1970 read as UTC (ntp.get sends it as is, and the
     // game sets its clock to it): in the core, the emulated clock (reproducible runs); in
     // hiraku-eamuse, the host's clock in Japan time unless told otherwise.

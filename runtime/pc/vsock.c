@@ -31,7 +31,7 @@
 
 #include "cabinet.h"
 
-#define LOBBY_PORT 5741          // runtime/python/lobby.h: Lobby::PC_PORT
+#define LOBBY_PORT 5741          // runtime/python/lobby.h: Lobby::PC_PORT, one port a game from it
 #define NSOCK 32                 // as libsocket
 #define QUEUE_MAX 256            // datagrams kept for a socket that doesn't read them
 enum { K_DGRAM, K_OPEN, K_OPENED, K_DATA, K_CLOSED, K_REFUSED };
@@ -432,7 +432,7 @@ static int __cdecl v_sendto(int s, void *buf, int len, unsigned char *const addr
     if (v && !v->stream && addr && len >= 0) {
         const uint32_t to = addr_of(addr);
         if (is_cabinet(to)) relay_send(to, own_port(v), port, K_DGRAM, 0, buf, len);
-        else if (port == LOBBY_PORT) relay_send(to, own_port(v), port, -1, 0, buf, len);   // the lobby: as it is
+        else if (port >= LOBBY_PORT && port < LOBBY_PORT + 9) relay_send(to, own_port(v), port, -1, 0, buf, len);   // a lobby: as it is
         r = len;   // anything else (a broadcast): gone, as on a LAN with nobody there
     }
     LeaveCriticalSection(&g_lock);
@@ -571,6 +571,86 @@ static void __cdecl log_portfw_addr(unsigned char *addr) {
     real(addr);
     static int once;
     if (!once++) hk_log("comm: portfw address %u.%u.%u.%u:%u", addr[0], addr[1], addr[2], addr[3], addr[4] | addr[5] << 8);
+}
+
+// pop'n 16-18 have libsocket built into the program (its 15 calls static, over Winsock imported
+// by ordinal; libcomm and libkernel built in too, exported by name): each call is the one function
+// that calls its Winsock function (setsockopt twice: SO_BROADCAST, SO_RCVTIMEO), found so and made
+// a jump to ours. All or none: a program where one isn't found keeps its own.
+static void *ws2_slot(char *base, int ordinal) {
+    IMAGE_NT_HEADERS *nt = (IMAGE_NT_HEADERS *)(base + ((IMAGE_DOS_HEADER *)base)->e_lfanew);
+    IMAGE_DATA_DIRECTORY *dir = &nt->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT];
+    for (IMAGE_IMPORT_DESCRIPTOR *imp = (IMAGE_IMPORT_DESCRIPTOR *)(base + dir->VirtualAddress); dir->VirtualAddress && imp->Name; imp++) {
+        if (_stricmp(base + imp->Name, "ws2_32.dll")) continue;
+        IMAGE_THUNK_DATA *names = (IMAGE_THUNK_DATA *)(base + (imp->OriginalFirstThunk ? imp->OriginalFirstThunk : imp->FirstThunk));
+        IMAGE_THUNK_DATA *addrs = (IMAGE_THUNK_DATA *)(base + imp->FirstThunk);
+        for (; names->u1.AddressOfData; names++, addrs++)
+            if (IMAGE_SNAP_BY_ORDINAL(names->u1.Ordinal) && IMAGE_ORDINAL(names->u1.Ordinal) == (DWORD)ordinal) return &addrs->u1.Function;
+    }
+    return NULL;
+}
+
+void hk_vsock_patch_program(void) {
+    if (!getenv("HK_PC_RELAY")) return;
+    char *base = (char *)GetModuleHandleA(NULL);
+    IMAGE_NT_HEADERS *nt = (IMAGE_NT_HEADERS *)(base + ((IMAGE_DOS_HEADER *)base)->e_lfanew);
+    static const struct { int ordinal; int option; void *to; const char *name; } calls[] = {
+        {115, 0, (void *)v_init, "SockInit"},        {23, 0, (void *)v_open, "SockOpen"},
+        {2, 0, (void *)v_bind, "SockBind"},          {13, 0, (void *)v_listen, "SockListen"},
+        {1, 0, (void *)v_accept, "SockAccept"},      {4, 0, (void *)v_connect, "SockConnect"},
+        {19, 0, (void *)v_send, "SockSend"},         {16, 0, (void *)v_recv, "SockRecv"},
+        {20, 0, (void *)v_sendto, "SockSendTo"},     {17, 0, (void *)v_recvfrom, "SockRecvFrom"},
+        {21, 0x20, (void *)v_broadcast, "SockSetBroadCast"},
+        {10, 0, (void *)v_blocking, "SockSetRecvBlockingMode"},
+        {21, 0x1006, (void *)v_timeout, "SockSetRecvTimeout"},
+        {22, 0, (void *)v_shutdown, "SockShutdown"}, {3, 0, (void *)v_close, "SockClose"},
+    };
+    enum { N = sizeof calls / sizeof *calls };
+    uint8_t *found[N] = {0};
+    IMAGE_SECTION_HEADER *sec = IMAGE_FIRST_SECTION(nt);
+    for (int c = 0; c < N; c++) {
+        const uint32_t slot = (uint32_t)(uintptr_t)ws2_slot(base, calls[c].ordinal);
+        if (!slot) return;   // no Winsock of its own: pop'n 15's is libsocket.dll (hk_vsock_hook)
+        int sites = 0;
+        sec = IMAGE_FIRST_SECTION(nt);
+        for (WORD k = 0; k < nt->FileHeader.NumberOfSections; k++, sec++) {
+            if (!(sec->Characteristics & IMAGE_SCN_MEM_EXECUTE)) continue;
+            uint8_t *code = (uint8_t *)base + sec->VirtualAddress;
+            const size_t size = sec->Misc.VirtualSize;
+            for (size_t i = 0x100; i + 6 < size; i++) {
+                if (code[i] != 0xff || code[i + 1] != 0x15 || memcmp(code + i + 2, &slot, 4)) continue;
+                // the function: from the int3 padding before it, 16 bytes aligned
+                uint8_t *f = NULL;
+                for (size_t b = i & ~(size_t)15; b + 0x200 > i && b >= 16; b -= 16)
+                    if (code[b - 1] == 0xcc) { f = code + b; break; }
+                if (!f) continue;
+                if (calls[c].option) {   // setsockopt's option pushed: 6a 20, or 68 06 10 00 00
+                    int has = 0;
+                    for (uint8_t *q = f; q < code + i; q++)
+                        has |= calls[c].option < 0x80 ? q[0] == 0x6a && q[1] == calls[c].option
+                                                      : q[0] == 0x68 && !memcmp(q + 1, &calls[c].option, 4);
+                    if (!has) continue;
+                }
+                if (found[c] && found[c] != f) sites = 99;   // two functions: not the shape known
+                found[c] = f, sites++;
+            }
+        }
+        if (!found[c] || sites != 1) {
+            hk_log("hiraku-pc: NET TAISEN: the program's %s not found (%d): its own sockets kept", calls[c].name, sites);
+            return;
+        }
+    }
+    for (int c = 0; c < N; c++) {
+        DWORD old;
+        VirtualProtect(found[c], 5, PAGE_EXECUTE_READWRITE, &old);
+        found[c][0] = 0xe9;
+        const int32_t rel = (int32_t)((uintptr_t)calls[c].to - (uintptr_t)(found[c] + 5));
+        memcpy(found[c] + 1, &rel, 4);
+        VirtualProtect(found[c], 5, old, &old);
+        FlushInstructionCache(GetCurrentProcess(), found[c], 5);
+    }
+    init_once();
+    hk_log("hiraku-pc: NET TAISEN: the program's own sockets (libsocket's calls, %p...) go to HIRAKU's relay", (void *)found[0]);
 }
 
 void *hk_comm_hook(const char *fn) {

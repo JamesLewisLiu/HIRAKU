@@ -60,6 +60,7 @@ extern char **environ;
 #include "host/mods.h"
 #include "host/pacing.h"
 #include "host/popnio.h"
+#include "host/script.h"
 #include "pc/link.h"
 #include "python/easerver.h"
 #include "python/lobby.h"
@@ -544,6 +545,7 @@ private:
         server_ = std::make_unique<hk::py::EamuseServer>(dir);
         server_->now = [] { return (int64_t)time(nullptr) + 9 * 3600; };   // the cabinet's clock: Japan's
         if (getenv("HK_PC_EA_LOG")) server_->log = [](const std::string &s) { fprintf(stderr, "%s\n", s.c_str()); };
+        server_->on_call = [](const std::string &call) { hk::script::event("ea:" + call); };   // for scripts' `on` lines
         listen_ = hk::net::socket(AF_INET, SOCK_STREAM, 0);
         sockaddr_in sa{};
         sa.sin_family = AF_INET;
@@ -556,8 +558,10 @@ private:
         }
         set_env("HK_PC_EA", "127.0.0.1:" + std::to_string(ntohs(sa.sin_port)));
         // NET TAISEN's lobby and relay, this cabinet's own (with nobody else there, the game waits
-        // for others, then plays the credit in CHALLENGE mode)
-        if (relay_.start("127.0.0.1", 0)) set_env("HK_PC_RELAY", "127.0.0.1:" + std::to_string(relay_.port()));
+        // for others, then plays the credit in CHALLENGE mode); HK_PC_RELAY=HOST:PORT another's
+        // (hiraku-eamuse's, port 5740: cabinets with servers of their own meeting there, as tests do)
+        if (const char *r = getenv("HK_PC_RELAY"); r && *r) printf("NET TAISEN: the relay at %s\n", r);
+        else if (relay_.start("127.0.0.1", 0)) set_env("HK_PC_RELAY", "127.0.0.1:" + std::to_string(relay_.port()));
         printf("e-AMUSEMENT: HIRAKU's server, data in %s\n", dir.c_str());
         std::thread([this] { serve(); }).detach();
         return true;
