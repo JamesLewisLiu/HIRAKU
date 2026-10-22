@@ -988,7 +988,10 @@ std::string EamuseServer::answer_later(const std::string &game, const Request &r
             // or carries pop'n 14's over) and, with model="F14:...", for pop'n 14's (binded 1 and
             // expired 0: the game asks for it, playerdata_get model="F14")
             if (game == "J39" || game == "I17" || game == "H16") {   // pop'n 16-18: its own player, as pop'n 15's (answer_j39)
-                const bool binded = read_file("pdata-" + game + "-" + ref).size() == (game == "J39" ? 0x1700u : game == "I17" ? 0x74bcu : 0x6784u);
+                // and with model="<the game before>", that game's (the player carried over)
+                const std::string model = attr(r.attrs, "model").substr(0, 3), of = model.empty() ? game : model;
+                const size_t size = of == "J39" ? 0x1700u : of == "I17" ? 0x74bcu : of == "H16" ? 0x6784u : of == "G15" ? 0xb38u : 0;
+                const bool binded = size && read_file("pdata-" + of + "-" + ref).size() == size;
                 return "<cardmng status=\"0\" refid=\"" + ref + "\" binded=\"" + (binded ? "1" : "0") +
                        "\" expired=\"0\" newflag=\"" + (fresh ? "1" : "0") + "\"/>";
             }
@@ -2040,13 +2043,13 @@ void EamuseServer::set_attr(std::string &xml, const std::string &name, const std
 // folder's NAME-J39 if there is one). playerdata.get's (0x454810) copies <b>, the player's record
 // of 0x1700 bytes, whole, and unpacks <hiscore>: 0x1ab7 scores (977 songs x 7 charts) of 17 bits,
 // one after another (0x456570); new (0x454ac0) answers the record. set (0x454bf0) sends the
-// credit's changes as attributes and children (music, license, private, netvs, boss): kept as sent
-// (pset-J39-<ref>) until their places in the record are worked out.
+// credit's changes as attributes and children (music, license, private, netvs, boss): merged into
+// the record below (license, netvs and boss not yet).
 //
 // pop'n 17 THE MOVIE (I17: popn17.exe) the same way, its own sizes: game.get (0x435190) reads
 // game_phase, e_amuse_phase, local_matching_enable, matching_sec; playerdata.get (0x435b80)
-// needs f_compress and takes <b> as base64 of the record packed (lzss, as pop'n 14's and 15's),
-// 0x74bc bytes (the scores within it).
+// needs f_compress and takes <b> as the record packed (lzss, as pop'n 14's and 15's; binary, not
+// base64 text, which crashes its unpacker), 0x74bc bytes (the scores within it).
 //
 // pop'n 16 PARTY (H16: popn16.exe) as pop'n 17: game.get (0x434990) reads pop'n 15's NET TAISEN
 // settings and phase, netvs_phase, ir_phase, private_phase, normal_secret_phase, all_hiscore_phase;
@@ -2096,33 +2099,213 @@ std::string EamuseServer::answer_j39(const std::string &game, const Request &r) 
     }
     if (m == "game") return "<game status=\"0\"/>";   // active
     const std::string ref = attr(r.attrs, "ref_id");
+    if (ref.empty() && f == "set") return "<playerdata status=\"0\"/>";   // a credit played without a card
     if (!safe_name(ref)) return "<playerdata status=\"1\"/>";
-    const std::string file = "pdata-" + game + "-" + ref;
+    // Each game copies the record to its own (16: 0xf313b8, 17: 0x1228988, 18: 0x10fc930), bounding
+    // every field (16: 0x447dc0, 17: 0x440f30, 18: 0x460320), and doesn't change that copy in a
+    // credit: set sends the credit's changes, merged here where the loader reads them. As pop'n
+    // 15's (answer_g15), shifted:
+    //   0x00 name (13), then two more names
+    //   option (32 bits; 16: 0x1c, 17: 0x20, 18: 0x34), then chara_num (16), music_num (16),
+    //   sheet_num, category_num: the last song chosen
+    //   the 20 most played songs (16 bits each, 0xffff none: 16: 0x28, 17: 0x2c, 18: 0x40)
+    //   a 16-bit word per song: the charts' clear marks and played flags (16: 0x50, 839 songs;
+    //   17: 0x54, 907; 18: 0x68, 976)
+    //   the best scores (16, 17): 32 bits per chart (7) and song (16: 0x8dc, 846 a chart; 17:
+    //   0xcd4, 950), chart-major (17's 0x443c92). 18's are its <hiscore>: 17 bits per song and chart
+    //   (song-major, 7 a song), least significant bit first (0x456570), kept here as pscore-J39-<ref>
+    struct Layout { size_t option, songs, words, nwords, scores, per_chart; };
+    const Layout L = p16 ? Layout{0x1c, 0x28, 0x50, 839, 0x8dc, 846}
+                     : p17 ? Layout{0x20, 0x2c, 0x54, 907, 0xcd4, 950}
+                           : Layout{0x34, 0x40, 0x68, 976, 0, 0};
+    const std::string file = "pdata-" + game + "-" + ref, plays_file = "pplays-" + game + "-" + ref,
+                      scores_file = "pscore-" + game + "-" + ref;
     std::string rec = read_file(file);
+    auto put16 = [&](size_t at, long v) { if (at + 2 <= rec.size()) { rec[at] = (char)(v & 255); rec[at + 1] = (char)(v >> 8 & 255); } };
+    auto put32 = [&](size_t at, long v) { put16(at, v & 0xffff); put16(at + 2, v >> 16 & 0xffff); };
+    auto get32 = [&](size_t at) -> long {
+        if (at + 4 > rec.size()) return 0;
+        return (long)((uint32_t)(uint8_t)rec[at] | (uint32_t)(uint8_t)rec[at + 1] << 8 | (uint32_t)(uint8_t)rec[at + 2] << 16 | (uint32_t)(uint8_t)rec[at + 3] << 24);
+    };
+    std::string hiscore = read_file(scores_file);   // 18's, as the game's <hiscore>
+    hiscore.resize((SCORES * SCORE_BITS + 7) / 8, '\0');
+    auto hiscore_get = [&](size_t i) {
+        long v = 0;
+        for (size_t b = 0; b < SCORE_BITS; b++)
+            if ((uint8_t)hiscore[(i * SCORE_BITS + b) / 8] >> ((i * SCORE_BITS + b) % 8) & 1) v |= 1L << b;
+        return v;
+    };
+    auto hiscore_put = [&](size_t i, long v) {
+        for (size_t b = 0; b < SCORE_BITS; b++) {
+            const size_t bit = i * SCORE_BITS + b;
+            if (v >> b & 1) hiscore[bit / 8] = (char)((uint8_t)hiscore[bit / 8] | 1 << bit % 8);
+            else hiscore[bit / 8] = (char)((uint8_t)hiscore[bit / 8] & ~(1 << bit % 8));
+        }
+    };
+    auto fresh = [&] {   // a player with nothing yet: no character, song or most played
+        rec.assign(RECORD, '\0');
+        rec[0x1b] = (char)0xff;
+        put16(L.option + 4, 0xffff);
+        put16(L.option + 6, 0xffff);
+        rec[L.option + 9] = (char)0xff;
+        for (size_t i = 0; i < 20; i++) put16(L.songs + 2 * i, 0xffff);
+    };
     auto answer = [&] {
+        // the most played songs, most first
+        std::vector<Record> plays = from_lines(read_file(plays_file));
+        std::stable_sort(plays.begin(), plays.end(), [&](const Record &x, const Record &y) { return num(x, "count") > num(y, "count"); });
+        for (size_t i = 0; i < 20; i++) put16(L.songs + 2 * i, i < plays.size() ? num(plays[i], "num") : 0xffff);
         if (packed) return "<playerdata status=\"0\" f_compress=\"1\"><b __type=\"bin\">" + hex(lzss(rec)) + "</b></playerdata>";
-        const std::string scores((SCORES * SCORE_BITS + 7) / 8, '\0');
-        return "<playerdata status=\"0\"><b __type=\"bin\">" + hex(rec) + "</b><hiscore __type=\"bin\">" + hex(scores) +
+        return "<playerdata status=\"0\"><b __type=\"bin\">" + hex(rec) + "</b><hiscore __type=\"bin\">" + hex(hiscore) +
                "</hiscore></playerdata>";
     };
     if (f == "new") {   // the name (Shift-JIS, 12 bytes) first, as pop'n 12-15's records
-        rec.assign(RECORD, '\0');
+        fresh();
         const std::string name = attr(r.attrs, "name");
         for (size_t i = 0; i < name.size() && i < 12; i++) rec[i] = name[i];
         write_file(file, rec);
         return answer();
     }
+    // The game before (16: pop'n 15, 17: 16, 18: 17), whose player the game offers to carry over:
+    // get model=<it> shows it (16 copies 15's whole record, 17 the first 0x6b0 bytes of 16's,
+    // 18 the first 0x72c of 17's, unpacked: 0x45490a), conversion makes this game's from it
+    const char *before = p16 ? "G15" : p17 ? "H16" : "I17";
+    const size_t BEFORE = p16 ? 0xb38 : p17 ? 0x6784 : 0x74bc;
     if (f == "get") {
+        if (!attr(r.attrs, "model").empty()) {
+            const std::string old = attr(r.attrs, "model").substr(0, 3) == before ? read_file(std::string("pdata-") + before + "-" + ref) : "";
+            if (old.size() != BEFORE) return packed ? "<playerdata status=\"109\" f_compress=\"1\"/>" : "<playerdata status=\"109\"/>";
+            if (packed) return "<playerdata status=\"0\" f_compress=\"1\"><b __type=\"bin\">" + hex(lzss(old)) + "</b></playerdata>";
+            return "<playerdata status=\"0\"><b __type=\"bin\">" + hex(old.substr(0, 0x72c)) + "</b></playerdata>";
+        }
         if (rec.size() != RECORD) return packed ? "<playerdata status=\"109\" f_compress=\"1\"/>" : "<playerdata status=\"109\"/>";
         return answer();
     }
-    if (f == "set") {   // kept as sent, a line each credit
-        std::string line = "attrs";
-        for (const auto &[k, v] : r.attrs) line += " " + k + "=" + v;
-        write_file("pset-" + game + "-" + ref, read_file("pset-" + game + "-" + ref) + line + "\n" + r.inner + "\n");
-        return "<playerdata status=\"0\"/>";
+    // conversion (ref_id card_id name): this game's player made from the one before. The songs keep
+    // their numbers: each one's word (clear marks, played flags) and best scores come along
+    if (f == "conversion") {
+        const std::string old = read_file(std::string("pdata-") + before + "-" + ref);
+        if (old.size() != BEFORE) return packed ? "<playerdata status=\"109\" f_compress=\"1\"/>" : "<playerdata status=\"109\"/>";
+        fresh();
+        const std::string name = attr(r.attrs, "name");
+        for (size_t i = 0; i < 13; i++) rec[i] = name.empty() ? old[i] : i < name.size() && i < 12 ? name[i] : '\0';
+        auto old16 = [&](size_t at) { return at + 2 <= old.size() ? (long)((uint8_t)old[at] | (uint8_t)old[at + 1] << 8) : 0L; };
+        auto old32 = [&](size_t at) { return at + 4 <= old.size() ? old16(at) | old16(at + 2) << 16 : 0L; };
+        const size_t old_words = p16 ? 0x58 : p17 ? 0x50 : 0x54, old_n = p16 ? 763 : p17 ? 839 : 907;
+        for (size_t n = 0; n < old_n && n < L.nwords; n++) put16(L.words + 2 * n, old16(old_words + 2 * n) & 0x7fff);
+        auto keep = [&](size_t n, size_t sheet, long score) {
+            if (score <= 0 || sheet >= 7) return;
+            if (L.scores) {
+                if (n < L.per_chart) put32(L.scores + 4 * (sheet * L.per_chart + n), score);
+            } else if (n * 7 + sheet < SCORES) hiscore_put(n * 7 + sheet, std::min(score, (1L << SCORE_BITS) - 1));
+        };
+        if (p16) {   // pop'n 15's scores are the server's (pscore-G15)
+            for (const Record &e : from_lines(read_file("pscore-G15-" + ref)))
+                keep((size_t)num(e, "num"), (size_t)num(e, "sheet"), num(e, "score"));
+        } else {     // 16's and 17's are in their records, chart-major
+            const size_t at = p17 ? 0x8dc : 0xcd4, per = p17 ? 846 : 950;
+            for (size_t sheet = 0; sheet < 7; sheet++)
+                for (size_t n = 0; n < per; n++) keep(n, sheet, old32(at + 4 * (sheet * per + n)));
+        }
+        write_file(file, rec);
+        if (!L.scores) write_file(scores_file, hiscore);
+        return answer();
     }
-    return "<playerdata status=\"0\"/>";   // expire, friend, conversion: nothing yet
+    if (f == "score") {   // 16 (17's is a stub): music_num sheet_num s_challenge -> the player's best (0x435d70)
+        const long n = num(r.attrs, "music_num"), sheet = num(r.attrs, "sheet_num");
+        long best = 0;
+        if (L.scores && rec.size() == RECORD && n >= 0 && (size_t)n < L.per_chart && sheet >= 0 && sheet < 7)
+            best = get32(L.scores + 4 * ((size_t)sheet * L.per_chart + (size_t)n));
+        return "<playerdata status=\"0\" score=\"" + std::to_string(best) + "\" nr_active_friend=\"0\"/>";
+    }
+    if (f != "set") return "<playerdata status=\"0\"/>";   // expire, friend: nothing
+    if (rec.size() != RECORD) fresh();
+    auto has = [&](const std::map<std::string, std::string> &m, const char *k) { return m.count(k) && attr(m, k) != "-1"; };
+    const auto &a = r.attrs;
+    if (has(a, "option")) put32(L.option, num(a, "option"));
+    if (has(a, "chara_num")) put16(L.option + 4, num(a, "chara_num"));
+    if (has(a, "music_num")) put16(L.option + 6, num(a, "music_num"));
+    if (has(a, "sheet_num")) rec[L.option + 8] = (char)num(a, "sheet_num");
+    if (has(a, "category_num")) rec[L.option + 9] = (char)num(a, "category_num");
+    if (p16 && has(a, "mode_num")) rec[0x1a] = (char)num(a, "mode_num");   // as pop'n 15's
+    if (p16 && has(a, "botton_num")) rec[0x1b] = (char)num(a, "botton_num");
+    // the songs played: their word, the score kept if better, a play counted
+    std::vector<Record> plays = from_lines(read_file(plays_file));
+    bool scored = false;
+    for (size_t at = r.inner.find("<music"); at != std::string::npos; at = r.inner.find("<music", at + 1)) {
+        std::map<std::string, std::string> m;
+        bool sc = false;
+        read_attrs(r.inner, at + 6, m, &sc);
+        const long n = num(m, "music_num"), sheet = num(m, "sheet_num"), score = num(m, "score");
+        if (n < 0 || n >= (long)L.nwords) continue;
+        if (m.count("data")) put16(L.words + 2 * (size_t)n, num(m, "data") & 0x7fff);
+        if (sheet >= 0 && sheet < 7 && score > 0) {
+            if (L.scores) {
+                const size_t place = L.scores + 4 * ((size_t)sheet * L.per_chart + (size_t)n);
+                if ((size_t)n < L.per_chart && score > get32(place)) put32(place, score);
+            } else if ((size_t)n * 7 + (size_t)sheet < SCORES && score > hiscore_get((size_t)n * 7 + (size_t)sheet)) {
+                hiscore_put((size_t)n * 7 + (size_t)sheet, std::min(score, (1L << SCORE_BITS) - 1));
+                scored = true;
+            }
+        }
+        bool found = false;
+        for (Record &e : plays)
+            if (attr(e, "num") == std::to_string(n)) { e["count"] = std::to_string(num(e, "count") + 1); found = true; }
+        if (!found) plays.push_back({{"num", std::to_string(n)}, {"count", "1"}});
+    }
+    // 18's story map (<private>): the record's last 0x128 bytes, which the game copies to 0x10af5a8
+    // and keeps there through the credit; set reads them back (0x474e93)
+    if (const size_t pv = r.inner.find("<private"); !packed && pv != std::string::npos) {
+        std::map<std::string, std::string> m;
+        bool sc = false;
+        read_attrs(r.inner, pv + 8, m, &sc);
+        constexpr size_t MAP = 0x15d8;
+        auto list = [&](const char *k, size_t at, size_t count, int width) {
+            const std::string v = attr(m, k);
+            size_t from = 0;
+            for (size_t i = 0; i < count && m.count(k); i++) {
+                const size_t comma = v.find(',', from);
+                const long n = std::strtol(v.c_str() + from, nullptr, 10);
+                if (width == 2) put16(at + 2 * i, n);
+                else rec[at + i] = (char)n;
+                if (comma == std::string::npos) break;
+                from = comma + 1;
+            }
+        };
+        // a map not begun yet is all zero; the game begins one with its character lists empty
+        // (0x08-0xf7 0xff, 0x473824)
+        if (rec.find_first_not_of('\0', MAP) == std::string::npos)
+            for (size_t i = 0x08; i < 0xf8; i++) rec[MAP + i] = (char)0xff;
+        if (m.count("subjection_0")) put32(MAP + 0x00, num(m, "subjection_0"));
+        if (m.count("subjection_1")) put32(MAP + 0x04, num(m, "subjection_1"));
+        // two lists, newest first: the characters used (10 from 0x08) and played (50 from 0x1c); set
+        // sends the credit's, which go in front, the others moved along (as 0x473cb0 does them)
+        auto push = [&](size_t at, size_t size, const std::vector<long> &v) {
+            const size_t k = std::min(v.size(), size);
+            for (size_t i = size; i-- > k;) put16(at + 2 * i, (uint8_t)rec[at + 2 * (i - k)] | (uint8_t)rec[at + 2 * (i - k) + 1] << 8);
+            for (size_t i = 0; i < k; i++) put16(at + 2 * i, v[i]);
+        };
+        if (m.count("used_chara")) push(MAP + 0x08, 10, {num(m, "used_chara")});
+        std::vector<long> played;
+        for (size_t from = 0, comma = 0; m.count("played_chara") && comma != std::string::npos; from = comma + 1) {
+            const std::string &v = m.at("played_chara");
+            comma = v.find(',', from);
+            const long n = std::strtol(v.c_str() + from, nullptr, 10);
+            if (n >= 0) played.push_back(n);
+        }
+        push(MAP + 0x1c, 50, played);
+        if (m.count("ticket_open")) rec[MAP + 0xf8] = (char)num(m, "ticket_open");
+        if (m.count("ticket_get")) rec[MAP + 0xf9] = (char)num(m, "ticket_get");
+        if (m.count("position")) rec[MAP + 0xfa] = (char)num(m, "position");
+        list("open_point", MAP + 0xfb, 29, 1);
+        if (m.count("point")) rec[MAP + 0x118] = (char)num(m, "point");
+    }
+    std::string t;
+    for (const Record &e : plays) t += to_line(e);
+    if (!plays.empty()) write_file(plays_file, t);
+    if (scored) write_file(scores_file, hiscore);
+    write_file(file, rec);
+    return "<playerdata status=\"0\"/>";
 }
 
 }  // namespace hk::py

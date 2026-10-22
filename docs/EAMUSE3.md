@@ -754,6 +754,52 @@ cannot get url`).
   attributes): the boards, 22 courses of 0x1e4 bytes as pop'n 14's (`0x427e40`, 0x2998 bytes at
   `0xc4ead8`), no shop board, LZSS'd whole.
 
+**pop'n music 16 PARTY♪, 17 THE MOVIE, 18 せんごく列伝** (`H16`, `I17`, `J39`, Windows PCs through
+hiraku-pc, PLAN.md §30 PC-6; checked in HIRAKU under Wine). Addresses are the newest programs'
+(16: 2008052700, 17: 2009022500, 18: 2010040500). Start-up as pop'n 15's; 17 and 18's libavs
+sends binary XML (kbin) and wants it back (`runtime/python/kbin.h`); `ea3_query` is in
+`libavs-win32-ea3.dll` from 17 on.
+- **The modules** are `game` (`get`, `active`) and `playerdata` (`get`, `new`, `set`, `expire`,
+  `friend`, `conversion`; 16 and 17 also `score`, 17's a stub; a table of name, builder and
+  parser: 16 `0x6af030`, 17 `0x659f48`, 18 `0x6a6858`). 16 and 17 pack `<b>` (`f_compress="1"`,
+  pop'n 13's LZSS) and 17 crashes on `<b>` as text: it must be `__type="bin"`. 18's `<b>` is
+  plain, with `<hiscore __type="bin">` beside it.
+- **`game get`**: 16 as pop'n 15's NET TAISEN set (`netvs_phase`, `matching_sec`, `cpu_level`...)
+  and phases; 17 `game_phase e_amuse_phase local_matching_enable matching_sec`; 18 also `ir_phase
+  event_phase netvs_phase license_phase psp_phase psp_sale_month psp_sale_day boss_diff
+  boss_battle_point`. HIRAKU's values are guesses, each the data folder's `NAME-GAME` if there is
+  one.
+- **A card's life**: `cardmng inquire` (`binded`: the card has this game's player), `authpass`,
+  `playerdata expire`; with none, `inquire model="<the game before>"` (16: G15, 17: H16, 18: I17)
+  and `playerdata get model=...`: that game's record (16 reads pop'n 15's 0xb38 whole, 17 the first
+  0x6b0 bytes of 16's packed, 18 the first 0x72c of 17's, unpacked: `0x45490a`), then
+  `conversion ref_id card_id name` (the answer is this game's new player, as `get`'s) or the name
+  entry and `new`. Status 109: no player.
+- **The record** (16: 0x6784 bytes, 17: 0x74bc, 18: 0x1700) is copied to a global and bounded field
+  by field (16: `0x447dc0` into `0xf313b8`, 17: `0x440f30` into `0x1228988`, 18: `0x460320` into
+  `0x10fc930`), pop'n 15's layout grown: the name (13) and two more names, the mode and buttons
+  (0x1a, 0x1b), the option (32 bits; 16: 0x1c, 17: 0x20, 18: 0x34), then the character (16 bits),
+  the last song chosen (16), its chart and category; the 20 most played songs (16: 0x28, 17: 0x2c,
+  18: 0x40; 0xffff none); a 16-bit word per song, clear marks low and played flags 0x800 << chart
+  (16: 0x50, 839 songs; 17: 0x54, 907; 18: 0x68, 976); expert courses' stage scores and clears;
+  NET TAISEN's fields. 16 and 17 keep each chart's best score in the record, 32 bits, chart-major
+  (16: 0x8dc, 7 charts × 846; 17: 0xcd4, 7 × 950: `0x443c92`); 18 in `<hiscore>`, 17 bits per song
+  and chart (index song × 7 + chart, least significant bit first: `0x456570`). 18's last 0x128
+  bytes (0x15d8) are its story map (`private`), copied to `0x10af5a8`. The game does not change
+  its copy during a credit: what it played comes back only through `set`.
+- **`playerdata set`** (16 `0x435f30`, 17 `0x436180`, 18 `0x454bf0`, from a block the game fills
+  through the credit: 17's `0x658800`, 18's `0x6a4f50`): `option chara_num music_num sheet_num
+  category_num` (16 also `mode_num botton_num`, 17 and 18 `play_mode`), a `<music music_num
+  sheet_num data score/>` per song played (`data` the song's new word; 17 adds `play_count`, 18
+  `select_count`), `<private>`, `<netvs>`, 18's `<license>` and `<boss>`. A credit played without a
+  card sends `set` with no `ref_id`. HIRAKU keeps the fields above in the record, each chart's best
+  score (16, 17 in the record; 18 `pscore-J39-REF`, the `<hiscore>` bits), and the plays per song
+  (`pplays-GAME-REF`, for the most played), and 18's `private` (its story map: two character lists
+  newest first, which the server moves along as the game does, `0x473cb0`); 16's and 17's `private`,
+  `netvs`, `license`, `boss` aren't kept yet.
+- **16's `playerdata score`** `music_num sheet_num s_challenge`: `score nr_active_friend
+  friend_score_N` (`0x435d70`): the record's best.
+
 ## One card for all (pop'n music 9–14)
 
 Each pop'n carries a player over from the one before: it reads the older game's card, asks the

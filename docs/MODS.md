@@ -368,6 +368,10 @@ so their memory and files are the game's own process's, not an emulated machine'
   replace: the check passes, and a game without mods is checked against Konami's list as it was.
 - pop'n music 15's data files have scrambled names (`data/mbyukaomrfknhnko/...`); which file is
   what is the mod's business, as for any game.
+- pop'n music 16-18: patches work (checked on 18, 2026-10-22: a boot-screen string). Files not
+  yet: their data lists (`dat0.bin`...) are encrypted (AES-256 with the key in the program) and name
+  the files by their logical paths, while the disk holds numbered folders libavs maps them from;
+  a mod's files need both worked out (PLAN.md section 30, PC-6).
 
 ## Per core
 
