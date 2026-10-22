@@ -97,7 +97,7 @@ int main(int argc, char **argv) {
     // the game's own modules, by its model (GuitarFreaks xx39, DrumMania xx40: "D40:J:A:A")
     hk::ea::Server server(data, [](hk::ea::Server &s, const hk::ea::Call &c, const hk::ea::Request &r, const std::string &host) {
         const std::string g = c.model.substr(1, 2);
-        if (g == "39" || g == "40") return hk::k573::Eamuse::answer(s, c, r, host);
+        if ((g == "39" || g == "40") && c.model.compare(0, 3, "J39") != 0) return hk::k573::Eamuse::answer(s, c, r, host);
         return std::string();
     });
     hk::py::EamuseServer popn(data);   // pop'n music 9-14 (Konami Python 1), and every other model
@@ -119,7 +119,8 @@ int main(int argc, char **argv) {
             const size_t at = xml.find("model=\"");
             if (at != std::string::npos) model = xml.substr(at + 7, 3);
         });
-        return model.size() == 3 && (model.compare(1, 2, "39") == 0 || model.compare(1, 2, "40") == 0);
+        // (J39 is pop'n music 18's, not a GuitarFreaks)
+        return model.size() == 3 && model != "J39" && (model.compare(1, 2, "39") == 0 || model.compare(1, 2, "40") == 0);
     };
 
 #ifdef SIGPIPE
