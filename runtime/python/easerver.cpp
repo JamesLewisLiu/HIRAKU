@@ -2356,11 +2356,25 @@ std::string EamuseServer::answer_j39(const std::string &game, const Request &r) 
     // ojama conditions, the ojama and items set, the four parameters, the event points. Checked
     // against the game's own copy, which it fills with a new player's defaults. Not placed yet:
     // room, room_start, room_upgrade, record, member_name/pref, recommend_ojama, used_*
-    // 17's the same, 4 bytes before (no titles won): checked against its loader (0x4411c0)
+    // 17's the same, 4 bytes before (no titles won): checked against its loader (0x4411c0). 17
+    // starts a new NET player's block with its defaults while 0xa40, the NET credits, is 0
+    // (0x43c950): the server counts them, writing those defaults first (0x43c7f0), as 16's
     if (const size_t nv = r.inner.find("<netvs"); !p16 && nv != std::string::npos) {
         std::map<std::string, std::string> m;
         bool sc = false;
         read_attrs(r.inner, nv + 6, m, &sc);
+        if (p17) {
+            const long credits = (uint8_t)rec[0xa40] | (uint8_t)rec[0xa41] << 8;
+            if (credits == 0) {
+                std::fill(rec.begin() + 0xa0c, rec.begin() + 0xc00, '\0');
+                put32(0xa0c, 0x7000f), put32(0xa10, 0x1c), put32(0xa14, 7), put32(0xa2c, 0x20000000), put16(0xa42, 0x34b);
+                rec[0xa95] = 2, rec[0xa96] = 0x1d, rec[0xa99] = 0xf;
+                std::fill(rec.begin() + 0xb47, rec.begin() + 0xb47 + 51, '\x32');
+                rec[0xbf1] = 1, rec[0xbf2] = 0x10, rec[0xbf3] = 0x22, rec[0xbf8] = 1, put32(0xbf9, 0x1010101);
+                for (size_t i = 0; i < 5; i++) put16(0xa80 + 2 * i, 0xffff), put16(0xa8a + 2 * i, 0xffff), put16(0xb2e + 3 * i, 0xffff), rec[0xb30 + 3 * i] = (char)0xff;
+            }
+            put16(0xa40, credits < 0xffff ? credits + 1 : credits);
+        }
         struct Field { const char *name; size_t at; int count, width; };
         static const Field netvs17[] = {
             {"exp", 0xa3c, 1, 4}, {"music_num", 0xa42, 1, 2}, {"sheet_num", 0xa94, 1, 1}, {"category_num", 0xa95, 1, 1},
