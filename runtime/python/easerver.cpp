@@ -1677,19 +1677,23 @@ std::string EamuseServer::answer_g15(const Request &r) {
         if (const long ph = setting("phase", -1); ph >= 0) a += " phase=\"" + std::to_string(ph) + "\"";
         a += " ir_ranking=\"" + std::to_string(setting("ir_ranking", 2)) + "\"";
         a += " net_event=\"" + std::to_string(setting("net_event", 1)) + "\"";
-        // NET TAISEN's settings, each the data folder's NAME-G15 if there is one: cabinets of one
-        // shop may meet; a cabinet stays in the lobby matching_sec seconds for others to join it
-        // (0: it leaves at once and battles CPUs); ojama_gauge_rate and cpu_level (10, the CPUs'
-        // strength) in percent of the game's own (0x42e4b0, 0x42f4b3); downlimit_win and
-        // downlimit_class, the wins that keep a class reached and how far below it a player may
-        // fall (0x48e5a2: 0 and 0, never below the best); job_sp_rate (26: the jobs' special
-        // abilities, chances in percent and amounts, 0x42d0a0) Konami's values aren't known: 0
-        // leaves the specials off. job_exp_rate, cpu_higher_release, shop_event_ranking: read,
-        // never used.
+        // NET TAISEN's settings, each the data folder's NAME-G15 if there is one. Konami's values
+        // went with its server; these follow what the game does with them and what players
+        // described (docs/EAMUSE3.md, "pop'n music 15"): cabinets of one shop may meet; a
+        // cabinet waits in the lobby matching_sec for others (0: it leaves at once; 120, pop'n
+        // 19's as its server sent it; nobody: CHALLENGE mode); ojama_gauge_rate and cpu_level (10, the CPUs' strength) in
+        // percent of the game's own (0x42e4b0, 0x42f4b3); downlimit_win/downlimit_class: the wins
+        // that keep a class once reached and how far below it a player may fall (0x48e5a2,
+        // 0x48e633: 10 rooms down is no floor, players are demoted as they were); job_sp_rate
+        // (26): the 13 jobs' specials, the even ones each job's chance in percent at its top
+        // level (0x42d0a0, the game's level table 0x4ff058 below that), the odd ones amounts in
+        // percent (the magician's ojama longer x1.5, the warrior's shorter x0.5, the fighter's
+        // gauge faster x1.5; 0x42d200, 0x48e7f1). job_exp_rate, cpu_higher_release,
+        // shop_event_ranking: read, never used.
         static const struct { const char *name, *value; } netvs[] = {
-            {"local_matching_enable", "1"}, {"matching_sec", "30"}, {"ojama_gauge_rate", "100"},
-            {"cpu_level", "100,100,100,100,100,100,100,100,100,100"}, {"downlimit_win", "0"}, {"downlimit_class", "0"},
-            {"job_sp_rate", "0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0"}, {"job_exp_rate", "100"}};
+            {"local_matching_enable", "1"}, {"matching_sec", "120"}, {"ojama_gauge_rate", "100"},
+            {"cpu_level", "100,100,100,100,100,100,100,100,100,100"}, {"downlimit_win", "0"}, {"downlimit_class", "10"},
+            {"job_sp_rate", "30,150,30,50,30,150,30,100,0,0,30,0,30,100,100,0,30,0,30,0,30,0,30,0,30,0"}, {"job_exp_rate", "100"}};
         for (const auto &n : netvs) {
             std::string v = read_file(std::string(n.name) + "-G15");
             while (!v.empty() && std::isspace((unsigned char)v.back())) v.pop_back();

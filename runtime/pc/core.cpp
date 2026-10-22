@@ -452,8 +452,8 @@ private:
             return false;
         }
         set_env("HK_PC_EA", "127.0.0.1:" + std::to_string(ntohs(sa.sin_port)));
-        // NET TAISEN's lobby and relay, this cabinet's own (with nobody else there, the game
-        // battles its CPUs)
+        // NET TAISEN's lobby and relay, this cabinet's own (with nobody else there, the game waits
+        // for others, then plays the credit in CHALLENGE mode)
         if (relay_.start("127.0.0.1", 0)) set_env("HK_PC_RELAY", "127.0.0.1:" + std::to_string(relay_.port()));
         printf("e-AMUSEMENT: HIRAKU's server, data in %s\n", dir.c_str());
         std::thread([this] { serve(); }).detach();

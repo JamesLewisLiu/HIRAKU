@@ -999,21 +999,33 @@ show MATCHING with each other and a CPU, and they battle.
   type 1 a broadcast at start-up for cabinets of the same shop (port 2096). The game's own address
   is `avs_net_ctrl(0)` (the network card), its address for the world `ea3_query(8)` (facility's
   portfw `globalip`), and `matching_sec` must be more than 0 or a cabinet leaves the lobby at once.
-- **game_get's battle settings:** `local_matching_enable`, `matching_sec` (HIRAKU: 1, 30),
-  `ojama_gauge_rate` and `cpu_level` (×10) in percent of the game's own (100), `downlimit_win` and
-  `downlimit_class` (the wins that keep a class once reached, and how far below it a player may
-  fall, `0x48e5a2`: 0 and 0 keep every player at their best class), and `job_sp_rate` (×26: the
-  jobs' special abilities, chances in percent and amounts, `0x42d0a0`). **Konami's values for
-  these aren't known**; HIRAKU's are guesses that keep the game as it plays alone (100 %), and 0
-  for `job_sp_rate` (the specials off). Each can be set in the data folder (`NAME-G15`, its value
-  as the attribute's text). `job_exp_rate`, `cpu_higher_release` and `shop_event_ranking` are read
-  but never used.
+- **game_get's battle settings:** `local_matching_enable`, `matching_sec` (seconds a cabinet waits
+  in the lobby for others; 0 leaves at once), `ojama_gauge_rate` and `cpu_level` (×10, the CPUs'
+  strength) in percent of the game's own, `downlimit_win` and `downlimit_class` (the wins that keep
+  a class once reached, and how far below it a player may then fall: `0x48e5a2`, `0x48e633`), and
+  `job_sp_rate` (×26, the 13 jobs' specials: the even ones each job's chance in percent at its top
+  level, `0x42d0a0`, the game's own table `0x4ff058` lowering it at lower levels, 80-100 %; the odd
+  ones amounts in percent, `0x42d200`, `0x48e7f1`). Konami's values went with its server. HIRAKU's
+  follow what the game does with them and what players described of the mode
+  ([pmdream's NET対戦 page](http://pmdream.net/popn/ac15/net.html): the specials fire "sometimes",
+  the magician's ojama lasts longer, the warrior's shorter, the fighter's gauge fills faster; a
+  player in a "降格のピンチ" who comes 3rd is demoted): `matching_sec` 120 (pop'n 19's, as
+  bemaniutils records its server's answer), the rates 100, `downlimit_win` 0 and `downlimit_class`
+  10 (no floor: players are demoted), and `job_sp_rate`
+  `30,150,30,50,30,150,30,100,0,0,30,0,30,100,100,0,30,0,30,0,30,0,30,0,30,0` (chances 30 %; the
+  magician ×1.5, the warrior ×0.5, the fighter ×1.5; the ninja's always on, as described). Each
+  can be set in the data folder (`NAME-G15`, the attribute's text). `job_exp_rate`,
+  `cpu_higher_release` and `shop_event_ranking` are read but never used.
 - **In HIRAKU** (`runtime/pc/vsock.c`): libsocket's calls are served by the DLL over HIRAKU's relay
   (as for pop'n 12-14 online): one TCP connection, an address 10.57.x.y for the cabinet (given to
   the game as its card's and its portfw address); datagrams to the lobby go as they are, to another
-  cabinet with a one-byte kind, and TCP connections (the library's `CommTcpHost`/`CommTcpClient`;
-  not seen used so far) as open/opened/data/closed messages. Alone (no `-url`), hiraku-pc runs a
-  relay and lobby of its own: the game finds nobody and battles CPUs.
+  cabinet with a one-byte kind, and TCP connections as open/opened/data/closed messages (the
+  library's `CommTcpHost`/`CommTcpClient`, which the game uses only in its developer test screens
+  "TCP HOST TEST"/"TCP CLIENT TEST"). `tests/pc/test_vsock.sh` checks all of it between two
+  processes on one relay under Wine: the lobby, datagrams, a TCP connection both ways, a refused
+  one, timeouts. Alone (no `-url`), hiraku-pc runs a
+  relay and lobby of its own: the game waits `matching_sec` at CUSTOMIZE, says nobody came and
+  starts the credit in CHALLENGE mode (checked).
 - **After the credit:** `<netvs>` as pop'n 14's fields, the record's places from `0x4a4dc0`; and
   on `playerdata_set` itself `matching` (how many players the match had, `0x4a43b0`) and
   `room_num`, statistics the record doesn't keep. Checked: two cabinets' credits saved, each with

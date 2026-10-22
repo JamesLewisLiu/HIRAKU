@@ -204,6 +204,14 @@ if(HK_PC_DLL_CC)
     list(APPEND HK_PC_DLLS ${CMAKE_BINARY_DIR}/pc/${dll}.dll)
   endforeach()
   add_custom_target(hiraku-pc-dlls ALL DEPENDS ${HK_PC_DLLS})
+  # vsock.c (NET TAISEN over the relay) as the games call it: tests/pc/test_vsock.sh runs it under Wine
+  add_custom_command(OUTPUT ${CMAKE_BINARY_DIR}/pc/test_vsock.exe
+    COMMAND ${HK_PC_DLL_CC} --target=i686-w64-mingw32 -O2 -Wall -Wextra -fuse-ld=lld -static
+            -o ${CMAKE_BINARY_DIR}/pc/test_vsock.exe ${CMAKE_SOURCE_DIR}/tests/pc/test_vsock.c
+            ${CMAKE_SOURCE_DIR}/runtime/pc/vsock.c -lws2_32
+    DEPENDS tests/pc/test_vsock.c runtime/pc/vsock.c runtime/pc/cabinet.h
+    COMMENT "pc/test_vsock.exe (32-bit)")
+  add_custom_target(hiraku-pc-test-vsock DEPENDS ${CMAKE_BINARY_DIR}/pc/test_vsock.exe)
 else()
   message(STATUS "No 32-bit Windows compiler (clang, lld and mingw-w64's i686 libraries): no PC games' DLLs")
 endif()

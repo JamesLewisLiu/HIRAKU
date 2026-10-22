@@ -15,6 +15,7 @@ library only. Exit status 0 = every check passed.
 from __future__ import annotations
 
 import argparse
+import base64
 import hashlib
 import json
 import os
@@ -24,6 +25,12 @@ import socket
 import sys
 import xml.etree.ElementTree as ET
 from urllib.parse import urlsplit
+
+def unbase64(text: str) -> bytes:
+    """base64 as the game reads it: padding or not"""
+    t = re.sub(r"[^A-Za-z0-9+/]", "", text)
+    return base64.b64decode(t + "=" * (-len(t) % 4))
+
 
 SECRET = bytes.fromhex("69d74627d985ee2187161570d08d93b12455035b6df0d8205df5")
 CORPUS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "corpus.json")
@@ -234,7 +241,9 @@ def run_scenario(server: Server) -> int:
         step("write", f'<userdata method="write" card="{number}" time="2003-06-02 06:42:41+9" model="C00:J:A:A" label=""><b>{data}</b></userdata>', False)
         e = step("read back", f'<userdata method="read" card="{number}" model="C00:J:A:A" label=""/>', False)
         got = "".join(b.text or "" for b in e.findall("b"))
-        need(got == data, "userdata.read after write: the <b> data differs from what was written")
+        # the bytes, as the game decodes them: a server may give them back in other base64 text (a
+        # server sharing marks between games re-encodes what it read)
+        need(unbase64(got) == unbase64(data), "userdata.read after write: the <b> data differs from what was written")
         need(e.attrib.get("time") == "2003-06-02 06:42:41+9", f"userdata.read after write: time {e.attrib.get('time')!r}")
         print("ok    userdata write, then read: the same data and time")
         e = step("no KONAMI ID", f'<userid method="ctou" card="{number}" model="C00:J:A:A"/>', True)
