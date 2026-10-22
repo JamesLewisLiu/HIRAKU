@@ -987,8 +987,8 @@ std::string EamuseServer::answer_later(const std::string &game, const Request &r
             // pop'n 15 asks for its own player (binded 0: the card has none yet, the game makes one
             // or carries pop'n 14's over) and, with model="F14:...", for pop'n 14's (binded 1 and
             // expired 0: the game asks for it, playerdata_get model="F14")
-            if (game == "J39" || game == "I17") {   // pop'n 17, 18: its own player, as pop'n 15's (answer_j39)
-                const bool binded = read_file("pdata-" + game + "-" + ref).size() == (game == "J39" ? 0x1700u : 0x74bcu);
+            if (game == "J39" || game == "I17" || game == "H16") {   // pop'n 16-18: its own player, as pop'n 15's (answer_j39)
+                const bool binded = read_file("pdata-" + game + "-" + ref).size() == (game == "J39" ? 0x1700u : game == "I17" ? 0x74bcu : 0x6784u);
                 return "<cardmng status=\"0\" refid=\"" + ref + "\" binded=\"" + (binded ? "1" : "0") +
                        "\" expired=\"0\" newflag=\"" + (fresh ? "1" : "0") + "\"/>";
             }
@@ -1123,7 +1123,7 @@ std::string EamuseServer::answer_later(const std::string &game, const Request &r
         return "<portfw status=\"0\"/>";
     }
     if (m == game && game == "G15") return answer_g15(r);
-    if ((game == "J39" || game == "I17") && (m == "game" || m == "playerdata")) return answer_j39(game, r);
+    if ((game == "J39" || game == "I17" || game == "H16") && (m == "game" || m == "playerdata")) return answer_j39(game, r);
     if (m == game) return answer_game(game, r);   // pop'n 11 on: <D11 type=.. method=..>
     return "";
 }
@@ -2047,10 +2047,15 @@ void EamuseServer::set_attr(std::string &xml, const std::string &name, const std
 // game_phase, e_amuse_phase, local_matching_enable, matching_sec; playerdata.get (0x435b80)
 // needs f_compress and takes <b> as base64 of the record packed (lzss, as pop'n 14's and 15's),
 // 0x74bc bytes (the scores within it).
+//
+// pop'n 16 PARTY (H16: popn16.exe) as pop'n 17: game.get (0x434990) reads pop'n 15's NET TAISEN
+// settings and phase, netvs_phase, ir_phase, private_phase, normal_secret_phase, all_hiscore_phase;
+// playerdata.get (0x435680) needs f_compress, its record 0x6784 bytes (pop'n 15's 0xb38 when the
+// game asks for that one, to carry it over).
 std::string EamuseServer::answer_j39(const std::string &game, const Request &r) {
     const std::string &m = r.module, &f = r.method;
-    const bool p17 = game == "I17";
-    const size_t RECORD = p17 ? 0x74bc : 0x1700;
+    const bool p16 = game == "H16", p17 = game == "I17", packed = p16 || p17;
+    const size_t RECORD = p16 ? 0x6784 : p17 ? 0x74bc : 0x1700;
     constexpr size_t SCORES = 0x1ab7, SCORE_BITS = 17;
     auto hex = [](const std::string &b) {
         static const char *hx = "0123456789abcdef";
@@ -2059,6 +2064,22 @@ std::string EamuseServer::answer_j39(const std::string &game, const Request &r) 
         return o;
     };
     if (m == "game" && f == "get") {
+        if (p16) {   // as pop'n 15's game_get, each the data folder's NAME-H16 if there is one
+            static const struct { const char *name, *value; } fields16[] = {
+                {"netvs_phase", "1"}, {"ir_phase", "0"}, {"private_phase", "1"}, {"normal_secret_phase", "1"},
+                {"all_hiscore_phase", "1"}, {"local_matching_enable", "1"}, {"matching_sec", "120"}, {"ojama_gauge_rate", "100"},
+                {"cpu_level", "100,100,100,100,100,100,100,100,100,100"}, {"downlimit_win", "0"}, {"downlimit_class", "10"},
+                {"job_exp_rate", "100"}, {"cpu_higher_release", "0"},
+                {"job_sp_rate", "30,150,30,50,30,150,30,100,0,0,30,0,30,100,100,0,30,0,30,0,30,0,30,0,30,0"}};
+            std::string a;
+            if (const std::string ph = read_file("phase-H16"); !ph.empty()) a += " phase=\"" + std::to_string(std::strtol(ph.c_str(), nullptr, 10)) + "\"";
+            for (const auto &fd : fields16) {
+                std::string v = read_file(std::string(fd.name) + "-H16");
+                while (!v.empty() && std::isspace((unsigned char)v.back())) v.pop_back();
+                a += std::string(" ") + fd.name + "=\"" + esc(v.empty() ? fd.value : v) + "\"";
+            }
+            return "<game status=\"0\"" + a + " message=\"" + esc(message()) + "\"/>";
+        }
         struct Field { const char *name; long value; };
         // guesses but matching_sec (pop'n 15's): to be worked out from each one's users
         static const Field fields18[] = {{"game_phase", 2}, {"ir_phase", 0}, {"event_phase", 1}, {"netvs_phase", 1},
@@ -2079,7 +2100,7 @@ std::string EamuseServer::answer_j39(const std::string &game, const Request &r) 
     const std::string file = "pdata-" + game + "-" + ref;
     std::string rec = read_file(file);
     auto answer = [&] {
-        if (p17) return "<playerdata status=\"0\" f_compress=\"1\"><b __type=\"bin\">" + hex(lzss(rec)) + "</b></playerdata>";
+        if (packed) return "<playerdata status=\"0\" f_compress=\"1\"><b __type=\"bin\">" + hex(lzss(rec)) + "</b></playerdata>";
         const std::string scores((SCORES * SCORE_BITS + 7) / 8, '\0');
         return "<playerdata status=\"0\"><b __type=\"bin\">" + hex(rec) + "</b><hiscore __type=\"bin\">" + hex(scores) +
                "</hiscore></playerdata>";
@@ -2092,7 +2113,7 @@ std::string EamuseServer::answer_j39(const std::string &game, const Request &r) 
         return answer();
     }
     if (f == "get") {
-        if (rec.size() != RECORD) return p17 ? "<playerdata status=\"109\" f_compress=\"1\"/>" : "<playerdata status=\"109\"/>";
+        if (rec.size() != RECORD) return packed ? "<playerdata status=\"109\" f_compress=\"1\"/>" : "<playerdata status=\"109\"/>";
         return answer();
     }
     if (f == "set") {   // kept as sent, a line each credit
