@@ -13,7 +13,7 @@ open(os.path.join(D, 'cards'), 'w').write(f'cardid=E0040100000000BB\tcardtype=1\
 with socket.socket() as s0:
     s0.bind(('127.0.0.1', 0)); port = s0.getsockname()[1]
 srv = subprocess.Popen([SERVER, '--port', str(port), '--data', D, '--quiet', '--no-relay'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-for _ in range(50):
+for _ in range(300):   # up to 30 s: a freshly built server read from a slow disk
     try:
         socket.create_connection(('127.0.0.1', port)).close(); break
     except OSError:

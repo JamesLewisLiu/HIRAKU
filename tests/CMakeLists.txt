@@ -96,3 +96,12 @@ if(TARGET hiraku-pc-test-vsock AND HK_WINE AND NOT WIN32)
   add_test(NAME pc_vsock COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/pc/test_vsock.sh ${CMAKE_BINARY_DIR})
   set_tests_properties(pc_vsock PROPERTIES RESOURCE_LOCK relay_5740 TIMEOUT 120)
 endif()
+
+# Mods' [[text]]: a string found in memory and its replacement (runtime/host/mods.h)
+add_executable(test_find_text mods/test_find_text.cpp)
+target_link_libraries(test_find_text PRIVATE hiraku_shell)
+add_test(NAME mods_text COMMAND test_find_text)
+# tools/ingest.py: a Konami Python game waiting for its BIOS and keys, finished when they're dropped
+if(Python3_Interpreter_FOUND)
+  add_test(NAME ingest_python_support COMMAND Python3::Interpreter ${CMAKE_CURRENT_SOURCE_DIR}/tools/test_ingest_python.py)
+endif()

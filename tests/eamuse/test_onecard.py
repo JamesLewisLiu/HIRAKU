@@ -37,7 +37,7 @@ h = bytearray((0x1ab7 * 17 + 7) // 8); hs_put(h, 900 * 7 + 1, 99999); w(f'pscore
 with socket.socket() as s0:
     s0.bind(('127.0.0.1', 0)); port = s0.getsockname()[1]
 srv = subprocess.Popen([SERVER, '--port', str(port), '--data', D, '--quiet', '--no-relay'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-for _ in range(50):
+for _ in range(300):   # up to 30 s: a freshly built server read from a slow disk
     try:
         socket.create_connection(('127.0.0.1', port)).close(); break
     except OSError:

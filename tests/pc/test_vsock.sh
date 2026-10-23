@@ -8,6 +8,7 @@ B=$(realpath "${1:-build/cmake}")
 T=$(mktemp -d)
 trap 'kill $E 2>/dev/null; rm -rf "$T"' EXIT
 export WINEPREFIX=${WINEPREFIX:-$T/wine} WINEDEBUG=-all
+wineboot -i > /dev/null 2>&1   # the prefix made now: two programs making it at once start seconds late
 "$B/hiraku-eamuse" --port 0 --data "$T/data" --quiet > "$T/server.log" 2>&1 &
 E=$!
 sleep 1
