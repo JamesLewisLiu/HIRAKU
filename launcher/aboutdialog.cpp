@@ -148,7 +148,7 @@ QString softwareHtml() {
     h += "<li><b>" + link("https://remywiki.com", "RemyWiki") +
          "</b>: event codes, unlocks and song facts.</li>";
     h += "</ul>";
-    h += "<p>Thanks to the testers, tyam, yaladre and CrazyRedMachine, who tried HIRAKU on their own "
+    h += "<p>Thanks to the testers, tyam, yaladre, MohaHtn and CrazyRedMachine, who tried HIRAKU on their own "
          "PCs and cabinets, and to everyone who dumped, documented and preserved these machines.</p>";
     return h;
 }
