@@ -408,11 +408,12 @@ MainWindow::MainWindow() {
     });
     connect(&m_ingest, &QProcess::finished, this, [this](int code, QProcess::ExitStatus st) {
         refresh();
-        QStringList added, errors;
+        QStringList added, errors, kept;
         for (const QString &l : m_ingestOutput.split('\n')) {
             // dumps/<id>/machine.txt (Windows: dumps\<id>\machine.txt)
             if (l.startsWith("wrote") && l.contains("machine.txt")) added << QString(l).replace('\\', '/').section('/', -2, -2);
             if (l.startsWith("ERROR") || l.startsWith("NEXT")) errors << l.mid(9).trimmed();
+            if (l.startsWith("KEPT")) kept << l.mid(9).trimmed();   // a Python BIOS or keys, kept for the games
         }
         // several games at once: those added are, even when another failed (its error below)
         bool ok = st == QProcess::NormalExit && (code == 0 || !added.isEmpty());
@@ -420,8 +421,10 @@ MainWindow::MainWindow() {
         for (const QString &id : added) titles << (find(id) ? find(id)->title : id);
         if (ok && !added.isEmpty())
             if (auto *it = itemFor(added.first()); it && !it->isHidden()) selectGame(it);
-        QString msg = ok ? "Added: " + titles.join(", ") + (titles.size() == 1 ? ". It is ready to play." : ".")
+        QString msg = ok ? (titles.isEmpty() ? "Kept: " + kept.join("\n")
+                                             : "Added: " + titles.join(", ") + (titles.size() == 1 ? ". It is ready to play." : "."))
                          : "The files could not be added.";
+        if (!ok && !kept.isEmpty()) msg = "Kept: " + kept.join("\n") + "\n\n" + msg;
         if (!errors.isEmpty()) msg += "\n\n" + errors.join("\n");
         log("\n--- " + (ok ? QString("added ") + added.join(", ") : QString("ingest failed")) + " ---\n");
         if (ok) QMessageBox::information(this, "HIRAKU", msg);

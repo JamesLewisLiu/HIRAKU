@@ -607,34 +607,11 @@ def ingest_python2(args, py2: str) -> int:
         else:
             shutil.copy2(src, os.path.join(outdir, "rom", os.path.basename(src)))
             machine[name] = "rom/" + os.path.basename(src)
-    # the retail BIOS Python 2 boots: MAME's ps2-0190j-20030822.bin (SCPH-50000, v1.90 Japan)
-    bios = args.bios or find_near(base, "bios")
-    bios_bin = sorted(glob.glob(os.path.join(bios, "ps2-0190j*.bin"))) if bios else []
-    if not bios_bin:
-        print("ERROR    no Python 2 BIOS (ps2-0190j-20030822.bin, the SCPH-50000's v1.90): give --bios DIR")
-        return 1
-    shutil.copy2(bios_bin[0], os.path.join(outdir, "bios", os.path.basename(bios_bin[0])))
-    machine["bios"] = "bios/" + os.path.basename(bios_bin[0])
-    keys = args.keys or find_near(base, "keys") or find_near(os.path.join(base, "..", "konami-python-1-collection"), "keys")
-    missing = [k for k in PY_KEYS[:4] if not keys or not os.path.exists(os.path.join(keys, k + ".bin"))]
-    if missing:
-        print(f"ERROR    MagicGate key files missing ({', '.join(k + '.bin' for k in missing)}): give --keys DIR")
-        return 1
-    for k in PY_KEYS[:4]:
-        shutil.copy2(os.path.join(keys, k + ".bin"), os.path.join(outdir, "keys", k + ".bin"))
-    machine["keys"] = "keys"
     if "nvram" not in machine:
         print("note     no NvRamPath: the BIOS will stop at its first-time language setup (docs/PYTHON.md)")
-    print(f"bios     {os.path.basename(bios_bin[0])}, keys copied (dumps/ is gitignored: they stay out of the repo)")
-    machine_path = os.path.join(outdir, "machine.txt")
     order = ["core", "board", "family", "name", "game_id", "input_type", "hdd", "hdd_id", "ilink_id", "nvram",
              "dongle_black", "dongle_white", "bios", "keys"]
-    with open(machine_path, "w", newline="\n") as fh:   # \n on Windows too: dumps move between PCs
-        for k in order:
-            if machine.get(k):
-                fh.write(f"{k}={machine[k]}\n")
-    print(f"wrote    {os.path.relpath(machine_path, ROOT)}")
-    return 0
+    return finish_python(args, base, outdir, machine, order, 2)
 
 
 def ingest_python(args, py1: str) -> int:
@@ -736,39 +713,131 @@ def ingest_python1(args, g: dict, base: str) -> int:
         else:
             shutil.copy2(src, os.path.join(outdir, "rom", os.path.basename(src)))
             machine[name] = "rom/" + os.path.basename(src)
-    bios = python_support(args, base, "bios", "COH-H31000.BIN")
+    order = ["core", "family", "name", "io_mode", "game_id", "hdd", "cf", "bbsram", "io_bootrom", "io_config_rom",
+             "internal_dongle", "external_dongle", "memcard", "memcard_id", "bios", "keys"]
+    return finish_python(args, base, outdir, machine, order, 1)
+
+
+# The arcade BIOS and the MagicGate keys, which HIRAKU can't ship. Dropped on the launcher (loose,
+# or in a folder) they are kept in dumps/_python/ for every Konami Python game; a game added
+# without them waits in dumps/<game>/machine.pending (its files are in, its machine.txt not
+# written) and is finished when they come, from what is already in dumps/, so the game's own
+# files needn't be there any more.
+PY_STORE = "_python"
+PY1_BIOS = "COH-H31000.BIN"       # the Python 1 arcade BIOS, with its .NVM and .MEC
+PY2_BIOS = "ps2-0190j"            # the retail BIOS Python 2 boots: ps2-0190j-20030822.bin (SCPH-50000, v1.90 Japan)
+
+
+def python_support_kind(path: str) -> str | None:
+    """bios or keys, for a file HIRAKU keeps for the Python games (by its name)"""
+    n = os.path.basename(path).lower()
+    if n.startswith(PY1_BIOS.lower()[:-4] + ".") or (n.startswith(PY2_BIOS) and n.endswith(".bin")):
+        return "bios"
+    if n.endswith(".bin") and n[:-4] in PY_KEYS:
+        return "keys"
+    return None
+
+
+def keep_python_support(args, inputs: list[str]) -> list[str]:
+    """The BIOS and key files among the inputs (loose, or a folder of only them, or a folder named
+    bios/ or keys/ holding them) copied into dumps/_python/bios, keys; the rest returned"""
+    rest, kept = [], {"bios": [], "keys": []}
+    for f in inputs:
+        files = [f] if os.path.isfile(f) else sorted(glob.glob(os.path.join(f, "*"))) if os.path.isdir(f) else []
+        files = [x for x in files if os.path.isfile(x) and not x.lower().endswith(".txt")]
+        kinds = [python_support_kind(x) for x in files]
+        named = os.path.isdir(f) and os.path.basename(os.path.normpath(f)).lower() in ("bios", "keys")
+        if not files or not (all(kinds) or (named and any(kinds))):
+            rest.append(f)
+            continue
+        for x, k in zip(files, kinds):
+            if not k:
+                continue
+            to = os.path.join(args.out, PY_STORE, k, os.path.basename(x))
+            os.makedirs(os.path.dirname(to), exist_ok=True)
+            if not (os.path.exists(to) and os.path.samefile(x, to)):
+                shutil.copy2(x, to)
+            kept[k].append(os.path.basename(x))
+    for k, names in kept.items():
+        if names:
+            print(f"KEPT     {'the BIOS' if k == 'bios' else 'the MagicGate keys'} for the Konami Python games: {', '.join(names)}")
+    return rest
+
+
+def python_bios(args, base: str, board: int) -> list[str]:
+    """The BIOS files to copy: Python 1's COH-H31000.BIN with its .NVM and .MEC, Python 2's
+    ps2-0190j*.bin; [] when they aren't anywhere HIRAKU looks"""
+    if board == 2:
+        for d in (args.bios, find_near(base, "bios"), os.path.join(args.out, PY_STORE, "bios")):
+            found = sorted(glob.glob(os.path.join(d, PY2_BIOS + "*.bin"))) if d else []
+            if found:
+                return found[:1]
+        return []
+    bios = python_support(args, base, "bios", PY1_BIOS)
     bios_bin = sorted(glob.glob(os.path.join(bios, "*.BIN")) + glob.glob(os.path.join(bios, "*.bin"))) if bios else []
     if not bios_bin:
-        print("ERROR    no arcade BIOS (COH-H31000.BIN with its .NVM and .MEC): add the folder bios/ that holds it "
-              "with the game (or put it beside the game's folder), or give --bios DIR")
-        return 1
+        return []
     stem = os.path.splitext(bios_bin[0])[0]
-    for f in glob.glob(stem + ".*"):
-        to = os.path.join(outdir, "bios", os.path.basename(f))
-        if not f.lower().endswith(".txt") and not (os.path.exists(to) and os.path.samefile(f, to)):
-            shutil.copy2(f, to)
-    machine["bios"] = "bios/" + os.path.basename(bios_bin[0])
+    return [bios_bin[0]] + [f for f in sorted(glob.glob(stem + ".*")) if f != bios_bin[0] and not f.lower().endswith(".txt")]
+
+
+def finish_python(args, base: str, outdir: str, machine: dict, order: list[str], board: int) -> int:
+    """A Python game's BIOS and keys copied into dumps/<game>/ and its machine.txt written; without
+    them, machine.pending (finished by complete_pending when they are dropped)"""
+    import json
+    bios = python_bios(args, base, board)
+    need = PY_KEYS if board == 1 else PY_KEYS[:4]
     keys = python_support(args, base, "keys", "kek.bin")
-    missing = [k for k in PY_KEYS if not keys or not os.path.exists(os.path.join(keys, k + ".bin"))]
-    if missing:
-        print(f"ERROR    MagicGate key files missing ({', '.join(k + '.bin' for k in missing)}): add the folder keys/ "
-              "that holds them with the game (or put it beside the game's folder), or give --keys DIR")
+    if not keys and board == 2:   # Python 2 sets beside a Python 1 collection: its keys
+        keys = find_near(os.path.join(base, "..", "konami-python-1-collection"), "keys")
+    missing = [k + ".bin" for k in need if not keys or not os.path.exists(os.path.join(keys, k + ".bin"))]
+    if not bios or missing:
+        with open(os.path.join(outdir, "machine.pending"), "w", newline="\n") as fh:
+            json.dump({"machine": machine, "order": order, "board": board}, fh)
+        what = []
+        if not bios:
+            what.append("the arcade BIOS (COH-H31000.BIN with its .NVM and .MEC)" if board == 1 else
+                        "the BIOS ps2-0190j-20030822.bin (the SCPH-50000's v1.90)")
+        if missing:
+            what.append("the MagicGate key files " + ", ".join(missing))
+        print(f"ERROR    {machine.get('name', os.path.basename(outdir))} needs {' and '.join(what)}: drop them on "
+              "HIRAKU's window (the files, or their folder) and the game is added")
         return 1
-    for k in PY_KEYS:
+    for f in bios:
+        to = os.path.join(outdir, "bios", os.path.basename(f))
+        if not (os.path.exists(to) and os.path.samefile(f, to)):
+            shutil.copy2(f, to)
+    machine["bios"] = "bios/" + os.path.basename(bios[0])
+    for k in need:
         f, to = os.path.join(keys, k + ".bin"), os.path.join(outdir, "keys", k + ".bin")
         if not (os.path.exists(to) and os.path.samefile(f, to)):   # a game added again: its own copy
             shutil.copy2(f, to)
     machine["keys"] = "keys"
-    print(f"bios     {os.path.basename(bios_bin[0])}, keys copied (dumps/ is gitignored: they stay out of the repo)")
+    print(f"bios     {os.path.basename(bios[0])}, keys copied (dumps/ is gitignored: they stay out of the repo)")
     machine_path = os.path.join(outdir, "machine.txt")
-    order = ["core", "family", "name", "io_mode", "game_id", "hdd", "cf", "bbsram", "io_bootrom", "io_config_rom",
-             "internal_dongle", "external_dongle", "memcard", "memcard_id", "bios", "keys"]
     with open(machine_path, "w", newline="\n") as fh:   # \n on Windows too: dumps move between PCs
         for k in order:
             if machine.get(k):
                 fh.write(f"{k}={machine[k]}\n")
+    pending = os.path.join(outdir, "machine.pending")
+    if os.path.exists(pending):
+        os.remove(pending)
     print(f"wrote    {os.path.relpath(machine_path, ROOT)}")
     return 0
+
+
+def complete_pending(args) -> int:
+    """The Python games waiting for their BIOS or keys (machine.pending), finished with what is
+    kept now; 0 when all could be"""
+    import json
+    rc = 0
+    for pending in sorted(glob.glob(os.path.join(args.out, "*", "machine.pending"))):
+        outdir = os.path.dirname(pending)
+        with open(pending, encoding="utf-8") as fh:
+            p = json.load(fh)
+        print(f"game     {os.path.basename(outdir)}: {p['machine'].get('name', '')} (waiting for its BIOS or keys)")
+        rc |= finish_python(args, outdir, outdir, p["machine"], p["order"], p["board"])
+    return rc
 
 
 def media_path(path: str, outdir: str) -> str:
@@ -1116,16 +1185,18 @@ def main() -> int:
         return ingest_firebeat(args)
     if not args.inputs and not args.romset:
         ap.error("give the game's files (ROM set, CHDs, images), or --exe")
-    # Konami Python: the arcade BIOS's and the MagicGate keys' folders, given with the games
-    for f in list(args.inputs):
-        name = os.path.basename(os.path.normpath(f)).lower()
-        if os.path.isdir(f) and name in ("bios", "keys") and os.path.exists(
-                os.path.join(f, "COH-H31000.BIN" if name == "bios" else "kek.bin")):
-            args.inputs.remove(f)
-            setattr(args, name, getattr(args, name) or f)
-    if not args.inputs:
-        print("ERROR    only the BIOS or the keys: add them with a Konami Python game")
-        return 1
+    # Konami Python: the arcade BIOS and the MagicGate keys, loose or in their folders, kept for
+    # every Python game (dumps/_python/); a game that waited for them is finished now
+    rest = keep_python_support(args, args.inputs)
+    if len(rest) != len(args.inputs):
+        args.inputs = rest
+        waiting = glob.glob(os.path.join(args.out, "*", "machine.pending"))
+        rc = complete_pending(args) if waiting else 0
+        if not args.inputs:
+            if not waiting:
+                print("NEXT     add a Konami Python game: it will use them")
+            return rc
+        print()
     # PC games: their folder (prog/ and data/), read where it is
     pcs = [(f, found) for f in args.inputs if os.path.isdir(f) and (found := pc_folder(f)) is not None]
     if pcs:
