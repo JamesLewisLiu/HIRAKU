@@ -61,7 +61,8 @@ def chdman_command(dirs: list[str]) -> list[str]:
         fs = []
         for d in sorted({os.path.abspath(d) for d in dirs}):
             fs.append(f"--filesystem={d}")
-        return ["flatpak", "run", "--command=chdman", *fs, "org.mamedev.MAME"]
+        # no document portal: the folders are given (the portal, when it is down, stops the run)
+        return ["flatpak", "run", "--no-documents-portal", "--command=chdman", *fs, "org.mamedev.MAME"]
     raise ChdError("neither hiraku-chdcat nor chdman found: install MAME's tools (package mame-tools or mame), "
                    "or MAME's flatpak (flatpak install flathub org.mamedev.MAME)")
 
