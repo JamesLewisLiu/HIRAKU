@@ -2581,9 +2581,8 @@ std::string EamuseServer::answer_j39(const std::string &game, const Request &r) 
     // won (ojama, items: two 32-bit words each; titles: five), experience (clamped by the loader),
     // the last battle's song, chart and category, the title shown, the skill (15 to start), the 51
     // ojama conditions, the ojama and items set, the four parameters, the event points. Checked
-    // against the game's own copy, which it fills with a new player's defaults. Not placed yet:
-    // room, room_start, room_upgrade, record, member_name/pref, recommend_ojama, used_*
-    // 17's the same, 4 bytes before (no titles won): checked against its loader (0x4411c0). 17
+    // against the game's own copy, which it fills with a new player's defaults.
+    // 17's the same, 0x9bc lower, 0x9c0 after its four titles: checked against its loader (0x4411c0). 17
     // starts a new NET player's block with its defaults while 0xa40, the NET credits, is 0
     // (0x43c950): the server counts them, writing those defaults first (0x43c7f0), as 16's
     if (const size_t nv = r.inner.find("<netvs"); !p16 && nv != std::string::npos) {
@@ -2602,18 +2601,31 @@ std::string EamuseServer::answer_j39(const std::string &game, const Request &r) 
             }
             put16(0xa40, credits < 0xffff ? credits + 1 : credits);
         }
-        struct Field { const char *name; size_t at; int count, width; };
+        // the rest as the battle's results fill set's block (17 0x476c95, 18 0x49f4d5) from the
+        // NET state, which holds the record's block (17: the record's offset less 0x7fc, 18 less
+        // 0x1198): what was won and used (ojama, items: two 32-bit words each), the room, where
+        // it started and its step up, the record, the last battle's members (names, prefectures),
+        // the recommended ojama. 17's are 18's 0x9bc lower up to its titles won (four, not five),
+        // 0x9c0 after
+        struct Field { const char *name; size_t at; int count, width; };   // width: bytes, or 13 for a name
         static const Field netvs17[] = {
+            {"get_ojama_0", 0xa0c, 1, 4}, {"get_ojama_1", 0xa10, 1, 4}, {"get_item_0", 0xa14, 1, 4}, {"get_item_1", 0xa18, 1, 4},
+            {"used_ojama_0", 0xa1c, 1, 4}, {"used_ojama_1", 0xa20, 1, 4}, {"used_item_0", 0xa24, 1, 4}, {"used_item_1", 0xa28, 1, 4},
+            {"get_title_0", 0xa2c, 1, 4}, {"get_title_1", 0xa30, 1, 4}, {"get_title_2", 0xa34, 1, 4}, {"get_title_3", 0xa38, 1, 4},
             {"exp", 0xa3c, 1, 4}, {"music_num", 0xa42, 1, 2}, {"sheet_num", 0xa94, 1, 1}, {"category_num", 0xa95, 1, 1},
-            {"title_select", 0xa96, 1, 1}, {"room_skill", 0xa99, 1, 1}, {"ojama_condition", 0xb47, 51, 1},
-            {"set_ojama", 0xbf1, 3, 1}, {"set_item", 0xbf7, 2, 1}, {"parameter", 0xbf9, 4, 1}};
+            {"title_select", 0xa96, 1, 1}, {"room", 0xa98, 1, 1}, {"room_skill", 0xa99, 1, 1}, {"room_start", 0xa9a, 1, 1},
+            {"room_upgrade", 0xa9b, 1, 1}, {"record", 0xa9c, 1, 1}, {"member_name", 0xab0, 3, 13}, {"member_pref", 0xb25, 3, 1},
+            {"ojama_condition", 0xb47, 51, 1}, {"set_ojama", 0xbf1, 3, 1}, {"recommend_ojama", 0xbf4, 3, 1}, {"set_item", 0xbf7, 2, 1},
+            {"parameter", 0xbf9, 4, 1}};
         static const Field netvs18[] = {
             {"get_ojama_0", 0x13c8, 1, 4}, {"get_ojama_1", 0x13cc, 1, 4}, {"get_item_0", 0x13d0, 1, 4}, {"get_item_1", 0x13d4, 1, 4},
+            {"used_ojama_0", 0x13d8, 1, 4}, {"used_ojama_1", 0x13dc, 1, 4}, {"used_item_0", 0x13e0, 1, 4}, {"used_item_1", 0x13e4, 1, 4},
             {"get_title_0", 0x13e8, 1, 4}, {"get_title_1", 0x13ec, 1, 4}, {"get_title_2", 0x13f0, 1, 4}, {"get_title_3", 0x13f4, 1, 4},
             {"get_title_4", 0x13f8, 1, 4}, {"exp", 0x13fc, 1, 4}, {"music_num", 0x1402, 1, 2}, {"sheet_num", 0x1454, 1, 1},
-            {"category_num", 0x1455, 1, 1}, {"set_title", 0x1456, 1, 1}, {"room_skill", 0x1459, 1, 1},
-            {"ojama_condition", 0x1507, 51, 1}, {"set_ojama", 0x15b1, 3, 1}, {"set_item", 0x15b7, 2, 1},
-            {"parameter", 0x15b9, 4, 1}, {"event_point", 0x15bd, 1, 1}};
+            {"category_num", 0x1455, 1, 1}, {"set_title", 0x1456, 1, 1}, {"room", 0x1458, 1, 1}, {"room_skill", 0x1459, 1, 1},
+            {"room_start", 0x145a, 1, 1}, {"room_upgrade", 0x145b, 1, 1}, {"record", 0x145c, 1, 1}, {"member_name", 0x1470, 3, 13},
+            {"member_pref", 0x14e5, 3, 1}, {"ojama_condition", 0x1507, 51, 1}, {"set_ojama", 0x15b1, 3, 1},
+            {"recommend_ojama", 0x15b4, 3, 1}, {"set_item", 0x15b7, 2, 1}, {"parameter", 0x15b9, 4, 1}, {"event_point", 0x15bd, 1, 1}};
         for (const Field &fd : p17 ? std::vector<Field>(std::begin(netvs17), std::end(netvs17))
                                    : std::vector<Field>(std::begin(netvs18), std::end(netvs18))) {
             if (!m.count(fd.name)) continue;
@@ -2621,9 +2633,14 @@ std::string EamuseServer::answer_j39(const std::string &game, const Request &r) 
             size_t from = 0;
             for (int i = 0; i < fd.count; i++) {
                 const size_t comma = v.find(',', from);
-                const long n = std::strtol(v.c_str() + from, nullptr, 10);
+                const std::string one = v.substr(from, comma == std::string::npos ? std::string::npos : comma - from);
                 const size_t place = fd.at + (size_t)i * (size_t)fd.width;
-                for (int b = 0; b < fd.width && place + (size_t)b < rec.size(); b++) rec[place + (size_t)b] = (char)(n >> (8 * b) & 255);
+                if (fd.width == 13) {
+                    for (size_t b = 0; b < 13 && place + b < rec.size(); b++) rec[place + b] = b < one.size() && b < 12 ? one[b] : '\0';
+                } else {
+                    const long n = std::strtol(one.c_str(), nullptr, 10);
+                    for (int b = 0; b < fd.width && place + (size_t)b < rec.size(); b++) rec[place + (size_t)b] = (char)(n >> (8 * b) & 255);
+                }
                 if (comma == std::string::npos) break;
                 from = comma + 1;
             }

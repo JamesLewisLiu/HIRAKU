@@ -100,6 +100,24 @@ try:
     check('18 entry', re.search(r'update="(\d)" entry="(\d+)" rank="(\d+)" hi_score="(\d+)"', ans).groups(), ('1', '1', '1', '88000'))
     ans = call(M18, f'<ranking method="entry" ref_id="{REF}" ir_num="2" sheet_num="1" chara_num="5" option="0" score="70000" cool="400" norma_1="0" norma_2="0" pref="13"></ranking>').decode()
     check('18 entry, a worse one', re.search(r'update="(\d)" entry="(\d+)" rank="(\d+)" hi_score="(\d+)"', ans).groups(), ('0', '1', '1', '88000'))
+    # NET TAISEN: what was won and used, the room, the last members (17 0x9bc lower before its
+    # titles, 0x9c0 after)
+    nv = ('get_ojama_0="462879" get_ojama_1="28" get_item_0="129" get_item_1="0" used_ojama_0="65538" used_ojama_1="4" '
+          'used_item_0="129" used_item_1="7" room="3" room_skill="19" room_start="2" room_upgrade="1" record="2" '
+          'member_name="AAA,BBBB,CC" member_pref="10,0,47" recommend_ojama="5,6,7" set_ojama="1,16,34"')
+    call(M18, f'<playerdata method="set" ref_id="{REF}" play_mode="7"><netvs {nv} get_title_0="268435456"/></playerdata>')
+    r = rec('J39')
+    check('18 won/used', [u32(r, 0x13c8 + 4 * k) for k in range(8)], [462879, 28, 129, 0, 65538, 4, 129, 7])
+    check('18 room, skill, start, upgrade, record', list(r[0x1458:0x145d]), [3, 19, 2, 1, 2])
+    check('18 members', (r[0x1470:0x1474], r[0x147d:0x1482], r[0x148a:0x148d], list(r[0x14e5:0x14e8])), (b'AAA\0', b'BBBB\0', b'CC\0', [10, 0, 47]))
+    check('18 recommend, set ojama', (list(r[0x15b4:0x15b7]), list(r[0x15b1:0x15b4])), ([5, 6, 7], [1, 16, 34]))
+    call(M17, f'<playerdata method="set" ref_id="{REF}" play_mode="7"><netvs {nv} get_title_0="1" get_title_3="9"/></playerdata>')
+    r = rec('I17')
+    check('17 won/used', [u32(r, 0xa0c + 4 * k) for k in range(8)], [462879, 28, 129, 0, 65538, 4, 129, 7])
+    check('17 titles 0, 3', (u32(r, 0xa2c), u32(r, 0xa38)), (1, 9))
+    check('17 room, skill, start, upgrade, record', list(r[0xa98:0xa9d]), [3, 19, 2, 1, 2])
+    check('17 members', (r[0xab0:0xab4], list(r[0xb25:0xb28])), (b'AAA\0', [10, 0, 47]))
+    check('17 recommend, set ojama', (list(r[0xbf4:0xbf7]), list(r[0xbf1:0xbf4])), ([5, 6, 7], [1, 16, 34]))
 finally:
     srv.terminate()
     shutil.rmtree(D, ignore_errors=True)
