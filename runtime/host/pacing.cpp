@@ -73,15 +73,33 @@ void sleep_until(int64_t t) {
     prof::g_wait_ticks += prof::ticks() - w0;
 }
 
-void refresh_from_mode() {
-    if (!g_win) return;
+// The display mode's refresh period, ns (0: unknown)
+int64_t mode_period() {
+    if (!g_win) return 0;
     const SDL_DisplayMode *m = SDL_GetCurrentDisplayMode(SDL_GetDisplayForWindow(g_win));
-    if (!m) return;
+    if (!m) return 0;
     if (m->refresh_rate_numerator > 0 && m->refresh_rate_denominator > 0)
-        g_T = (int64_t)(1e9 * m->refresh_rate_denominator / m->refresh_rate_numerator + 0.5);
-    else if (m->refresh_rate > 0)
-        g_T = (int64_t)(1e9 / m->refresh_rate + 0.5);
+        return (int64_t)(1e9 * m->refresh_rate_denominator / m->refresh_rate_numerator + 0.5);
+    return m->refresh_rate > 0 ? (int64_t)(1e9 / m->refresh_rate + 0.5) : 0;
 }
+
+void refresh_from_mode() {
+    if (const int64_t t = mode_period(); t > 0) g_T = t;
+}
+
+#ifdef _WIN32
+// DWM's refresh period is its estimate, not the mode's: after a stall, in fullscreen and on a
+// variable-refresh display it wanders (a 120 Hz cabinet's read 86 to 114 Hz, 2026-10-23: display
+// sync turned off and on with it ~200 times a run, the grid it aims frames at moving each time).
+// The mode's rate decides; DWM's refines it, smoothed, while it is within 0.5 % of the mode's.
+int64_t g_dwm_lo = 0, g_dwm_hi = 0;   // DWM's own periods seen, for the report
+int64_t dwm_period(int64_t p) {
+    g_dwm_lo = g_dwm_lo ? std::min(g_dwm_lo, p) : p, g_dwm_hi = std::max(g_dwm_hi, p);
+    const int64_t m = mode_period();
+    if (m > 0 && std::llabs(p - m) > m / 200) p = m;
+    return g_T > 0 && std::llabs(g_T - p) <= p / 200 ? g_T + (p - g_T) / 64 : p;
+}
+#endif
 
 // Print the state when it changes (`key`: what counts as a change), not every flutter of the rates.
 std::string g_key;
@@ -284,7 +302,7 @@ void init(SDL_Window *win, bool enabled) {
 #endif
 #ifdef _WIN32
     int64_t v, p;
-    if (enabled && dwm::vblank(v, p)) g_dwm = true, g_T = p, g_T_exact = true;
+    if (enabled && dwm::vblank(v, p)) g_dwm = true, g_T = dwm_period(p), g_T_exact = true;
 #endif
     if (!enabled) announce("disabled", "off (--display-sync off): frames are shown as they come");
 }
@@ -334,7 +352,7 @@ static bool frame_exact(double period, double hz) {
     char b[256];
     snprintf(b, sizeof b, "on: %.2f Hz display, smooth motion: every refresh a picture of its own moment, the game at its "
              "own %.2f Hz (exact speed)", hz, 1.0 / period);
-    announce("exact " + std::to_string(std::lround(hz * 100)) + " " + std::to_string(std::lround(10.0 / period)), b);
+    announce("exact " + std::to_string(std::lround(hz * 10)) + " " + std::to_string(std::lround(10.0 / period)), b);
     const int64_t now = (int64_t)prof::now_ns();
     if (!g_lead_set) g_lead = g_T / 2, g_lead_set = true;
     // the first refresh this frame can make: the one after the last frame's (g_target + g_k * T)
@@ -394,7 +412,7 @@ bool frame(double period) {
 #ifdef _WIN32
     // DWM's vblank: the refresh period, and the grid's phase (the commits' targets on it)
     if (int64_t v, p; g_dwm && dwm::vblank(v, p)) {
-        g_T = p;
+        g_T = p = dwm_period(p);
         if (g_target > 0) g_target -= (g_target - v) - std::llround((double)(g_target - v) / (double)p) * p;
         else g_target = v;
     }
@@ -414,7 +432,7 @@ bool frame(double period) {
                  "off: the %.2f Hz display doesn't fit the game's %.2f Hz, so frames are shown as they come and "
                  "scrolling judders (60, 120 or 240 Hz fit; a variable-refresh display doesn't need this)",
                  hz, g_game_hz);
-        announce("off " + std::to_string(std::lround(hz * 100)), b);
+        announce("off " + std::to_string(std::lround(hz * 10)), b);
         return false;
     }
     g_active = true;
@@ -423,7 +441,7 @@ bool frame(double period) {
     // said again when the game changes its video mode (pop'n boots at 59.94 Hz, then runs at 58.49)
     snprintf(b, sizeof b, "on: %.2f Hz display, %d refresh%s per frame, the game's %.2f Hz at %+.1f %% speed", hz, k,
              k == 1 ? "" : "es", 1.0 / period, (1e9 / ((double)k * (double)g_T) * period - 1.0) * 100.0);
-    announce("on " + std::to_string(std::lround(hz * 100)) + " " + std::to_string(k) + " " +
+    announce("on " + std::to_string(std::lround(hz * 10)) + " " + std::to_string(k) + " " +
                  std::to_string(std::lround(10.0 / period)), b);
 
     const int64_t now = (int64_t)prof::now_ns();
@@ -596,6 +614,14 @@ std::string describe() {
                  (unsigned long long)n_extra_discarded);
         out += b;
     }
+#ifdef _WIN32
+    if (g_dwm && g_dwm_lo > 0) {   // DWM's own estimates (dwm_period), against the mode's
+        const int64_t m = mode_period();
+        snprintf(b, sizeof b, "\nvideo: DWM's refresh period read %.2f to %.2f Hz over the run; the display mode's %.2f Hz",
+                 1e9 / (double)g_dwm_hi, 1e9 / (double)g_dwm_lo, m > 0 ? 1e9 / (double)m : 0.0);
+        out += b;
+    }
+#endif
     return out;
 }
 
