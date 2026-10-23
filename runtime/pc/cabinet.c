@@ -153,6 +153,29 @@ static uint32_t us_since_go(struct hk_pc_link *l) {
     return (uint32_t)((uint64_t)(uint32_t)((uint32_t)now.QuadPart - l->go_qpc) * 1000000 / (uint64_t)f.QuadPart);
 }
 
+int hk_host_us(uint32_t *us) {
+    struct hk_pc_link *l = hk_link();
+    if (l == &g_alone || !l->go_count) return 0;
+    *us = l->go_seen_host_us + us_since_go(l);
+    return 1;
+}
+
+// The buttons that went down since the last read and are up again (a press shorter than the time
+// between two reads, or two changes handed on at once): down for this read, so the game sees them
+static uint32_t taps(struct hk_pc_link *l) {
+    static uint32_t seen, state;
+    static int started;
+    const uint32_t end = l->pad_ev_seq;
+    uint32_t downs = 0;
+    if (!started || end - seen > HK_PC_PAD_EVENTS) seen = end, state = l->pad, started = 1;
+    for (; seen != end; seen++) {
+        const uint32_t pad = l->pad_ev[seen % HK_PC_PAD_EVENTS].pad;
+        downs |= pad & ~state;
+        state = pad;
+    }
+    return downs & ~l->pad & 0x1ff00;
+}
+
 uint32_t hk_pad_now(void) {
     struct hk_pc_link *l = hk_link();
     static uint32_t read_at_go;   // the game's first read of its pad in a frame: when (pad_read_us)
@@ -160,6 +183,9 @@ uint32_t hk_pad_now(void) {
         read_at_go = l->go_count;
         l->pad_read_us = us_since_go(l);
     }
+    uint32_t host;
+    if (hk_host_us(&host)) l->pad_read_host_us = host;
+    l->pad_ev_seen = l->pad_ev_seq;
     // the keyboard (each key a call that Wine may take to its server): read at most once a
     // millisecond, however often the game reads its pad (pop'n 18 reads it many times a frame)
     static uint32_t keys;
@@ -174,7 +200,7 @@ uint32_t hk_pad_now(void) {
         for (int i = 0; i < 32; i++)
             if (key_down(l->keys[i][0]) || key_down(l->keys[i][1])) keys |= 1u << i;
     }
-    uint32_t b = l->pad | keys;
+    uint32_t b = l->pad | taps(l) | keys;
     l->game_alive++;
     b |= (scripted() & ~(1u << 22)) | coin_switch();
     static uint32_t was;
@@ -566,6 +592,7 @@ static void wait_for_go(void) {
     }
     LARGE_INTEGER t;
     QueryPerformanceCounter(&t);
+    l->go_seen_host_us = l->go_host_us;
     l->go_qpc = (uint32_t)t.QuadPart;
     l->go_count = l->go_count + 1;
 }
@@ -1041,6 +1068,7 @@ void hk_cabinet_start(void) {
     hk_link();
     if (host_shows()) unlimit_frames();
     hk_vsock_patch_program();
+    hk_press_patch_program();
     if (g_npatches) apply_patches();   // the program's own code and data, as it's loaded
     patch_game_modules();
     // LoadLibraryA too, in the program, so modules loaded later get the same

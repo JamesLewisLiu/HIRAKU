@@ -12,6 +12,12 @@
 #include <sstream>
 #include <stdexcept>
 
+#ifdef _WIN32
+#include <windows.h>
+#else
+#include <iconv.h>
+#endif
+
 #include "host/png.h"
 #include "host/pythondisk.h"
 #include "shell/core.h"
@@ -56,7 +62,7 @@ std::vector<Table> parse(const std::string &text, const std::string &file) {
             out.push_back(t);
             continue;
         }
-        if (line[0] == '[') fail("only [[patch]], [[bytes]], [[file]] and [[rate]] tables");
+        if (line[0] == '[') fail("only [[patch]], [[text]], [[bytes]], [[file]] and [[rate]] tables");
         const size_t eq = line.find('=');
         if (eq == std::string::npos) fail("expected key = value");
         std::string key = line.substr(0, eq), val = line.substr(eq + 1);
@@ -97,6 +103,47 @@ struct Patch {
     bool between_ticks = false;
 };
 
+// [[text]]: a string of the game's, found where it is (MemoryPatches once found)
+struct Text {
+    TextPatch t;
+    bool done = false;
+    uint64_t look_at = 0;   // the frame to look for it again (emulated cores: once a second)
+};
+
+// A mod's UTF-8 in the game's Shift-JIS (Windows' code page 932, as Konami's tools wrote it);
+// plain ASCII as it is. false: a character Shift-JIS hasn't
+bool to_sjis(const std::string &utf8, std::vector<uint8_t> &out) {
+    out.clear();
+    if (std::all_of(utf8.begin(), utf8.end(), [](char c) { return (unsigned char)c < 0x80; })) {
+        out.assign(utf8.begin(), utf8.end());
+        return true;
+    }
+#ifdef _WIN32
+    const int nw = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, utf8.data(), (int)utf8.size(), nullptr, 0);
+    if (nw <= 0) return false;
+    std::wstring w((size_t)nw, L'\0');
+    MultiByteToWideChar(CP_UTF8, 0, utf8.data(), (int)utf8.size(), w.data(), nw);
+    BOOL lost = FALSE;
+    const int n = WideCharToMultiByte(932, 0, w.data(), nw, nullptr, 0, nullptr, &lost);
+    if (n <= 0 || lost) return false;
+    out.resize((size_t)n);
+    WideCharToMultiByte(932, 0, w.data(), nw, (char *)out.data(), n, nullptr, nullptr);
+    return true;
+#else
+    iconv_t cd = iconv_open("CP932", "UTF-8");
+    if (cd == (iconv_t)-1) return false;
+    std::string in = utf8;
+    out.resize(in.size() * 2 + 4);
+    char *ip = in.data(), *op = (char *)out.data();
+    size_t il = in.size(), ol = out.size();
+    const size_t r = iconv(cd, &ip, &il, &op, &ol);
+    iconv_close(cd);
+    if (r == (size_t)-1 || il) return false;
+    out.resize(out.size() - ol);
+    return true;
+#endif
+}
+
 // [[rate]]: the machine's vsync at hz while a word of the game's memory changes from frame to
 // frame (pop'n music 14's song clock: the notes are drawn from it, so they move smoothly); hz 0:
 // the display's refresh rate
@@ -123,6 +170,7 @@ struct Mod {
 };
 
 std::vector<Patch> g_patches;
+std::vector<Text> g_texts;
 std::vector<Rate> g_rates;
 std::vector<Mod> g_mods;
 std::map<std::string, std::string> g_folder_files;   // a folder medium's file -> the mod's (folder_files())
@@ -474,6 +522,24 @@ bool load(const std::vector<std::string> &dirs, const std::string &game, const s
                     if (p.replace.empty()) fail("'replace' is empty");
                     if (!p.original.empty() && p.original.size() != p.replace.size()) fail("'original' and 'replace' are as long as each other");
                     g_patches.push_back(std::move(p));
+                } else if (t.kind == "text") {
+                    known({"find", "replace", "from", "to", "every"});
+                    Text x;
+                    x.t.mod = mod.name;
+                    x.t.line = where;
+                    x.t.label = str("find", true);
+                    if (!to_sjis(str("find", true), x.t.find)) fail("'find' has a character Shift-JIS hasn't");
+                    if (!to_sjis(str("replace", true), x.t.replace)) fail("'replace' has a character Shift-JIS hasn't");
+                    if (x.t.find.empty()) fail("'find' is empty");
+                    if (std::count(x.t.find.begin(), x.t.find.end(), 0) || std::count(x.t.replace.begin(), x.t.replace.end(), 0))
+                        fail("a text has no zero byte in it");
+                    if (t.values.count("from") != t.values.count("to")) fail("'from' and 'to' go together");
+                    if (t.values.count("from")) {
+                        x.t.from = (uint32_t)num("from"), x.t.to = (uint32_t)num("to");
+                        if (x.t.to <= x.t.from) fail("'to' is after 'from'");
+                    }
+                    x.t.every = flag("every");
+                    g_texts.push_back(std::move(x));
                 } else if (t.kind == "rate") {
                     known({"hz", "while_changing", "while_equal", "value"});
                     Rate r;
@@ -598,6 +664,33 @@ void frame() {
         g_owed = 0;
         g_tick = true;
     }
+    // [[text]]: looked for once a second until found, then patches as any
+    const uint64_t f = core().frame_count();
+    for (Text &x : g_texts) {
+        if (x.done || f < x.look_at) continue;
+        x.look_at = f + 60;
+        if (!x.t.to) {
+            fprintf(stderr, "mods: %s: a [[text]] on this machine needs 'from' and 'to' (where to look) (%s)\n", x.t.mod.c_str(),
+                    x.t.line.c_str());
+            x.done = true;
+            continue;
+        }
+        const uint8_t *m = core().mem(x.t.from, x.t.to - x.t.from);
+        if (!m) continue;
+        std::string why;
+        const auto found = find_text(x.t, m, x.t.to - x.t.from, x.t.from, &why);
+        if (found.empty() && why.empty()) continue;   // not loaded yet
+        x.done = true;
+        if (!why.empty()) {
+            fprintf(stderr, "mods: %s: %s\n", x.t.mod.c_str(), why.c_str());
+            continue;
+        }
+        for (const MemoryPatch &mp : found) {
+            Patch p;
+            p.mod = mp.mod, p.address = mp.address, p.original = mp.original, p.replace = mp.replace;
+            g_patches.push_back(std::move(p));
+        }
+    }
     for (Patch &p : g_patches) {
         if (p.done) continue;
         if (p.while_rate && (!rate_on || (p.between_ticks && g_tick))) {   // the original back, if the patch is there
@@ -627,6 +720,46 @@ std::vector<MemoryPatch> memory_patches() {
     std::vector<MemoryPatch> out;
     for (const Patch &p : g_patches)
         if (!p.while_rate) out.push_back({p.mod, p.address, p.original, p.replace, p.once});
+    return out;
+}
+
+std::vector<TextPatch> text_patches() {
+    std::vector<TextPatch> out;
+    for (Text &x : g_texts) out.push_back(x.t), x.done = true;   // the core's to look for now, not frame()'s
+    return out;
+}
+
+std::vector<MemoryPatch> find_text(const TextPatch &t, const uint8_t *mem, size_t n, uint32_t base, std::string *why) {
+    std::vector<MemoryPatch> out;
+    const size_t len = t.find.size();
+    size_t places = 0, small = SIZE_MAX;
+    for (size_t i = 0; i + len < n; i++) {
+        if (mem[i] != t.find[0] || (i && mem[i - 1]) || mem[i + len] || memcmp(mem + i, t.find.data(), len)) continue;
+        places++;
+        // its room: the string, its zero and the zeros after it (up to the next string), a zero kept
+        size_t room = len;
+        while (i + room < n && !mem[i + room] && room < len + 256) room++;
+        const size_t w = std::max(len, t.replace.size() + 1);
+        if (w > room) {
+            small = std::min(small, room - 1);
+            continue;
+        }
+        MemoryPatch p;
+        p.mod = t.mod, p.address = base + (uint32_t)i;
+        p.original.assign(mem + i, mem + i + w);
+        p.replace = t.replace;
+        p.replace.resize(w, 0);
+        out.push_back(std::move(p));
+    }
+    char a[96];
+    if (places > 1 && !t.every) {
+        snprintf(a, sizeof a, "found in %zu places (give 'from' and 'to', or every = true)", places);
+        *why = "\"" + t.label + "\" " + a + " (" + t.line + ")";
+        out.clear();
+    } else if (out.empty() && places) {
+        snprintf(a, sizeof a, "has room for %zu bytes, the replacement is %zu", small, t.replace.size());
+        *why = "\"" + t.label + "\" " + a + " (" + t.line + ")";
+    }
     return out;
 }
 

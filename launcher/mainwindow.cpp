@@ -855,6 +855,11 @@ QStringList MainWindow::arguments(const Game &g) const {
         for (int n = 0; n < 2; n++)
             if (QString c = s.value(QString("eamuse/card%1").arg(n)).toString(); !c.isEmpty()) a << QString("-card%1").arg(n) << c;
         if (QString ac = s.value("eamuse/autocard", "off").toString(); ac != "off") a << "-autocard" << ac;
+        if (s.value("eamuse/autopin", false).toBool()) a << "-autopin";
+    }
+    if (g.core == "pc") {   // pop'n music 15-18's presses (runtime/pc/press.c)
+        if (s.value("game/pressTime", false).toBool()) a << "--press-time";
+        if (int ms = s.value("game/judgeOffset", 0).toInt(); ms) a << "--judge-offset" << QString::number(ms);
     }
     if (g.core == "python" || g.core == "pc" || g.family == "drmn" || g.family == "gtrf") {   // the e-AMUSEMENT card readers (runtime/host/readers.h)
         const QString r0 = s.value("readers/serial0").toString(), r1 = s.value("readers/serial1").toString();

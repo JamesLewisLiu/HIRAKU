@@ -20,6 +20,7 @@
 // file only needs the changes.
 #pragma once
 
+#include <chrono>
 #include <string>
 
 union SDL_Event;
@@ -36,5 +37,9 @@ void input_joystick_added(unsigned int instance_id);   // hot-plugged controller
 void input_joystick_removed(unsigned int instance_id); // unplugged
 void input_update(double elapsed_ms);                 // turntable keys, analog axes
 std::string input_describe();                         // the active bindings, for --help
+// When the input the core is being given (Core::set_input) happened, on the steady clock: the
+// controller's or keyboard's own event time, so a press between two frames keeps its place
+// (hiraku-pc's --press-time judges by it); now for inputs that come without one
+std::chrono::steady_clock::time_point input_time();
 
 }  // namespace hk::host

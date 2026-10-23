@@ -4,6 +4,8 @@
 #include <cstdio>
 #include <fstream>
 #include <map>
+#include <mutex>
+#include <sstream>
 #include <stdexcept>
 
 #include "../shell/core.h"
@@ -62,9 +64,10 @@ std::string button(const std::string &n) {
 
 }  // namespace
 
-bool load(const std::string &path) {
-    std::ifstream in(path);
-    if (!in) return true;   // a game without codes
+namespace {
+
+// Macros from `in` (a macros.txt's text) added to `out`; false on a parse error (printed, as from `path`)
+bool parse(std::istream &in, const std::string &path, std::vector<Macro> &out) {
     Macro *m = nullptr;
     uint64_t cursor = 0;
     int tap = 8, gap = 16;
@@ -82,8 +85,8 @@ bool load(const std::string &path) {
             if (!m) {
                 if (t[0] == "button") g_buttons[t.at(1)] = t.at(2);
                 else if (t[0] == "macro") {
-                    g_macros.push_back({});
-                    m = &g_macros.back();
+                    out.push_back({});
+                    m = &out.back();
                     m->info.name = t.at(1);
                     cursor = 0;
                     tap = 8;
@@ -113,16 +116,37 @@ bool load(const std::string &path) {
             else throw std::runtime_error("unknown step '" + t[0] + "'");
         } catch (const std::exception &e) {
             fprintf(stderr, "%s:%d: %s\n", path.c_str(), n, e.what());
-            g_macros.clear();
+            out.clear();
             return false;
         }
     }
     if (m) {
         fprintf(stderr, "%s: macro \"%s\" has no 'end'\n", path.c_str(), m->info.name.c_str());
-        g_macros.clear();
+        out.clear();
         return false;
     }
+    return true;
+}
+
+std::mutex g_posted_lock;
+std::vector<Macro> g_posted;   // post(): run from the next frame
+
+}  // namespace
+
+bool load(const std::string &path) {
+    std::ifstream in(path);
+    if (!in) return true;   // a game without codes
+    if (!parse(in, path, g_macros)) return false;
     for (auto &mm : g_macros) g_infos.push_back(mm.info);
+    return true;
+}
+
+bool post(const std::string &name, const std::string &steps) {
+    std::istringstream in("macro \"" + name + "\"\n" + steps + "\nend\n");
+    std::vector<Macro> m;
+    if (!parse(in, name, m) || m.size() != 1) return false;
+    std::lock_guard<std::mutex> hold(g_posted_lock);
+    g_posted.push_back(std::move(m[0]));
     return true;
 }
 
@@ -157,6 +181,14 @@ bool schedule(const std::string &spec) {
 }
 
 void frame(uint64_t f) {
+    {
+        std::lock_guard<std::mutex> hold(g_posted_lock);
+        for (Macro &m : g_posted) {
+            g_macros.push_back(std::move(m));
+            g_scheduled.emplace(f, g_macros.size() - 1);
+        }
+        g_posted.clear();
+    }
     if (g_running < 0)   // a macro due while another ran starts after it
         if (auto it = g_scheduled.begin(); it != g_scheduled.end() && it->first <= f) {
             g_running = (int)it->second;

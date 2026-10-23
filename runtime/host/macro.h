@@ -41,6 +41,10 @@ bool trigger(size_t index);
 // Run a macro by name: at its own `at` frame, or at `frame` if given (NAME@FRAME); one due while
 // another runs waits for it. False if unknown.
 bool schedule(const std::string &spec);
+// Run steps as a macro's (macros.txt's spelling, one a line, without `macro` and `end`) from the
+// next frame, or after the one running: what HIRAKU types for the player (--auto-pin). Any thread.
+// False if they don't parse (printed).
+bool post(const std::string &name, const std::string &steps);
 // Call once per frame (from the frame hook).
 void frame(uint64_t f);
 // Told when a macro starts ("" when it ends): the window shows it in its title.

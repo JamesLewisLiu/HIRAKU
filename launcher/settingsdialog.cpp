@@ -446,6 +446,20 @@ SettingsDialog::SettingsDialog(QWidget *parent) : QDialog(parent) {
                             "sound no longer matches MAME's. On by default; off is MAME's timing (--mame-sound; "
                             "docs/PLAY.md, Latency).");
     fq->addRow("", m_fineSound);
+    m_pressTime = new QCheckBox("Presses judged when they happened (pop'n music 15-18)");
+    m_pressTime->setChecked(s.value("game/pressTime", false).toBool());
+    m_pressTime->setToolTip("The game judges a press at the frame it reads the buttons in, up to a frame (17 ms) after "
+                            "it happened, as on its cabinet. On: each press is judged at the moment the controller "
+                            "gave it (--press-time; docs/PLAY.md, PC).");
+    fq->addRow("", m_pressTime);
+    m_judgeOffset = new QSpinBox;
+    m_judgeOffset->setRange(-200, 200);
+    m_judgeOffset->setSuffix(" ms");
+    m_judgeOffset->setValue(s.value("game/judgeOffset", 0).toInt());
+    m_judgeOffset->setToolTip("pop'n music 15-18: each press judged this much earlier than it came (--judge-offset), for a "
+                              "TV or a sound system that shows or plays late, so presses made in time with it count as "
+                              "in time. Positive when the notes look late; in 4 ms steps, as the game judges.");
+    fq->addRow("Judgement offset:", m_judgeOffset);
     v->addWidget(audio);
     v->addWidget(latency);
     auto *kbm = new QGroupBox("Keyboardmania");
@@ -510,6 +524,11 @@ SettingsDialog::SettingsDialog(QWidget *parent) : QDialog(parent) {
     m_autocard->setCurrentIndex(std::max(0, m_autocard->findData(s.value("eamuse/autocard", "off").toString())));
     m_autocard->setToolTip("-autocard: the card is put in whenever the reader waits for one, so Insert needn't be pressed.");
     fe->addRow("Auto Card Insert:", m_autocard);
+    m_autopin = new QCheckBox("Type the card's PIN (pop'n music 14-18)");
+    m_autopin->setChecked(s.value("eamuse/autopin", false).toBool());
+    m_autopin->setToolTip("-autopin: when the game asks for a known card's PIN, HIRAKU types it on the 10-key, as the "
+                          "server inside HIRAKU keeps it (not with a server on the network).");
+    fe->addRow("", m_autopin);
     v->addWidget(cards);
 
     // real readers, as spice2x's -reader, -scard and -cardio (runtime/host/readers.h)
@@ -709,6 +728,9 @@ void SettingsDialog::accept() {
     s.setValue("eamuse/pcbid", m_pcbid->text().trimmed().toUpper());
     for (int n = 0; n < 2; n++) s.setValue(QString("eamuse/card%1").arg(n), m_card[n]->text().trimmed().toUpper());
     s.setValue("eamuse/autocard", m_autocard->currentData().toString());
+    s.setValue("eamuse/autopin", m_autopin->isChecked());
+    s.setValue("game/pressTime", m_pressTime->isChecked());
+    s.setValue("game/judgeOffset", m_judgeOffset->value());
     for (int n = 0; n < 2; n++) s.setValue(QString("readers/serial%1").arg(n), m_reader[n]->currentText().trimmed());
     s.setValue("readers/scard", m_scard->isChecked());
     s.setValue("readers/cardio", m_cardio->isChecked());

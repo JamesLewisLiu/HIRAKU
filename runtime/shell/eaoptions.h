@@ -12,6 +12,8 @@
 //                             card0.txt / card1.txt: the working directory's, then the save folder's
 //   -autocard off|p1|p2|both  present the card(s) to the reader whenever it waits for one, so
 //                             Insert needn't be pressed
+//   -autopin                  HIRAKU's: the card's PIN typed on the 10-key when the game asks for
+//                             it, as HIRAKU's own server keeps it (pop'n 14-18)
 //
 // Each also takes two dashes (--url ...). main.cpp gives every single-dash long option two.
 #pragma once
@@ -29,6 +31,7 @@ struct EaOptions {
     std::string url, pcbid;
     std::string card[2];               // "" = none given
     bool autocard[2] = {false, false};
+    bool autopin = false;
 
     // One option (two dashes). false: not one of these. A bad value sets *error.
     bool option(const std::string &name, const std::function<std::string()> &value, std::string *error) {
@@ -50,6 +53,7 @@ struct EaOptions {
             if (!hex(c, 16)) *error = name.substr(1) + ": a card number is 16 hex digits (E004...), not \"" + c + "\"";
             return true;
         }
+        if (name == "--autopin") { autopin = true; return true; }
         if (name == "--autocard") {
             const std::string v = value();
             autocard[0] = v == "p1" || v == "both";
@@ -79,6 +83,16 @@ struct EaOptions {
         }
     }
 
+    // -autopin's typing, as a macro's steps (host/macro.h): `wait` frames after the card was read,
+    // the PIN's digits on the 10-key, then its Enter (00) if the game wants one
+    static std::string pin_steps(const std::string &pin, int wait, bool enter) {
+        std::string s = "wait " + std::to_string(wait) + "\ntap 6 gap 20\n";
+        for (char c : pin)
+            if (std::isdigit((unsigned char)c)) s += "press \"Keypad " + std::string(1, c) + "\"\n";
+        if (enter) s += "press \"Keypad Enter\"\n";
+        return s;
+    }
+
     bool online() const { return !url.empty(); }
     // url with its scheme: spice2x's "host:port" form is plain HTTP
     std::string http_url() const { return url.find("://") == std::string::npos ? "http://" + url : url; }
@@ -91,7 +105,9 @@ struct EaOptions {
                "  -p PCBID             the cabinet's PCBID (20 hex digits) in the game's calls\n"
                "  -card0 NUMBER        player 1's card number (16 hex digits, E004...); default: card0.txt in\n"
                "                       the working directory or the save folder (-card1, card1.txt: player 2)\n"
-               "  -autocard off|p1|p2|both  the card is presented whenever the reader waits for one\n";
+               "  -autocard off|p1|p2|both  the card is presented whenever the reader waits for one\n"
+               "  -autopin             the card's PIN typed for the player when the game asks for it (the\n"
+               "                       server inside HIRAKU keeps it; pop'n 14-18)\n";
     }
 
 private:

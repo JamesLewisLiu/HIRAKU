@@ -56,7 +56,23 @@ block lists (the launcher's ticks do that).
 
 ## Text
 
-A game's text in its program is changed by `[[patch]]` at its address. `tools/modtext.py`
+The simplest way is `[[text]]`: the string as the game shows it and its replacement, as popnhax's
+translation dictionaries have them for the later pop'n music games. HIRAKU finds it as a whole
+string (a zero byte before and after it, so a longer string holding the same words isn't
+changed) and puts the replacement there, the rest zeros. Its room is the string, its zero and the
+zeros after it, up to the next string; a replacement that doesn't fit is refused (the log says
+how much room there is), and one string must keep a zero at its end. Where it's looked for:
+- on the PC games, in the program as Windows loads it, once at the start (`from` and `to`, at the
+  program's addresses, narrow it); every program date of a game finds its own place, so one mod
+  serves all of them;
+- on the emulated machines, in the range `from`..`to` of the main CPU's memory (required), once a
+  second until it's there (a program loaded later is found when it comes), then kept in place as
+  a `[[patch]]` with what was found as its `original`.
+
+A text found in several places is refused unless `every = true` (or a narrower range): the same
+words can be a menu's and a file name's. The log says each one found (`mods: ... patch at ...`).
+
+`[[patch]]` at an address does the same for one place, and any bytes. `tools/modtext.py`
 writes them: `tools/modtext.py strings DUMP [LO HI] > text.tsv` lists the strings in a RAM dump
 (the Python core's `HK_PY_EE_DUMP=FRAME:FILE`; any core's memory saved from address 0) with their
 room (the string, its zero and the zeros after it), Japanese or ASCII with a space unless `--all`;
@@ -178,6 +194,13 @@ replace  = "4d4f4444 45442120 21"   # hex: what goes there (as long as original)
 # into its neighbours. With `original`, a patch waits for the bytes it was made for. Bytes are in the
 # machine's own order: big-endian on DJ Main (68000) and Firebeat (PowerPC), little-endian on
 # System 573, Twinkle and Konami Python (MIPS).
+
+[[text]]                        # a string of the game's, replaced wherever it is (no address)
+find = "CREDITS"                # the game's text, written here as UTF-8 (the game's is Shift-JIS)
+replace = "COINS"               # what goes in its place: no longer than its room (below)
+# from = 0x00100000             # where to look (the emulated machines need it: their program's
+# to   = 0x00400000             #   text, so a copy in a loading buffer isn't taken for it)
+# every = true                  # each place it's found (default: it must be in one place only)
 
 [[rate]]                        # the machine's vsync at another rate while the game is somewhere
 hz = "display"                  # the display's refresh rate (no window: 119.88), or a number (30-1000)
@@ -349,6 +372,7 @@ log and does nothing.
 
 pop'n music 15 and later are Windows programs that HIRAKU runs as they are (PLAN.md section 30),
 so their memory and files are the game's own process's, not an emulated machine's:
+- **Texts** (`[[text]]`) are looked for in the program file at the start and become patches.
 - **Patches** go to HIRAKU's DLL in the game (a list in the save folder, `mods-patches.txt`),
   which looks at each one as the program is loaded (before any of its code runs) and before each
   picture, with the same rules: `original` there, `replace` goes in (read-only pages too: code,

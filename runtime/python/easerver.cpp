@@ -983,6 +983,13 @@ std::string EamuseServer::answer_later(const std::string &game, const Request &r
             std::string ref = refid_of(id);
             const bool fresh = ref.empty();
             if (fresh) ref = add(id);
+            // Only at the card's first reading: not when the game asks for an older game's player of the
+            // card (model="I17"), nor at the credit's end (pop'n 15-18's update="1"; pop'n 14 reads a
+            // card with update="1" from the start): no PIN asked then
+            const bool pc_popn = game == "G15" || game == "H16" || game == "I17" || game == "J39";
+            if (!fresh && on_card_pin && attr(r.attrs, "model").empty() && !(pc_popn && attr(r.attrs, "update") == "1"))
+                for (const Record &c : cards)
+                    if (attr(c, "cardid") == id && !attr(c, "pass").empty()) on_card_pin(attr(c, "pass"));
             // pop'n 15 asks for its own player (binded 0: the card has none yet, the game makes one
             // or carries pop'n 14's over) and, with model="F14:...", for pop'n 14's (binded 1 and
             // expired 0: the game asks for it, playerdata_get model="F14")

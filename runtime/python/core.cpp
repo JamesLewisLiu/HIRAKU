@@ -86,6 +86,7 @@
 #include "pcsx2/USB/USB.h"
 #include "pcsx2/VMManager.h"
 
+#include "host/macro.h"
 #include "python/cardunit.h"
 #include "python/icca.h"
 #include "python/eanet.h"
@@ -629,6 +630,10 @@ public:
             server_ = std::make_unique<hk::py::EamuseServer>(ea_dir);
             // the cabinet's clock (init_emulator: 2003-06-01 12:00 JST) plus the machine's own time
             server_->now = [this] { return (int64_t)1054468800 + (int64_t)seconds(); };
+            // -autopin: pop'n 14 asks for the PIN 3 seconds after the card is read, and takes it at
+            // its fourth digit
+            if (ea_.autopin && o.game == "popn14")
+                server_->on_card_pin = [](const std::string &pin) { hk::macro::post("PIN", hk::EaOptions::pin_steps(pin, 180, false)); };
             if (!lan_where_.empty()) {   // NET TAISEN with cabinets in other processes (lancable.h)
                 if (!lan_.open(lan_where_, lan_host_, lan_cabinets_)) return false;
                 net_->set_cabinet(lan_.index());

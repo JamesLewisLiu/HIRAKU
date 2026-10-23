@@ -30,6 +30,9 @@ public:
     std::function<void(const std::string &)> log;
     // Each call's module and method as it comes ("playerdata.get"; the core's scripts wait on them)
     std::function<void(const std::string &)> on_call;
+    // A card the server knows and holds a PIN for was read (cardmng.inquire): its PIN, for HIRAKU to
+    // type when the game asks (-autopin)
+    std::function<void(const std::string &pin)> on_card_pin;
     // The cabinet's wall clock, as seconds since 1970 read as UTC (ntp.get sends it as is, and the
     // game sets its clock to it): in the core, the emulated clock (reproducible runs); in
     // hiraku-eamuse, the host's clock in Japan time unless told otherwise.

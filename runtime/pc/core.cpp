@@ -57,6 +57,8 @@
 extern char **environ;
 #endif
 
+#include "host/input.h"
+#include "host/macro.h"
 #include "host/mods.h"
 #include "host/pacing.h"
 #include "host/popnio.h"
@@ -212,6 +214,20 @@ public:
             ahead_ = true;
             return true;
         }
+        if (name == "--press-time") {
+            press_time_ = true;
+            return true;
+        }
+        if (name == "--judge-offset") {
+            const std::string v = value();
+            char *end = nullptr;
+            judge_offset_ = strtod(v.c_str(), &end);
+            if (v.empty() || *end || judge_offset_ < -200 || judge_offset_ > 200) {
+                fprintf(stderr, "--judge-offset: milliseconds, -200 to 200 (not '%s')\n", v.c_str());
+                exit(2);
+            }
+            return true;
+        }
         std::string error;
         if (ea_.option(name, value, &error)) {
             if (!error.empty()) {
@@ -225,7 +241,11 @@ public:
     std::string options_help() const override {
         return std::string("  --wine PROGRAM       Linux: the Wine that runs the game (default: wine, from the PATH)\n"
                            "  --game-ahead         the game draws its next picture while this one is shown: a frame\n"
-                           "                       later from the controls to the screen, for a PC too slow otherwise\n") +
+                           "                       later from the controls to the screen, for a PC too slow otherwise\n"
+                           "  --press-time         pop'n 15-18: each press judged by when it happened, not by the frame\n"
+                           "                       the game read it in (as the game does: up to a frame later)\n"
+                           "  --judge-offset MS    pop'n 15-18: each press judged MS milliseconds earlier (positive:\n"
+                           "                       for a display or sound that comes late), -200 to 200\n") +
                hk::EaOptions::help();
     }
 
@@ -313,6 +333,8 @@ public:
         set_env("HK_PC_MAP", drive + "\\data=" + win_path(data) + ";" + drive + "\\prog=" + win_path(save_ + "/prog") + ";" +
                                  save_drive + "=" + win_path(run_e_) + "\\");
         set_env("HK_PC_HZ", "0");   // the shell paces
+        set_env("HK_PC_PRESS_TIME", press_time_ ? "1" : "");
+        set_env("HK_PC_JUDGE_OFFSET", judge_offset_ ? std::to_string(judge_offset_) : "");
         set_env("HK_PC_LOG", win_path(save_ + "/pc.log"));
         { std::ofstream(save_ + "/pc.log", std::ios::trunc); }
         printf("hiraku-pc: %s, %s from %s; saves in %s\n", game_.c_str(), exe_.c_str(), program_.c_str(), save_.c_str());
@@ -455,7 +477,15 @@ public:
             const int k = std::atoi(name.c_str() + 10);
             if (k < 1 || k > 9) return false;
             if (value && !(link_->pad & HK_PC_PAD_BUTTON(k))) pressed_at_ = std::chrono::steady_clock::now();
+            const uint32_t was = link_->pad;
             bit(link_->pad, HK_PC_PAD_BUTTON(k));
+            if (link_->pad != was) {   // the change, with when it happened (link.h: pad_ev)
+                const uint32_t n = link_->pad_ev_seq;
+                link_->pad_ev[n % HK_PC_PAD_EVENTS].us = host_us(hk::host::input_time());
+                link_->pad_ev[n % HK_PC_PAD_EVENTS].pad = link_->pad;
+                std::atomic_thread_fence(std::memory_order_release);
+                link_->pad_ev_seq = n + 1;
+            }
         } else if (name == "Test") {
             bit(link_->pad, HK_PC_PAD_TEST);
         } else if (name == "Service") {
@@ -546,6 +576,9 @@ private:
         server_->now = [] { return (int64_t)time(nullptr) + 9 * 3600; };   // the cabinet's clock: Japan's
         if (getenv("HK_PC_EA_LOG")) server_->log = [](const std::string &s) { fprintf(stderr, "%s\n", s.c_str()); };
         server_->on_call = [](const std::string &call) { hk::script::event("ea:" + call); };   // for scripts' `on` lines
+        // -autopin: the PIN screen comes 4 seconds after the card is read at the most, and wants Enter
+        if (ea_.autopin)
+            server_->on_card_pin = [](const std::string &pin) { hk::macro::post("PIN", hk::EaOptions::pin_steps(pin, 240, true)); };
         listen_ = hk::net::socket(AF_INET, SOCK_STREAM, 0);
         sockaddr_in sa{};
         sa.sin_family = AF_INET;
@@ -608,6 +641,48 @@ private:
     // game's files a mod's take the place of (HK_PC_FILES). A data file changed so gets the mod's
     // MD5 in the program's copy of dat.bin, the list the game checks its data by (a twentieth of
     // the files each boot: 5-1503 otherwise)
+    // The mods' [[text]]s, looked for in the program as Windows lays it out (its sections at their
+    // addresses), made patches with the bytes found as their original
+    bool texts_in_program(std::vector<hk::mods::MemoryPatch> &out) {
+        const auto texts = hk::mods::text_patches();
+        if (texts.empty()) return true;
+        std::ifstream in(program_ + "/" + exe_, std::ios::binary);
+        const std::string f((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+        auto u32 = [&](size_t at) {
+            uint32_t v = 0;
+            if (at + 4 <= f.size()) memcpy(&v, f.data() + at, 4);
+            return v;
+        };
+        const size_t pe = u32(0x3c);
+        if (f.size() < 0x40 || pe + 0xf8 > f.size() || u32(pe) != 0x4550) {
+            fprintf(stderr, "mods: %s isn't a Windows program ([[text]] not looked for)\n", exe_.c_str());
+            return false;
+        }
+        const uint32_t sections = (uint8_t)f[pe + 6] | (uint8_t)f[pe + 7] << 8, opt = (uint8_t)f[pe + 20] | (uint8_t)f[pe + 21] << 8;
+        const uint32_t image_base = u32(pe + 24 + 28), image_size = u32(pe + 24 + 56);
+        if (image_size > (64u << 20)) return false;
+        std::vector<uint8_t> image(image_size, 0);
+        for (uint32_t k = 0; k < sections; k++) {
+            const size_t h = pe + 24 + opt + 40 * k;
+            const uint32_t va = u32(h + 12), raw = u32(h + 16), at = u32(h + 20);
+            if (va < image_size && at < f.size()) {
+                const size_t n = std::min<size_t>({raw, image_size - va, f.size() - at});
+                memcpy(image.data() + va, f.data() + at, n);
+            }
+        }
+        for (const auto &t : texts) {
+            uint32_t from = t.to ? t.from : image_base, to = t.to ? t.to : image_base + image_size;
+            from = std::max(from, image_base), to = std::min(to, image_base + image_size);
+            std::string why;
+            auto found = to > from ? hk::mods::find_text(t, image.data() + (from - image_base), to - from, from, &why)
+                                   : std::vector<hk::mods::MemoryPatch>{};
+            if (!why.empty()) fprintf(stderr, "mods: %s: %s\n", t.mod.c_str(), why.c_str());
+            else if (found.empty()) fprintf(stderr, "mods: %s: \"%s\" isn't in %s (%s)\n", t.mod.c_str(), t.label.c_str(), exe_.c_str(), t.line.c_str());
+            out.insert(out.end(), found.begin(), found.end());
+        }
+        return true;
+    }
+
     bool hand_mods(const std::string &drive, const std::string &data, const std::string &prog_name) {
         auto slashes = [](std::string p) {
             for (char &c : p)
@@ -651,6 +726,7 @@ private:
         }
         // the patches: "ADDRESS ONCE ORIGINAL REPLACE" (hex; "-": no original, a cheat)
         patches_ = hk::mods::memory_patches();
+        if (!texts_in_program(patches_)) return false;
         if (patches_.size() > 256) {
             fprintf(stderr, "mods: %zu memory patches; a PC game takes 256\n", patches_.size());
             return false;
@@ -690,9 +766,10 @@ private:
     // shell's next frame (with --game-ahead, the one after): that frame's sound comes with it
     void go(uint32_t seq) {
         link_->audio_frame_end = sound_on_ ? sound_for(frame_ + (ahead_ ? 2 : 1)) : 0;
+        go_at_ = std::chrono::steady_clock::now();
+        link_->go_host_us = host_us(go_at_);
         std::atomic_thread_fence(std::memory_order_release);
         link_->frame_go = seq;
-        go_at_ = std::chrono::steady_clock::now();
     }
 
     // The game's sound, a frame's (735 frames) for each frame shown: where it ends with frame `f`
@@ -864,6 +941,12 @@ private:
     std::chrono::steady_clock::time_point go_at_{};
     std::vector<float> go_to_shell_, pad_read_, drawn_;   // ms, per picture (report)
     std::chrono::steady_clock::time_point pressed_at_{};   // a button went down (set_input)
+    bool press_time_ = false;                              // --press-time
+    double judge_offset_ = 0;                              // --judge-offset, milliseconds
+    // A time on the link (link.h): microseconds of the steady clock, its low 32 bits
+    static uint32_t host_us(std::chrono::steady_clock::time_point t) {
+        return (uint32_t)std::chrono::duration_cast<std::chrono::microseconds>(t.time_since_epoch()).count();
+    }
     uint32_t key_seen_ = 0;
     std::vector<float> key_to_sound_;   // ms, per press (report)
     std::function<void()> on_fatal_;

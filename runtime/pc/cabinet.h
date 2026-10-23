@@ -19,6 +19,10 @@
 //                 memory patches put in place as docs/MODS.md says, before each picture
 //   HK_PC_CRASHLOG for bringing a game up: a fault's place, registers and the program's return
 //                 addresses on the stack, to the log
+//   HK_PC_PRESS_TIME 1: presses judged by when they happened, not by the frame the game read them
+//                 in (pop'n 15-18; press.c)
+//   HK_PC_JUDGE_OFFSET milliseconds taken off each press's time before it's judged (positive: the
+//                 player presses later, for a display or sound that comes late)
 //   HK_PAD_SCRIPT for tests: a file of "SECONDS BITS MS" lines, the pad bits held MS milliseconds
 //                 that many seconds after the board started (bit 22: a coin)
 #pragma once
@@ -31,6 +35,16 @@ struct hk_pc_link *hk_link(void);   // never null: an empty one when hiraku-pc g
 void hk_cabinet_start(void);        // once: the path and window hooks (DllMain, process attach)
 // The pad as the game reads it: hiraku-pc's, the keys bound to it, the test script's
 uint32_t hk_pad_now(void);
+// hiraku-pc's time now, in microseconds (link.h: go_host_us): 0 when it can't be told (no frame
+// started yet, no hiraku-pc), else *us
+int hk_host_us(uint32_t *us);
+// The board's latest samples, newest first, for usbPadReadLast (pop'n 16-18): buttons 1-9 in bits
+// 0-8, from the pad's timed changes (link.h: pad_ev) at the board's rate; how many are new since
+// the last call. press.c
+int hk_pad_samples(uint16_t last[10]);
+// pop'n 15-18: presses judged by when they happened (HK_PC_PRESS_TIME=1), moved by
+// HK_PC_JUDGE_OFFSET milliseconds (later presses: a display that shows late); press.c
+void hk_press_patch_program(void);
 uint32_t hk_coins_now(void);
 void hk_set_coin_mode(int mode);   // usbCoinMode: 1, coins as the coin switch's pulses on the pad
 uint32_t hk_keypad_now(void);   // HK_PC_KEY_* and digits: hiraku-pc's and the keys bound to them

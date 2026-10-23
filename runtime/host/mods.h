@@ -40,4 +40,18 @@ struct MemoryPatch {
 std::vector<MemoryPatch> memory_patches();
 std::vector<std::pair<std::string, std::string>> folder_files();
 
+// [[text]]: a string of the game's (Shift-JIS here, converted from the mod's UTF-8) replaced
+// wherever it is, as a whole string (a zero before and after it), by one that fits its room (the
+// string, its zero and the zeros after it), the rest zeros; from, to (0: not given) where to look
+struct TextPatch {
+    std::string mod, line, label;   // the mod; its table's place in mod.toml; find as written
+    std::vector<uint8_t> find, replace;
+    uint32_t from = 0, to = 0;
+    bool every = false;   // each place it is; else it must be in one place only
+};
+std::vector<TextPatch> text_patches();   // the core takes them (frame() then leaves them alone)
+// Where `t` is in `mem` (n bytes, its first at address `base`): a patch for each place it can go.
+// None and *why empty: not there; *why says why it can't go in (several places, no room)
+std::vector<MemoryPatch> find_text(const TextPatch &t, const uint8_t *mem, size_t n, uint32_t base, std::string *why);
+
 }  // namespace hk::mods

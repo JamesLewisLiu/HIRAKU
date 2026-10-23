@@ -25,8 +25,10 @@ private:
     QDoubleSpinBox *m_beamGamma, *m_beamGain;
     QLineEdit *m_soundfont, *m_root, *m_bin, *m_nvram, *m_extra;
     // e-AMUSEMENT, as spicecfg's Network page (runtime/shell/eaoptions.h)
-    QCheckBox *m_smartea;
+    QCheckBox *m_smartea, *m_autopin;
     QComboBox *m_autocard;
+    QCheckBox *m_pressTime;                 // pop'n music 15-18: presses judged when they happened
+    QSpinBox *m_judgeOffset;                // ... and moved this many milliseconds
     QLineEdit *m_eaUrl, *m_pcbid, *m_card[2];
     QComboBox *m_reader[2];                 // serial card readers (runtime/host/readers.h)
     QCheckBox *m_scard, *m_cardio;

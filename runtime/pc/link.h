@@ -16,7 +16,7 @@
 #include <stdint.h>
 
 #define HK_PC_LINK_MAGIC 0x4b50484bu   // "HKPK"
-#define HK_PC_LINK_VERSION 4u
+#define HK_PC_LINK_VERSION 5u
 
 // The pad's bits, as Konami's ezusb.dll gives them to pop'n music (usbPadRead)
 #define HK_PC_PAD_SERVICE (1u << 6)
@@ -26,6 +26,8 @@
 // The reader's 10-key: bits 0-9 its digits, then these
 #define HK_PC_KEY_00 (1u << 10)
 #define HK_PC_KEY_DECIMAL (1u << 11)
+
+#define HK_PC_PAD_EVENTS 64u   // a power of two
 
 struct hk_pc_link {
     uint32_t magic, version;   // set by hiraku-pc once the rest is ready
@@ -75,6 +77,18 @@ struct hk_pc_link {
     volatile uint32_t go_count, go_qpc, key_edges;
     // Mods (HK_PC_PATCHES): the DLL sets patch_done[i] once the i-th memory patch is in place
     volatile uint8_t patch_done[256];
+    // When the pad changed, for the board's samples (pop'n 16-18) and for judging presses by when
+    // they happened (--press-time). Times are hiraku-pc's, in microseconds (its steady clock, the
+    // low 32 bits): go_host_us is when it gave the latest frame_go, and the DLL that sees that go
+    // sets go_seen_host_us to it with go_qpc, so either DLL can tell hiraku-pc's time from its own.
+    // Each change of the pad's buttons goes in pad_ev at pad_ev_seq (then counted), with its time:
+    // the controller's own, a little before hiraku-pc hands it on
+    // The game's last read of its pad: when (hiraku-pc's time) and pad_ev_seq then, the changes it
+    // could have seen
+    volatile uint32_t go_host_us, go_seen_host_us;
+    volatile uint32_t pad_read_host_us, pad_ev_seen;
+    volatile uint32_t pad_ev_seq;
+    struct { volatile uint32_t us, pad; } pad_ev[HK_PC_PAD_EVENTS];
 };
 
 #define HK_PC_PIXELS 4096u                         // where the pixels start in the file

@@ -168,7 +168,25 @@ void input_joystick_removed(unsigned int id) {
     g_joy_dev[k].clear();
 }
 
+namespace {
+thread_local std::chrono::steady_clock::time_point g_event_time{};   // input_event's, while it runs
+}
+
+std::chrono::steady_clock::time_point input_time() {
+    return g_event_time != std::chrono::steady_clock::time_point{} ? g_event_time : std::chrono::steady_clock::now();
+}
+
 void input_event(const SDL_Event &e) {
+    // SDL's event times are its own clock's (SDL_GetTicksNS), taken from the system's input event
+    // where it has one: on the steady clock, as long ago as that. One from the future, or older than a
+    // quarter of a second (a clock that isn't the same), is taken as now
+    const auto now = std::chrono::steady_clock::now();
+    const Uint64 ticks = SDL_GetTicksNS();
+    const Uint64 ago = e.common.timestamp && e.common.timestamp <= ticks ? ticks - e.common.timestamp : 0;
+    g_event_time = ago < 250000000ull ? now - std::chrono::nanoseconds(ago) : now;
+    struct Clear {
+        ~Clear() { g_event_time = {}; }
+    } clear;
     for (auto &[name, list] : g_bind)
         for (auto &b : list) {
             switch (e.type) {
