@@ -216,7 +216,7 @@ if(HK_PC_DLL_CC)
             ${CMAKE_SOURCE_DIR}/runtime/pc/vsock.c -lws2_32
     DEPENDS tests/pc/test_vsock.c runtime/pc/vsock.c runtime/pc/cabinet.h
     COMMENT "pc/test_vsock.exe (32-bit)")
-  add_custom_target(hiraku-pc-test-vsock DEPENDS ${CMAKE_BINARY_DIR}/pc/test_vsock.exe)
+  add_custom_target(hiraku-pc-test-vsock ALL DEPENDS ${CMAKE_BINARY_DIR}/pc/test_vsock.exe)
 else()
   message(STATUS "No 32-bit Windows compiler (clang, lld and mingw-w64's i686 libraries): no PC games' DLLs")
 endif()
@@ -417,7 +417,7 @@ if(Qt6_FOUND AND TARGET hiraku_hidout)
 endif()
 
 # --- tests -------------------------------------------------------------------
-# HK_TESTS off for a release (tools/release.sh): the PowerPC reference cases need qemu-ppc
+# HK_TESTS off for a release's package (tools/release.sh; on when HK_TESTS=ON is in its environment)
 option(HK_TESTS "the unit tests (tests/)" ON)
 if(HK_TESTS)
   enable_testing()
@@ -533,9 +533,6 @@ add_executable(hiraku-eamuse tools/eamuse/server.cpp runtime/sys573/eagfdm.cpp r
   runtime/python/lobby.cpp runtime/python/netrelay.cpp)
 target_include_directories(hiraku-eamuse PRIVATE runtime)
 target_link_libraries(hiraku-eamuse PRIVATE hiraku_sys Threads::Threads)
-# runtime/python/kbin.h (binary XML, LZ77): tests/eamuse/test_kbin.cpp, exit 0 when all hold
-add_executable(hiraku-test-kbin EXCLUDE_FROM_ALL tests/eamuse/test_kbin.cpp runtime/python/kbin.cpp)
-target_include_directories(hiraku-test-kbin PRIVATE runtime)
 target_compile_options(hiraku_sys573 PRIVATE -O2 -Wno-unused-parameter)
 hk_pgo(sys573 hiraku_mame573)
 

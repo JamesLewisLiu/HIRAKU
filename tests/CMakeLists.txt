@@ -1,7 +1,10 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 # Instruction semantics vs QEMU. The reference cases are generated, not
-# committed: tests/ppc/gen.py needs clang, ld.lld and qemu-ppc.
+# committed: tests/ppc/gen.py needs clang, ld.lld and qemu-ppc (no test without them).
+find_program(HK_QEMU_PPC qemu-ppc)
+find_program(HK_LD_LLD ld.lld)
+if(HK_QEMU_PPC AND HK_LD_LLD)
 add_executable(test_ppc ppc/test_ppc.cpp)
 target_link_libraries(test_ppc PRIVATE hiraku_rt)
 
@@ -14,6 +17,7 @@ add_custom_command(
 add_custom_target(ppc_cases DEPENDS ${HK_PPC_CASES}/cases.bin)
 add_dependencies(test_ppc ppc_cases)
 add_test(NAME ppc_semantics COMMAND test_ppc ${HK_PPC_CASES})
+endif()
 
 # GCU renderer vs MAME: replay a MAME trace's GCU writes (oracle, not a ctest).
 add_executable(gcu_replay gcu/gcu_replay.cpp)
@@ -75,3 +79,20 @@ endif()
 add_executable(test_scroll_guess smooth/test_scroll_guess.cpp)
 target_include_directories(test_scroll_guess PRIVATE ${CMAKE_SOURCE_DIR}/include)
 add_test(NAME scroll_guess COMMAND test_scroll_guess)
+
+# e-AMUSEMENT (docs/EAMUSE3.md). runtime/python/kbin.h: binary XML and its LZ77
+add_executable(test_kbin eamuse/test_kbin.cpp ${CMAKE_SOURCE_DIR}/runtime/python/kbin.cpp)
+target_include_directories(test_kbin PRIVATE ${CMAKE_SOURCE_DIR}/runtime)
+add_test(NAME kbin COMMAND test_kbin)
+# hiraku-eamuse's answers, from made-up records: one card for all (pop'n 12-18), pop'n 16-18's records
+find_package(Python3 COMPONENTS Interpreter QUIET)
+if(Python3_Interpreter_FOUND AND NOT WIN32)
+  add_test(NAME eamuse_one_card COMMAND Python3::Interpreter ${CMAKE_CURRENT_SOURCE_DIR}/eamuse/test_onecard.py $<TARGET_FILE:hiraku-eamuse>)
+  add_test(NAME eamuse_pc_records COMMAND Python3::Interpreter ${CMAKE_CURRENT_SOURCE_DIR}/eamuse/test_pcrecords.py $<TARGET_FILE:hiraku-eamuse>)
+endif()
+# The PC games' NET TAISEN (runtime/pc/vsock.c) between two processes on one relay, under Wine
+find_program(HK_WINE wine)
+if(TARGET hiraku-pc-test-vsock AND HK_WINE AND NOT WIN32)
+  add_test(NAME pc_vsock COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/pc/test_vsock.sh ${CMAKE_BINARY_DIR})
+  set_tests_properties(pc_vsock PROPERTIES RESOURCE_LOCK relay_5740 TIMEOUT 120)
+endif()

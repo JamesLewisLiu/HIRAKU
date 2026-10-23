@@ -11,6 +11,7 @@
 # hiraku-twinkle, told the game with --game), no Firebeat games, no recorded blocks or MEG
 # programs, whatever build/ holds. OUT_DIR gets hiraku-linux-x86_64.tar.xz or
 # hiraku-windows-x86_64.zip, both portable (their saves stay in their own user/ folder).
+# HK_TESTS=ON builds the unit tests too (ctest --test-dir BUILD), as a push to main does.
 set -euo pipefail
 target=${1:?linux or windows}
 out=${2:?output folder}
@@ -18,7 +19,7 @@ root=$(cd "$(dirname "$0")/.." && pwd)
 mkdir -p "$out"
 out=$(cd "$out" && pwd)
 jobs=${HK_JOBS:-$(nproc)}
-common=(-G Ninja -DCMAKE_BUILD_TYPE=Release -DHK_GAME_BINARIES=OFF -DHK_TESTS=OFF)
+common=(-G Ninja -DCMAKE_BUILD_TYPE=Release -DHK_GAME_BINARIES=OFF "-DHK_TESTS=${HK_TESTS:-OFF}")
 
 case $target in
 linux)
