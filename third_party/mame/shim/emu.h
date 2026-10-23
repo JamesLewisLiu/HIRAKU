@@ -1766,6 +1766,8 @@ public:
     virtual u64 execute_cycles_to_clocks(u64 cycles) const noexcept { return cycles; }
 
     void set_icountptr(int &ic) { m_icountptr = &ic; }
+    // HIRAKU's frame-time report: the board's main CPU, or another (a sound board's)
+    bool hk_main() const { return std::strcmp(basetag(), "maincpu") == 0; }
     u64 total_cycles() const { return m_executing ? m_totalcycles + (u64)(m_cycles_running - *m_icountptr) : m_totalcycles; }
     attotime local_time() const;
     u64 cycles_per_second() const { return execute_clocks_to_cycles(clock()); }

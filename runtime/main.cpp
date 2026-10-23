@@ -161,6 +161,7 @@ struct FrameTimes {
     uint64_t hist[BINS + 1] = {};
     uint64_t n = 0, last = 0, last_wait = 0, worst_frame = 0;
     uint64_t last_cat[prof::NCAT] = {}, worst_cat[prof::NCAT] = {};
+    uint64_t first_cat[prof::NCAT] = {}, sum_cat[prof::NCAT] = {};   // each part's time over the frames counted
     double sum_ms = 0, max_ms = 0;
     FILE *log = nullptr;   // HK_FRAMETIMES=file: every frame's host work, "frame ms cpu_ms major_faults"
     double last_cpu = 0;   // the emulation thread's CPU time and the process's major page faults
@@ -179,12 +180,15 @@ struct FrameTimes {
             if (log) fprintf(log, "%llu %.3f %.3f %ld\n", (unsigned long long)f, ms, cpu - last_cpu, faults - last_faults);
             hist[std::min(BINS, (int)(ms / 0.05))]++;
             n++;
+            for (int c = 0; c < prof::NCAT; c++) sum_cat[c] = prof::g_total[c] - first_cat[c];
             sum_ms += ms;
             if (ms > max_ms) {
                 max_ms = ms, worst_frame = f;
                 for (int c = 0; c < prof::NCAT; c++) worst_cat[c] = prof::g_total[c] - last_cat[c];
             }
         }
+        if (!last)
+            for (int c = 0; c < prof::NCAT; c++) first_cat[c] = prof::g_total[c];
         last = t;
         last_wait = w;
         last_cpu = cpu;
@@ -205,6 +209,15 @@ struct FrameTimes {
                (unsigned long long)worst_frame);
         for (int c = 0; c < prof::NCAT; c++) printf(" %s %.2f", prof::NAMES[c], (double)worst_cat[c] * prof::ns_per_tick() / 1e6);
         printf(")\n");
+        // where a frame's time goes, on average: the parts measured (core/prof.h), the rest "other"
+        double parts = 0;
+        std::string by;
+        for (int c = 0; c < prof::NCAT; c++) {
+            const double ms = (double)sum_cat[c] * prof::ns_per_tick() / 1e6 / (double)n;
+            parts += ms;
+            if (ms >= 0.005) by += std::string(by.empty() ? " " : ", ") + prof::NAMES[c] + " " + std::to_string(ms).substr(0, 4);
+        }
+        printf("frametime: by part, mean ms per frame:%s, other %.2f\n", by.c_str(), std::max(0.0, sum_ms / (double)n - parts));
     }
 };
 

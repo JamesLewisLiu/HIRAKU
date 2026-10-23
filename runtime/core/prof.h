@@ -13,8 +13,12 @@
 
 namespace hk::prof {
 
-enum Cat { DISK, DRAW, PRESENT, SPU68K, GLUE, NCAT };
-inline const char *const NAMES[NCAT] = {"disk", "draw", "present", "68000", "glue"};
+// CPU: the board's main CPU as MAME's scheduler runs it (System 573, Twinkle: the R3000); 68000:
+// a sound board's CPU (Firebeat's SPU, Twinkle's); GPU: the PS1 GPU's commands and scanout on the
+// emulation thread (its drawing thread's own work not, its waits for it yes); DEVICES: MAME's
+// timers (the devices' work between the CPUs' turns)
+enum Cat { DISK, DRAW, PRESENT, SPU68K, GLUE, CPU, GPU, DEVICES, NCAT };
+inline const char *const NAMES[NCAT] = {"disk", "draw", "present", "68000", "glue", "cpu", "gpu", "devices"};
 
 inline uint64_t g_ticks[NCAT];   // accumulated since the last reset, in ticks()
 inline uint64_t g_total[NCAT];   // accumulated since start (never reset)
@@ -63,14 +67,23 @@ inline double ns(Cat c) { return (double)g_ticks[c] * ns_per_tick(); }
 // frame-time report subtracts it, leaving the work per frame.
 inline uint64_t g_wait_ticks;
 
+// A scope's time counts once: one inside another (a GPU write in the CPU's turn) pauses the
+// outer one's count until it ends. Per thread.
+inline thread_local int g_open = -1;          // the innermost scope's category, -1: none
+inline thread_local uint64_t g_open_since;    // ... counted from
+
 struct Scope {
-    Cat c;
-    uint64_t t0;
-    explicit Scope(Cat cat) : c(cat), t0(ticks()) {}
+    int outer;
+    explicit Scope(Cat c) : outer(g_open) {
+        const uint64_t t = ticks();
+        if (outer >= 0) g_ticks[outer] += t - g_open_since, g_total[outer] += t - g_open_since;
+        g_open = c, g_open_since = t;
+    }
     ~Scope() {
-        const uint64_t d = ticks() - t0;
-        g_ticks[c] += d;
-        g_total[c] += d;
+        const uint64_t t = ticks(), d = t - g_open_since;
+        g_ticks[g_open] += d;
+        g_total[g_open] += d;
+        g_open = outer, g_open_since = t;
     }
 };
 

@@ -9,6 +9,7 @@
 
 #include "emu.h"
 #include "psx.h"
+#include "core/prof.h" // HIRAKU: the frame's time by part
 
 #include "cpu/psx/psx.h"
 
@@ -621,6 +622,7 @@ void psxgpu_device::device_post_load()
 
 uint32_t psxgpu_device::update_screen(screen_device &screen, bitmap_rgb32 &bitmap, const rectangle &cliprect)
 {
+	hk::prof::Scope hk_ps( hk::prof::GPU ); // HIRAKU
 	uint32_t n_x;
 	uint32_t n_y;
 	int n_top;
@@ -2809,6 +2811,7 @@ void psxgpu_device::dma_write( uint32_t *p_n_psxram, uint32_t n_address, int32_t
 
 void psxgpu_device::gpu_write( uint32_t *p_ram, int32_t n_size )
 {
+	hk::prof::Scope hk_ps( hk::prof::GPU ); // HIRAKU
 	while( n_size > 0 )
 	{
 		uint32_t data = *( p_ram );

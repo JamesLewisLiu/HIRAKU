@@ -1781,6 +1781,13 @@ def video_psx_between_cpp(s):
 				m_hk_no_flip = 0;
 			}
 """, 'video/psx.cpp between flip')
+    # the frame-time report's GPU part (runtime/core/prof.h): its commands and scanout
+    s = edit(s, '#include "psx.h"\n',
+             '#include "psx.h"\n#include "core/prof.h" // HIRAKU: the frame\'s time by part\n', 'video/psx.cpp prof include')
+    s = edit(s, 'uint32_t psxgpu_device::update_screen(screen_device &screen, bitmap_rgb32 &bitmap, const rectangle &cliprect)\n{\n',
+             'uint32_t psxgpu_device::update_screen(screen_device &screen, bitmap_rgb32 &bitmap, const rectangle &cliprect)\n{\n\thk::prof::Scope hk_ps( hk::prof::GPU ); // HIRAKU\n', 'video/psx.cpp update_screen scope')
+    s = edit(s, 'void psxgpu_device::gpu_write( uint32_t *p_ram, int32_t n_size )\n{\n',
+             'void psxgpu_device::gpu_write( uint32_t *p_ram, int32_t n_size )\n{\n\thk::prof::Scope hk_ps( hk::prof::GPU ); // HIRAKU\n', 'video/psx.cpp gpu_write scope')
     return s.rstrip('\n') + '\n' + BETWEEN_CPP
 
 

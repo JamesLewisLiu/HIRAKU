@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // HIRAKU: the MAME framework subset declared in emu.h.
 #include "emu.h"
+#include "core/prof.h"
 #include "shell/sys.h"
 
 #include <ctime>
@@ -863,6 +864,7 @@ void running_machine::run_until(attotime target) {
             *cpu->m_icountptr = (int)cycles;
             cpu->m_executing = true;
             m_executing = cpu;
+            hk::prof::Scope ps(cpu->hk_main() ? hk::prof::CPU : hk::prof::SPU68K);   // the frame's time by part
             cpu->execute_run();
             m_executing = nullptr;
             cpu->m_executing = false;
@@ -882,6 +884,7 @@ void running_machine::run_until(attotime target) {
             if (due->m_period.is_never() || due->m_period.is_zero()) due->m_enabled = false;
             else due->m_expire += due->m_period;
             m_firing = due;
+            hk::prof::Scope ps(hk::prof::DEVICES);
             due->m_cb(due->m_param);
             m_firing = nullptr;
         }
@@ -936,6 +939,7 @@ void running_machine::timeslice() {
             m_executing = exec;
             exec->m_executing = true;
             *exec->m_icountptr = exec->m_cycles_running;
+            hk::prof::Scope ps(exec->hk_main() ? hk::prof::CPU : hk::prof::SPU68K);   // the frame's time by part
             exec->execute_run();
             exec->m_executing = false;
             ran -= *exec->m_icountptr;
@@ -970,7 +974,10 @@ void running_machine::execute_timers() {
         m_callback_timer_modified = false;
         m_callback_timer = &t;
         m_callback_timer_expire = t.m_expire;
-        if (was_enabled && t.m_cb) t.m_cb(t.m_param);
+        if (was_enabled && t.m_cb) {
+            hk::prof::Scope ps(hk::prof::DEVICES);
+            t.m_cb(t.m_param);
+        }
         if (!m_callback_timer_modified) {
             if (!t.m_temporary) {
                 t.m_start = t.m_expire;
