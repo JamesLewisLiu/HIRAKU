@@ -104,6 +104,9 @@ QString softwareHtml() {
          "</b> (MIT, Mark Rejhon and Timothy Lottes): a CRT's rolling scan on a fast display.</li>";
     h += "<li><b>" + link("https://gitlab.freedesktop.org/wayland/wayland-protocols", "wayland-protocols") +
          "</b> (MIT): presentation-time (Collabora) and fifo-v1 (Valve), for frame pacing.</li>";
+    h += "<li><b>" + link("https://github.com/mon/kbinxml", "kbinxml") +
+         "</b> (MIT, mon): the binary XML of pop'n music 17 and 18's e-AMUSEMENT, written from its "
+         "description of the format.</li>";
     h += "</ul>";
 
     h += "<h3>Libraries</h3><ul>";
@@ -130,7 +133,18 @@ QString softwareHtml() {
     h += "<li><b>" + link("https://spice2x.github.io", "spice2x") +
          "</b> (GPL-3.0, the sp2xdev team and the SpiceTools contributors): the names and meanings of the "
          "e-AMUSEMENT options, and the real card readers' and the BIO2 board's dialogue (its reader/ and "
-         "games/iidx/); its cardio (Felix) and PC/SC (nolm) readers (MIT) for what those readers send.</li>";
+         "games/iidx/); its cardio (Felix) and PC/SC (nolm) readers (MIT) for what those readers send; "
+         "for the PC pop'n games, the I/O board's and the card reader's DLL interfaces (ezusb, libacio) and "
+         "the e-AMUSEMENT services they ask for.</li>";
+    h += "<li><b>" + link("https://github.com/CrazyRedMachine/popnhax", "popnhax") +
+         "</b> (CrazyRedMachine): the ideas behind presses judged when they happened, the board's samples "
+         "for pop'n music 16-18, the PIN typed for the player and mods that replace text (popnhax has no "
+         "licence: none of its code is in HIRAKU); and CrazyRedMachine's PopnForwarder and advice on "
+         "the pop'n board.</li>";
+    h += "<li><b>" + link("https://github.com/djhackersdev/bemanitools", "bemanitools") +
+         "</b> (Unlicense): its ezusb2-popn emulation, a check of the pop'n board's packets.</li>";
+    h += "<li><b>" + link("https://github.com/DragonMinded/bemaniutils", "bemaniutils") +
+         "</b> (DragonMinded): a reference for e-AMUSEMENT servers and the later games' settings.</li>";
     h += "<li><b>" + link("https://remywiki.com", "RemyWiki") +
          "</b>: event codes, unlocks and song facts.</li>";
     h += "</ul>";
