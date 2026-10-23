@@ -732,7 +732,7 @@ std::vector<TextPatch> text_patches() {
 std::vector<MemoryPatch> find_text(const TextPatch &t, const uint8_t *mem, size_t n, uint32_t base, std::string *why) {
     std::vector<MemoryPatch> out;
     const size_t len = t.find.size();
-    size_t places = 0, small = SIZE_MAX;
+    size_t places = 0, tight = SIZE_MAX;
     for (size_t i = 0; i + len < n; i++) {
         if (mem[i] != t.find[0] || (i && mem[i - 1]) || mem[i + len] || memcmp(mem + i, t.find.data(), len)) continue;
         places++;
@@ -741,7 +741,7 @@ std::vector<MemoryPatch> find_text(const TextPatch &t, const uint8_t *mem, size_
         while (i + room < n && !mem[i + room] && room < len + 256) room++;
         const size_t w = std::max(len, t.replace.size() + 1);
         if (w > room) {
-            small = std::min(small, room - 1);
+            tight = std::min(tight, room - 1);
             continue;
         }
         MemoryPatch p;
@@ -757,7 +757,7 @@ std::vector<MemoryPatch> find_text(const TextPatch &t, const uint8_t *mem, size_
         *why = "\"" + t.label + "\" " + a + " (" + t.line + ")";
         out.clear();
     } else if (out.empty() && places) {
-        snprintf(a, sizeof a, "has room for %zu bytes, the replacement is %zu", small, t.replace.size());
+        snprintf(a, sizeof a, "has room for %zu bytes, the replacement is %zu", tight, t.replace.size());
         *why = "\"" + t.label + "\" " + a + " (" + t.line + ")";
     }
     return out;
