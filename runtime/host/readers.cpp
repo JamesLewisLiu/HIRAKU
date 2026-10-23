@@ -396,17 +396,20 @@ void cardio_run() {
 }
 #endif
 
-// The reader's 10-key bits (spice2x's acioemu/icca.cpp, as pop'n 14's own reader: python/icca.h):
-// 0-9, then the key beside 0 and the one beside that
+// The reader's 10-key bits, as a real reader's encrypted status gives them (bytes 14-15): one bit
+// a key in the order 0 1 4 7 00 2 5 8 . 3 6 9 (spice2x's reader/reader.cpp hands them on as its
+// eam_io scan codes, misc/eamuse.h). Not the layout a game's reader protocol uses (spice2x's
+// acioemu/icca.cpp, pop'n 14's python/icca.h), which this table had first: a real reader's 1 and
+// 3, 7 and 9 came out swapped, its 0 as the key beside it and 2, 5, 8, 00 not at all.
 struct Key {
     uint16_t bit;
     const char *name, *instead;   // the game's input, and one to try when the game hasn't that
 };
-constexpr Key KEYS[] = {{0x0100, "Keypad 0", nullptr}, {0x0200, "Keypad 1", nullptr}, {0x2000, "Keypad 2", nullptr},
-                        {0x0002, "Keypad 3", nullptr}, {0x0400, "Keypad 4", nullptr}, {0x4000, "Keypad 5", nullptr},
-                        {0x0004, "Keypad 6", nullptr}, {0x0800, "Keypad 7", nullptr}, {0x8000, "Keypad 8", nullptr},
-                        {0x0008, "Keypad 9", nullptr}, {0x0001, "Keypad .", nullptr},
-                        {0x1000, "Keypad 00", "Keypad Enter"}};
+constexpr Key KEYS[] = {{0x0001, "Keypad 0", nullptr}, {0x0002, "Keypad 1", nullptr}, {0x0020, "Keypad 2", nullptr},
+                        {0x0200, "Keypad 3", nullptr}, {0x0004, "Keypad 4", nullptr}, {0x0040, "Keypad 5", nullptr},
+                        {0x0400, "Keypad 6", nullptr}, {0x0008, "Keypad 7", nullptr}, {0x0080, "Keypad 8", nullptr},
+                        {0x0800, "Keypad 9", nullptr}, {0x0100, "Keypad .", nullptr},
+                        {0x0010, "Keypad 00", "Keypad Enter"}};
 uint16_t g_applied[2] = {0, 0};
 const char *g_used[2][std::size(KEYS)];   // the input each held key went to
 

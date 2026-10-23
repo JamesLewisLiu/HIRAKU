@@ -106,7 +106,7 @@ static void pretend_reader(int fd, std::atomic<bool> &stop) {
                     memcpy(s + 2, uid, 8);
                 }
                 s[11] = 1;
-                uint16_t keys = polls == 10 || polls == 11 ? 0x0200 : polls == 13 ? 0x1000 : 0;
+                uint16_t keys = polls == 10 || polls == 11 ? 0x0002 : polls == 13 ? 0x0010 : 0;   // a real reader's bits for 1 and 00
                 s[14] = keys >> 8, s[15] = keys & 0xff;
                 const uint16_t crc = ReaderCrypt::crc(s, 16);
                 s[16] = crc >> 8, s[17] = crc & 0xff;
