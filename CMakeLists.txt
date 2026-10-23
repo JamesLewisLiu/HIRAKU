@@ -179,6 +179,7 @@ endif()
 # like the games, which load them into their own process (under Wine on Linux). Built by clang for
 # i686 Windows wherever it can: a Windows build, or Linux with mingw-w64's i686 libraries. Into pc/.
 set(HK_PC_DLL_CC "")
+set(HK_PC_DLL_SYS "")
 if(WIN32 AND CMAKE_C_COMPILER_ID MATCHES "Clang" AND NOT MSVC)
   set(HK_PC_DLL_CC ${CMAKE_C_COMPILER})
 elseif(NOT WIN32 AND EXISTS /usr/i686-w64-mingw32/lib/libkernel32.a)
@@ -186,6 +187,9 @@ elseif(NOT WIN32 AND EXISTS /usr/i686-w64-mingw32/lib/libkernel32.a)
   find_program(HK_LLD ld.lld)
   if(HK_CLANG AND HK_LLD)
     set(HK_PC_DLL_CC ${HK_CLANG})
+    # mingw-w64's i686 headers and libraries named: clang finds them by its i686 gcc, which a
+    # system with only the libraries (Ubuntu's mingw-w64-i686-dev, the release's) hasn't
+    set(HK_PC_DLL_SYS -isystem /usr/i686-w64-mingw32/include -L/usr/i686-w64-mingw32/lib)
   endif()
 endif()
 if(HK_PC_DLL_CC)
@@ -193,7 +197,7 @@ if(HK_PC_DLL_CC)
   foreach(dll ezusb libacio)
     add_custom_command(OUTPUT ${CMAKE_BINARY_DIR}/pc/${dll}.dll
       COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_BINARY_DIR}/pc
-      COMMAND ${HK_PC_DLL_CC} --target=i686-w64-mingw32 -O2 -Wall -Wextra -fuse-ld=lld -static -shared
+      COMMAND ${HK_PC_DLL_CC} --target=i686-w64-mingw32 ${HK_PC_DLL_SYS} -O2 -Wall -Wextra -fuse-ld=lld -static -shared
               -o ${CMAKE_BINARY_DIR}/pc/${dll}.dll ${CMAKE_SOURCE_DIR}/runtime/pc/${dll}.c
               ${CMAKE_SOURCE_DIR}/runtime/pc/cabinet.c ${CMAKE_SOURCE_DIR}/runtime/pc/dsound.c
               ${CMAKE_SOURCE_DIR}/runtime/pc/net.c ${CMAKE_SOURCE_DIR}/runtime/pc/vsock.c ${CMAKE_SOURCE_DIR}/runtime/pc/${dll}.def
@@ -206,7 +210,7 @@ if(HK_PC_DLL_CC)
   add_custom_target(hiraku-pc-dlls ALL DEPENDS ${HK_PC_DLLS})
   # vsock.c (NET TAISEN over the relay) as the games call it: tests/pc/test_vsock.sh runs it under Wine
   add_custom_command(OUTPUT ${CMAKE_BINARY_DIR}/pc/test_vsock.exe
-    COMMAND ${HK_PC_DLL_CC} --target=i686-w64-mingw32 -O2 -Wall -Wextra -fuse-ld=lld -static
+    COMMAND ${HK_PC_DLL_CC} --target=i686-w64-mingw32 ${HK_PC_DLL_SYS} -O2 -Wall -Wextra -fuse-ld=lld -static
             -o ${CMAKE_BINARY_DIR}/pc/test_vsock.exe ${CMAKE_SOURCE_DIR}/tests/pc/test_vsock.c
             ${CMAKE_SOURCE_DIR}/runtime/pc/vsock.c -lws2_32
     DEPENDS tests/pc/test_vsock.c runtime/pc/vsock.c runtime/pc/cabinet.h
