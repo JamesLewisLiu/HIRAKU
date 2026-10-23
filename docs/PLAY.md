@@ -1089,7 +1089,7 @@ In test mode, blue (buttons 4/6) moves and red (5) selects; I/O CHECK > INPUT CH
 
 **Not yet:** the board's own CPU (Reliquary answers its FireWire commands directly), Python games other than pop'n 9–14 (they need their own `games/<id>/game.toml`; the ingester tells you the program's SHA-1).
 
-## PC: pop'n music 15 ADVENTURE (in progress, PLAN.md §30)
+## BEMANI PC: pop'n music 15 ADVENTURE to 18 せんごく列伝 (PLAN.md §30)
 
 From pop'n music 15 on, the games are Windows programs. HIRAKU runs Konami's own program as it is, under Wine on Linux and directly on Windows, and puts its cabinet around it with `hiraku-pc` and two DLLs of its own (`bin/pc/`): the controls, the lamps, the card, and HIRAKU's own window for the pictures.
 
@@ -1110,4 +1110,4 @@ From pop'n music 15 on, the games are Windows programs. HIRAKU runs Konami's own
 
 **Not yet:** a check on real Windows and with a real board or reader.
 
-**pop'n music 16, 17, 18:** add them as pop'n 15 (their folders hold `prog` and `data`). They play online with HIRAKU's server: coins, a card in the slot reader (a new player with a name, or one carried over from the game before), songs, and what a credit changes is kept: the options, the character, the last song, each song's clear marks and best scores, the most played songs, pop'n 18's story map. NET TAISEN works between cabinets on one server, and each player's NET results are kept (checked with two cabinets on pop'n 16, 17 and 18). Not yet: pop'n 18's licences and boss battles, sharing marks and scores with pop'n 9-15, mods that replace data files (memory patches work). Under Wine only so far: real Windows and real cabinets are unchecked. Details: PLAN.md section 30, PC-6.
+**pop'n music 16, 17, 18:** add them as pop'n 15 (their folders hold `prog` and `data`). They play online with HIRAKU's server: coins, a card in the slot reader (a new player with a name, or one carried over from the game before), songs, and what a credit changes is kept: the options, the character, the last song, each song's clear marks and best scores, the most played songs, pop'n 18's story map. NET TAISEN works between cabinets on one server, and each player's NET results are kept (checked with two cabinets on pop'n 16, 17 and 18). Also kept: pop'n 16's PARTY guests, pop'n 17's characters, tickets and targets, pop'n 18's licences, the expert courses and their rankings (16, 17), pop'n 18's INTERNET RANKING entries. Clear marks and best scores are shared with pop'n 9-15 and between 15-18 (one card for all, [EAMUSE3.md](EAMUSE3.md)). Not yet: pop'n 18's boss battles, mods that replace data files (memory patches work). Under Wine only so far: real Windows and real cabinets are unchecked. Details: PLAN.md section 30, PC-6.

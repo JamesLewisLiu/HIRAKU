@@ -4,10 +4,11 @@
 
 <p align="center"><b>“HIRAKU” is all about giggles and fun. Enjoy!!</b></p>
 
-HIRAKU runs Konami's BEMANI arcade games as native or optimized interpreted programs on Linux and Windows. It covers five arcade boards, from DJ Main (1997) to Konami Python (2002–2006), all behind one launcher.
+HIRAKU runs Konami's BEMANI arcade games as native or optimized interpreted programs on Linux and Windows. It covers five arcade boards, from DJ Main (1997) to Konami Python (2002–2006), and the first BEMANI PC games (2007–2010), all behind one launcher.
 
 - **Firebeat** games are statically recompiled: HIRAKU analyses each game's PowerPC program and translates it to C, linked against a runtime that stands in for the board. The packages, which carry no game's code, run the same analysis through an executor (`hiraku-firebeat`) instead, with identical results.
 - **DJ Main, System 573, Twinkle and Python** run as cores behind the same shell (`runtime/shell/core.h`). Each core is an interpreter, a recompiler fed by recordings, or a hosted emulator.
+- **BEMANI PC** games are Windows programs: HIRAKU runs Konami's own program as it is (under Wine on Linux) and is the cabinet around it, its I/O board, card reader, sound and screen, through DLLs of its own (`runtime/pc/`).
 
 HIRAKU ships no game data. You provide your own dumps: drop your MAME ROM sets and CHDs (or disc images) on the launcher, and it does the rest.
 
@@ -24,18 +25,21 @@ HIRAKU ships no game data. You provide your own dumps: drop your MAME ROM sets a
 | | | DrumMania 10th Mix, GuitarFreaks 11th Mix | **Further than MAME:** they play, including DrumMania × GuitarFreaks session play, the e-AMUSEMENT network unit, and cards |
 | **Twinkle** (beatmania IIDX) | The same PS1 core plus the 68000/RF5C400 sound board | beatmania IIDX 1st style, Substream, 2nd–8th style | Play in lockstep with MAME. **Further than MAME:** the background videos play, and 1st style runs (MAME stops it at E600) |
 | **Konami Python 1** (PS2-based) | PCSX2 Reliquary, hosted by HIRAKU's shell | pop'n music 9, 10, 11, 12 Iroha, 13 Carnival, 14 FEVER! | Play, with e-AMUSEMENT cards, the event unlocks, and NET TAISEN between cabinets |
+| **BEMANI PC** (a Windows PC) | Konami's program as it is, under Wine on Linux; HIRAKU's DLLs stand in for the board, the card reader and DirectSound, and its window shows the pictures | pop'n music 15 ADVENTURE, 16 PARTY♪, 17 THE MOVIE, 18 せんごく列伝 | Play, with e-AMUSEMENT on HIRAKU's server (players, scores, events) and NET TAISEN between cabinets. Checked under Wine; real Windows PCs and cabinets not yet |
 
 The per-game guides are in [docs/PLAY.md](docs/PLAY.md): which files each game needs, its first-boot steps, controls and quirks.
 
 ## Highlights
 
-- **e-AMUSEMENT, brought back.** HIRAKU includes its own server for Konami's long-closed network. You can register a card, save your player, and keep rankings. On pop'n music 9–14 the server runs inside the game. To share cards and rankings between PCs, run `hiraku-eamuse`. DrumMania and GuitarFreaks use it through their network unit.
-- **pop'n NET TAISEN.** pop'n music 12–14's online battles work between HIRAKU cabinets, up to three to a match. Cabinets connect through a virtual LAN cable, on one PC or across a network, or online through `hiraku-eamuse`, which also runs the lobby and relays the matches.
+- **e-AMUSEMENT, brought back.** HIRAKU includes its own server for Konami's long-closed network. You can register a card, save your player, and keep rankings. On pop'n music 9–18 the server runs inside the game. To share cards and rankings between PCs, run `hiraku-eamuse`. DrumMania and GuitarFreaks use it through their network unit.
+- **One card for all.** One card number follows a player from pop'n music 9 to 18: each game carries the player over from the one before, and clear marks and best scores are shared between all of them.
+- **pop'n NET TAISEN.** pop'n music 12–18's online battles work between HIRAKU cabinets, up to three to a match. Cabinets connect through a virtual LAN cable, on one PC or across a network, or online through `hiraku-eamuse`, which also runs the lobby and relays the matches.
 - **Events and unlocks.** In the launcher, right-click a game > **Unlocks**. It sets the event phase as an operator's codes would, and shows each event's progress, such as Sugoroku de 8, HOSHI NI NEGAIO, POPN TOURIST and NINPOUCHO. It can also type the cabinet's button codes for you (Ctrl+1…9).
 - **Low latency.** Audio is the clock, and the sound queue tunes itself to the smallest lead your PC can play without crackle. You can also send sound straight to an ALSA card with no sound server in between (`--audio-device`), or on Windows have a device alone in WASAPI exclusive mode (`--audio-exclusive`) or play through its ASIO driver (`--audio-asio`). On 573 and Twinkle the sound is handed on every millisecond, not in MAME's 20 ms pieces. Pictures are shown at vblank end, and frame pacing is aware of Wayland.
 - **Efficient.** HIRAKU targets N100-class mini PCs and judges its changes by their worst frames, not their average. Profile-guided builds (`tools/pgo.py`) cut CPU use further: Keyboardmania −19 %, DDR −27 %.
 - **Controls and lights.** Map keyboards, IIDX/pop'n controllers and analog turntables to each cabinet's controls with click-then-press. You can drive controller LEDs from the cabinet's lamps and watch them live ([docs/LIGHTS.md](docs/LIGHTS.md)).
-- **The picture.** Every game is shown at its monitor's shape: 4:3, or 16:9 for beatmania IIDX's widescreen CRT. Two CRT shaders are built in: crt-guest-advanced-fast and crt-royale. F10 cycles through them in-game.
+- **The picture.** Every game is shown at its monitor's shape: 4:3, or 16:9 for beatmania IIDX's widescreen CRT. CRT shaders are built in (Lola Retro, crt-guest-advanced-fast, crt-royale): F10 cycles through them in-game and F8 changes their settings while you play. On a high refresh rate display, a CRT beam simulator (`--crt-beam`) brings back a CRT's motion clarity.
+- **Mods.** Patches to a game's memory, replaced files and text, on every board ([docs/MODS.md](docs/MODS.md)); the launcher's right-click > Mods… turns them on per game.
 - **Checked against MAME.** Every change is held to bit-identical per-frame picture and sound hashes (`tools/regress.py`). New boards are brought up in lockstep against a scripted MAME oracle.
 - **Portable.** `tools/package.sh` builds a package for other Linux PCs that brings its own Qt. In a portable install, your saves and settings live in the HIRAKU folder, so the folder can go on a USB stick. The cores also build and pass the regression cases on 64-bit ARM Linux.
 
@@ -48,7 +52,7 @@ Get the latest package from the [Releases](../../releases) page and unpack it an
 
 Then drop a game's files on the launcher's window, all at once: the MAME ROM set (`.zip`, `.7z` or a folder) and its CHDs (several games' files at once work too). HIRAKU recognises the game, copies what it needs into its own folder, and the game is ready to play. Nothing else needs installing: the packages carry their own Python, 7-Zip, CHD reader and libraries.
 
-The packages run the DJ Main, System 573, Twinkle and Firebeat games, and the Konami Python games too (pop'n music 9–14, DrumMania V/V2; they need Vulkan or OpenGL drivers): add a Python game's folder together with the folders `bios` (the arcade BIOS) and `keys` (the MagicGate key files), which HIRAKU can't ship. The packages are portable: your saves and settings stay in their `user` folder.
+The packages run the DJ Main, System 573, Twinkle and Firebeat games, and the Konami Python games too (pop'n music 9–14, DrumMania V/V2; they need Vulkan or OpenGL drivers): add a Python game's folder together with the folders `bios` (the arcade BIOS) and `keys` (the MagicGate key files), which HIRAKU can't ship. For a BEMANI PC game (pop'n music 15–18), drop its folder, the one holding `prog` and `data`; on Linux, Wine must be installed. The packages are portable: your saves and settings stay in their `user` folder.
 
 ## Building from source
 
@@ -85,7 +89,7 @@ HK_REGRESS_BIN=build/arm64 tools/regress.py check   # the ARM build against the 
 - Plan, status and per-board notes: [PLAN.md](PLAN.md)
 - Playing, per game: [docs/PLAY.md](docs/PLAY.md)
 - How Firebeat translation works: [docs/RECOMP.md](docs/RECOMP.md); the kernel: [docs/KERNEL.md](docs/KERNEL.md)
-- Konami Python: [docs/PYTHON.md](docs/PYTHON.md); e-AMUSEMENT and NET TAISEN: [docs/EAMUSE3.md](docs/EAMUSE3.md)
+- Konami Python: [docs/PYTHON.md](docs/PYTHON.md); e-AMUSEMENT and NET TAISEN: [docs/EAMUSE3.md](docs/EAMUSE3.md); mods: [docs/MODS.md](docs/MODS.md)
 - The MAME oracle: [oracle/README.md](oracle/README.md)
 
 ## Licence
