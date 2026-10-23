@@ -101,11 +101,12 @@ endif()
 add_executable(test_find_text mods/test_find_text.cpp)
 target_link_libraries(test_find_text PRIVATE hiraku_shell)
 add_test(NAME mods_text COMMAND test_find_text)
-# tools/ingest.py: a Konami Python game waiting for its BIOS and keys, finished when they're dropped
-if(Python3_Interpreter_FOUND)
+# tools/ingest.py (Python 3.11 or later: tomllib): a Konami Python game waiting for its BIOS and keys,
+# finished when they're dropped
+if(Python3_Interpreter_FOUND AND Python3_VERSION VERSION_GREATER_EQUAL 3.11)
   add_test(NAME ingest_python_support COMMAND Python3::Interpreter ${CMAKE_CURRENT_SOURCE_DIR}/tools/test_ingest_python.py)
 endif()
 # tools/ingest.py --place: a game's folder moved into dumps/ or read where it is
-if(Python3_Interpreter_FOUND)
+if(Python3_Interpreter_FOUND AND Python3_VERSION VERSION_GREATER_EQUAL 3.11)
   add_test(NAME ingest_place COMMAND Python3::Interpreter ${CMAKE_CURRENT_SOURCE_DIR}/tools/test_ingest_place.py)
 endif()

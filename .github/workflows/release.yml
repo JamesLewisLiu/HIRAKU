@@ -56,7 +56,10 @@ jobs:
           HK_TESTS: ${{ startsWith(github.ref, 'refs/tags/v') && 'OFF' || 'ON' }}
       - name: Unit tests
         if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
-        run: ctest --test-dir build/release-linux --output-on-failure
+        # tools/ingest.py's tests with the package's Python (3.14; the runner's is 3.10, and ingest needs tomllib)
+        run: |
+          cmake build/release-linux -DPython3_EXECUTABLE=$HOME/hiraku-deps/python/bin/python3
+          ctest --test-dir build/release-linux --output-on-failure
       - name: The LGPL libraries' sources
         run: cp ~/hiraku-deps/src/ffmpeg-*.tar.xz ~/hiraku-deps/src/SDL3-*.tar.gz dist/
       - uses: actions/upload-artifact@v7

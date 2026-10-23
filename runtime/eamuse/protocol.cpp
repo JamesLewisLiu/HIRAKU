@@ -13,6 +13,10 @@
 #include <iterator>
 #include <utility>
 
+#ifdef _MSC_VER
+#define strncasecmp _strnicmp   // MSVC's name for it (the Python core builds with clang-cl)
+#endif
+
 namespace hk::ea {
 
 namespace {
