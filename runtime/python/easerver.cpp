@@ -595,9 +595,10 @@ static bool pc_popn(const std::string &game) { return game == "G15" || game == "
 
 std::string EamuseServer::rank_table(const std::string &game) {
     const bool p11 = game == "D11", p13 = game == "E13", p14 = game == "F14", pref_first = game != "C20";
-    // pop'n 15: 22 courses (0x2998 bytes, its check of the table 0x427e40), no shop board
-    const bool p15 = game == "G15";
-    std::string t(p11 ? 0x1f80 : p13 ? 0x22a4 : p14 ? 0x1894 : p15 ? 0x2998 : 0x1f30, '\0');
+    // pop'n 15: 22 courses (0x2998 bytes, its check of the table 0x427e40), no shop board; 16 and
+    // 17: 11 (0x14cc, 16 0x4374c0, 17 0x437be9)
+    const bool p15 = game == "G15", p1617 = game == "H16" || game == "I17";
+    std::string t(p11 ? 0x1f80 : p13 ? 0x22a4 : p14 ? 0x1894 : p15 ? 0x2998 : p1617 ? 0x14cc : 0x1f30, '\0');
     auto put32 = [&](size_t at, uint32_t v) { for (int k = 0; k < 4; k++) t[at + k] = (char)(v >> (8 * k) & 255); };
     auto bytes = [](const std::string &v) {   // the requests send names as hex Shift-JIS
         std::string out;
@@ -613,7 +614,7 @@ std::string EamuseServer::rank_table(const std::string &game) {
     };
     const Board b{nullptr, "card_id", EXP_KEEP, "score", "cool", 10};
     const std::vector<Record> all = from_lines(read_file(game + "-rank-exp"));
-    for (int course = 0; course < (p14 ? 13 : p15 ? 22 : 15); course++) {
+    for (int course = 0; course < (p14 ? 13 : p15 ? 22 : p1617 ? 11 : 15); course++) {
         std::vector<Record> board;
         for (const Record &e : all)
             if (attr(e, "course") == std::to_string(course)) board.push_back(e);
@@ -629,7 +630,7 @@ std::string EamuseServer::rank_table(const std::string &game) {
             put32(e + 0x14, (uint32_t)num(board[i], "cool"));
         }
     }
-    if (p14 || p15) {   // no shop board; pop'n 15's comes whole (LZSS, in answer_g15)
+    if (p14 || p15 || p1617) {   // no shop board; pop'n 15-17's comes whole (LZSS)
         while (p14 && !t.empty() && t.back() == '\0') t.pop_back();
         return t;
     }
@@ -1132,7 +1133,7 @@ std::string EamuseServer::answer_later(const std::string &game, const Request &r
         return "<portfw status=\"0\"/>";
     }
     if (m == game && game == "G15") return answer_g15(r);
-    if ((game == "J39" || game == "I17" || game == "H16") && (m == "game" || m == "playerdata")) return answer_j39(game, r);
+    if ((game == "J39" || game == "I17" || game == "H16") && (m == "game" || m == "playerdata" || m == "ranking")) return answer_j39(game, r);
     if (m == game) return answer_game(game, r);   // pop'n 11 on: <D11 type=.. method=..>
     return "";
 }
@@ -2192,6 +2193,32 @@ std::string EamuseServer::answer_j39(const std::string &game, const Request &r) 
         return "<game status=\"0\"" + a + "/>";
     }
     if (m == "game") return "<game status=\"0\"/>";   // active
+    // The rankings. 16 and 17: the expert courses' boards, as pop'n 15's rank_exp (entry: ref_id
+    // course_num, the four stages' scores (16 stage_score "a,b,c,d", 17 stage_score_1..4), cool
+    // great good bad combo, pref; get: the 11 boards, 0x14cc bytes packed); 18: its INTERNET
+    // RANKING (entry: ref_id ir_num sheet_num chara_num option score cool norma_1 norma_2 pref),
+    // a board per ir_num. The name is the record's
+    if (m == "ranking") {
+        if (f == "get") {
+            if (game == "J39") return "<ranking status=\"0\"/>";
+            return "<ranking status=\"0\" f_compress=\"1\"><b __type=\"bin\">" + hex(lzss(rank_table(game))) + "</b></ranking>";
+        }
+        if (f != "entry") return "<ranking status=\"0\"/>";
+        Request e = r;
+        if (game == "J39") e.attrs["course_num"] = attr(r.attrs, "ir_num");
+        if (game == "I17" && !e.attrs.count("stage_score"))
+            e.attrs["stage_score"] = attr(r.attrs, "stage_score_1") + "," + attr(r.attrs, "stage_score_2") + "," +
+                                     attr(r.attrs, "stage_score_3") + "," + attr(r.attrs, "stage_score_4");
+        std::vector<const char *> keep = EXP_KEEP;
+        keep.push_back("stage_score");
+        if (game == "J39") keep.insert(keep.end(), {"sheet_num", "chara_num", "norma_1", "norma_2"});
+        const std::string file = game + (game == "J39" ? "-rank-ir" : "-rank-exp");
+        const Board b{file.c_str(), "ref_id", keep, "score", "cool", 10};
+        const Entered en = enter(b, e);
+        return "<ranking status=\"0\" update=\"" + std::string(en.update ? "1" : "0") + "\" entry=\"" + std::to_string(en.entries) +
+               "\" rank=\"" + std::to_string(en.place) + "\" hi_score=\"" + esc(attr(en.kept, "score")) + "\" hi_cool=\"" +
+               esc(attr(en.kept, "cool")) + "\"/>";
+    }
     const std::string ref = attr(r.attrs, "ref_id");
     if (ref.empty() && f == "set") return "<playerdata status=\"0\"/>";   // a credit played without a card
     if (!safe_name(ref)) return "<playerdata status=\"1\"/>";

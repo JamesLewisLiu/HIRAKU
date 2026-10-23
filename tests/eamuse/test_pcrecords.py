@@ -71,6 +71,35 @@ try:
     check('18 license block ends before NET TAISEN\'s', 0x89c + 0xdc * 13, 0x13c8)
     call(M18, f'<playerdata method="set" ref_id="{REF}" play_mode="2"></playerdata>')
     check('18 mode after play_mode 2', rec('J39')[0x1a], 1)
+    # the rankings: 17's expert course boards (entry, then get's packed table: 11 boards of 0x1e4),
+    # 16's stage_score list, 18's INTERNET RANKING by ir_num
+    import re
+    ans = call(M17, f'<ranking method="entry" ref_id="{REF}" course_num="3" stage_score_1="90000" stage_score_2="80000" '
+                    f'stage_score_3="70000" stage_score_4="60000" cool="900" great="10" good="1" bad="0" combo="1000" pref="13"></ranking>').decode()
+    check('17 entry', re.search(r'update="(\d)" entry="(\d+)" rank="(\d+)" hi_score="(\d+)"', ans).groups(), ('1', '1', '1', '300000'))
+    ans = call(M17, '<ranking method="get"></ranking>').decode()
+    def unlzss(b):
+        n = struct.unpack_from('<I', b)[0]; i = 4; out = bytearray(); win = bytearray(4096); r = 0xfee
+        while len(out) < n:
+            flags = b[i]; i += 1
+            for bit in range(8):
+                if len(out) >= n: break
+                if flags >> bit & 1:
+                    c = b[i]; i += 1; out.append(c); win[r] = c; r = (r + 1) & 0xfff
+                else:
+                    at = b[i] | (b[i + 1] & 0xf0) << 4; ln = (b[i + 1] & 15) + 3; i += 2
+                    for k in range(ln):
+                        c = win[(at + k) & 0xfff]; out.append(c); win[r] = c; r = (r + 1) & 0xfff
+        return bytes(out)
+    t = unlzss(bytes.fromhex(re.search(r'<b[^>]*>([0-9a-f]+)</b>', ans).group(1)))
+    e = 3 * 0x1e4
+    check('17 table: size, course 3 count, name, score', (len(t), u32(t, e), t[e + 4:e + 8], u32(t, e + 4 + 0x10)), (0x14cc, 1, b'TEST', 300000))
+    ans = call(M16, f'<ranking method="entry" ref_id="{REF}" course_num="0" stage_score="1,2,3,4" cool="5" great="0" good="0" bad="0" combo="9" pref="1"></ranking>').decode()
+    check('16 entry', re.search(r'hi_score="(\d+)"', ans).group(1), '10')
+    ans = call(M18, f'<ranking method="entry" ref_id="{REF}" ir_num="2" sheet_num="1" chara_num="5" option="0" score="88000" cool="400" norma_1="0" norma_2="0" pref="13"></ranking>').decode()
+    check('18 entry', re.search(r'update="(\d)" entry="(\d+)" rank="(\d+)" hi_score="(\d+)"', ans).groups(), ('1', '1', '1', '88000'))
+    ans = call(M18, f'<ranking method="entry" ref_id="{REF}" ir_num="2" sheet_num="1" chara_num="5" option="0" score="70000" cool="400" norma_1="0" norma_2="0" pref="13"></ranking>').decode()
+    check('18 entry, a worse one', re.search(r'update="(\d)" entry="(\d+)" rank="(\d+)" hi_score="(\d+)"', ans).groups(), ('0', '1', '1', '88000'))
 finally:
     srv.terminate()
     shutil.rmtree(D, ignore_errors=True)

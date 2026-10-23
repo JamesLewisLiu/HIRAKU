@@ -769,7 +769,13 @@ sends binary XML (kbin) and wants it back (`runtime/python/kbin.h`); `ea3_query`
   and phases; 17 `game_phase e_amuse_phase local_matching_enable matching_sec`; 18 also `ir_phase
   event_phase netvs_phase license_phase psp_phase psp_sale_month psp_sale_day boss_diff
   boss_battle_point`. HIRAKU's values are guesses, each the data folder's `NAME-GAME` if there is
-  one.
+  one. What each game takes (outside these, the phase counts as 0), from its accessors:
+
+  | Game | Phase: range (HIRAKU's), what is known |
+  |---|---|
+  | 16 (`0xcf47ac`, `0x44531c`-`0x445490`) | `phase` 0-2 (the cabinet's), `netvs_phase` 0-7 (1; NET TAISEN from 1), `ir_phase` 0-3 (0), `private_phase` 0-3 (1), `normal_secret_phase` 0-5 (1), `all_hiscore_phase` 0-3 (1). Some are tested for one value (`private_phase` 1 and 2 each turn something on), so the highest isn't simply the most |
+  | 17 | `game_phase` (2), `e_amuse_phase` 0-15 (14; NET TAISEN from 4; its tables run to 14) |
+  | 18 (`0xfcb508`, `0x45f190`-`0x45f360`) | `game_phase` 0-2 (2; the higher of it and the cabinet's), `ir_phase` 0-13 (0; the INTERNET RANKING runs in 1-5 and 7-12), `event_phase` 0-6 (1; the event runs in 1-5), `netvs_phase` 0-13 (1; NET TAISEN from 1, something more in 3, 6, 8, 10, 12), `license_phase` 0-3 (1), `psp_phase` 0-6 (0) |
 - **A card's life**: `cardmng inquire` (`binded`: the card has this game's player), `authpass`,
   `playerdata expire`; with none, `inquire model="<the game before>"` (16: G15, 17: H16, 18: I17)
   and `playerdata get model=...`: that game's record (16 reads pop'n 15's 0xb38 whole, 17 the first
@@ -816,6 +822,17 @@ sends binary XML (kbin) and wants it back (`runtime/python/kbin.h`); `ea3_query`
   `game get boss_diff boss_battle_point`: a shop or server tally, not the player's).
 - **16's `playerdata score`** `music_num sheet_num s_challenge`: `score nr_active_friend
   friend_score_N` (`0x435d70`): the card's best (below, "Shared scores").
+- **The rankings** (module `ranking`): 16 and 17 send the expert courses' results as pop'n 15's
+  `rank_exp`: `ranking entry ref_id course_num`, the four stages' scores (16 `stage_score
+  "a,b,c,d"`, 17 `stage_score_1..4`), `cool great good bad combo pref` (16 also each stage's
+  `chara_num` and `option`), answered `update entry rank hi_score hi_cool`; `ranking get` takes the
+  boards, 11 of pop'n 15's 0x1e4 bytes (0x14cc, packed: `f_compress` and `<b>`; 16 `0x4374c0`, 17
+  `0x437ad0`). No name is sent: the server's board takes the record's. 18 sends its INTERNET
+  RANKING's results (`ranking entry ref_id ir_num sheet_num chara_num option score cool norma_1
+  norma_2 pref`) and gets no boards. HIRAKU keeps a board per course (`H16-rank-exp`,
+  `I17-rank-exp`) and per `ir_num` (`J39-rank-ir`). Not filled yet: the records' stage scores
+  (16: 11 courses' own from 0x6ec and 10 best players' from 0x79c; 17: 19 from 0x7c0 and 10 from
+  0x8f0), which courses they follow not being seen (pop'n 15 fills its own from the boards).
 
 ## One card for all (pop'n music 9–18)
 
