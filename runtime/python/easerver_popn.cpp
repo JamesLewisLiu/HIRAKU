@@ -54,9 +54,17 @@ std::string EamuseServer::answer_later(const std::string &game, const Request &r
             items += "<item name=\"pcbevent\" url=\"http://" + esc(host) + "/\"/>"
                      "<item name=\"keepalive\" url=\"http://127.0.0.1/keepalive?pa=127.0.0.1&amp;ia=127.0.0.1&amp;"
                      "ga=192.168.0.1&amp;ma=127.0.0.1&amp;t1=2&amp;t2=10\"/>";
+        // pop'n music High Cheers (M39, 64-bit AVS2, PLAN.md §32): its start-up puts a pcbevent before
+        // package.list, and stops at a network error (boot status 1,2008) when the module isn't listed
+        // and its own modules (registered with the library at start-up): listed, or the library fails
+        // their calls before sending (the boot check's NETWORK ERROR)
+        if (game == "M39")
+            for (const char *mod : {"pcbevent", "pcb", "info", "player", "lobby24", "loctest24", "sidmgr", "sppass", "eacoin",
+                                    "dlstatus", "ins", "apsmanager"})
+                items += std::string("<item name=\"") + mod + "\" url=\"http://" + esc(host) + "/\"/>";
         return "<services expire=\"600\" status=\"0\">" + items + "</services>";
     }
-    if (m == "facility" && f == "get" && pc_popn(game)) {   // pop'n 15's library (libavs ea3_facility): every
+    if (m == "facility" && f == "get" && (pc_popn(game) || game == "M39")) {   // pop'n 15's library (libavs ea3_facility): every
         // field it imports (location, line, portfw, public, share), or it fails the start-up (5-2009);
         // pop'n 18's (J39) also the location's name and type, the line's class and share/eacoin
         // (its map in libavs-win32-ea3.dll, from 0x35fe0)
