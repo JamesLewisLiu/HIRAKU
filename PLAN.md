@@ -1,5 +1,28 @@
 # HIRAKU — Static recompilation of Konami Firebeat
 
+The plan began with Firebeat (§0–§13) and grew a section per core and feature since. The code cites
+sections by number ("PLAN.md section 23"), so they keep their numbers; new work gets a new section.
+
+| § | About | Kind |
+|---|---|---|
+| 0–8 | Firebeat: why recomp, the binary, the platform, architecture, validation, milestones, risks, decisions | the first plan |
+| 9–13 | Firebeat milestones M1–M5 | outcomes |
+| 14 | Efficiency on N100-class PCs, PGO | measurements, decisions |
+| 15–17 | Other BEMANI platforms as cores; DJ Main, 573, Twinkle media; the core split, DJ Main | plan, outcomes |
+| 18 | Firebeat music against MAME | outcomes |
+| 19 | System 573 (M14) | roadmap, outcomes |
+| 20 | Modding | plan, outcomes |
+| 21 | Twinkle, beatmania IIDX (M15) | roadmap, outcomes |
+| 22 | ARM hosts | outcomes |
+| 23 | Konami Python 1/2 (M16): the core, e-AMUSEMENT, NET TAISEN | roadmap, outcomes |
+| 24 | The rest of the catalogue | plan |
+| 25 | Real cabinet hardware: card readers, BIO2 | outcomes, bring-up list |
+| 26 | Windows | outcomes |
+| 27–28 | Firebeat from a release; public releases | outcomes |
+| 29 | Shaders: Lola Retro, the CRT beam | outcomes |
+| 30 | The PC pop'n music games (15–18) | roadmap, outcomes |
+| 31 | The code's structure: the build, the e-AMUSEMENT server, shared helpers | outcomes |
+
 Goal: native PC executables of the Firebeat library: beatmania III, pop'n music 4–8 / Animelo / Mickey Tunes, ParaParaParadise, and Keyboardmania as a stretch goal. The approach is to statically translate each game's PowerPC program to C and link it against one shared runtime that replaces the arcade board.
 
 The user supplies their own dumps. The repo never contains ROMs, executables, assets, or recompiled output, because the generated C is derived from the game. This is the N64Recomp/Zelda64Recomp model.
@@ -862,7 +885,7 @@ Each phase has an exit test. Sizes are assisted-effort guesses; DJ Main went fas
     - `lan`: the network a cabinet sees, with no host sockets of its own. Socket calls in neutral form; DNS ("services..." is 192.168.50.1, other names get addresses of their own), ICMP echo for every raw socket, NTP (UDP 123, new), and HTTP/1.0 requests handed to a handler that answers at once or later;
     - `server`: the modules games share (numbering, KONAMI ID `userid`, posevent, pcbtracker, the owner's message), each game adding its own;
     - `remote`: online, the game's requests forwarded unchanged to a real server.
-    The Python core can move onto it when its branch merges (its `eanet`/`easerver`/`eaclient` are the originals).
+    The Python core can move onto it when its branch merges (its `eanet`/`easerver`/`eaclient` are the originals). Done for the protocol and the client (§31).
   - **The unit's sockets** (`npu.cpp`, windyfairy's formats): socket, connect, send, recv, sendto, recvfrom, setsockopt, close on the LAN. Addresses come in the game's sockaddr_in (network byte order). A recv whose answer isn't in yet (online) is answered later: the unit polls each millisecond and replies to that call's id, as its blocking recv would. Offline, the answer is there at once, so runs stay reproducible.
   - **GuitarFreaks and DrumMania's server** (`runtime/sys573/eagfdm.{h,cpp}`):
     - `services.get`: the game looks up `posevent`, `pcbtracker`, `numbering`, `userid` and `local` (everything else). It also reads two addresses (drmn10m 0x8003caa8): `keepalive` (`ping://`, `pa=`, `ga=`: the hosts the NETWORK CHECK pings) and `ntp` (`ntp://`). They are kept in its settings; ours are all 192.168.50.1.
@@ -2493,6 +2516,16 @@ From pop'n music 15 ADVENTURE (2007) on, pop'n is a Windows program on a PC. The
 **Open:**
 - A program folder whose `prg.bin` lists `ezusb.dll` or `libacio.dll` would fail the program check with HIRAKU's in their place. HIRAKU's code would then come in another way, leaving Konami's files as they are: a stand-in `d3d9.dll` beside the program (a file the list doesn't name), patching the board's and reader's calls in Konami's DLLs as spice2x does.
 - To check by the owner: a real Windows PC, the pop'n controller and board, a card reader (the card logic is spice2x's, untested here), the sound's latency.
+
+## 31. The code's structure (2026-10-23)
+
+What was done before more features, as the code had grown (63k hand-written lines):
+
+- **CI on every push to main** (`.github/workflows/release.yml`): both packages and `ctest`, so a fault on one system shows before a release is tagged (v0.4.1's Windows Python build failed on a name Windows' headers take as a macro, `small`). CTest has every test now: kbin, hiraku-eamuse's one card and pop'n 16–18 records, vsock under Wine, mods' `[[text]]`, ingest's Python BIOS and keys.
+- **A binary per game only where something of the game's is compiled in.** `runtime/main.cpp` was compiled 163 times (the game id a define); now once (`hiraku_main`), the id a one-line file (`shell/built.h`). The games with no recorded code (all DJ Main, 95 of 108 System 573 and Twinkle, every Python game but `hiraku-python`) are links to their core's binary, which finds the game in its name. `build/cmake`: 11 GB → 7.5 GB, and a change to the shell relinks 44 binaries instead of 176. ccache when installed.
+- **The e-AMUSEMENT server in parts** (`runtime/python/easerver*.cpp`): the calls and files (`easerver.cpp`), rankings (`_rank`), GuitarFreaks and DrumMania V (`_gfdm`), pop'n 9–14 (`_popn`), one card for all (`_share`), pop'n 15–18 (`_pc`). The protocol's pieces (MD5, RC4, the XML reader, records) and the online client are `runtime/eamuse/`'s, which had been forked from this server and drifted (the 573's client lacked Windows' connect limit). The two virtual LANs stay apart: the Python board's commands, timeouts and LAN cable are not the 573's socket calls.
+- **Shared helpers**: `machine.txt` read by `shell/kvfile.h` (six copies before), `sys::make_dirs`, `copy_file`, `exists` (three), the host ACIO port's packets by one decoder (two). ALSA's output out of `window.cpp` into `host/alsa.cpp`; the launcher's Settings built a tab per function (the same pixels, checked).
+- Left as they are: `main()`'s options (a flat list reads as well as a table would), the launcher's command line (one condition per feature). Not possible: regress cases for the PC games (Wine and real time: not bit-exact).
 
 ## M0 steps (all done)
 
