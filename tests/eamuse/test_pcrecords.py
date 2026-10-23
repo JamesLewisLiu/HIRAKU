@@ -1,0 +1,78 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""pop'n music 16-18's playerdata set merged into their records where each game's loader reads
+them (docs/EAMUSE3.md, "pop'n music 16, 17, 18"): made-up set calls, the kept records checked.
+
+    tests/eamuse/test_pcrecords.py [build/cmake/hiraku-eamuse]      exit 0 when all hold
+"""
+import os, shutil, socket, struct, subprocess, sys, tempfile, time
+SERVER = sys.argv[1] if len(sys.argv) > 1 else os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'build', 'cmake', 'hiraku-eamuse')
+D = tempfile.mkdtemp(prefix='hk-pcrec-')
+REF = '48524B00000000BB'
+open(os.path.join(D, 'cards'), 'w').write(f'cardid=E0040100000000BB\tcardtype=1\tpass=1234\trefid={REF}\n')
+with socket.socket() as s0:
+    s0.bind(('127.0.0.1', 0)); port = s0.getsockname()[1]
+srv = subprocess.Popen([SERVER, '--port', str(port), '--data', D, '--quiet', '--no-relay'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+for _ in range(50):
+    try:
+        socket.create_connection(('127.0.0.1', port)).close(); break
+    except OSError:
+        time.sleep(0.1)
+def call(model, body):
+    x = f'<?xml version="1.0"?><call model="{model}" srcid="0">{body}</call>'.encode()
+    s = socket.create_connection(('127.0.0.1', port))
+    s.sendall(b'POST / HTTP/1.0\r\nContent-Length: %d\r\n\r\n' % len(x) + x)
+    out = b''
+    while (d := s.recv(65536)): out += d
+    return out
+def rec(game): return open(os.path.join(D, f'pdata-{game}-{REF}'), 'rb').read()
+u16 = lambda b, a: struct.unpack_from('<H', b, a)[0]
+u32 = lambda b, a: struct.unpack_from('<I', b, a)[0]
+fails = 0
+def check(what, got, want):
+    global fails
+    ok = got == want; fails += not ok
+    print(('ok  ' if ok else 'FAIL'), what, got, '' if ok else f'(want {want})')
+try:
+    M16, M17, M18 = 'H16:J:A:A:2008052700', 'I17:J:A:A:2009022500', 'J39:J:A:A:2010040500'
+    for model in (M16, M17, M18):
+        call(model, f'<playerdata method="new" ref_id="{REF}" name="TEST"></playerdata>')
+    # 16: the party's guests and secrets, an extra ticket, an expert course and a random course
+    call(M16, f'<playerdata method="set" ref_id="{REF}" mode_num="2" extra_ticket="1" expert_course_num="10" expert_data="3" '
+              f'expert_random_course_num="12" expert_random_course_clear="5" expert_random_course_combo="2">'
+              f'<private send_invite_type="0" recv_invite_type="1" zoom="0" seed="167" ticket_point="0" secret="1048577" '
+              f'guest_count_0="0" guest_count_1="4" guest_count_2="1" guest_count_3="0" guest_count_4="9"/></playerdata>')
+    r = rec('H16')
+    check('16 guests', list(r[0x6564:0x6569]), [0, 4, 1, 0, 9])
+    check('16 secret', u32(r, 0x656c), 1048577)
+    check('16 extra ticket, mode', (r[0x26], r[0x1a]), (1, 2))
+    check('16 course 10, random level 12', (u16(r, 0x83c + 20), r[0x852 + 12], r[0x87d + 12]), (3, 5, 2))
+    # 17: an expert course in EXPERT mode (play_mode 6 = mode 3), its private
+    call(M17, f'<playerdata method="set" ref_id="{REF}" play_mode="6" last_play_flag="3" extra_ticket="2" expert_course_num="18" '
+              f'expert_data="4" expert_random_course_num="-1">'
+              f'<private point="7" target="2" secret="33" ticket_point="1,2,3,4,5" latest_target="5,4,3,2,1" main_chara="10,11,12" '
+              f'sub_chara="1,2,3,4,5,6,7,8,9,10" latest_main_0="20,21,22" latest_main_4="40,41,42" '
+              f'latest_sub_0="1,1,1,1,1,1,1,1,1,1" latest_sub_4="9,8,7,6,5,4,3,2,1,0"/></playerdata>')
+    r = rec('I17')
+    check('17 mode, last_play_flag, ticket', (r[0x1a], r[0x1c], r[0x2a]), (3, 3, 2))
+    check('17 course 18', u16(r, 0x990 + 36), 4)
+    check('17 secret, main, sub', (u32(r, 0xc00), [u16(r, 0xc04 + 2 * i) for i in range(3)], u16(r, 0xc0a + 18)), (33, [10, 11, 12], 10))
+    check('17 latest main 0 and 4', ([u16(r, 0xc1e + 2 * i) for i in range(3)], [u16(r, 0xc1e + 24 + 2 * i) for i in range(3)]), ([20, 21, 22], [40, 41, 42]))
+    check('17 latest sub 4', [u16(r, 0xc3c + 0x50 + 2 * i) for i in range(10)], [9, 8, 7, 6, 5, 4, 3, 2, 1, 0])
+    check('17 point, ticket_point, target, latest_target', (r[0xcba], list(r[0xcbb:0xcc0]), r[0xcc0], list(r[0xcc1:0xcc6])), (7, [1, 2, 3, 4, 5], 2, [5, 4, 3, 2, 1]))
+    # 18: NET TAISEN (play_mode 7 = mode 3), a license's two parts, the norma
+    call(M18, f'<playerdata method="set" ref_id="{REF}" play_mode="7" last_play_flag="73" norma_point="12" medal_and_friend="0" room_num="0">'
+              f'<license license_num="2" sub_license_num="0" clear="1" data1="5" data2="0" data3="0" data4="0"/>'
+              f'<license license_num="12" sub_license_num="10" clear="3" data1="1" data2="2" data3="3" data4="4"/></playerdata>')
+    r = rec('J39')
+    check('18 mode, last_play_flag, norma', (r[0x1a], r[0x1c], r[0x3e]), (3, 73, 12))
+    lic = lambda l, s: [u32(r, 0x89c + 0xdc * l + 0x14 * s + 4 * k) for k in range(5)]
+    check('18 license 2.0, 12.10', (lic(2, 0), lic(12, 10)), ([1, 5, 0, 0, 0], [3, 1, 2, 3, 4]))
+    check('18 license block ends before NET TAISEN\'s', 0x89c + 0xdc * 13, 0x13c8)
+    call(M18, f'<playerdata method="set" ref_id="{REF}" play_mode="2"></playerdata>')
+    check('18 mode after play_mode 2', rec('J39')[0x1a], 1)
+finally:
+    srv.terminate()
+    shutil.rmtree(D, ignore_errors=True)
+print('failures:', fails)
+sys.exit(1 if fails else 0)

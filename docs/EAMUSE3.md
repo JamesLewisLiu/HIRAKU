@@ -795,11 +795,27 @@ sends binary XML (kbin) and wants it back (`runtime/python/kbin.h`); `ea3_query`
   `select_count`), `<private>`, `<netvs>`, 18's `<license>` and `<boss>`. A credit played without a
   card sends `set` with no `ref_id`. HIRAKU keeps the fields above in the record, each chart's best
   score (16, 17 in the record; 18 `pscore-J39-REF`, the `<hiscore>` bits), and the plays per song
-  (`pplays-GAME-REF`, for the most played), and 18's `private` (its story map: two character lists
-  newest first, which the server moves along as the game does, `0x473cb0`); 16's and 17's `private`,
-  `netvs`, `license`, `boss` aren't kept yet.
+  (`pplays-GAME-REF`, for the most played), `<netvs>` (NET TAISEN, below), and, where each
+  game's loader reads them:
+
+  | Field | Where (and what the game sends) |
+  |---|---|
+  | `play_mode` (17, 18) | the mode and how it went (17 `0x442bba`, 18 `0x461691`): the record's 0x1a keeps the mode, where the mode select starts (17 `0x49ad1e`, 18 `0x4c383f`). 17's modes 0-5 are `play_mode` 0-1, 2-3 and 11, 5, 6 (the expert courses), 7-10 and 13 (NET TAISEN), 4 and 12; 18's 0-4 are 0-1, 2-3 and 10, 5, 6-9 and 12 (NET TAISEN), 4 and 11 |
+  | `last_play_flag` (17, 18) | 0x1c (17 bits 0-1, 18 bits 0-6), the record's own with the credit's bits |
+  | `extra_ticket` (16, 17) | 16 0x26, 17 0x2a (at most 2; 17 `0x4716b0`) |
+  | `expert_course_num expert_data` (16, 17) | the course's clear (0-4), 16-bit words: 16 11 courses from 0x83c, 17 19 from 0x990; the game sends the better of the record's and the credit's (17 `0x442a20`) |
+  | `expert_random_course_num _clear _combo` (16, 17) | a random course by its level (4-42): how many times cleared and full-comboed (at most 99), bytes: 16 0x852 and 0x87d, 17 0x9b6 and 0x9e1 |
+  | 16's `<private>` (PARTY) | `guest_count_0..4`: bytes 0x6564..0x6568 (the game sends the record's when more); `secret`: 32 bits at 0x656c (the record's OR'd in), `0x448ef0`. `zoom`, `seed`, the invite types and `ticket_point` are the credit's only |
+  | 17's `<private>` | the record's 0xc00-0xcd4, which the game keeps at `0x1209aec` through the credit (`0x451d20`) and sends from (`0x452dc9`): `secret` 0xc00 (32 bits), `main_chara` 0xc04 (3 words), `sub_chara` 0xc0a (10), `latest_main_0..4` 0xc1e + 6k (3 each), `latest_sub_0..4` 0xc3c + 0x14k (10 each), `point` 0xcba, `ticket_point` 0xcbb (5 bytes), `target` 0xcc0, `latest_target` 0xcc1 (5 bytes) |
+  | 18's `<private>` | its story map, the record's last 0x128 bytes (0x15d8), copied to `0x10af5a8`: two character lists newest first, which the server moves along as the game does (`0x473cb0`) |
+  | 18's `<license license_num sub_license_num clear data1..4>` | 13 licenses of 11 parts, each a clear word and four data words (0x14 bytes; a license 0xdc), from 0x89c up to NET TAISEN's block; the game copies them to its table `0x105b244` (`0x470640`) and sends the parts the credit changed (`0x461862`) |
+  | 18's `norma_point` | 0x3e (`0x4963c0`) |
+
+  Not kept: `room_num`, `matching`, `medal_and_friend` (the credit's own counts, as pop'n 15's
+  statistics), 18's `<boss boss_num win/>` (a NET TAISEN battle against the event's boss, with
+  `game get boss_diff boss_battle_point`: a shop or server tally, not the player's).
 - **16's `playerdata score`** `music_num sheet_num s_challenge`: `score nr_active_friend
-  friend_score_N` (`0x435d70`): the record's best.
+  friend_score_N` (`0x435d70`): the card's best (below, "Shared scores").
 
 ## One card for all (pop'n music 9–18)
 

@@ -2333,8 +2333,107 @@ std::string EamuseServer::answer_j39(const std::string &game, const Request &r) 
     if (has(a, "category_num")) rec[L.option + 9] = (char)num(a, "category_num");
     if (p16 && has(a, "mode_num")) rec[0x1a] = (char)num(a, "mode_num");   // as pop'n 15's
     if (p16 && has(a, "botton_num")) rec[0x1b] = (char)num(a, "botton_num");
-    // 18's last mode, where its mode select starts (the record's 0x1a, a mode's number 0-4: 0x4c383f)
-    if (!packed && has(a, "play_mode") && num(a, "play_mode") >= 0 && num(a, "play_mode") < 5) rec[0x1a] = (char)num(a, "play_mode");
+    // 17's and 18's last mode, where their mode select starts (the record's 0x1a: 17 0x49ad1e, 18
+    // 0x4c383f). set's play_mode is the mode and how it went (17 0x442bba, 18 0x461691), so a mode
+    // is several: 17's 0-5 are play_mode 0-1, 2-3 and 11, 5, 6 (the expert courses), 7-10 and 13
+    // (NET TAISEN), 4 and 12; 18's 0-4 are 0-1, 2-3 and 10, 5, 6-9 and 12 (NET TAISEN), 4 and 11
+    if ((p17 || !packed) && has(a, "play_mode")) {
+        static const int mode17[14] = {0, 0, 1, 1, 5, 2, 3, 4, 4, 4, 4, 1, 5, 4}, mode18[13] = {0, 0, 1, 1, 4, 2, 3, 3, 3, 3, 1, 4, 3};
+        const long pm = num(a, "play_mode");
+        if (pm >= 0 && pm < (p17 ? 14 : 13)) rec[0x1a] = (char)(p17 ? mode17[pm] : mode18[pm]);
+    }
+    // last_play_flag: the record's 0x1c, set from it and the credit (17 0x442bae: bits 0-1; 18
+    // 0x461685: bits 0-6, as their loaders keep them)
+    if ((p17 || !packed) && has(a, "last_play_flag")) rec[0x1c] = (char)(num(a, "last_play_flag") & (p17 ? 3 : 0x7f));
+    // 18's norma_point: the record's 0x3e, worked out anew in some credits (0x4963c0)
+    if (!packed && has(a, "norma_point")) rec[0x3e] = (char)num(a, "norma_point");
+    if (packed) {
+        // 16's and 17's extra stage tickets: the record's 0x26 / 0x2a, at most 2 (17 0x4716b0); the
+        // expert courses (17 0x442a20): each course's clear (0-4) a 16-bit word (16: 11 courses
+        // from 0x83c; 17: 19 from 0x990), the game sending the better of the record's and the
+        // credit's; a random course by its level (4-42), how many times cleared and full-comboed
+        // (at most 99), bytes (16: from 0x852 and 0x87d; 17: 0x9b6 and 0x9e1), as their loaders
+        // bound them (16 0x447dc0, 17 0x440f30)
+        const size_t ticket = p16 ? 0x26 : 0x2a, courses = p16 ? 11 : 19, clears = p16 ? 0x83c : 0x990,
+                     random_clear = p16 ? 0x852 : 0x9b6, random_combo = p16 ? 0x87d : 0x9e1;
+        if (has(a, "extra_ticket")) rec[ticket] = (char)std::clamp(num(a, "extra_ticket"), 0L, 2L);
+        if (has(a, "expert_course_num") && has(a, "expert_data")) {
+            const long c = num(a, "expert_course_num");
+            if (c >= 0 && (size_t)c < courses) put16(clears + 2 * (size_t)c, std::clamp(num(a, "expert_data"), 0L, 4L));
+        }
+        if (const long lv = has(a, "expert_random_course_num") ? num(a, "expert_random_course_num") : -1; lv >= 0 && lv < 43) {
+            if (has(a, "expert_random_course_clear")) rec[random_clear + (size_t)lv] = (char)std::clamp(num(a, "expert_random_course_clear"), 0L, 99L);
+            if (has(a, "expert_random_course_combo")) rec[random_combo + (size_t)lv] = (char)std::clamp(num(a, "expert_random_course_combo"), 0L, 99L);
+        }
+    }
+    auto numbers = [](const std::string &v) {   // "a,b,c"
+        std::vector<long> out;
+        for (size_t from = 0; !v.empty() && from <= v.size();) {
+            out.push_back(std::strtol(v.c_str() + from, nullptr, 10));
+            const size_t comma = v.find(',', from);
+            if (comma == std::string::npos) break;
+            from = comma + 1;
+        }
+        return out;
+    };
+    // 16's <private> (PARTY: the guests): the record keeps how many times each of the five guests
+    // came, bytes from 0x6564, and the secrets found, 32 bits at 0x656c; the game sends the
+    // record's count when it's more and the record's secrets OR'd in (0x448ef0). zoom, seed, the
+    // invites and ticket_point are the credit's own
+    if (const size_t pv = r.inner.find("<private"); p16 && pv != std::string::npos) {
+        std::map<std::string, std::string> m;
+        bool sc = false;
+        read_attrs(r.inner, pv + 8, m, &sc);
+        for (int k = 0; k < 5; k++)
+            if (const std::string g = "guest_count_" + std::to_string(k); m.count(g)) rec[0x6564 + (size_t)k] = (char)std::clamp(num(m, g.c_str()), 0L, 255L);
+        if (m.count("secret")) put32(0x656c, num(m, "secret"));
+    }
+    // 17's <private>: the record's 0xc00-0xcd4, which the game copies to 0x1209aec and keeps
+    // through the credit (0x451d20); set sends it from there (0x452dc9, 0x442a00): secret (32
+    // bits) 0xc00, main_chara (3 words) 0xc04, sub_chara (10) 0xc0a, latest_main_0-4 (3 each)
+    // from 0xc1e, latest_sub_0-4 (10 each) from 0xc3c, point 0xcba, ticket_point (5 bytes)
+    // 0xcbb, target 0xcc0, latest_target (5 bytes) 0xcc1
+    if (const size_t pv = r.inner.find("<private"); p17 && pv != std::string::npos) {
+        std::map<std::string, std::string> m;
+        bool sc = false;
+        read_attrs(r.inner, pv + 8, m, &sc);
+        auto words = [&](const std::string &k, size_t at, size_t count) {
+            if (!m.count(k)) return;
+            const std::vector<long> v = numbers(attr(m, k.c_str()));
+            for (size_t i = 0; i < count && i < v.size(); i++) put16(at + 2 * i, v[i]);
+        };
+        auto bytes = [&](const std::string &k, size_t at, size_t count) {
+            if (!m.count(k)) return;
+            const std::vector<long> v = numbers(attr(m, k.c_str()));
+            for (size_t i = 0; i < count && i < v.size(); i++) rec[at + i] = (char)v[i];
+        };
+        if (m.count("secret")) put32(0xc00, num(m, "secret"));
+        words("main_chara", 0xc04, 3);
+        words("sub_chara", 0xc0a, 10);
+        for (size_t k = 0; k < 5; k++) {
+            words("latest_main_" + std::to_string(k), 0xc1e + 6 * k, 3);
+            words("latest_sub_" + std::to_string(k), 0xc3c + 0x14 * k, 10);
+        }
+        bytes("point", 0xcba, 1);
+        bytes("ticket_point", 0xcbb, 5);
+        bytes("target", 0xcc0, 1);
+        bytes("latest_target", 0xcc1, 5);
+    }
+    // 18's <license> (each a license and part the credit changed: license_num, sub_license_num,
+    // clear, data1-4): the record keeps 13 licenses of 11 parts, each a clear word and four data
+    // words (0x14 bytes, the licenses 0xdc apart) from 0x89c, which the game copies to its table
+    // 0x105b244 (0x470640) and sends from (0x461862)
+    for (size_t at = packed ? std::string::npos : r.inner.find("<license"); at != std::string::npos; at = r.inner.find("<license", at + 1)) {
+        std::map<std::string, std::string> m;
+        bool sc = false;
+        read_attrs(r.inner, at + 8, m, &sc);
+        const long lic = m.count("license_num") ? num(m, "license_num") : -1, sub = m.count("sub_license_num") ? num(m, "sub_license_num") : -1;
+        if (lic < 0 || lic >= 13 || sub < 0 || sub >= 11) continue;
+        const size_t place = 0x89c + 0xdc * (size_t)lic + 0x14 * (size_t)sub;
+        if (m.count("clear")) put32(place, num(m, "clear"));
+        for (size_t k = 0; k < 4; k++)
+            if (const std::string d = "data" + std::to_string(k + 1); m.count(d)) put32(place + 4 + 4 * k, num(m, d.c_str()));
+    }
     // the songs played: their word, the score kept if better, a play counted
     std::vector<Record> plays = from_lines(read_file(plays_file));
     bool scored = false;
