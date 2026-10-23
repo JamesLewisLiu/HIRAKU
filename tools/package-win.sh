@@ -57,7 +57,7 @@ if [ -f "$py/python.exe" ]; then cp -r "$py" "$d/python"; else echo "no $py: the
 cp -r "$root/games" "$root/docs" "$root/shaders" "$d/"
 cp -r "$root/oracle/scripts" "$d/scripts"
 mkdir -p "$d/tools"
-cp "$root"/tools/{ingest.py,chd.py,fbexe.py,pack-data.py,unlock.py,pythonfs.py,chdread.py,mameset.py,catalogue.py,update.py} "$d/tools/"
+cp "$root"/tools/{ingest.py,checklist.py,chd.py,fbexe.py,pack-data.py,unlock.py,pythonfs.py,chdread.py,mameset.py,catalogue.py,update.py} "$d/tools/"
 mkdir -p "$d/tools/eamuse" && cp "$root"/tools/eamuse/{check.py,corpus.json} "$d/tools/eamuse/"
 # libchdr for tools/chdread.py (a Python game's disk is read through it), where it looks: build\
 if [ -f "$build/libchdr_mini.dll" ]; then mkdir -p "$d/build" && cp "$build/libchdr_mini.dll" "$d/build/"; else echo "no $build/libchdr_mini.dll: Python games can't be added" >&2; fi

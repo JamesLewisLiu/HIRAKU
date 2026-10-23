@@ -150,7 +150,7 @@ done
 cp -r "$root/games" "$root/docs" "$root/shaders" "$d/"
 cp -r "$root/oracle/scripts" "$d/scripts"
 mkdir -p "$d/tools"
-cp "$root"/tools/{ingest.py,chd.py,fbexe.py,pack-data.py,regress.py,unlock.py,pythonfs.py,chdread.py,mameset.py,catalogue.py,update.py} "$d/tools/"
+cp "$root"/tools/{ingest.py,checklist.py,chd.py,fbexe.py,pack-data.py,regress.py,unlock.py,pythonfs.py,chdread.py,mameset.py,catalogue.py,update.py} "$d/tools/"
 # MAME's BEMANI sets as data: ingest tells a set by its contents (tools/mameset.py)
 cp -r "$root/tools/data" "$d/tools/"
 # e-AMUSEMENT (Konami Python): the server checker and the game's calls (docs/EAMUSE3.md)
