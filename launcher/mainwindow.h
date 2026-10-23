@@ -56,7 +56,7 @@ private:
     QList<Game> m_games;
     QTreeWidget *m_list;
     QStackedWidget *m_listStack;   // the list, or the page shown while no game is added
-    QWidget *m_detailsPane;        // the details under the list (hidden with that page)
+    QWidget *m_detailsPane;        // the details beside the list (in m_detailsDock; hidden with that page)
     QStringList m_collapsed;     // the series and systems the player closed (ui/collapsed)
     bool m_arranging = false;    // the list being filled or filtered: not the player opening a series
     QLabel *m_details;
@@ -68,6 +68,8 @@ private:
     void openRunLog(const QString &game);
     void closeRunLog();
     QDockWidget *m_logDock;
+    QDockWidget *m_detailsDock;    // the game's details, beside the list
+    static constexpr int kLayout = 1;   // saveState's version: 1, the details and log beside the list
     QAction *m_play, *m_stop, *m_controls, *m_lights, *m_showAll;
     QProcess m_proc;
     QProcess m_ingest;                // tools/ingest.py, one batch at a time

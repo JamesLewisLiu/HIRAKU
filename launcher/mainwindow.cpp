@@ -301,12 +301,6 @@ MainWindow::MainWindow() {
     m_listStack = new QStackedWidget;
     m_listStack->addWidget(m_list);
     m_listStack->addWidget(empty);
-    auto *split = new QSplitter(Qt::Vertical);
-    split->addWidget(m_listStack);
-    split->addWidget(details);
-    split->setStretchFactor(0, 3);
-    split->setStretchFactor(1, 1);
-    split->setSizes({420, 180});
     // a new version is out (updater.h): a bar above the list, until it's taken or closed
     m_updateBar = new QFrame;
     static_cast<QFrame *>(m_updateBar)->setFrameShape(QFrame::StyledPanel);
@@ -329,8 +323,15 @@ MainWindow::MainWindow() {
     cv->setContentsMargins(0, 0, 0, 0);
     cv->setSpacing(0);
     cv->addWidget(m_updateBar);
-    cv->addWidget(split, 1);
+    cv->addWidget(m_listStack, 1);
     setCentralWidget(central);
+
+    // the details and the log beside the list, one above the other (a wide screen's width), as
+    // docks: either can be dragged under the list instead, or closed (View)
+    m_detailsDock = new QDockWidget("Details", this);
+    m_detailsDock->setObjectName("details");
+    m_detailsDock->setWidget(details);
+    addDockWidget(Qt::RightDockWidgetArea, m_detailsDock);
 
     // ---- log ----
     m_log = new QPlainTextEdit;
@@ -340,7 +341,8 @@ MainWindow::MainWindow() {
     m_logDock = new QDockWidget("Log", this);
     m_logDock->setObjectName("log");
     m_logDock->setWidget(m_log);
-    addDockWidget(Qt::BottomDockWidgetArea, m_logDock);
+    addDockWidget(Qt::RightDockWidgetArea, m_logDock);
+    splitDockWidget(m_detailsDock, m_logDock, Qt::Vertical);
     m_logDock->hide();
 
     // ---- menus ----
@@ -372,6 +374,7 @@ MainWindow::MainWindow() {
     opts->addAction(settings);
     auto *view = menuBar()->addMenu("&View");
     view->addAction(m_showAll);
+    view->addAction(m_detailsDock->toggleViewAction());
     view->addAction(m_logDock->toggleViewAction());
     view->addAction(refreshAct);
     auto *help = menuBar()->addMenu("&Help");
@@ -463,7 +466,9 @@ MainWindow::MainWindow() {
     });
 
     restoreGeometry(cfg::settings().value("ui/geometry").toByteArray());
-    restoreState(cfg::settings().value("ui/state").toByteArray());
+    // no layout of this version saved: the panel beside the list starts at about a third of the window
+    if (!restoreState(cfg::settings().value("ui/state").toByteArray(), kLayout))
+        QTimer::singleShot(0, this, [this] { resizeDocks({m_detailsDock}, {std::max(300, width() / 3)}, Qt::Horizontal); });
     refresh();
 }
 
@@ -479,7 +484,7 @@ void MainWindow::closeEvent(QCloseEvent *e) {
     }
     auto &s = cfg::settings();
     s.setValue("ui/geometry", saveGeometry());
-    s.setValue("ui/state", saveState());
+    s.setValue("ui/state", saveState(kLayout));
     if (auto *g = selected()) s.setValue("ui/lastGame", g->id);
     e->accept();
 }
@@ -616,7 +621,9 @@ void MainWindow::showEmpty() {
     for (QTreeWidgetItem *it : gameItems()) any = any || !it->isHidden();
     const bool empty = !any && !m_games.isEmpty() && m_filter->text().trimmed().isEmpty() && !m_showAll->isChecked();
     m_listStack->setCurrentIndex(empty ? 1 : 0);
-    m_detailsPane->setVisible(!empty);
+    if (empty) m_detailsDock->hide();
+    else if (m_detailsPane->property("hiddenEmpty").toBool()) m_detailsDock->show();   // only what this hid
+    m_detailsPane->setProperty("hiddenEmpty", empty);
 }
 
 // A ready game's status says what its next start does differently: a first boot, an install, mods
