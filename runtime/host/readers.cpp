@@ -100,7 +100,7 @@ public:
                 told = true;
             } else if (connect()) {
                 told = false;
-                while (g_running && poll_card()) sleep_ms(20);
+                while (g_running && poll_card()) {}
                 if (g_running) fprintf(stderr, "reader %s: lost; connecting again\n", port_.path().c_str());
             }
             port_.close();
@@ -133,21 +133,25 @@ private:
     }
 
     // Read whatever card is there, then the status: 0 2 when there is a card, 2-9 its id, 11 the
-    // 10-key's, 14-15 the keys held
+    // 10-key's, 14-15 the keys held. spice2x waits 200 ms after the read for one status, so a key
+    // is seen every ~220 ms (the 10-key's lag a tester found); here the status is asked every
+    // 20 ms through those 200 ms, the keys with it
     bool poll_card() {
         AcioPort::Message m;
         if (!port_.ask(1, 0x0161, {0x00, 0x03, 0xff, 0xff}, m)) return false;
-        sleep_ms(200);
-        if (!port_.ask(1, 0x0164, {0x10}, m)) return false;
-        if (m.payload.size() != 18) return true;
-        crypt_.crypt(m.payload.data(), 18);
-        if (ReaderCrypt::crc(m.payload.data(), 16) != (m.payload[16] << 8 | m.payload[17])) return false;   // out of step
-        const uint8_t *s = m.payload.data();
-        if (s[11]) {
-            std::lock_guard<std::mutex> l(g_mutex);
-            g_keys[player_] = (uint16_t)(s[14] << 8 | s[15]);
+        for (int i = 0; i < 10 && g_running; i++) {
+            sleep_ms(20);
+            if (!port_.ask(1, 0x0164, {0x10}, m)) return false;
+            if (m.payload.size() != 18) continue;
+            crypt_.crypt(m.payload.data(), 18);
+            if (ReaderCrypt::crc(m.payload.data(), 16) != (m.payload[16] << 8 | m.payload[17])) return false;   // out of step
+            const uint8_t *s = m.payload.data();
+            if (s[11]) {
+                std::lock_guard<std::mutex> l(g_mutex);
+                g_keys[player_] = (uint16_t)(s[14] << 8 | s[15]);
+            }
+            if (s[0] == 2) card_read(player_, s + 2);
         }
-        if (s[0] == 2) card_read(player_, s + 2);
         return true;
     }
 
