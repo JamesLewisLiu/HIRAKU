@@ -35,6 +35,7 @@ public:
     void card_button() override;
     void key(uint8_t scan, bool down) override;
     bool card_offered() const override { return offered_ || inside_; }
+    bool card_inside() const override { return inside_; }
     std::string state() const override;
 
 private:

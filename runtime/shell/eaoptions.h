@@ -11,7 +11,8 @@
 //   -card0 / -card1 NUMBER    player 1's / 2's card number (16 hex digits, E004...). Without it,
 //                             card0.txt / card1.txt: the working directory's, then the save folder's
 //   -autocard off|p1|p2|both  present the card(s) to the reader whenever it waits for one, so
-//                             Insert needn't be pressed
+//                             Insert needn't be pressed (the Python core: until a real reader
+//                             gives a card)
 //   -autopin                  HIRAKU's: the card's PIN typed on the 10-key when the game asks for
 //                             it, as HIRAKU's own server keeps it (pop'n 14-18)
 //

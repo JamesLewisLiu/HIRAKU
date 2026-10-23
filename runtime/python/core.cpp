@@ -924,10 +924,17 @@ public:
     }
 
     // A real card reader's card (runtime/host/readers.h): player 1's card from now on, as -card0
-    // would have made it, and put to the slot. While the slot or the reader has a card, nothing:
-    // the player takes that back first.
+    // would have made it, and put to the slot. A card only waiting at the slot (-autocard's, or
+    // the card key's) makes way for it; while the reader has one in, nothing: the game gives that
+    // back first. With a real reader, -autocard stops: its card would sit at the slot (the front
+    // sensor on in test mode) and turn the reader's away.
     bool card_read(int player, const std::string &number) override {
         if (!card_ || player != 0) return false;
+        if (ea_.autocard[0]) {
+            ea_.autocard[0] = false;
+            printf("e-AMUSEMENT: a card from the reader: the card is no longer presented by itself\n");
+        }
+        if (card_->card_offered() && !card_->card_inside()) card_->card_button();   // taken from the slot
         if (card_->card_offered()) {
             if (number != ea_.card[0]) printf("card: the reader has a card: take it back first\n");
             return true;

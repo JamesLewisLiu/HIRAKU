@@ -27,6 +27,9 @@ public:
 
     // The card is in the slot or in the reader (not with the player, nor given back).
     virtual bool card_offered() const = 0;
+    // The reader has taken it in (the game holds it until it gives it back); false while it only
+    // waits at the slot
+    virtual bool card_inside() const { return card_offered(); }
     // A line for the window title ("card in the reader", ...), "" when nothing to say.
     virtual std::string state() const = 0;
 };

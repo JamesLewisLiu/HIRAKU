@@ -50,7 +50,7 @@ public:
     bool card_offered() const override { return offered_; }   // in the slot, or in the reader
     std::string state() const override;
 
-    bool card_inside() const { return inside_; }
+    bool card_inside() const override { return inside_; }
 
     // Carrying a player to this game from the one before (docs/EAMUSE3.md, "One card for all"):
     // until the game writes the card, it is shown `older`, that game's card with the same number.
