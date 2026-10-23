@@ -93,16 +93,19 @@ private:
     std::string answer_playerdata(const std::string &game, const Request &r);
     // pop'n 15 (G15, a PC game: runtime/pc/): <G15 method="type_method" ...>
     std::string answer_g15(const Request &r);
-    // pop'n 17 and 18 (I17, J39, PC games: runtime/pc/): modules game and playerdata, binary XML
+    // pop'n 16, 17 and 18 (H16, I17, J39, PC games: runtime/pc/): modules game and playerdata, binary XML
     std::string answer_j39(const std::string &game, const Request &r);
     // One card for all (docs/EAMUSE3.md): every chart's best clear mark over all the pop'n games
     // a card has played, by song (pop'n 12's word low byte: two bits a chart), and a game's own
     // player data with them put in
     std::vector<uint8_t> shared_marks(const std::string &card) const;
     std::string with_shared_marks(const std::string &game, const std::string &card, std::string data) const;
-    // and a chart's best score over pop'n 12-15 (key: the asking game's player, its card for 12,
-    // its ref id for 13 on)
+    // and a chart's best score over pop'n 12-18 (key: the asking game's player, its card for 12,
+    // its ref id for 13 on); every chart's best of the player's other games, by song and sheet,
+    // for the charts `game` has too; one game's own (who: its card or ref id)
     long shared_score(const std::string &game, const std::string &key, const std::string &song, const std::string &sheet) const;
+    std::map<std::pair<long, long>, long> shared_scores(const std::string &game, const std::string &key) const;
+    std::map<std::pair<long, long>, long> scores_of(const std::string &game, const std::string &who) const;
     std::string rank_get(const Board &b, const Request &r);
     static std::string item(const Board &b, const std::map<std::string, std::string> &entry, size_t place);
     std::string read_file(const std::string &name) const;

@@ -801,14 +801,14 @@ sends binary XML (kbin) and wants it back (`runtime/python/kbin.h`); `ea3_query`
 - **16's `playerdata score`** `music_num sheet_num s_challenge`: `score nr_active_friend
   friend_score_N` (`0x435d70`): the record's best.
 
-## One card for all (pop'n music 9–14)
+## One card for all (pop'n music 9–18)
 
 Each pop'n carries a player over from the one before: it reads the older game's card, asks the
 server for that player, offers to carry the name and clears over ("引き継ぎ"), and then wants a
 card of its own (pop'n 14: an e-AMUSEMENT PASS and pop'n 13's transfer number). In HIRAKU one card
 number (`-card0`, `card0.txt`, the launcher's Player 1 Card) is used in every game, and the player
 follows it from game to game: 9 → 10 → 11 → 12 → 13 → 14, each step checked in HIRAKU with the
-same number.
+same number, and on to the PC games, 14 → 15 → 16 → 17 → 18 (their own sections below).
 
 - **One server folder:** with the saves in their default places (the game window's,
   `~/.local/share/hiraku/<game>`, or a portable install's `user/data/<game>`), the pop'n games share
@@ -883,7 +883,16 @@ same number.
   then saves them with its own at the end of a credit (pop'n 9-11 save the whole player). Checked:
   marks put in pop'n 9, 10, 11 and 13 reached all six games (in RAM for 12-14), and pop'n 9, 10 and
   11 played a credit with them and saved them.
-- **Not shared:** pop'n 13's and 14's other flags in a song's word (0x100-0x4000).
+- **pop'n 15-18** keep a 16-bit word a song with the marks in its low byte as pop'n 12-14 (16 and
+  18 set a chart's mark from the same table of values, 1-3 shifted by two bits a chart: 16
+  `0x448cf5`, 18 `0x4613fa`), and number their songs as 14. Their song tables (in the program:
+  15 `0x5084f0`, 0x28 bytes an entry, 763 songs; 16 `0x523ab8`, 0x28, 839; 17 `0x52d028`, 0x34,
+  907; 18 `0x55adc0`, 0x48, 976, in each one's last program) have the same song at the same index,
+  differing in spelling only, and flag a song taken out with 0x80000000 (15 had already taken out
+  some songs 14 has, its entries' text left in place; 16-18 blank theirs). The server gives 15-18
+  the card's marks in their `playerdata get` as it does 12-14. Checked: pop'n 18 holding pop'n 15's
+  gold medal on song 0 in its copy of the player.
+- **Not shared:** pop'n 13's and 14's other flags in a song's word (0x100-0x4000), and 15-18's.
 
 ### Shared scores
 
@@ -898,10 +907,20 @@ same number.
   0x200 alone; 7 the same with 0x100), not pop'n 12's 2. Played: GRADIUS (418) on 5 buttons is
   313 notes in pop'n 12 (sheet 2) and 167 in both 13 and 14 (sheet 6); 9 buttons' Normal is
   sheet 0 (pop'n 12; pop'n 13 in NET TAISEN).
-- **The server** answers `score` with the best of the card's pop'n 12, 13 and 14 scores (pop'n 12
-  by card, 13 and 14 by the card's ref id) for that song and sheet; another game's only for songs
-  both have, and pop'n 14's own for the 18 songs it gave new ids. Checked: pop'n 12 asking
+- **The server** answers `score` with the best of the card's pop'n 12-18 scores (pop'n 12 by card,
+  the others by the card's ref id) for that song and sheet; another game's only for songs both
+  have, and pop'n 14's (and 15-18's) own for the 18 songs 14 gave new ids. Checked: pop'n 12 asking
   GRADIUS's sheet 0 got pop'n 13's 77777.
+- **pop'n 15-18** number their charts alike, seven a song (each one's song table keeps the
+  levels by sheet at the same place: 15 `0x4759ef`, 18 `0x470f08`, the entry's level bytes in the
+  same order). pop'n 15 asks a chart's best as 12-14 do (`playerdata_score`), and 16 too
+  (`playerdata score`); 16-18 also take all of a player's bests in `playerdata get`: 16 and 17 in
+  their records (32 bits a chart, chart-major: 16 at 0x8dc, 846 songs a chart; 17 at 0xcd4, 950),
+  18 in `<hiscore>` (17 bits a chart, seven a song).
+  The server puts the card's best from its other games into those, for that answer only: the
+  record kept is the game's own. Many charts' levels changed from one game to the next (Konami
+  re-rated them; the charts the same) and aren't taken as new charts. Checked: pop'n 18 holding
+  pop'n 15's 88888 as song 0's Normal best.
 
 ## NET TAISEN (pop'n music 12–14)
 
