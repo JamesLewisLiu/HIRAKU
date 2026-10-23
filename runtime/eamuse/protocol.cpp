@@ -21,6 +21,8 @@ namespace {
 constexpr uint8_t SECRET[26] = {0x69, 0xd7, 0x46, 0x27, 0xd9, 0x85, 0xee, 0x21, 0x87, 0x16, 0x15, 0x70, 0xd0,
                                 0x8d, 0x93, 0xb1, 0x24, 0x55, 0x03, 0x5b, 0x6d, 0xf0, 0xd8, 0x20, 0x5d, 0xf5};
 
+}  // namespace
+
 // name="value" pairs from the start of an element (after its name), to its '>'
 size_t read_attrs(const std::string &x, size_t at, std::map<std::string, std::string> &out, bool *self_closing) {
     while (at < x.size()) {
@@ -46,8 +48,6 @@ size_t read_attrs(const std::string &x, size_t at, std::map<std::string, std::st
     }
     return x.size();
 }
-
-}  // namespace
 
 // MD5 (RFC 1321)
 std::vector<uint8_t> md5(const std::vector<uint8_t> &msg) {

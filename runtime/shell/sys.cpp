@@ -6,6 +6,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <fstream>
 
 #ifdef _WIN32
 #ifndef WIN32_LEAN_AND_MEAN
@@ -112,6 +113,11 @@ bool make_dir(const std::string &path) {
 bool is_dir(const std::string &path) {
     struct _stat64 st;
     return _stat64(path.c_str(), &st) == 0 && (st.st_mode & _S_IFDIR);
+}
+
+bool exists(const std::string &path) {
+    struct _stat64 st;
+    return _stat64(path.c_str(), &st) == 0;
 }
 
 bool replace_file(const std::string &from, const std::string &to) {
@@ -262,6 +268,11 @@ bool is_dir(const std::string &path) {
     return stat(path.c_str(), &st) == 0 && S_ISDIR(st.st_mode);
 }
 
+bool exists(const std::string &path) {
+    struct stat st;
+    return stat(path.c_str(), &st) == 0;
+}
+
 bool replace_file(const std::string &from, const std::string &to) { return std::rename(from.c_str(), to.c_str()) == 0; }
 
 std::string exe_path() {
@@ -320,5 +331,21 @@ std::time_t from_utc(const std::tm &t) {
 }
 
 #endif
+
+bool make_dirs(const std::string &path) {
+    bool ok = false;
+    for (size_t k = 1; k <= path.size(); k++)
+        if (k == path.size() || path[k] == '/' || path[k] == '\\') ok = make_dir(path.substr(0, k));
+    return ok;
+}
+
+bool copy_file(const std::string &from, const std::string &to) {
+    std::ifstream in(from, std::ios::binary);
+    if (!in) return false;
+    std::ofstream out(to + ".part", std::ios::binary | std::ios::trunc);
+    out << in.rdbuf();
+    out.close();
+    return out.good() && replace_file(to + ".part", to);
+}
 
 }  // namespace hk::sys

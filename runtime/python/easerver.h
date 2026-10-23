@@ -16,6 +16,8 @@
 #include <string>
 #include <vector>
 
+#include "eamuse/protocol.h"
+
 namespace hk::py {
 
 class EamuseServer {
@@ -55,20 +57,12 @@ public:
     std::string reply(const std::string &request, std::string xml, bool binary = false);
 
 public:
-    struct Board;   // a ranking (easerver.cpp)
+    struct Board;   // a ranking (easerver_rank.cpp)
 
 private:
-    // One module element of a call: <MODULE method=.. ...>inner</MODULE>. A call can carry
-    // several (posevent sends three at once); the answer has one element each, in order.
-    struct Request {
-        std::string module, method;
-        std::map<std::string, std::string> attrs;
-        std::string inner;   // what is inside it, raw
-    };
-    struct Call {
-        std::string srcid, model;
-        std::vector<Request> requests;
-    };
+    // A call and its module elements (eamuse/protocol.h)
+    using Request = ea::Request;
+    using Call = ea::Call;
     static bool parse(const std::string &xml, Call &c);
     std::string answer(const Call &c, const Request &r, const std::string &host);
     std::string message() const;   // the owner's title-screen message (package "message"), or ""

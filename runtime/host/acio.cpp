@@ -248,38 +248,59 @@ bool AcioPort::handshake_bio2(const std::function<bool()> &keep_going) {
     return false;
 }
 
+namespace {
+
+// The packets in what a port reads: 0xaa starts one, 0xff marks the next byte as sent inverted.
+// A packet: node, command (2 bytes), id, length, payload, sum (of the rest).
+struct Unframe {
+    std::vector<uint8_t> d;   // the packet so far
+    size_t want = 0;          // its length once known (0: outside a packet)
+    bool escape = false;
+    bool feed(uint8_t b) {   // true: d is a whole packet
+        if (b == 0xaa && !escape) {
+            d.clear();
+            want = 6;
+            return false;
+        }
+        if (!want) return false;
+        if (b == 0xff && !escape) {
+            escape = true;
+            return false;
+        }
+        if (escape) b = (uint8_t)~b;
+        escape = false;
+        d.push_back(b);
+        if (d.size() == 5) want = 6 + d[4];
+        if (d.size() < want) return false;
+        want = 0;
+        return true;
+    }
+    bool sum_ok() const {
+        uint8_t sum = 0;
+        for (size_t i = 0; i + 1 < d.size(); i++) sum += d[i];
+        return sum == d.back();
+    }
+    void to(AcioPort::Message &m) const {
+        m.node = d[0];
+        m.cmd = (uint16_t)(d[1] << 8 | d[2]);
+        m.id = d[3];
+        m.payload.assign(d.begin() + 5, d.end() - 1);
+    }
+};
+
+}  // namespace
+
 bool AcioPort::receive_one(Message &m, int wait_ms) {
     const auto end = std::chrono::steady_clock::now() + std::chrono::milliseconds(wait_ms);
-    bool escape = false;
-    std::vector<uint8_t> d;
-    size_t want = 0;
+    Unframe u;
     while (std::chrono::steady_clock::now() < end) {
         const int left = (int)std::chrono::duration_cast<std::chrono::milliseconds>(end - std::chrono::steady_clock::now()).count();
         for (uint8_t b : read_chunk(std::max(left, 1))) {
-            if (b == 0xaa && !escape) {
-                d.clear();
-                want = 6;
-                continue;
-            }
-            if (!want) continue;
-            if (b == 0xff && !escape) {
-                escape = true;
-                continue;
-            }
-            if (escape) b = (uint8_t)~b;
-            escape = false;
-            d.push_back(b);
-            if (d.size() == 5) want = 6 + d[4];
-            if (d.size() < want) continue;
-            uint8_t sum = 0;
-            for (size_t i = 0; i + 1 < d.size(); i++) sum += d[i];
-            dump(sum == d.back() ? "<" : "< (bad sum)", d);
-            want = 0;
-            if (sum == d.back() && d != last_sent_) {
-                m.node = d[0];
-                m.cmd = (uint16_t)(d[1] << 8 | d[2]);
-                m.id = d[3];
-                m.payload.assign(d.begin() + 5, d.end() - 1);
+            if (!u.feed(b)) continue;
+            const bool ok = u.sum_ok();
+            dump(ok ? "<" : "< (bad sum)", u.d);
+            if (ok && u.d != last_sent_) {
+                u.to(m);
                 return true;
             }
         }
@@ -308,37 +329,13 @@ bool AcioPort::send(uint8_t node, uint16_t cmd, const std::vector<uint8_t> &payl
 }
 
 bool AcioPort::receive(Message &m, int wait_ms) {
-    auto in = read_some(wait_ms, 4096);
-    bool got = false, escape = false;
-    std::vector<uint8_t> d;
-    size_t want = 0;
-    for (uint8_t b : in) {
-        if (b == 0xaa && !escape) {
-            d.clear();
-            want = 6;
-            continue;
-        }
-        if (!want) continue;
-        if (b == 0xff && !escape) {
-            escape = true;
-            continue;
-        }
-        if (escape) b = (uint8_t)~b;
-        escape = false;
-        d.push_back(b);
-        if (d.size() == 5) want = 6 + d[4];
-        if (d.size() < want) continue;
-        uint8_t sum = 0;
-        for (size_t i = 0; i + 1 < d.size(); i++) sum += d[i];
-        dump(sum == d.back() ? "<" : "< (bad sum)", d);
-        if (sum == d.back()) {
-            m.node = d[0];
-            m.cmd = (uint16_t)(d[1] << 8 | d[2]);
-            m.id = d[3];
-            m.payload.assign(d.begin() + 5, d.end() - 1);
-            got = true;
-        }
-        want = 0;
+    Unframe u;
+    bool got = false;
+    for (uint8_t b : read_some(wait_ms, 4096)) {
+        if (!u.feed(b)) continue;
+        const bool ok = u.sum_ok();
+        dump(ok ? "<" : "< (bad sum)", u.d);
+        if (ok) u.to(m), got = true;
     }
     return got;
 }

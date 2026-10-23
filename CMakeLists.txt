@@ -9,6 +9,12 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE RelWithDebInfo)
 endif()
+# ccache, when it's installed: a file compiled before with the same flags comes from its cache
+find_program(HK_CCACHE ccache)
+if(HK_CCACHE AND NOT CMAKE_CXX_COMPILER_LAUNCHER)
+  set(CMAKE_C_COMPILER_LAUNCHER ${HK_CCACHE})
+  set(CMAKE_CXX_COMPILER_LAUNCHER ${HK_CCACHE})
+endif()
 
 add_compile_options(-Wall -Wextra -fno-strict-aliasing)
 # The same results on every host (the regress dumps are bit-exact): no fused multiply-adds,
@@ -150,6 +156,20 @@ if(WIN32)
   target_link_libraries(hiraku_sys PUBLIC ws2_32)
 endif()
 
+# --- HIRAKU's e-AMUSEMENT server (docs/EAMUSE3.md): the Python games', the PC games' and
+# hiraku-eamuse's (the Python core's own build compiles the same files, runtime/python/CMakeLists.txt)
+# e-AMUSE3 itself (runtime/eamuse/: the calls, the cabinet's LAN, a real server online) and the
+# System 573's GuitarFreaks and DrumMania answers
+add_library(hiraku_eamuse STATIC runtime/eamuse/protocol.cpp runtime/eamuse/lan.cpp runtime/eamuse/server.cpp
+            runtime/eamuse/remote.cpp runtime/sys573/eagfdm.cpp)
+target_include_directories(hiraku_eamuse PUBLIC runtime)
+find_package(Threads REQUIRED)
+target_link_libraries(hiraku_eamuse PUBLIC hiraku_sys Threads::Threads)
+add_library(hiraku_easerver STATIC runtime/python/easerver.cpp runtime/python/easerver_rank.cpp
+            runtime/python/easerver_gfdm.cpp runtime/python/easerver_popn.cpp runtime/python/easerver_share.cpp
+            runtime/python/easerver_pc.cpp runtime/python/kbin.cpp runtime/python/lobby.cpp runtime/python/netrelay.cpp)
+target_link_libraries(hiraku_easerver PUBLIC hiraku_eamuse)
+
 # --- cabinet tables, lights file formats (shared with the launcher) -------------
 add_library(hiraku_cabinet STATIC runtime/shell/cabinet.cpp runtime/host/hiddesc.cpp)
 target_include_directories(hiraku_cabinet PUBLIC runtime)
@@ -163,6 +183,38 @@ target_include_directories(hiraku_shell PUBLIC runtime)
 find_package(Threads REQUIRED)
 find_package(ZLIB REQUIRED)   # mods' PNG pictures (runtime/host/png.h)
 target_link_libraries(hiraku_shell PUBLIC hiraku_cabinet Threads::Threads ZLIB::ZLIB)
+# The shell's main() (runtime/main.cpp) and the sampling profiler: compiled once for every core's
+# binaries. Which game a per-game binary is: runtime/shell/built.h, a one-line file each
+add_library(hiraku_main OBJECT runtime/main.cpp runtime/core/sampler.cpp)
+target_compile_definitions(hiraku_main PRIVATE HK_ROOT="${CMAKE_SOURCE_DIR}")
+target_link_libraries(hiraku_main PRIVATE hiraku_shell)
+add_library(hiraku_built_none OBJECT runtime/shell/built_none.cpp)
+# hiraku_built_game(<target> <id>): <target> is <id>'s binary (a core's own binary links
+# hiraku_built_none instead)
+function(hiraku_built_game target id)
+  set(f ${CMAKE_BINARY_DIR}/built/${id}.cpp)
+  file(CONFIGURE OUTPUT ${f} CONTENT "#include \"shell/built.h\"\nconst char *const hk::built_game = \"${id}\";\n")
+  target_sources(${target} PRIVATE ${f})
+endfunction()
+# hiraku_game_link(<id> <core binary target>): a game with nothing of its own compiled in (no
+# recorded code): hiraku-<id> is a link to its core's binary, which finds the game in its name.
+# Windows (no links): a binary of its own, as before
+function(hiraku_game_link id core)
+  if(WIN32)
+    add_executable(hiraku-${id} $<TARGET_OBJECTS:hiraku_main>)
+    hiraku_built_game(hiraku-${id} ${id})
+    get_target_property(libs ${core} LINK_LIBRARIES)
+    list(REMOVE_ITEM libs hiraku_built_none)
+    target_link_libraries(hiraku-${id} PRIVATE ${libs})
+    return()
+  endif()
+  # a file, not a target: `ninja hiraku-<id>` makes it (tools/pgo.py), and it's renewed when the core is
+  add_custom_command(OUTPUT ${CMAKE_BINARY_DIR}/hiraku-${id}
+    COMMAND ${CMAKE_COMMAND} -E rm -f ${CMAKE_BINARY_DIR}/hiraku-${id}
+    COMMAND ${CMAKE_COMMAND} -E create_symlink $<TARGET_FILE_NAME:${core}> ${CMAKE_BINARY_DIR}/hiraku-${id}
+    DEPENDS ${core} VERBATIM)
+  set_property(GLOBAL APPEND PROPERTY HK_GAME_LINKS ${CMAKE_BINARY_DIR}/hiraku-${id})
+endfunction()
 # hiraku-ezusb.exe (Windows): the 32-bit go-between that loads pop'n music's ezusb.dll for the
 # 64-bit games (runtime/host/popnio.h, ezusb/link.h). One C file, built by the same clang for i686
 # beside the games (tools/package-win.sh takes every hiraku*.exe).
@@ -345,11 +397,12 @@ if(SDL3_FOUND)
   # HID outputs (controller LEDs), shared with the launcher
   add_library(hiraku_hidout STATIC runtime/host/hidout.cpp)
   target_link_libraries(hiraku_hidout PUBLIC SDL3::SDL3 hiraku_cabinet)
-  add_library(hiraku_host STATIC runtime/host/window.cpp runtime/host/notice.cpp runtime/host/lampview.cpp runtime/host/shaderview.cpp runtime/host/picture.cpp runtime/host/input.cpp runtime/host/lights.cpp
+  add_library(hiraku_host STATIC runtime/host/window.cpp runtime/host/alsa.cpp runtime/host/notice.cpp runtime/host/lampview.cpp runtime/host/shaderview.cpp runtime/host/picture.cpp runtime/host/input.cpp runtime/host/lights.cpp
               runtime/host/pacing.cpp)
   target_include_directories(hiraku_host PUBLIC runtime)
   target_link_libraries(hiraku_host PUBLIC SDL3::SDL3 hiraku_shell hiraku_hidout)
   target_compile_definitions(hiraku_host PUBLIC HK_WITH_SDL=1)
+  target_link_libraries(hiraku_main PRIVATE hiraku_host)
   if(WIN32)   # cardio readers through SDL's HID calls (readers.cpp)
     target_link_libraries(hiraku_shell PUBLIC SDL3::SDL3)
     target_compile_definitions(hiraku_shell PRIVATE HK_WITH_SDL=1)
@@ -379,9 +432,8 @@ if(SDL3_FOUND)
   message(STATUS "hiraku: SDL3 front end enabled")
   # hiraku-pc: the PC games, Konami's own programs, as a core of HIRAKU's shell (runtime/pc/core.cpp,
   # PLAN.md section 30); its DLLs are the hiraku-pc-dlls above
-  add_executable(hiraku-pc runtime/main.cpp runtime/pc/core.cpp runtime/core/sampler.cpp runtime/python/easerver.cpp runtime/python/kbin.cpp
-                 runtime/python/lobby.cpp runtime/python/netrelay.cpp)
-  target_link_libraries(hiraku-pc PRIVATE hiraku_host hiraku_shell)
+  add_executable(hiraku-pc runtime/pc/core.cpp)
+  target_link_libraries(hiraku-pc PRIVATE hiraku_main hiraku_built_none hiraku_easerver hiraku_host hiraku_shell)
   target_compile_definitions(hiraku-pc PRIVATE HK_ROOT="${CMAKE_SOURCE_DIR}")
   if(TARGET hiraku-pc-dlls)
     add_dependencies(hiraku-pc hiraku-pc-dlls)
@@ -464,13 +516,14 @@ function(hiraku_game id entry)
   target_include_directories(hiraku_${id}_code PRIVATE ${gen})
   # generated code: unused labels and parameters are normal
   target_compile_options(hiraku_${id}_code PRIVATE -w -O2 -fwrapv)
-  add_executable(hiraku-${id} runtime/main.cpp runtime/firebeat/core.cpp runtime/core/sampler.cpp)
+  add_executable(hiraku-${id} runtime/firebeat/core.cpp)
   target_compile_definitions(hiraku-${id} PRIVATE
     HK_GAME_ID="${id}" HK_ENTRY=${entry}u HK_LOAD=${load}u HK_ROOT="${CMAKE_SOURCE_DIR}")
+  hiraku_built_game(hiraku-${id} ${id})
   if(TARGET hiraku_host)
     target_link_libraries(hiraku-${id} PRIVATE hiraku_host)
   endif()
-  target_link_libraries(hiraku-${id} PRIVATE hiraku_shell hiraku_rt hiraku_${id}_code hiraku_rt)
+  target_link_libraries(hiraku-${id} PRIVATE hiraku_main hiraku_shell hiraku_rt hiraku_${id}_code hiraku_rt)
 endfunction()
 
 # --- the System 573 core (PLAN.md section 19): MAME's PS1 and System 573 devices
@@ -522,17 +575,14 @@ target_compile_options(hiraku_mame573 PRIVATE -w ${HK_573_OPT_LIST})
 target_link_libraries(hiraku_mame573 PUBLIC hk_softfloat3)
 
 add_library(hiraku_sys573 STATIC runtime/sys573/board.cpp runtime/sys573/core.cpp runtime/sys573/mips.cpp runtime/sys573/npu.cpp runtime/sys573/link.cpp
-  runtime/sys573/eagfdm.cpp runtime/sys573/cardunit.cpp runtime/sys573/rental.cpp runtime/sys573/mcal.cpp runtime/eamuse/protocol.cpp runtime/eamuse/lan.cpp
-  runtime/eamuse/server.cpp runtime/eamuse/remote.cpp)
+  runtime/sys573/cardunit.cpp runtime/sys573/rental.cpp runtime/sys573/mcal.cpp)
 target_include_directories(hiraku_sys573 PUBLIC runtime)
-target_link_libraries(hiraku_sys573 PUBLIC hiraku_mame573 hiraku_cabinet)
+target_link_libraries(hiraku_sys573 PUBLIC hiraku_mame573 hiraku_cabinet hiraku_eamuse)
 # hiraku-eamuse: the e-AMUSEMENT server on the network, for several cabinets (tools/eamuse/server.cpp):
 # the System 573's and the Python core's (docs/EAMUSE3.md); plain C++, no emulator
-add_executable(hiraku-eamuse tools/eamuse/server.cpp runtime/sys573/eagfdm.cpp runtime/eamuse/protocol.cpp
-  runtime/eamuse/lan.cpp runtime/eamuse/server.cpp runtime/eamuse/remote.cpp runtime/python/easerver.cpp runtime/python/kbin.cpp
-  runtime/python/lobby.cpp runtime/python/netrelay.cpp)
+add_executable(hiraku-eamuse tools/eamuse/server.cpp)
 target_include_directories(hiraku-eamuse PRIVATE runtime)
-target_link_libraries(hiraku-eamuse PRIVATE hiraku_sys Threads::Threads)
+target_link_libraries(hiraku-eamuse PRIVATE hiraku_easerver)
 target_compile_options(hiraku_sys573 PRIVATE -O2 -Wno-unused-parameter)
 hk_pgo(sys573 hiraku_mame573)
 
@@ -543,6 +593,10 @@ set(HK_573_BLOCK_FILES 8)
 set(HK_573_MIN_RUNS 1 CACHE STRING "blocks run fewer times than this in the recording are left to the interpreter")
 function(hiraku_sys573_game id)
   set(rec ${CMAKE_SOURCE_DIR}/build/${id}/mips573.txt)
+  if(NOT ARGV1 STREQUAL "CORE" AND NOT EXISTS ${rec})   # nothing recorded: the core's binary
+    hiraku_game_link(${id} hiraku-sys573)
+    return()
+  endif()
   set(gen ${CMAKE_BINARY_DIR}/gen573/${id})
   set(outs ${gen}/table.cpp)
   math(EXPR last "${HK_573_BLOCK_FILES} - 1")
@@ -561,11 +615,11 @@ function(hiraku_sys573_game id)
   target_include_directories(hiraku_${id}_blocks PRIVATE ${CMAKE_SOURCE_DIR}/runtime)
   # generated code: unused variables and labels are normal; wrapping arithmetic is the guest's
   target_compile_options(hiraku_${id}_blocks PRIVATE -w -O2 -fwrapv)
-  add_executable(hiraku-${id} runtime/main.cpp runtime/core/sampler.cpp)
+  add_executable(hiraku-${id} $<TARGET_OBJECTS:hiraku_main>)
   if(ARGV1 STREQUAL "CORE")
-    target_compile_definitions(hiraku-${id} PRIVATE HK_ROOT="${CMAKE_SOURCE_DIR}")
+    target_link_libraries(hiraku-${id} PRIVATE hiraku_built_none)
   else()
-    target_compile_definitions(hiraku-${id} PRIVATE HK_GAME_ID="${id}" HK_ROOT="${CMAKE_SOURCE_DIR}")
+    hiraku_built_game(hiraku-${id} ${id})
   endif()
   if(TARGET hiraku_host)
     target_link_libraries(hiraku-${id} PRIVATE hiraku_host)
@@ -618,6 +672,10 @@ hk_pgo(twinkle hiraku_mametw hiraku_twinkle)
 # interpreted. The data comes from dumps/<id>/ at run time
 function(hiraku_twinkle_game id)
   set(rec ${CMAKE_SOURCE_DIR}/build/${id}/mips573.txt)
+  if(NOT ARGV1 STREQUAL "CORE" AND NOT EXISTS ${rec})   # nothing recorded: the core's binary
+    hiraku_game_link(${id} hiraku-twinkle)
+    return()
+  endif()
   set(gen ${CMAKE_BINARY_DIR}/gen573/${id})
   set(outs ${gen}/table.cpp)
   math(EXPR last "${HK_573_BLOCK_FILES} - 1")
@@ -633,11 +691,11 @@ function(hiraku_twinkle_game id)
   target_link_libraries(hiraku_${id}_blocks PRIVATE hiraku_mame573)
   target_include_directories(hiraku_${id}_blocks PRIVATE ${CMAKE_SOURCE_DIR}/runtime)
   target_compile_options(hiraku_${id}_blocks PRIVATE -w -O2 -fwrapv)
-  add_executable(hiraku-${id} runtime/main.cpp runtime/core/sampler.cpp)
+  add_executable(hiraku-${id} $<TARGET_OBJECTS:hiraku_main>)
   if(ARGV1 STREQUAL "CORE")
-    target_compile_definitions(hiraku-${id} PRIVATE HK_ROOT="${CMAKE_SOURCE_DIR}")
+    target_link_libraries(hiraku-${id} PRIVATE hiraku_built_none)
   else()
-    target_compile_definitions(hiraku-${id} PRIVATE HK_GAME_ID="${id}" HK_ROOT="${CMAKE_SOURCE_DIR}")
+    hiraku_built_game(hiraku-${id} ${id})
   endif()
   if(TARGET hiraku_host)
     target_link_libraries(hiraku-${id} PRIVATE hiraku_host)
@@ -646,15 +704,15 @@ function(hiraku_twinkle_game id)
 endfunction()
 
 # hiraku_djmain_game(<id>): a DJ Main game. No generated code: the program is
-# interpreted, so the binary is the same for every game (the data comes from
+# interpreted, so every game's binary is hiraku-djmain's (a link to it; the data comes from
 # dumps/<id>/ at run time, written by tools/ingest.py).
 function(hiraku_djmain_game id)
-  add_executable(hiraku-${id} runtime/main.cpp runtime/core/sampler.cpp)
-  if(ARGV1 STREQUAL "CORE")
-    target_compile_definitions(hiraku-${id} PRIVATE HK_ROOT="${CMAKE_SOURCE_DIR}")
-  else()
-    target_compile_definitions(hiraku-${id} PRIVATE HK_GAME_ID="${id}" HK_ROOT="${CMAKE_SOURCE_DIR}")
+  if(NOT ARGV1 STREQUAL "CORE")
+    hiraku_game_link(${id} hiraku-djmain)
+    return()
   endif()
+  add_executable(hiraku-${id} $<TARGET_OBJECTS:hiraku_main>)
+  target_link_libraries(hiraku-${id} PRIVATE hiraku_built_none)
   if(TARGET hiraku_host)
     target_link_libraries(hiraku-${id} PRIVATE hiraku_host)
   endif()
@@ -695,14 +753,22 @@ foreach(toml ${HK_GAME_TOMLS})
   endif()
 endforeach()
 
+# the games' links (hiraku_game_link), made with the cores' binaries; a new recording
+# (build/<id>/mips573.txt) makes its game a binary of its own at the next build
+get_property(HK_GAME_LINKS GLOBAL PROPERTY HK_GAME_LINKS)
+if(HK_GAME_LINKS)
+  add_custom_target(hiraku_game_links ALL DEPENDS ${HK_GAME_LINKS})
+endif()
+file(GLOB HK_573_RECORDINGS CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/build/*/mips573.txt)
+
 # hiraku-firebeat: every Firebeat game, from its program and recomp.txt, run by the executor
 # (runtime/core/exec.h: no compiler, no game's code in the binary; PLAN.md section 27)
-add_executable(hiraku-firebeat runtime/main.cpp runtime/firebeat/core.cpp runtime/core/sampler.cpp runtime/core/no_table.c)
+add_executable(hiraku-firebeat runtime/firebeat/core.cpp runtime/core/no_table.c)
 target_compile_definitions(hiraku-firebeat PRIVATE HK_EXECUTOR=1 HK_ROOT="${CMAKE_SOURCE_DIR}")
 if(TARGET hiraku_host)
   target_link_libraries(hiraku-firebeat PRIVATE hiraku_host)
 endif()
-target_link_libraries(hiraku-firebeat PRIVATE hiraku_shell hiraku_rt)
+target_link_libraries(hiraku-firebeat PRIVATE hiraku_main hiraku_built_none hiraku_shell hiraku_rt)
 
 hiraku_game(bm3final 0x80003000)
 hiraku_game(bm3 0x80003000)

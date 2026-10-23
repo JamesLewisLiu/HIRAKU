@@ -71,36 +71,14 @@ extern char **environ;
 #include "shell/core.h"
 #include "shell/eaoptions.h"
 #include "shell/net.h"
+#include "shell/kvfile.h"
 #include "shell/sys.h"
 #include "shell/userdir.h"
 
 namespace {
 
-std::map<std::string, std::string> read_machine(const std::string &path) {
-    std::map<std::string, std::string> m;
-    std::ifstream f(path);
-    for (std::string line; std::getline(f, line);) {
-        if (!line.empty() && line.back() == '\r') line.pop_back();
-        const size_t eq = line.find('=');
-        if (line.empty() || line[0] == '#' || eq == std::string::npos) continue;
-        m[line.substr(0, eq)] = line.substr(eq + 1);
-    }
-    return m;
-}
-
-void mkdirs(const std::string &path) {
-    for (size_t k = 1; k <= path.size(); k++)
-        if (k == path.size() || path[k] == '/') hk::sys::make_dir(path.substr(0, k));
-}
-
-bool copy_file(const std::string &from, const std::string &to) {
-    std::ifstream in(from, std::ios::binary);
-    if (!in) return false;
-    std::ofstream out(to + ".part", std::ios::binary);
-    out << in.rdbuf();
-    out.close();
-    return out.good() && hk::sys::replace_file(to + ".part", to);
-}
+using hk::sys::copy_file;
+inline void mkdirs(const std::string &path) { hk::sys::make_dirs(path); }
 
 // The files (not folders) in a folder
 std::vector<std::string> list_files(const std::string &dir) {
@@ -253,7 +231,7 @@ public:
         game_ = o.game;
         window_ = o.window;
         const std::string dumps = o.root + "/dumps/" + game_;
-        auto m = read_machine(dumps + "/machine.txt");
+        auto m = hk::read_kv(dumps + "/machine.txt");
         auto path_of = [&](const std::string &key) {
             const std::string p = m[key];
             return p.empty() || p[0] == '/' || (p.size() > 1 && p[1] == ':') ? p : dumps + "/" + p;

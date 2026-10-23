@@ -17,6 +17,7 @@
 #include <memory>
 #include <vector>
 
+#include "shell/kvfile.h"
 #include "../core/exec.h"
 #include "ppc/analyze.h"   // the executor's functions, and any build's for code a mod changes
 #include "ppc/spec.h"
@@ -75,17 +76,6 @@ std::vector<uint32_t> toml_hex_list(const std::string &path, const std::string &
         for (size_t at = 0; (at = list.find("0x", at)) != std::string::npos; at += 2) out.push_back((uint32_t)std::stoul(list.substr(at), nullptr, 16));
     }
     return out;
-}
-
-std::map<std::string, std::string> read_kv(const std::string &path) {
-    std::map<std::string, std::string> kv;
-    std::ifstream in(path);
-    for (std::string line; std::getline(in, line);) {
-        if (!line.empty() && line.back() == '\r') line.pop_back();   // written on Windows
-        auto eq = line.find('=');
-        if (eq != std::string::npos) kv[line.substr(0, eq)] = line.substr(eq + 1);
-    }
-    return kv;
 }
 
 class FirebeatCore final : public Core {

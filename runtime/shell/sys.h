@@ -38,7 +38,11 @@ ssize_t pread(int fd, void *buf, size_t n, uint64_t off);
 void will_need(int fd, uint64_t off, uint64_t n);   // a hint: read that ahead
 
 bool make_dir(const std::string &path);   // true if it is there now
+bool make_dirs(const std::string &path);  // and the folders it is in; true if it is there now
 bool is_dir(const std::string &path);
+bool exists(const std::string &path);     // a file or a folder
+// from's bytes to `to`, whole or not at all (written beside it, then put in its place)
+bool copy_file(const std::string &from, const std::string &to);
 // rename(), and the file at `to` replaced if there is one (Windows' rename() fails then)
 bool replace_file(const std::string &from, const std::string &to);
 std::string exe_path();   // this program's file, with / between folders; empty if unknown

@@ -28,6 +28,7 @@
 #include <string>
 #include <vector>
 
+#include "eamuse/lan.h"
 #include "python/lancable.h"
 #include "python/lobby.h"
 
@@ -42,13 +43,8 @@ public:
         std::function<void(uint32_t channel, const uint32_t words[8])> respond;
         std::function<bool(uint32_t addr, uint8_t *data, uint32_t size)> read;
     };
-    // Where a connection goes: the name the game looked up ("services..." for its e-AMUSEMENT
-    // server), or a dotted address if it connected to one directly; and the port.
-    struct Target {
-        std::string host;
-        uint16_t port = 0;
-        bool services = false;   // the game's own server ("services...")
-    };
+    // Where a connection goes (eamuse/lan.h)
+    using Target = ea::Lan::Target;
     // One HTTP request in (bytes as sent); call `done` with the whole response, now or later
     // and from any thread ("" = the connection failed).
     using Http = std::function<void(const Target &, const std::string &request, std::function<void(std::string)> done)>;

@@ -54,6 +54,8 @@
 #include <thread>
 #include <vector>
 
+#include "shell/kvfile.h"
+#include "shell/sys.h"
 #include "common/Console.h"
 #include "common/Error.h"
 #include "common/FileSystem.h"
@@ -92,7 +94,7 @@
 #include "python/eanet.h"
 #include "python/ethnet.h"
 #include "python/gfdmcard.h"
-#include "python/eaclient.h"
+#include "eamuse/remote.h"
 #include "python/easerver.h"
 #include "python/lancable.h"
 #include "python/lobby.h"
@@ -115,6 +117,8 @@ extern "C" int __llvm_profile_write_file(void) __attribute__((weak));
 #endif
 
 namespace {
+
+using hk::read_kv;
 
 // Mods find files on the board's disk through this (shell/overlay.h read(), host/pythondisk.h):
 // the disk as it is, a CHD read with PCSX2's libchdr (this core has no HIRAKU image layer), any
@@ -171,48 +175,13 @@ const bool g_disk_reader_set = (hk::overlay::set_reader(disk_reader), true);
 [[maybe_unused]] const bool g_com_mta = SUCCEEDED(CoInitializeEx(nullptr, COINIT_MULTITHREADED));
 #endif
 
-std::map<std::string, std::string> read_kv(const std::string &path) {
-    std::map<std::string, std::string> kv;
-    std::ifstream in(path);
-    std::string line;
-    while (std::getline(in, line)) {
-        size_t eq = line.find('=');
-        if (eq != std::string::npos && line[0] != '#') kv[line.substr(0, eq)] = line.substr(eq + 1);
-    }
-    return kv;
-}
-
-bool copy_file(const std::string &from, const std::string &to) {
-    std::ifstream in(from, std::ios::binary);
-    std::ofstream out(to, std::ios::binary | std::ios::trunc);
-    if (!in || !out) return false;
-    out << in.rdbuf();
-    return (bool)out;
-}
+using hk::sys::copy_file;
+using hk::sys::exists;
+inline void mkdirs(const std::string &path) { hk::sys::make_dirs(path); }
 
 #ifdef _WIN32
-bool exists(const std::string &p) {
-    std::error_code ec;
-    return std::filesystem::exists(p, ec);
-}
-
-void mkdirs(const std::string &path) {
-    std::error_code ec;
-    std::filesystem::create_directories(path, ec);
-}
-
 std::string base_name(const std::string &p) { return p.substr(p.find_last_of("/\\") + 1); }   // either separator
 #else
-bool exists(const std::string &p) {
-    struct stat st;
-    return stat(p.c_str(), &st) == 0;
-}
-
-void mkdirs(const std::string &path) {
-    for (size_t k = 1; k <= path.size(); k++)
-        if (k == path.size() || path[k] == '/') mkdir(path.substr(0, k).c_str(), 0755);
-}
-
 std::string base_name(const std::string &p) { return p.substr(p.rfind('/') + 1); }
 #endif
 
@@ -447,12 +416,12 @@ public:
         if (name == "--eamuse") {   // the older name: local (the server in the core) or -url's URL
             const std::string v = value();
             ea_.url = v == "local" ? "" : v;
-            if (ea_.online() && !hk::py::EamuseRemote(ea_.http_url()).ok()) return false;
+            if (ea_.online() && !hk::ea::Remote(ea_.http_url()).ok()) return false;
             return true;
         }
         std::string error;
         if (ea_.option(name, value, &error)) {   // spice2x's -ea, -url, -p, -card0, ... (shell/eaoptions.h)
-            if (error.empty() && name == "--url" && !hk::py::EamuseRemote(ea_.http_url()).ok())
+            if (error.empty() && name == "--url" && !hk::ea::Remote(ea_.http_url()).ok())
                 error = "-url: " + ea_.url + " is not host:port[/path] or http://host[:port][/path] (the game speaks plain HTTP)";
             if (!error.empty()) { fprintf(stderr, "%s\n", error.c_str()); exit(2); }
             return true;
@@ -609,7 +578,7 @@ public:
                 }).detach();
             });
             if (ea_.online()) {   // -url (-ea is ignored with it, as in spice2x)
-                remote_ = std::make_unique<hk::py::EamuseRemote>(ea_.http_url());
+                remote_ = std::make_unique<hk::ea::Remote>(ea_.http_url());
                 std::string why;
                 if (ea_.smartea && !remote_->reachable(&why)) {
                     printf("e-AMUSEMENT: %s doesn't answer (%s): the server inside HIRAKU (-smartea)\n", ea_.url.c_str(), why.c_str());
@@ -1302,7 +1271,7 @@ private:
     FILE *net_log_ = nullptr;
     std::unique_ptr<hk::py::EamuseServer> server_;
     std::vector<std::pair<uint32_t, uint32_t>> watch_;   // HK_PY_WATCH: address, last value
-    std::unique_ptr<hk::py::EamuseRemote> remote_;   // -url: online
+    std::unique_ptr<hk::ea::Remote> remote_;   // -url: online
     hk::EaOptions ea_;   // spice2x's e-AMUSEMENT options
     uint64_t autocard_wait_ = 0;
     // A call from the game, as it goes out: the PCBID put in (-p). The answer, when the core

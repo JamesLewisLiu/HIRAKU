@@ -35,6 +35,9 @@ struct Call {
     std::vector<Request> requests;
 };
 bool parse(const std::string &xml, Call &c);
+// name="value" pairs from the start of an element (after its name) to its '>' (the place after it);
+// *self_closing: it ends "/>"
+size_t read_attrs(const std::string &x, size_t at, std::map<std::string, std::string> &out, bool *self_closing);
 // Every element inside some XML (a request's `inner`), in order, flat: its name and attributes
 // (<card id="..."/> -> {"card", {{"id", "..."}}}).
 struct Element {

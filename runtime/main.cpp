@@ -117,6 +117,7 @@
 #include "host/mods.h"
 #include "host/script.h"
 #include "shell/cabinet.h"
+#include "shell/built.h"
 #include "shell/core.h"
 #include "shell/userdir.h"
 #include "shell/sys.h"
@@ -130,11 +131,6 @@
 #include "host/pacing.h"
 #endif
 
-#ifdef HK_GAME_ID
-#define HK_GAME_ID_BUILT 1
-#else
-#define HK_GAME_ID "unknown"
-#endif
 #ifndef HK_ROOT
 #define HK_ROOT "."
 #endif
@@ -220,10 +216,7 @@ uint64_t hash_words(uint64_t h, const void *p, size_t n_words) {
 }
 constexpr uint64_t HASH_SEED = 0xcbf29ce484222325ull;
 
-void mkdirs(const std::string &path) {
-    for (size_t k = 1; k <= path.size(); k++)
-        if (k == path.size() || path[k] == '/') hk::sys::make_dir(path.substr(0, k));
-}
+inline void mkdirs(const std::string &path) { hk::sys::make_dirs(path); }
 
 // The HIRAKU root (dumps/, games/, out/): $HIRAKU_ROOT (the launcher passes its own), else a
 // portable install holding the binary (shell/userdir.h; before the checkout, which a package
@@ -252,19 +245,17 @@ int main(int argc, char **argv) {
     Core &machine = core();
     Core::Options opt;
     opt.root = find_root();
-    opt.game = HK_GAME_ID;
+    opt.game = built_game ? built_game : "unknown";
     // a core's own binary (hiraku-djmain, hiraku-sys573, hiraku-twinkle: a release's, with no
     // game built in) runs any of the core's games: --game ID, or its name hiraku-ID (a link to it)
     for (int k = 1; k + 1 < argc; k++)
         if (std::string a = argv[k]; a == "--game" || a == "-game") opt.game = argv[k + 1];
-#ifndef HK_GAME_ID_BUILT
-    if (opt.game == HK_GAME_ID) {
+    if (!built_game && opt.game == "unknown") {
         std::string self = argv[0];
         self = self.substr(self.find_last_of("/\\") + 1);
         if (self.size() > 4 && self.compare(self.size() - 4, 4, ".exe") == 0) self.resize(self.size() - 4);
         if (self.rfind("hiraku-", 0) == 0) opt.game = self.substr(7);
     }
-#endif
     const std::string &game = opt.game;
     std::string out = opt.root + "/out/run/" + game;
     uint64_t frames = 0, snap_every = 0, snap_from = 0, snap_between = 0, debug_every = 0;

@@ -9,23 +9,13 @@
 #include <map>
 #include <string>
 
+#include "shell/kvfile.h"
 #include "shell/core.h"
 #include "sys573/mips.h"
 #include "twinkle/board.h"
 
 namespace hk {
 namespace {
-
-std::map<std::string, std::string> read_kv(const std::string &path) {
-    std::map<std::string, std::string> kv;
-    std::ifstream f(path);
-    for (std::string line; std::getline(f, line);) {
-        if (!line.empty() && line.back() == '\r') line.pop_back();   // written on Windows
-        auto eq = line.find('=');
-        if (eq != std::string::npos) kv[line.substr(0, eq)] = line.substr(eq + 1);
-    }
-    return kv;
-}
 
 class TwinkleCore final : public Core {
 public:

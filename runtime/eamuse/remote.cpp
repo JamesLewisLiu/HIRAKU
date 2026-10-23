@@ -8,6 +8,10 @@
 
 #include "shell/net.h"
 
+#ifdef _MSC_VER
+#define strncasecmp _strnicmp   // MSVC's name for it
+#endif
+
 namespace hk::ea {
 
 Remote::Remote(const std::string &url) {
@@ -24,6 +28,40 @@ Remote::Remote(const std::string &url) {
     }
     if (port_ == 0) return;
     host_ = hostport;
+}
+
+bool Remote::reachable(std::string *error) const {
+    const int fd = connect_to(host_, port_, 3, error);
+    if (fd < 0) return false;
+    net::close(fd);
+    return true;
+}
+
+int Remote::connect_to(const std::string &host, uint16_t port, int seconds, std::string *error) {
+    const std::string where = port == 80 ? host : host + ":" + std::to_string(port);
+    net::start();
+    addrinfo hints{}, *res = nullptr;
+    hints.ai_socktype = SOCK_STREAM;
+    if (int e = getaddrinfo(host.c_str(), std::to_string(port).c_str(), &hints, &res); e != 0) {
+        *error = host + ": " + net::resolve_error(e);
+        return -1;
+    }
+    int fd = -1;
+    for (addrinfo *a = res; a; a = a->ai_next) {
+        fd = net::socket(a->ai_family, a->ai_socktype, a->ai_protocol);
+        if (fd < 0) continue;
+        net::set_timeouts(fd, seconds * 1000);   // also connect's limit, on Linux
+#ifdef _WIN32
+        if (net::connect_within(fd, a->ai_addr, a->ai_addrlen, seconds * 1000)) break;   // Windows' connect has its own
+#else
+        if (connect(fd, a->ai_addr, a->ai_addrlen) == 0) break;
+#endif
+        net::close(fd);
+        fd = -1;
+    }
+    freeaddrinfo(res);
+    if (fd < 0) *error = where + ": " + net::error();
+    return fd;
 }
 
 std::string Remote::exchange(const Lan::Target &t, const std::string &request, std::string *error) const {
@@ -47,24 +85,8 @@ std::string Remote::exchange(const Lan::Target &t, const std::string &request, s
         break;
     }
 
-    net::start();
-    addrinfo hints{}, *res = nullptr;
-    hints.ai_socktype = SOCK_STREAM;
-    if (int e = getaddrinfo(host.c_str(), std::to_string(port).c_str(), &hints, &res); e != 0) {
-        *error = host + ": " + gai_strerror(e);
-        return "";
-    }
-    int fd = -1;
-    for (addrinfo *a = res; a; a = a->ai_next) {
-        fd = net::socket(a->ai_family, a->ai_socktype, a->ai_protocol);
-        if (fd < 0) continue;
-        net::set_timeouts(fd, 15000);   // the game gives up after about as long
-        if (connect(fd, a->ai_addr, (int)a->ai_addrlen) == 0) break;
-        net::close(fd);
-        fd = -1;
-    }
-    freeaddrinfo(res);
-    if (fd < 0) { *error = host_header + ": " + net::error(); return ""; }
+    const int fd = connect_to(host, port, 15, error);   // the game gives up after about as long
+    if (fd < 0) return "";
 
     for (size_t sent = 0; sent < req.size();) {
         const ssize_t n = net::send(fd, req.data() + sent, req.size() - sent);

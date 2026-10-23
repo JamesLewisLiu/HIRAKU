@@ -7,6 +7,7 @@
 #include <map>
 #include <sstream>
 
+#include "shell/kvfile.h"
 #include "../shell/core.h"
 #include "board.h"
 #include "k054539.h"
@@ -15,17 +16,6 @@
 namespace hk {
 
 namespace {
-
-std::map<std::string, std::string> read_kv(const std::string &path) {
-    std::map<std::string, std::string> kv;
-    std::ifstream in(path);
-    for (std::string line; std::getline(in, line);) {
-        if (!line.empty() && line.back() == '\r') line.pop_back();   // written on Windows
-        auto eq = line.find('=');
-        if (eq != std::string::npos) kv[line.substr(0, eq)] = line.substr(eq + 1);
-    }
-    return kv;
-}
 
 std::vector<std::string> split(const std::string &s) {
     std::vector<std::string> out;

@@ -37,6 +37,7 @@ add_library(hk_python_shell STATIC
 	${HK}/runtime/host/popnio.cpp
 	${HK}/runtime/host/hidout.cpp
 	${HK}/runtime/host/window.cpp
+	${HK}/runtime/host/alsa.cpp
 	${HK}/runtime/host/notice.cpp
 	${HK}/runtime/host/lampview.cpp
 	${HK}/runtime/host/shaderview.cpp
@@ -107,15 +108,34 @@ endif()
 target_compile_options(hk_python_shell PRIVATE ${HK_PY_FLAGS})
 set_target_properties(hk_python_shell PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON)
 
-# One binary per Python game, as for the other cores: hiraku-<id>
+# The Python core and HIRAKU's main(), compiled once. hiraku-python runs any Python game (--game ID,
+# or its name); hiraku-<id> is a link to it (runtime/shell/built.h), made by the target of that name.
+# Windows (no links): a binary per game, of the same objects and a one-line file naming the game
+add_library(hk_python_core OBJECT ${HK}/runtime/main.cpp ${HK}/runtime/python/core.cpp ${HK}/runtime/python/cardunit.cpp
+	${HK}/runtime/python/icca.cpp ${HK}/runtime/python/eanet.cpp ${HK}/runtime/python/ethnet.cpp ${HK}/runtime/python/gfdmcard.cpp
+	${HK}/runtime/python/lancable.cpp ${HK}/runtime/python/netrelay.cpp ${HK}/runtime/python/lobby.cpp
+	${HK}/runtime/python/easerver.cpp ${HK}/runtime/python/easerver_rank.cpp ${HK}/runtime/python/easerver_gfdm.cpp
+	${HK}/runtime/python/easerver_popn.cpp ${HK}/runtime/python/easerver_share.cpp ${HK}/runtime/python/easerver_pc.cpp
+	${HK}/runtime/python/kbin.cpp ${HK}/runtime/eamuse/protocol.cpp ${HK}/runtime/eamuse/remote.cpp)
+target_compile_definitions(hk_python_core PRIVATE HK_ROOT="${HK}")
+target_include_directories(hk_python_core PRIVATE ${HK}/runtime "${CMAKE_BINARY_DIR}/common/include" "${CMAKE_SOURCE_DIR}/pcsx2")
+target_link_libraries(hk_python_core PRIVATE hk_python_shell PCSX2_FLAGS PCSX2)
+target_compile_options(hk_python_core PRIVATE ${HK_PY_FLAGS})
+
 function(hiraku_python_game id)
-	add_executable(hiraku-${id} ${HK}/runtime/main.cpp ${HK}/runtime/python/core.cpp ${HK}/runtime/python/cardunit.cpp ${HK}/runtime/python/icca.cpp ${HK}/runtime/python/eanet.cpp ${HK}/runtime/python/ethnet.cpp ${HK}/runtime/python/gfdmcard.cpp ${HK}/runtime/python/lancable.cpp ${HK}/runtime/python/netrelay.cpp ${HK}/runtime/python/lobby.cpp ${HK}/runtime/python/easerver.cpp ${HK}/runtime/python/kbin.cpp ${HK}/runtime/python/eaclient.cpp)
-	if(ARGV1 STREQUAL "CORE")   # hiraku-python: any Python game, told with --game (a release's)
-		target_compile_definitions(hiraku-${id} PRIVATE HK_ROOT="${HK}")
+	if(ARGV1 STREQUAL "CORE")
+		set(built ${HK}/runtime/shell/built_none.cpp)
+	elseif(NOT WIN32)
+		add_custom_target(hiraku-${id} ALL
+			COMMAND ${CMAKE_COMMAND} -E create_symlink hiraku-python $<TARGET_FILE_DIR:hiraku-python>/hiraku-${id}
+			DEPENDS hiraku-python VERBATIM)
+		return()
 	else()
-		target_compile_definitions(hiraku-${id} PRIVATE HK_GAME_ID="${id}" HK_ROOT="${HK}")
+		set(built ${CMAKE_CURRENT_BINARY_DIR}/built/${id}.cpp)
+		file(CONFIGURE OUTPUT ${built} CONTENT "#include \"shell/built.h\"\nconst char *const hk::built_game = \"${id}\";\n")
 	endif()
-	target_include_directories(hiraku-${id} PRIVATE ${HK}/runtime "${CMAKE_BINARY_DIR}/common/include" "${CMAKE_SOURCE_DIR}/pcsx2")
+	add_executable(hiraku-${id} $<TARGET_OBJECTS:hk_python_core> ${built})
+	target_include_directories(hiraku-${id} PRIVATE ${HK}/runtime)
 	target_link_libraries(hiraku-${id} PRIVATE hk_python_shell PCSX2_FLAGS PCSX2)
 	target_compile_options(hiraku-${id} PRIVATE ${HK_PY_FLAGS})
 endfunction()
