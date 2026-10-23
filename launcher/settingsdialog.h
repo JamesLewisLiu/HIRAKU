@@ -4,6 +4,8 @@
 #include <QDialog>
 #include <QMap>
 
+class QVBoxLayout;
+
 class QCheckBox;
 class QComboBox;
 class QDoubleSpinBox;
@@ -16,6 +18,12 @@ public:
     explicit SettingsDialog(QWidget *parent = nullptr);
     void accept() override;
 private:
+    // its tabs, each made into the layout it gets
+    void displayPage(QVBoxLayout *v);
+    void audioPage(QVBoxLayout *v);
+    void eamusePage(QVBoxLayout *v);
+    void cabinetPage(QVBoxLayout *v);
+    void generalPage(QVBoxLayout *v);
     QSpinBox *m_scale, *m_audioMs, *m_volume;
     QCheckBox *m_fullscreen, *m_splitScreens, *m_displaySync, *m_fineSound, *m_audioFixed, *m_priority, *m_audioExclusive = nullptr, *m_socket, *m_lightsOverlay, *m_hideLauncher, *m_checkUpdates;
     QComboBox *m_picture, *m_audioDevice, *m_audioBuffer;

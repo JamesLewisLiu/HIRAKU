@@ -173,6 +173,19 @@ static QList<QPair<QString, QString>> alsaPlaybackDevices() {
 }
 #endif
 
+// The serial ports there are now, for the card readers and the BIO2 board
+static QStringList serialPorts() {
+    QStringList ports;
+#ifdef Q_OS_WIN
+    ports = windowsComPorts();
+#else
+    // a port's /dev/serial/by-id name stays the same whichever USB socket it is in
+    for (const QFileInfo &f : QDir("/dev/serial/by-id").entryInfoList(QDir::System | QDir::Files)) ports << f.absoluteFilePath();
+    for (const QString &f : QDir("/dev").entryList({"ttyUSB*", "ttyACM*"}, QDir::System)) ports << "/dev/" + f;
+#endif
+    return ports;
+}
+
 SettingsDialog::SettingsDialog(QWidget *parent) : QDialog(parent) {
     setWindowTitle("Settings");
     auto &s = cfg::settings();
@@ -197,7 +210,42 @@ SettingsDialog::SettingsDialog(QWidget *parent) : QDialog(parent) {
         return l;
     };
 
-    QVBoxLayout *v = page("Display");
+    displayPage(page("Display"));
+    audioPage(page("Audio"));
+    // as spicecfg's Network page, with its option names, so a spice2x setup carries over
+    eamusePage(page("e-AMUSEMENT", "For the Konami Python games (pop'n music 9-14, DrumMania V and V2) and the PC games "
+                                "(pop'n music 15-18), with spice2x's option names. The game's e-AMUSEMENT must be ON "
+                                "in its test mode."));
+    cabinetPage(page("Cabinet I/O"));
+    generalPage(page("General"));
+
+    auto *bb = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
+    connect(bb, &QDialogButtonBox::accepted, this, &SettingsDialog::accept);
+    connect(bb, &QDialogButtonBox::rejected, this, &QDialog::reject);
+    // number boxes as wide as their numbers, not the dialog
+    for (QSpinBox *b : {m_scale, m_volume, m_audioMs}) b->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    QSize most;
+    for (QWidget *body : bodies) {
+        static_cast<QVBoxLayout *>(body->layout())->addStretch(1);   // the groups at the top of their tab
+        // long lists (sound devices, readers) shrink to the dialog instead of widening it
+        for (QComboBox *c : body->findChildren<QComboBox *>()) {
+            c->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
+            c->setMinimumContentsLength(16);
+        }
+        most = most.expandedTo(body->sizeHint());
+    }
+    tabs->setCurrentIndex(std::clamp(s.value("ui/settingsTab", 0).toInt(), 0, tabs->count() - 1));
+    connect(tabs, &QTabWidget::currentChanged, this, [](int k) { cfg::settings().setValue("ui/settingsTab", k); });
+    auto *outer = new QVBoxLayout(this);
+    outer->addWidget(tabs);
+    outer->addWidget(bb);
+    // as the largest tab, as the screen allows (fit.h shrinks it)
+    resize(most.width() + tabs->style()->pixelMetric(QStyle::PM_ScrollBarExtent) + 40, most.height() + 110);
+}
+
+// The Display tab: the window, frames and picture, the shader controls
+void SettingsDialog::displayPage(QVBoxLayout *v) {
+    auto &s = cfg::settings();
     auto *video = new QGroupBox("Window");
     auto *fv = new QFormLayout(video);
     m_scale = new QSpinBox;
@@ -360,8 +408,11 @@ SettingsDialog::SettingsDialog(QWidget *parent) : QDialog(parent) {
     gk->addWidget(skDefaults, row, 1, Qt::AlignLeft);
     gk->setColumnStretch(1, 1);
     v->addWidget(sk);
+}
 
-    v = page("Audio");
+// The Audio tab: the output, its timing, Keyboardmania's SoundFont
+void SettingsDialog::audioPage(QVBoxLayout *v) {
+    auto &s = cfg::settings();
     auto *audio = new QGroupBox("Output");
     auto *fa = new QFormLayout(audio);
     auto *latency = new QGroupBox("Latency");
@@ -469,25 +520,11 @@ SettingsDialog::SettingsDialog(QWidget *parent) : QDialog(parent) {
     m_soundfont->setToolTip("The instruments of Keyboardmania's MIDI out (its keyboards' sound when a song plays them).");
     fk->addRow("SoundFont:", withBrowse(m_soundfont, false, this));
     v->addWidget(kbm);
+}
 
-    auto *lights = new QGroupBox("Lights");   // on the Cabinet I/O page
-    auto *fl = new QVBoxLayout(lights);
-    m_socket = new QCheckBox("Publish lamps on a local socket (live view in Lights, external LED tools)");
-    m_socket->setChecked(s.value("lights/socket", true).toBool());
-    fl->addWidget(m_socket);
-    m_lightsOverlay = new QCheckBox("Show the game's lights over its picture (F9 in the game shows or hides them)");
-    m_lightsOverlay->setChecked(s.value("lights/overlay", false).toBool());
-    m_lightsOverlay->setToolTip("Every lamp the game drives, lit or not, grouped as the cabinet has them, and how often "
-                                "they change: for seeing what a game does with its lights without the cabinet.");
-    fl->addWidget(m_lightsOverlay);
-    auto *path = new QLabel("Socket: <tt>" + cfg::lightsSocket().toHtmlEscaped() + "</tt> (protocol: docs/LIGHTS.md)");
-    path->setTextInteractionFlags(Qt::TextSelectableByMouse);
-    fl->addWidget(path);
-
-    // as spicecfg's Network page, with its option names, so a spice2x setup carries over
-    v = page("e-AMUSEMENT", "For the Konami Python games (pop'n music 9-14, DrumMania V and V2) and the PC games "
-                            "(pop'n music 15-18), with spice2x's option names. The game's e-AMUSEMENT must be ON "
-                            "in its test mode.");
+// The e-AMUSEMENT tab: the server, the PCBID and cards, the card readers
+void SettingsDialog::eamusePage(QVBoxLayout *v) {
+    auto &s = cfg::settings();
     auto *ea = new QGroupBox("Server");
     auto *fe = new QFormLayout(ea);
     m_eaUrl = new QLineEdit(s.value("eamuse/url", s.value("eamuse/server")).toString());
@@ -534,14 +571,7 @@ SettingsDialog::SettingsDialog(QWidget *parent) : QDialog(parent) {
     // real readers, as spice2x's -reader, -scard and -cardio (runtime/host/readers.h)
     auto *rd = new QGroupBox("Card readers (pop'n music 9-18, GuitarFreaks, DrumMania)");
     auto *fr = new QFormLayout(rd);
-    QStringList ports;
-#ifdef Q_OS_WIN
-    ports = windowsComPorts();
-#else
-    // a port's /dev/serial/by-id name stays the same whichever USB socket it is in
-    for (const QFileInfo &f : QDir("/dev/serial/by-id").entryInfoList(QDir::System | QDir::Files)) ports << f.absoluteFilePath();
-    for (const QString &f : QDir("/dev").entryList({"ttyUSB*", "ttyACM*"}, QDir::System)) ports << "/dev/" + f;
-#endif
+    const QStringList ports = serialPorts();
     for (int n = 0; n < 2; n++) {
         m_reader[n] = new QComboBox;
         m_reader[n]->setEditable(true);
@@ -576,14 +606,31 @@ SettingsDialog::SettingsDialog(QWidget *parent) : QDialog(parent) {
 #endif
     fr->addRow("", m_cardio);
     v->addWidget(rd);
+}
 
-    v = page("Cabinet I/O");
+// The Cabinet I/O tab: the I/O boards, the lights
+void SettingsDialog::cabinetPage(QVBoxLayout *v) {
+    auto &s = cfg::settings();
+    auto *lights = new QGroupBox("Lights");
+    auto *fl = new QVBoxLayout(lights);
+    m_socket = new QCheckBox("Publish lamps on a local socket (live view in Lights, external LED tools)");
+    m_socket->setChecked(s.value("lights/socket", true).toBool());
+    fl->addWidget(m_socket);
+    m_lightsOverlay = new QCheckBox("Show the game's lights over its picture (F9 in the game shows or hides them)");
+    m_lightsOverlay->setChecked(s.value("lights/overlay", false).toBool());
+    m_lightsOverlay->setToolTip("Every lamp the game drives, lit or not, grouped as the cabinet has them, and how often "
+                                "they change: for seeing what a game does with its lights without the cabinet.");
+    fl->addWidget(m_lightsOverlay);
+    auto *path = new QLabel("Socket: <tt>" + cfg::lightsSocket().toHtmlEscaped() + "</tt> (protocol: docs/LIGHTS.md)");
+    path->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    fl->addWidget(path);
+
     auto *cab = new QGroupBox("I/O boards");
     auto *fc = new QFormLayout(cab);
     m_bio2 = new QComboBox;
     m_bio2->setEditable(true);
     m_bio2->addItem("");
-    m_bio2->addItems(ports);
+    m_bio2->addItems(serialPorts());
     m_bio2->setCurrentText(s.value("cabinet/bio2").toString());
     m_bio2->lineEdit()->setPlaceholderText("none");
     m_bio2->setToolTip("--bio2: beatmania IIDX's BIO2 I/O board (IIDX 25-26's BI2A firmware) on its USB serial port: "
@@ -622,8 +669,11 @@ SettingsDialog::SettingsDialog(QWidget *parent) : QDialog(parent) {
     fc->addRow("  its ezusb.dll:", withBrowse(m_popnioDll, false, this, "Choose an ezusb.dll", "ezusb.dll (ezusb*.dll);;All files (*)"));
     v->addWidget(cab);
     v->addWidget(lights);
+}
 
-    v = page("General");
+// The General tab: folders, the launcher, every game's arguments
+void SettingsDialog::generalPage(QVBoxLayout *v) {
+    auto &s = cfg::settings();
     auto *paths = new QGroupBox("Folders");
     auto *fp = new QFormLayout(paths);
     m_root = new QLineEdit(s.value("paths/root").toString());
@@ -659,29 +709,6 @@ SettingsDialog::SettingsDialog(QWidget *parent) : QDialog(parent) {
     fx->addRow("Arguments (every game):", m_extra);
     v->addWidget(adv);
     v->addWidget(paths);
-
-    auto *bb = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
-    connect(bb, &QDialogButtonBox::accepted, this, &SettingsDialog::accept);
-    connect(bb, &QDialogButtonBox::rejected, this, &QDialog::reject);
-    // number boxes as wide as their numbers, not the dialog
-    for (QSpinBox *b : {m_scale, m_volume, m_audioMs}) b->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
-    QSize most;
-    for (QWidget *body : bodies) {
-        static_cast<QVBoxLayout *>(body->layout())->addStretch(1);   // the groups at the top of their tab
-        // long lists (sound devices, readers) shrink to the dialog instead of widening it
-        for (QComboBox *c : body->findChildren<QComboBox *>()) {
-            c->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
-            c->setMinimumContentsLength(16);
-        }
-        most = most.expandedTo(body->sizeHint());
-    }
-    tabs->setCurrentIndex(std::clamp(s.value("ui/settingsTab", 0).toInt(), 0, tabs->count() - 1));
-    connect(tabs, &QTabWidget::currentChanged, this, [](int k) { cfg::settings().setValue("ui/settingsTab", k); });
-    auto *outer = new QVBoxLayout(this);
-    outer->addWidget(tabs);
-    outer->addWidget(bb);
-    // as the largest tab, as the screen allows (fit.h shrinks it)
-    resize(most.width() + tabs->style()->pixelMetric(QStyle::PM_ScrollBarExtent) + 40, most.height() + 110);
 }
 
 void SettingsDialog::accept() {
