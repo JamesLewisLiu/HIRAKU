@@ -2527,6 +2527,34 @@ What was done before more features, as the code had grown (63k hand-written line
 - **Shared helpers**: `machine.txt` read by `shell/kvfile.h` (six copies before), `sys::make_dirs`, `copy_file`, `exists` (three), the host ACIO port's packets by one decoder (two). ALSA's output out of `window.cpp` into `host/alsa.cpp`; the launcher's Settings built a tab per function (the same pixels, checked).
 - Left as they are: `main()`'s options (a flat list reads as well as a table would), the launcher's command line (one condition per feature). Not possible: regress cases for the PC games (Wine and real time: not bit-exact).
 
+## 32. pop'n music High☆Cheers!!: the 64-bit PC platform (written 2026-10-23)
+
+The newest pop'n (M39, a 2026-04-15 build) is not a later pop'n 15–18: it is a new program on a new cabinet. It comes as a platform of its own beside §30, with its own loader and DLL, sharing `hiraku-pc`'s host side (window, pacing, sound, inputs, lamps, readers, the e-AMUSEMENT server).
+
+**What it is (measured on the owner's dump):**
+- `contents/`: `modules/` (14 DLLs, 14 MB), `prop/` (AVS and ea3 configs), `dev/nvram` and `dev/raw` (the cabinet's saved state), `plain_data/` (51 GB: `sd/` 2,435 song packs for pop'n 1 to 29 and the CS games, `tex/`, `sys/` fonts). The game reads it as `/data`.
+- `popn.dll`: 64-bit, built 2026-04-13, exporting only `dll_entry_init` and `dll_entry_main`. A C++ scene engine (BM2D, BMFrameWork, BMSoundLib2017 on WASAPI), 1,199 classes (pop'n 15: 131; pop'n 26's `popn22.dll` already has BM2D). Konami's AVS2 2.17.4 (`avs2-core`, `avs2-ea3`, exports obfuscated as `XCgsqzn…`/`XEmdwapa…`, imported by ordinal) and AFP 2.14.28 for its layouts.
+- The cabinet: two screens (1920x1080 main, a 1280x800 touch screen, told apart by their connectors: DisplayPort #2 main, HDMI #0 sub), the BI3A I/O (`libaio-iob5`, USB serial 1CCF:8058; `libaio-iob2_video` for a BI2X), the AMI2000 card reader, PASELI, an online updater, Windows 10's activation log (`win10actlog.dll`).
+- Its songs: each `sd/<game>/<song>.ifs` holds the charts (`_np/_hp/_ep/_op/_bp.bin`) and the sound (`.2dx`). The old songs' charts are the old games' own: of pop'n 14's 237, 232 have the same notes at the same times as on pop'n 14's disk and all the same judging windows (only the music's start and the sound numbers differ, the sound re-encoded). Newer songs' events are 12 bytes (a long note's length added), and some have a sixth chart, `wp`, on two lanes (9 and 10) no older game has.
+
+**A first try (2026-10-23, a scratch loader under Wine 11.20):** about 600 lines of C after spice2x's (GPL-3.0) start-up and cabinet code, nothing of the game changed.
+- Start-up as spice2x: `avs_boot` with `prop/avs-config.xml` (a 512 MB heap, `/sntp/ea_on` off, the time zone), the defaults copied into `/dev/nvram`, the `/env/profile/*` values, `dll_entry_init("M39KDA2026041500", <param/>)`, `ea3_boot(/ea3)`, then `dll_entry_main`. All went through.
+- Direct3D: the game wants an adapter group of two. Reported: a second adapter (1280x800) and the monitors' connectors (`QueryDisplayConfig`, `DisplayConfigGetDeviceInfo`); the group device is made a windowed one plus an additional swap chain for the sub screen (`GetSwapChain(1)`, `GetBackBuffer(1, …)`). Both screens then draw at 60 pictures a second, the game presenting through its swap chains (not the device).
+- The board and reader at `popn.dll`'s imports: `OpenSciUsbCdc`, the node manager and node calls, `aioIob5Bi3a_*` (status read 60 times a second), the SetupDi calls showing one 1CCF:8058 device, AMI2000 with no card.
+- e-AMUSEMENT: HIRAKU's server answers `services`, `pcbtracker`, `package`, `message`, `facility` (AVS's connects to port 80 sent to the server's port, as `net.c`).
+- **Where it stops:** a boot error panel whose text doesn't draw (its frame does), the same with or without the board, reader and server; TEST and SERVICE at spice2x's status offsets change nothing. The fonts draw under Wine (`GetGlyphOutline` on the game's DF fonts), so the text is lost later (its textures or shaders under Wine), and which error it is needs the program read (`CBootErrorInfoPanel`; the errors are I/O, security, backup, data, IC card, coin, network). spice2x's offsets were checked on M39-004-2025121500, a different build from this one.
+
+**Steps:**
+1. **HC-1, to the title screen** (the scratch loader into `runtime/pc64/`): find the panel's error and its text's loss (Ghidra on `popn.dll`: the panel's caller, the board's status layout in this build), then title, attract and a song offline.
+2. **HC-2, the loader and the DLL** built 64-bit by the toolchain the Windows package uses: `hiraku-pc64.exe` (AVS2 start-up, the d3d9 and monitor shims, the board, reader, network and paths at the game's imports) and the link (`link.h` v6: two pictures, the sub screen's touches). Konami's files stay as they are (nothing replaced in `modules/`).
+3. **HC-3, the host:** `runtime/pc/core.cpp` runs it (Wine prefix in a Japanese locale), shows the main picture in HIRAKU's window and the sub screen beside it, in a second window or on a second monitor; the mouse or a touch screen gives the game its touches (`RegisterTouchWindow`/`GetTouchInputInfo` answered by the DLL; Wine has no touch injection). Pacing, `frame_go` and the read-back as §30's 5b.
+4. **HC-4, the sound:** the game's WASAPI output (`IAudioClient`/`IAudioRenderClient`) into the link's ring as `dsound.c` does for DirectSound (§30's 5c), so HIRAKU's audio path and latency work apply.
+5. **HC-5, adding it:** ingest knows a `contents/` folder (`modules/popn.dll` + `prop/ea3-config.xml`, model M39, the `ext` date) and reads the data where it is; a `games/` entry and the launcher's family, with the cabinet's controls (9 buttons, the two pop-kun switches, headphones) and the tape LEDs as lamps.
+6. **HC-6, e-AMUSEMENT:** the game's modules (`info23`, `player`/`lobby24`/`pcb_*` methods seen in the program), a player kept and, later, one card for all with 9–18 where the songs and charts are the same.
+7. **HC-7, the real cabinet:** a BI3A (or BI2X) on its serial port through Konami's own `libaio` (the board's protocol is in docs/BIO2-BI2X.md for the BI2X), the AMI2000 reader, two monitors.
+
+**Open:** the `wp` chart's meaning (two new lanes); Media Foundation (movies) under Wine; whether the online updater or the activation log stop the game on a PC that isn't the cabinet.
+
 ## M0 steps (all done)
 
 1. ~~`git init` HIRAKU and add `.gitignore` for `dumps/` and `build/`~~ Done.
