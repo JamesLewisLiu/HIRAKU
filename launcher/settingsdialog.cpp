@@ -690,6 +690,15 @@ void SettingsDialog::generalPage(QVBoxLayout *v) {
     m_nvram = new QLineEdit(s.value("paths/nvram").toString());
     m_nvram->setPlaceholderText(cfg::portable() ? "default: user/data in the HIRAKU folder" : "default: ~/.local/share/hiraku");
     fp->addRow("Saves (NVRAM):", withBrowse(m_nvram, true, this));
+    m_place = new QComboBox;   // tools/ingest.py --place
+    m_place->addItem("Ask each time", "ask");
+    m_place->addItem("Move them into the HIRAKU folder", "move");
+    m_place->addItem("Leave them where they are", "stay");
+    m_place->setCurrentIndex(std::max(0, m_place->findData(s.value("ingest/place", "ask").toString())));
+    m_place->setToolTip("A game's CHDs, disks and ROM set (a PC game's folder): moved into the HIRAKU folder's dumps/ "
+                        "(gone from where they were), or read where they are (keep them there). Its ROMs are copied in "
+                        "either way.");
+    fp->addRow("Games' files when added:", m_place);
     auto *adv = new QGroupBox("Launcher");
     auto *fx = new QFormLayout(adv);
     m_hideLauncher = new QCheckBox("Hide the launcher while a game runs");
@@ -747,6 +756,7 @@ void SettingsDialog::accept() {
     s.setValue("paths/bin", m_bin->text().trimmed());
     s.setValue("paths/nvram", m_nvram->text().trimmed());
     s.setValue("ui/hideWhileRunning", m_hideLauncher->isChecked());
+    s.setValue("ingest/place", m_place->currentData().toString());
     s.setValue("updates/check", m_checkUpdates->isChecked());
     s.setValue("game/extraArgs", m_extra->text().trimmed());
     s.remove("eamuse/server");   // now eamuse/url

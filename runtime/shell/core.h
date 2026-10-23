@@ -30,7 +30,8 @@ public:
         bool window = false;     // HIRAKU's window shows it (else headless: nothing paces but the core)
         // a file named in machine.txt: absolute, or relative to dumps/<game>/
         std::string data_path(const std::string &p) const {
-            if (p.empty() || p[0] == '/') return p;
+            // as it is: absolute (/..., \\..., C:...), where machine.txt names a file left in its place
+            if (p.empty() || p[0] == '/' || p[0] == '\\' || (p.size() > 1 && p[1] == ':')) return p;
             return root + "/dumps/" + game + "/" + p;
         }
     };

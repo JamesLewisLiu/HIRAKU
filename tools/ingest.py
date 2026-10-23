@@ -532,6 +532,65 @@ def copy_disk(src: str, dst: str) -> str:
         return "copied"
 
 
+MOVED: list[tuple[str, str]] = []   # this run's moves (src, dst): a game that fails puts them back
+
+
+def move_file(src: str, dst: str, undo: bool = False) -> str:
+    """A file or folder moved to dst (--place move): renamed on the same drive, else copied, then
+    the original removed once the copy is whole"""
+    if os.path.lexists(dst):
+        if os.path.exists(dst) and os.path.samefile(src, dst):
+            return "have"
+        shutil.rmtree(dst) if os.path.isdir(dst) and not os.path.islink(dst) else os.remove(dst)
+    os.makedirs(os.path.dirname(dst), exist_ok=True)
+    if not undo:
+        MOVED.append((src, dst))
+    try:
+        os.replace(src, dst)
+        return "moved"
+    except OSError:
+        pass
+    if os.path.isdir(src):
+        shutil.copytree(src, dst + ".part")
+        os.replace(dst + ".part", dst)
+        shutil.rmtree(src)
+    else:
+        shutil.copyfile(src, dst + ".part")
+        os.replace(dst + ".part", dst)
+        os.remove(src)
+    return "moved (copied to this drive, then removed)"
+
+
+def undo_moves() -> None:
+    """A game that couldn't be added: what this run moved goes back where it was"""
+    while MOVED:
+        src, dst = MOVED.pop()
+        if os.path.exists(dst) and not os.path.exists(src):
+            move_file(dst, src, undo=True)
+            print(f"back     {os.path.basename(src)} (put back where it was: the game wasn't added)")
+
+
+def place_disk(args, src: str, to: str, keep: str) -> tuple[str, str]:
+    """A disk the game reads as it is, by --place: moved to `to`; left where it is (its full path in
+    machine.txt); else as `keep` does (link or copy). (what machine.txt names, how)"""
+    if args.place == "move":
+        return os.path.basename(to), move_file(src, to)
+    if args.place == "stay":
+        return os.path.abspath(src), "read where it is"
+    if keep == "copy":
+        return os.path.basename(to), copy_disk(src, to)
+    return os.path.basename(to), link_or_copy(src, to)
+
+
+def move_set(args, gid: str) -> None:
+    """--place move: the ROM set given (its archive or folder; not the parents or BIOS sets found
+    beside it, which other games share) moved into dumps/<game>/set/ once the game is added"""
+    if args.place != "move" or not args.romset or not os.path.exists(args.romset):
+        return
+    to = os.path.join(args.out, gid, "set", os.path.basename(os.path.normpath(args.romset)))
+    print(f"set      {os.path.basename(to)} ({move_file(args.romset, to)} into {gid}/set/)")
+
+
 PY2_FILES = (   # .py2 key -> machine.txt key; the disk is linked, the rest copied to rom/
     ("HddImagePath", "hdd"), ("HddIdPath", "hdd_id"), ("IlinkIdPath", "ilink_id"), ("NvRamPath", "nvram"),
     ("DongleBlackPath", "dongle_black"), ("DongleWhitePath", "dongle_white"))
@@ -601,8 +660,7 @@ def ingest_python2(args, py2: str) -> int:
                "input_type": g.get("InputType", str(game.get("python", {}).get("input_type", 0)))}
     for name, src in files.items():
         if name == "hdd":
-            how = link_or_copy(src, os.path.join(outdir, os.path.basename(src)))
-            machine[name] = os.path.basename(src)
+            machine[name], how = place_disk(args, src, os.path.join(outdir, os.path.basename(src)), "link")
             print(f"disk     {os.path.basename(src)} ({how})")
         else:
             shutil.copy2(src, os.path.join(outdir, "rom", os.path.basename(src)))
@@ -702,13 +760,10 @@ def ingest_python1(args, g: dict, base: str) -> int:
     for name, src in files.items():
         if name in ("hdd", "cf"):
             to = os.path.join(outdir, os.path.basename(src))
-            if args.copy_chd and os.path.isfile(to) and not os.path.islink(to) and os.path.getsize(to) == os.path.getsize(src):
-                how = "have"
-            elif args.copy_chd:
-                how = copy_disk(src, to)   # the launcher's: the files given (a USB stick) can go afterwards
-            else:
-                how = link_or_copy(src, to)
-            machine[name] = os.path.basename(src)
+            if not args.place and args.copy_chd and os.path.isfile(to) and not os.path.islink(to) and os.path.getsize(to) == os.path.getsize(src):
+                machine[name], how = os.path.basename(src), "have"
+            else:   # --copy-chd, the launcher's: the files given (a USB stick) can go afterwards
+                machine[name], how = place_disk(args, src, to, "copy" if args.copy_chd else "link")
             print(f"disk     {os.path.basename(src)} ({how})")
         else:
             shutil.copy2(src, os.path.join(outdir, "rom", os.path.basename(src)))
@@ -1040,11 +1095,17 @@ def ingest_auto(args, inputs: list[str]) -> int:
     # so nothing is extracted; Firebeat's program CD still is (its program is unpacked from it).
     # --copy-chd (the launcher's): the same, from the CHD's copy in dumps/<game>/ (a hard link
     # where it can be: no copying on the same disk), so the files given can go afterwards
-    keep = (args.keep_chd or args.copy_chd) and hint is not None and hint.get("core") in ("djmain", "sys573", "twinkle")
+    keep = (args.keep_chd or args.copy_chd or args.place) and hint is not None and hint.get("core") in ("djmain", "sys573", "twinkle")
     for c in chds:
+        if keep and args.place == "move":
+            p, kind = os.path.join(dest, os.path.basename(c)), chd.info(c).kind
+            print(f"image    {os.path.basename(p)} ({kind}, {move_file(c, p)} into {os.path.basename(dest)}/, read there)")
+            disk_of[p] = disk_name(c)
+            media.append((p, kind))
+            continue
         if keep:
             p, kind = os.path.abspath(c), chd.info(c).kind
-            if args.copy_chd:
+            if args.copy_chd and args.place != "stay":
                 os.makedirs(dest, exist_ok=True)
                 to = os.path.join(dest, os.path.basename(c))
                 if not (os.path.exists(to) and os.path.getsize(to) == os.path.getsize(p)):
@@ -1090,6 +1151,8 @@ def ingest_auto(args, inputs: list[str]) -> int:
         args.dvd = args.dvd or next((p for p, k in media if k == "dvd"), None)
         args.cd2 = args.cd2 or next((p for p in cds if p != program), None)
         rc = ingest_firebeat(args)
+        if args.place == "move":
+            print("note     a Firebeat game's discs are unpacked into HIRAKU's folder: the files given are left where they are")
         try:
             os.rmdir(os.path.join(args.out, INCOMING))   # only if empty
         except OSError:
@@ -1104,7 +1167,9 @@ def ingest_auto(args, inputs: list[str]) -> int:
     args.romset = romset_for or (romsets[0] if romsets else None)
     if core == "djmain":
         args.hdd = args.hdd or next((p for p, k in media if k == "hd"), None)
-        return ingest_djmain(args)
+        rc = ingest_djmain(args)
+        move_set(args, hint["id"]) if rc == 0 else undo_moves()
+        return rc
     if core == "sys573":
         # the runtime CD, the multi-session unit's (DrumMania 4th Mix and later) and the network
         # unit's data installer (e-AMUSEMENT GuitarFreaks and DrumMania), by name
@@ -1116,7 +1181,9 @@ def ingest_auto(args, inputs: list[str]) -> int:
         args.install2_cd = next((p for p in cds if stem(p) == want.get("install2_chd")), None) if want.get("install2_chd") else None
         args.cd = next((p for p in cds if stem(p) == want.get("chd")), None) or \
             next((p for p in cds if p not in (args.msu_cd, args.hdd_cd, args.install_cd, args.install2_cd)), None)
-        return ingest_sys573(args)
+        rc = ingest_sys573(args)
+        move_set(args, hint["id"]) if rc == 0 else undo_moves()
+        return rc
     if core == "twinkle":
         want = hint.get("cd", {})
         stem = lambda p: disk_of.get(p) or os.path.splitext(os.path.basename(p))[0]
@@ -1130,7 +1197,9 @@ def ingest_auto(args, inputs: list[str]) -> int:
         hd_chd = next((c for c in chds if stem(c) == hdd_name), None) or \
             next((c for c in chds if chd.info(c).kind == "hd" and stem(c) != want.get("video_chd")), None)
         args.hdd_chs = chd.geometry(hd_chd) if hd_chd else None
-        return ingest_twinkle(args)
+        rc = ingest_twinkle(args)
+        move_set(args, hint["id"]) if rc == 0 else undo_moves()
+        return rc
     # its set alone, for a game added already from its CDs (which said NEXT: add the MAME set): the
     # set's ROMs (the dongle, the SPU program) go in beside them
     outdir = os.path.join(args.out, hint["id"])
@@ -1172,6 +1241,9 @@ def main() -> int:
                     "instead of extracting them (the game then needs them there)")
     ap.add_argument("--copy-chd", action="store_true", help="DJ Main, System 573, Twinkle: link or copy the CHDs into "
                     "dumps/<game>/ and read them there, instead of extracting them (what the launcher does)")
+    ap.add_argument("--place", choices=("move", "stay"), help="the files a game reads as they are (CHDs, disks, a PC "
+                    "game's folder) moved into dumps/<game>/ with its ROM set, or left where they are (read there); "
+                    "the ROMs are copied either way. Default: linked or copied in")
     ap.add_argument("--nvram-seed", metavar="DIR", help="System 573: a MAME NVRAM folder (nvram/<set>/) with the game "
                     "installed; kept as the game's starting saves (a folder named nvram/<set> is told by itself)")
     args = ap.parse_args()
@@ -1202,6 +1274,11 @@ def main() -> int:
     if pcs:
         rc = 0
         for f, (game, program, data) in pcs:
+            if args.place == "move":   # the folder holding prog/ and data/, into dumps/<game>/
+                top = os.path.dirname(os.path.normpath(data))
+                to = os.path.join(args.out, game["id"], os.path.basename(top))
+                print(f"folder   {os.path.basename(top)} ({move_file(top, to)} into {game['id']}/)")
+                program, data = os.path.join(to, os.path.relpath(program, top)), os.path.join(to, "data")
             rc |= ingest_pc(args, game, program, data)
             args.inputs.remove(f)
         if not args.inputs:
@@ -1268,7 +1345,7 @@ def ingest_pc(args, game: dict, program: str, data: str) -> int:
         fh.write("\n".join(lines) + "\n")
     print(f"game     {gid}: {game.get('title', gid)} (a PC game)")
     print(f"program  {program}")
-    print(f"data     {data} (read where it is: keep it there)")
+    print(f"data     {data} (read where it is{'' if data.startswith(os.path.abspath(args.out)) else ': keep it there'})")
     print(f"OK       dumps/{gid}/machine.txt")
     return 0
 

@@ -105,3 +105,7 @@ add_test(NAME mods_text COMMAND test_find_text)
 if(Python3_Interpreter_FOUND)
   add_test(NAME ingest_python_support COMMAND Python3::Interpreter ${CMAKE_CURRENT_SOURCE_DIR}/tools/test_ingest_python.py)
 endif()
+# tools/ingest.py --place: a game's folder moved into dumps/ or read where it is
+if(Python3_Interpreter_FOUND)
+  add_test(NAME ingest_place COMMAND Python3::Interpreter ${CMAKE_CURRENT_SOURCE_DIR}/tools/test_ingest_place.py)
+endif()

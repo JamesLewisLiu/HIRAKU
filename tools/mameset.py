@@ -4,7 +4,8 @@
 The data, tools/data/mame-bemani.json, is made from MAME's -listxml (`--refresh`): every
 machine of the BEMANI boards' drivers, the BIOS sets they hang from, and the devices whose
 ROMs they need (the multi-session unit, the network unit). ROMs keep name, size and CRC;
-disks keep name and SHA-1 (as MAME's, the CHD header's).
+disks keep name and SHA-1 (as MAME's, the CHD header's). Each set's "sha1" has its ROMs' SHA-1s,
+by name (the launcher's checklist of a game's files, tools/checklist.py).
 
 Sets go by their current MAME names, as games/*/game.toml does. An older MAME's set (the
 owner's archive is 0.243) can carry an older name, so a set is told by what it holds, not
@@ -133,6 +134,8 @@ def refresh(listxml: str, out: str = DATA, ksys573: str | None = None) -> int:
                          ([r.get("merge")] if r.get("merge") else [])))
             if r.get("region"):
                 m.setdefault("regions", {})[r.get("name")] = r.get("region")
+            if r.get("sha1"):
+                m.setdefault("sha1", {})[r.get("name")] = r.get("sha1")
         m["_roms"] = roms
         disks = []
         for k in el.findall("disk"):

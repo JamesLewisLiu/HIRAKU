@@ -21,6 +21,26 @@ apart by set name, a CHD by its folder or by the sets MAME has its disk in, and 
 in turn. A clone given with its parent also gets the parent's disks; a BIOS set (`sys573.zip`)
 goes with every game.
 
+**Moved, or left where they are:** the launcher asks, when files are added, whether to move them
+into the HIRAKU folder or leave them where they are (`tools/ingest.py --place move|stay`;
+**Settings > General > Games' files when added** answers for good):
+- *Move*: the CHDs, the disks and the ROM set (a PC game: its whole folder) go into
+  `dumps/<game>/` (the set into `dumps/<game>/set/`) and are gone from where they were: renamed
+  on the same drive, copied then removed from another. A game that can't be added (a CHD
+  missing) has its files put back. The BIOS and parent sets found beside the set (`sys573.zip`)
+  stay, as other games use them.
+- *Leave*: HIRAKU reads them where they are (their full path in `machine.txt`): keep them there,
+  and a USB drive plugged in, to play.
+- The ROMs are copied in either way (they're small), and a Firebeat game's discs are unpacked into
+  `dumps/<game>/` either way.
+
+**The game's files, checked:** the launcher's details list every file a game needs, with its size
+and MD5. A MAME game's ROMs and CHDs are checked against MAME's SHA-1 (✓ the dump MAME knows, ✗
+another one, – missing); a disk unpacked from its CHD, a Python game's and a PC game's files are
+listed with nothing to check them against (•). Files over 64 MB are hashed only when asked ("Hash
+the big files too"); the hashes are kept in `dumps/<game>/.checklist.json`. From a terminal:
+`tools/checklist.py GAME [--big]`.
+
 It also tells each image's role from what it holds: a hard disk, a DVD, or a second CD. The
 sections below give each game's files, and the manual form with the roles spelled out
 (`--romset`, `--hdd`, `--dvd`, `--cd2`).

@@ -34,6 +34,10 @@
 #include <QPlainTextEdit>
 #include <QPushButton>
 #include <QInputDialog>
+#include <QCheckBox>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QLocale>
 #include <QScrollArea>
 #include <QSet>
 #include <QSplitter>
@@ -253,7 +257,11 @@ MainWindow::MainWindow() {
 
     m_details = new QLabel;
     m_details->setWordWrap(true);
-    m_details->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    m_details->setTextInteractionFlags(Qt::TextSelectableByMouse | Qt::LinksAccessibleByMouse);
+    m_details->setOpenExternalLinks(false);
+    connect(m_details, &QLabel::linkActivated, this, [this](const QString &link) {
+        if (const Game *g = selected(); g && link == "hash-big") checkFiles(g->id, true);   // filesHtml's link
+    });
     m_details->setAlignment(Qt::AlignTop | Qt::AlignLeft);
     m_details->setMargin(8);
     auto *details = new QScrollArea;
@@ -402,6 +410,17 @@ MainWindow::MainWindow() {
             QTimer::singleShot(2000, this, [this] { checkForUpdate(false); });
     }
 
+    // ---- the details' list of a game's files (tools/checklist.py) ----
+    connect(&m_files, &QProcess::finished, this, [this](int code, QProcess::ExitStatus st) {
+        if (m_filesGame.isEmpty()) return;   // stopped for another game's (checkFiles)
+        const QJsonObject o = QJsonDocument::fromJson(m_files.readAllStandardOutput()).object();
+        if (st == QProcess::NormalExit && code == 0 && !o.isEmpty()) m_fileLists[m_filesGame] = o;
+        else m_fileLists[m_filesGame] = QJsonObject{{"error", QString::fromLocal8Bit(m_files.readAllStandardError()).trimmed()}};
+        const QString id = m_filesGame;
+        m_filesGame.clear();
+        if (const Game *g = selected(); g && g->id == id) showDetails();
+    });
+
     // ---- the game process ----
     m_ingest.setProcessChannelMode(QProcess::MergedChannels);
     connect(&m_ingest, &QProcess::readyRead, this, [this] {
@@ -410,6 +429,7 @@ MainWindow::MainWindow() {
         log(t);
     });
     connect(&m_ingest, &QProcess::finished, this, [this](int code, QProcess::ExitStatus st) {
+        m_fileLists.clear();   // games' files added or moved: their lists again
         refresh();
         QStringList added, errors, kept;
         for (const QString &l : m_ingestOutput.split('\n')) {
@@ -765,6 +785,7 @@ void MainWindow::showDetails() {
                                      : "sharp pixels",
                       own ? ", with its own settings" : "");
     }
+    h += filesHtml(*g);
     m_details->setText(h);
 }
 
@@ -1078,8 +1099,106 @@ void MainWindow::dropEvent(QDropEvent *e) {
 }
 
 void MainWindow::addGameFiles(const QStringList &paths) {
-    m_ingestQueue << paths;
+    const QString place = askPlace(paths);
+    if (place == "cancel") return;
+    m_ingestQueue << (place.isEmpty() ? paths : QStringList{"--place", place} + paths);
     if (m_ingest.state() == QProcess::NotRunning) startIngest();
+}
+
+// Where a game's files go when it's added (tools/ingest.py --place): moved into the HIRAKU folder's
+// dumps/, or read where they are; Settings > General can answer for good. A Konami Python BIOS or
+// key files alone (copied: they're small): nothing to ask
+QString MainWindow::askPlace(const QStringList &paths) {
+    static const QRegularExpression support(
+        R"(^(coh-h31000\.\w+|ps2-0190j.*\.bin|(civ|cks|eks|kek|arcade_kelf_override_kbit|arcade_kelf_override_kc)\.bin|bios|keys)$)",
+        QRegularExpression::CaseInsensitiveOption);
+    bool onlySupport = true;
+    for (const QString &p : paths) onlySupport = onlySupport && support.match(QFileInfo(p).fileName()).hasMatch();
+    if (onlySupport) return QString();
+    const QString kept = cfg::settings().value("ingest/place", "ask").toString();
+    if (kept == "move" || kept == "stay") return kept;
+    QMessageBox box(QMessageBox::Question, "Add games", "Move the game's files into the HIRAKU folder, or leave them where they are?",
+                    QMessageBox::Cancel, this);
+    box.setInformativeText(
+        "Move: its CHDs, disks and ROM set (a PC game: its folder) go into the HIRAKU folder (dumps/) and are gone "
+        "from where they are now. From another drive they are copied, then removed.\n\n"
+        "Leave: HIRAKU reads them where they are: keep them there (a USB drive plugged in to play).\n\n"
+        "Its ROMs are copied in either way (they are small); a Firebeat game's discs are unpacked into the HIRAKU "
+        "folder either way.");
+    QPushButton *move = box.addButton("Move into the HIRAKU folder", QMessageBox::AcceptRole);
+    QPushButton *stay = box.addButton("Leave where they are", QMessageBox::AcceptRole);
+    auto *remember = new QCheckBox("Don't ask again (Settings > General)");
+    box.setCheckBox(remember);
+    box.setDefaultButton(stay);
+    box.exec();
+    const QString r = box.clickedButton() == move ? "move" : box.clickedButton() == stay ? "stay" : "cancel";
+    if (r != "cancel" && remember->isChecked()) cfg::settings().setValue("ingest/place", r);
+    return r;
+}
+
+// The game's files listed (tools/checklist.py), in the background; big: the big ones hashed too
+void MainWindow::checkFiles(const QString &id, bool big) {
+    const QStringList py = cfg::python();
+    const QString script = cfg::rootDir() + "/tools/checklist.py";
+    if (py.isEmpty() || !QFileInfo::exists(script)) return;
+    if (m_files.state() != QProcess::NotRunning) {
+        if (m_filesGame == id && (m_filesBig || !big)) return;   // on it already
+        m_filesGame.clear();                                     // (its end then does nothing)
+        m_files.kill();
+        m_files.waitForFinished(2000);
+    }
+    m_filesGame = id, m_filesBig = big;
+    m_files.setWorkingDirectory(cfg::rootDir());
+    m_files.start(py[0], py.mid(1) + QStringList{script, id} + (big ? QStringList{"--big"} : QStringList{}));
+    if (big) showDetails();   // it says the big files are being read
+}
+
+// The details' list of the game's files: each with its mark (MAME's SHA-1 matched, there, another
+// dump, missing), its size and MD5
+QString MainWindow::filesHtml(const Game &g) {
+    const auto it = m_fileLists.constFind(g.id);
+    if (it == m_fileLists.constEnd()) {
+        checkFiles(g.id, false);
+        return "<p><b>Files:</b> checking…</p>";
+    }
+    if (it->contains("error"))
+        return "<p><b>Files:</b> could not be listed (" + (*it)["error"].toString().toHtmlEscaped() + ")</p>";
+    const QJsonArray items = (*it)["items"].toArray();
+    if (items.isEmpty()) return QString();
+    const QLocale loc;
+    int ok = 0, bad = 0, missing = 0;
+    qint64 unhashed = 0;
+    QString rows;
+    for (const QJsonValue &v : items) {
+        const QJsonObject f = v.toObject();
+        const QString st = f["status"].toString(), md5 = f["md5"].toString(), note = f["note"].toString();
+        const qint64 size = (qint64)f["size"].toDouble();
+        ok += st == "ok", bad += st == "bad", missing += st == "missing";
+        const QString mark = st == "ok"        ? "<span style='color:#2e9d4a'>✓</span>"
+                             : st == "bad"     ? "<span style='color:#d33'>✗</span>"
+                             : st == "missing" ? "<span style='color:#d33'>–</span>"
+                                               : "•";
+        rows += "<tr><td valign='top'>" + mark + "&nbsp;</td><td>" + f["name"].toString().toHtmlEscaped() + " <small>(" +
+                f["kind"].toString().toHtmlEscaped() + (size > 0 ? ", " + loc.formattedDataSize(size) : QString()) + ")</small>";
+        if (!md5.isEmpty()) rows += "<br><small><tt>MD5 " + md5 + "</tt></small>";
+        if (st == "missing") rows += "<br><small>missing</small>";
+        if (st == "bad") rows += "<br><small>not the dump MAME knows (its SHA-1: <tt>" + f["expected"].toString() + "</tt>)</small>";
+        if (md5.isEmpty() && size > 0 && st != "missing") unhashed += size;
+        if (!note.isEmpty() && note != "big") rows += "<br><small>" + note.toHtmlEscaped() + "</small>";
+        rows += "</td></tr>";
+    }
+    QString sum = QString("%1 file%2").arg(items.size()).arg(items.size() == 1 ? "" : "s");
+    if (ok) sum += QString(", %1 the dumps MAME knows").arg(ok);
+    if (bad) sum += QString(", <b>%1 another dump</b>").arg(bad);
+    if (missing) sum += QString(", <b>%1 missing</b>").arg(missing);
+    QString h = "<p><b>Files:</b> " + sum + "<br><small>✓ the dump MAME knows (its SHA-1) · • there, nothing to check it "
+                "against · ✗ another dump · – missing</small></p><table cellspacing='0' cellpadding='1'>" + rows + "</table>";
+    if (unhashed > 0)
+        h += m_files.state() != QProcess::NotRunning && m_filesGame == g.id && m_filesBig
+                 ? "<p><small>Reading the big files (" + loc.formattedDataSize(unhashed) + ")…</small></p>"
+                 : "<p><a href='hash-big'>Hash the big files too</a> <small>(" + loc.formattedDataSize(unhashed) +
+                       ": their MD5 and SHA-1, kept once read)</small></p>";
+    return h;
 }
 
 void MainWindow::startIngest() {

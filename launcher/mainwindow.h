@@ -2,6 +2,7 @@
 // The game list: pick a game, play it; controls, lights and settings.
 #pragma once
 
+#include <QHash>
 #include <QJsonObject>
 #include <QMainWindow>
 #include <QProcess>
@@ -76,6 +77,14 @@ private:
     QList<QStringList> m_ingestQueue;
     QString m_ingestOutput;
     void startIngest();
+    QString askPlace(const QStringList &paths);   // move, stay, "" (no question: a BIOS or keys), or "cancel"
+    // the details' list of the game's files (tools/checklist.py): in the background, kept by game
+    QProcess m_files;
+    QString m_filesGame;              // the game it runs for
+    bool m_filesBig = false;          // ... hashing the big files too
+    QHash<QString, QJsonObject> m_fileLists;
+    void checkFiles(const QString &id, bool big);
+    QString filesHtml(const Game &g);
     QString m_running;          // game id, while one runs
     // updates (updater.h): the bar that says a new version is out, the release it names
     void checkForUpdate(bool asked);
