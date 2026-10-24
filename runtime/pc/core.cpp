@@ -364,6 +364,12 @@ public:
         if (!make_link()) return false;
         set_env("HK_PC64_SAVE", win_path(save_ + "/run"));
         set_env("HK_PC64_LOG", win_path(save_ + "/pc.log"));
+        // --single-screen: the save folder's single-screen/ (the game's files rearranged for one 4:3
+        // screen, made from the player's own) read before the game's (the loader's HK_PC64_OVERLAY)
+        if (crt_ && hk::sys::is_dir(save_ + "/single-screen")) {
+            set_env("HK_PC64_OVERLAY", win_path(save_ + "/single-screen"));
+            printf("hiraku-pc: the single-screen layout from %s/single-screen\n", save_.c_str());
+        }
         { std::ofstream(save_ + "/pc.log", std::ios::trunc); }
         printf("hiraku-pc: %s from %s; saves in %s\n", game_.c_str(), contents_.c_str(), save_.c_str());
         fflush(stdout);
