@@ -69,5 +69,8 @@ void pc64_trace_install(HMODULE game);
 void pc64_trace_d3dx_install(HMODULE game);
 // link.c: the picture being drawn won't be shown by hiraku-pc (no need to read it back)
 int pc64_link_not_shown(void);
+// crt.c: the single-screen mode (HK_PC64_OUTPUT=crt): on; the board's inputs for its touches
+int pc64_crt(void);
+void pc64_crt_inputs(unsigned in);
 // link.c: a fifth of a millisecond's nap
 void pc64_nap(void);

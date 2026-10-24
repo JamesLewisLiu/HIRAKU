@@ -63,6 +63,7 @@ static void Bi3a_GetDeviceStatus_(void *c, uint8_t *st) {
     memset(st, 0, 0x288);
     st[62] = st[63] = st[67] = st[68] = 1;
     const unsigned h = pc64_held | pc64_link_inputs();
+    pc64_crt_inputs(h);   // the single-screen mode: button 5 for the touches (crt.c)
     st[44] = (h & PC64_IN_TEST) != 0;
     st[45] = (h & PC64_IN_SERVICE) != 0;
     st[46] = (h & PC64_IN_COIN) != 0;

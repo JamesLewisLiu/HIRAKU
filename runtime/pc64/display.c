@@ -203,8 +203,62 @@ static void snapshot(void) {
         IDirect3DSurface9_Release(bb);
     }
 }
+// HK_PC64_SNAPS (tests): the game's 480-line layer (854x480, drawn first, then stretched to the
+// main screen) with the snapshots
+static HRESULT WINAPI StretchRect_(IDirect3DDevice9Ex *d, IDirect3DSurface9 *src, const RECT *sr, IDirect3DSurface9 *dst, const RECT *dr,
+                                   D3DTEXTUREFILTERTYPE f) {
+    static int every = -1;
+    if (every < 0) {
+        const char *e = getenv("HK_PC64_SNAPS"), *colon = e ? strrchr(e, ':') : NULL;
+        every = colon && colon > e + 1 ? atoi(colon + 1) : 0;
+    }
+    D3DSURFACE_DESC sd;
+    if (every && src && pc64_frames % every == 0 && SUCCEEDED(IDirect3DSurface9_GetDesc(src, &sd)) && sd.Height == 480) {
+        const char *e = getenv("HK_PC64_SNAPS");
+        char path[MAX_PATH + 40];
+        snprintf(path, sizeof path, "%.*s\\snap-%06u-%ux480.bmp", (int)(strrchr(e, ':') - e), e, pc64_frames, sd.Width);
+        write_bmp(src, path);
+    }
+    return rdev.StretchRect(d, src, sr, dst, dr, f);
+}
+
 // The main screen's picture into hiraku-pc's link (HIRAKU's window shows it): read back through a
 // surface in system memory, X8R8G8B8 (the desktop's, windowed)
+// The single-screen mode's picture (crt.c): the main screen's middle 4:3 scaled down on the GPU in
+// two linear steps (1440x1080 to 960x720 to 640x480: each 1.5 times, no pixel skipped), read back
+static int to_link_crt(IDirect3DSurface9 *bb, const D3DSURFACE_DESC *d, uint32_t *out) {
+    enum { W = 640, H = 480 };
+    static IDirect3DSurface9 *half, *small, *readback;
+    if (!readback) {
+        IDirect3DDevice9 *dev = (IDirect3DDevice9 *)g_dev;
+        if (FAILED(IDirect3DDevice9_CreateRenderTarget(dev, W * 3 / 2, H * 3 / 2, d->Format, D3DMULTISAMPLE_NONE, 0, FALSE, &half, NULL)) ||
+            FAILED(IDirect3DDevice9_CreateRenderTarget(dev, W, H, d->Format, D3DMULTISAMPLE_NONE, 0, FALSE, &small, NULL)) ||
+            FAILED(IDirect3DDevice9_CreateOffscreenPlainSurface(dev, W, H, d->Format, D3DPOOL_SYSTEMMEM, &readback, NULL)))
+            return 0;
+        pc64_log("the single-screen mode: the main screen's middle 4:3 at %ux%u to HIRAKU's window", W, H);
+    }
+    if (pc64_link_not_shown()) {   // counted, not read back
+        pc64_link_picture(W, H);
+        return 1;
+    }
+    const UINT cw = d->Height * 4 / 3;
+    const RECT crop = {(LONG)(d->Width - cw) / 2, 0, (LONG)(d->Width + cw) / 2, (LONG)d->Height};
+    D3DLOCKED_RECT lr;
+    if (FAILED(rdev.StretchRect(g_dev, bb, &crop, half, NULL, D3DTEXF_LINEAR)) ||
+        FAILED(rdev.StretchRect(g_dev, half, NULL, small, NULL, D3DTEXF_LINEAR)) ||
+        FAILED(IDirect3DDevice9_GetRenderTargetData((IDirect3DDevice9 *)g_dev, small, readback)) ||
+        FAILED(IDirect3DSurface9_LockRect(readback, &lr, NULL, D3DLOCK_READONLY)))
+        return 0;
+    for (UINT y = 0; y < H; y++) {
+        const uint32_t *p = (const uint32_t *)((const uint8_t *)lr.pBits + (size_t)y * lr.Pitch);
+        uint32_t *o = out + (size_t)y * W;
+        for (UINT x = 0; x < W; x++) o[x] = p[x] & 0xffffff;
+    }
+    IDirect3DSurface9_UnlockRect(readback);
+    pc64_link_picture(W, H);
+    return 1;
+}
+
 static int to_link(IDirect3DSwapChain9 *s) {
     static IDirect3DSurface9 *readback;
     static UINT rw, rh;
@@ -213,6 +267,11 @@ static int to_link(IDirect3DSwapChain9 *s) {
     if (!out || FAILED(IDirect3DSwapChain9_GetBackBuffer(s, 0, D3DBACKBUFFER_TYPE_MONO, &bb))) return 0;
     D3DSURFACE_DESC d;
     IDirect3DSurface9_GetDesc(bb, &d);
+    if (pc64_crt()) {
+        const int done = to_link_crt(bb, &d, out);
+        IDirect3DSurface9_Release(bb);
+        return done;
+    }
     int ok = 0;
     if (readback && rw == d.Width && rh == d.Height && pc64_link_not_shown()) {   // counted, not read back
         IDirect3DSurface9_Release(bb);
@@ -315,12 +374,13 @@ static void place_sub(HWND w) {
 }
 static BOOL WINAPI ShowWindow_(HWND w, int how) {
     if (pc64_host_shows() && is_window(w, "Main Screen")) how = SW_HIDE;
+    if (pc64_crt() && is_window(w, "Sub Screen")) return r_ShowWindow(w, SW_HIDE);   // no touch screen: never shown
     const BOOL r = r_ShowWindow(w, how);
     if (how != SW_HIDE && is_window(w, "Sub Screen")) place_sub(w);
     return r;
 }
 static BOOL WINAPI MoveWindow_(HWND w, int x, int y, int cw, int ch, BOOL paint) {
-    if (is_window(w, "Sub Screen")) {
+    if (is_window(w, "Sub Screen") && !pc64_crt()) {
         place_sub(w);
         return TRUE;
     }
@@ -364,6 +424,7 @@ static HRESULT WINAPI CreateDeviceEx_(IDirect3D9Ex *d, UINT a, D3DDEVTYPE t, HWN
         pc64_patch(&v->Reset, Reset_);
         pc64_patch(&v->ResetEx, ResetEx_);
         pc64_patch(&v->Present, Present_);
+        pc64_patch(&v->StretchRect, StretchRect_);
         pc64_patch(&v->PresentEx, PresentEx_);
         IDirect3DSwapChain9 *sc;
         if (SUCCEEDED(rdev.GetSwapChain(*dev, 0, &sc))) {

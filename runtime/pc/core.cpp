@@ -192,6 +192,10 @@ public:
             ahead_ = true;
             return true;
         }
+        if (name == "--single-screen") {
+            crt_ = true;
+            return true;
+        }
         if (name == "--press-time") {
             press_time_ = true;
             return true;
@@ -220,6 +224,8 @@ public:
         return std::string("  --wine PROGRAM       Linux: the Wine that runs the game (default: wine, from the PATH)\n"
                            "  --game-ahead         the game draws its next picture while this one is shown: a frame\n"
                            "                       later from the controls to the screen, for a PC too slow otherwise\n"
+                           "  --single-screen      the 64-bit PC games on one 4:3 screen with nine buttons (an older\n"
+                           "                       cabinet's): the main screen's middle at 640x480, no touch screen\n"
                            "  --press-time         pop'n 15-18: each press judged by when it happened, not by the frame\n"
                            "                       the game read it in (as the game does: up to a frame later)\n"
                            "  --judge-offset MS    pop'n 15-18: each press judged MS milliseconds earlier (positive:\n"
@@ -342,6 +348,7 @@ public:
         // the controllers go on while the touch screen's window has the focus (a click there takes it
         // under Wine, whatever the window asks): SDL's joystick events in the background too
         set_env("SDL_JOYSTICK_ALLOW_BACKGROUND_EVENTS", "1");
+        if (crt_) set_env("HK_PC64_OUTPUT", "crt");   // the loader's single-screen mode (runtime/pc64/crt.c)
         save_ = o.nvram_dir.empty() ? hk::user_data_dir(o.root) + "/" + game_ : o.nvram_dir;
         mkdirs(save_ + "/run");
         const std::string bin_dir = hk::sys::exe_path().substr(0, hk::sys::exe_path().rfind('/'));
@@ -992,6 +999,7 @@ private:
 
     std::string game_, family_ = "pcpopn", exe_, program_, save_, run_prog_, run_e_, link_path_, wine_ = "wine";
     bool pc64_ = false;               // the 64-bit loader runs the game (init_pc64)
+    bool crt_ = false;                // --single-screen: the 64-bit loader's single-screen mode
     std::string contents_, loader_;   // its game folder, hiraku-pc64.exe
     hk::EaOptions ea_;
     std::unique_ptr<hk::py::EamuseServer> server_;
