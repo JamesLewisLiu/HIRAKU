@@ -65,6 +65,8 @@ uint32_t pc64_card(uint8_t uid[8]);
 extern volatile unsigned pc64_card_presses;
 // log.c: HK_PC64_TRACE_STRUCTS's trace of the game's answer nodes and struct reads (tests)
 void pc64_trace_install(HMODULE game);
+// link.c: the picture being drawn won't be shown by hiraku-pc (no need to read it back)
+int pc64_link_not_shown(void);
 // link.c: a fifth of a millisecond's nap
 void pc64_nap(void);
 // sound.c: a picture counted, its frame's sound into the link's ring

@@ -214,6 +214,11 @@ static int to_link(IDirect3DSwapChain9 *s) {
     D3DSURFACE_DESC d;
     IDirect3DSurface9_GetDesc(bb, &d);
     int ok = 0;
+    if (readback && rw == d.Width && rh == d.Height && pc64_link_not_shown()) {   // counted, not read back
+        IDirect3DSurface9_Release(bb);
+        pc64_link_picture(d.Width, d.Height);
+        return 1;
+    }
     if (d.Width <= 1920 && d.Height <= 1200 && (d.Format == D3DFMT_X8R8G8B8 || d.Format == D3DFMT_A8R8G8B8)) {
         if (!readback || rw != d.Width || rh != d.Height) {
             if (readback) IDirect3DSurface9_Release(readback);

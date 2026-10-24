@@ -366,10 +366,10 @@ public:
     int audio_rate() const override { return HK_PC_AUDIO_RATE; }
     bool audio_per_frame() const override { return true; }   // each picture brings its frame's sound
     void set_on_fatal(std::function<void()> f) override { on_fatal_ = std::move(f); }
-    double native_rate() const override { return HZ; }
+    double native_rate() const override { return ghz(); }
     int monitor_khz() const override { return 31; }   // a PC's VGA monitor
     double display_aspect() const override { return pc64_ ? 0.0 : 4.0 / 3.0; }   // the 64-bit PC pop'n: 1920x1080, square pixels
-    double seconds() const override { return (double)frame_ / HZ; }
+    double seconds() const override { return (double)tick_ / ghz(); }
     const uint8_t *mem(uint32_t, uint32_t) const override { return nullptr; }
     uint64_t frame_count() const override { return frame_; }
     void turntable_add(int, int) override {}
@@ -429,6 +429,7 @@ public:
                     link_->audio_frame_end = 0;
                     sound_on_ = false;
                     seen = 0;
+                    pics_ = 0;
                     if (!start_game()) fatal();
                 }
             }
@@ -437,6 +438,12 @@ public:
             if (seq != seen) {
                 std::atomic_thread_fence(std::memory_order_acquire);
                 seen = seq;
+                if (++pics_ < per_frame_) {   // a picture between two shown (a 120 Hz game, a slower display): the next at once
+                    go(seq);
+                    last = std::chrono::steady_clock::now();
+                    continue;
+                }
+                pics_ = 0;
                 const int w = (int)link_->frame_w, h = (int)link_->frame_h;
                 const bool ok = w > 0 && h > 0 && (uint32_t)w <= HK_PC_MAX_W && (uint32_t)h <= HK_PC_MAX_H;
                 if (ok) picture_.assign(link_pixels(), link_pixels() + (size_t)w * h);
@@ -445,26 +452,27 @@ public:
                 if (ok) show(picture_.data(), w, h);
                 else show(nullptr, 0, 0);
                 // Without display sync the sound paces, as for the emulated machines; until the game's
-                // sound starts, and with no window at all, the game's 60 a second on a steady grid
+                // sound starts, and with no window at all, the game's own rate on a steady grid
                 if (!hk::host::pacing::active() && (!link_->audio_made || !window_)) {
-                    const auto period = std::chrono::nanoseconds((long long)(1e9 / HZ));
+                    const auto period = std::chrono::nanoseconds((long long)(1e9 * per_frame_ / ghz()));
                     const auto t = std::chrono::steady_clock::now();
                     due_ = due_ == std::chrono::steady_clock::time_point{} || t - due_ > std::chrono::milliseconds(100) ? t : due_ + period;
                     if (due_ > t) std::this_thread::sleep_until(due_);
                 }
+                per_frame_ = pictures_per_frame();
                 // the shell's next frame starts: the game's too (it reads its controls, draws)
                 if (!ahead_) go(seq);
                 last = std::chrono::steady_clock::now();
-            } else if (now - last > std::chrono::microseconds(1000000 / (int)HZ)) {
+            } else if (now - last > std::chrono::microseconds((long long)(1e6 * per_frame_ / ghz()))) {
                 // no picture (starting, loading): the last again
                 show(last_rgb_ ? last_rgb_ : black_.data(), last_w_, last_h_);
                 repeats_++;
                 last = now;
-            } else if (sound_on_ && !ahead_ && now - go_at_ > std::chrono::microseconds(1000000 / (int)HZ / 2) &&
-                       (int32_t)(sound_for(frame_ + 1) - link_->audio_made) > 0) {
+            } else if (sound_on_ && !ahead_ && now - go_at_ > std::chrono::microseconds((long long)(5e5 * per_frame_ / ghz())) &&
+                       (int32_t)(sound_for(tick_ + per_frame_) - link_->audio_made) > 0) {
                 // the picture is late (half a frame): its frame's sound goes on without it, before
                 // the sound output runs dry (the game's sounds of this frame come with the next)
-                sound_until(sound_for(frame_ + 1));
+                sound_until(sound_for(tick_ + per_frame_));
                 take_sound();
             } else if (!take_sound()) {
                 std::this_thread::sleep_for(std::chrono::microseconds(100));
@@ -788,15 +796,27 @@ private:
     // The game may draw its next frame (it waits in its Present for this), to be shown in the
     // shell's next frame (with --game-ahead, the one after): that frame's sound comes with it
     void go(uint32_t seq) {
-        link_->audio_frame_end = sound_on_ ? sound_for(frame_ + (ahead_ ? 2 : 1)) : 0;
+        link_->audio_frame_end = sound_on_ ? sound_for(tick_ + pics_ + 1 + (ahead_ ? per_frame_ : 0)) : 0;
         go_at_ = std::chrono::steady_clock::now();
         link_->go_host_us = host_us(go_at_);
+        link_->not_shown = !ahead_ && pics_ + 1 < per_frame_;
         std::atomic_thread_fence(std::memory_order_release);
         link_->frame_go = seq;
     }
 
-    // The game's sound, a frame's (735 frames) for each frame shown: where it ends with frame `f`
-    uint32_t sound_for(uint64_t f) const { return sound_base_ + (uint32_t)f * (HK_PC_AUDIO_RATE / 60); }
+    // The game's time in its own frames (ticks: 60 a second, the 64-bit PC pop'n's 120), each
+    // shown frame per_frame_ of them; its sound, 44.1 kHz: where it ends with tick `t`
+    double ghz() const { return pc64_ ? 120.0 : HZ; }
+    uint64_t samples_at(uint64_t t) const { return t * HK_PC_AUDIO_RATE / (uint64_t)ghz(); }
+    uint32_t sound_for(uint64_t t) const { return sound_base_ + (uint32_t)samples_at(t); }
+    // The game's pictures for each frame shown: a 120 Hz game draws two on a display under 100 Hz
+    // (the first not shown; display sync's grid then fits 60 Hz), else one (120 and 240 Hz fit it;
+    // on others the core paces itself at 120)
+    int pictures_per_frame() const {
+        if (!pc64_) return 1;
+        const double hz = hk::host::pacing::refresh_hz();
+        return hz > 0 && hz < 100 ? 2 : 1;
+    }
 
     // The sound mixed at least to `end`: the DLL's mixer asked (audio_want moved on, never back),
     // and given a few milliseconds (it naps a millisecond)
@@ -852,17 +872,19 @@ private:
     void show(const uint32_t *rgb, int w, int h) {
         if (!sound_on_ && link_->sound_on) {   // the game's sound starts: from this frame on
             sound_on_ = true;
-            sound_base_ = link_->audio_made - (uint32_t)frame_ * (HK_PC_AUDIO_RATE / 60);
+            sound_base_ = link_->audio_made - (uint32_t)samples_at(tick_);
         }
         if (sound_on_) {
-            sound_until(sound_for(frame_ + 1));
+            sound_until(sound_for(tick_ + per_frame_));
         } else if (audio_sink_) {   // no sound from the game yet (starting): a frame's silence
-            silence_.assign(2 * (HK_PC_AUDIO_RATE / 60), 0.0f);
-            audio_sink_(silence_.data(), HK_PC_AUDIO_RATE / 60);
+            const int n = (int)(samples_at(tick_ + per_frame_) - samples_at(tick_));
+            silence_.assign(2 * (size_t)n, 0.0f);
+            audio_sink_(silence_.data(), n);
         }
         take_sound();
         if (w <= 0 || h <= 0) rgb = black_.data(), w = 640, h = 480;
         last_rgb_ = rgb, last_w_ = w, last_h_ = h;
+        tick_ += per_frame_;
         ++frame_;
         if (frame_hook_) frame_hook_(frame_, rgb, w, h);
     }
@@ -993,6 +1015,9 @@ private:
     std::vector<float> key_to_sound_;   // ms, per press (report)
     std::function<void()> on_fatal_;
     uint64_t frame_ = 0, repeats_ = 0;
+    uint64_t tick_ = 0;    // the game's time in its frames (ghz())
+    int per_frame_ = 1;    // its pictures for each frame shown (pictures_per_frame())
+    int pics_ = 0;         // ... of the frame being made, received so far
     std::vector<uint32_t> black_, picture_;
     std::vector<float> silence_;
     std::chrono::steady_clock::time_point due_{};

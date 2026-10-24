@@ -16,7 +16,7 @@
 #include <stdint.h>
 
 #define HK_PC_LINK_MAGIC 0x4b50484bu   // "HKPK"
-#define HK_PC_LINK_VERSION 5u
+#define HK_PC_LINK_VERSION 6u
 
 // The pad's bits, as Konami's ezusb.dll gives them to pop'n music (usbPadRead)
 #define HK_PC_PAD_SERVICE (1u << 6)
@@ -93,6 +93,9 @@ struct hk_pc_link {
     volatile uint32_t pad_read_host_us, pad_ev_seen;
     volatile uint32_t pad_ev_seq;
     struct { volatile uint32_t us, pad; } pad_ev[HK_PC_PAD_EVENTS];
+    // hiraku-pc, with frame_go: the picture the game draws next won't be shown (a 120 Hz game's
+    // first of two on a slower display): the 64-bit loader doesn't read it back
+    volatile uint32_t not_shown;
 };
 
 #define HK_PC_PIXELS 4096u                         // where the pixels start in the file

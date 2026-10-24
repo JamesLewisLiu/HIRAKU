@@ -151,6 +151,11 @@ void pc64_link_picture(unsigned w, unsigned h) {
     l->go_count = l->go_count + 1;
 }
 
+int pc64_link_not_shown(void) {
+    struct hk_pc_link *l = pc64_link();
+    return l && l->not_shown;
+}
+
 uint32_t *pc64_link_pixels(void) {
     struct hk_pc_link *l = pc64_link();
     return l ? (uint32_t *)((char *)l + HK_PC_PIXELS) : NULL;

@@ -2531,6 +2531,8 @@ What was done before more features, as the code had grown (63k hand-written line
 
 A loader for 64-bit AVS2 PC games, `runtime/pc64/` (`hiraku-pc64.exe`, built 64-bit by clang for MinGW, in `pc/` beside the 32-bit DLLs), run by `hiraku-pc` as §30's games are: the same link, window, pacing, sound, inputs and e-AMUSEMENT server. A `games/` entry uses it with `[pc] loader = "pc64"`; the launcher lists such games only once unlocked. The working notes are kept outside the repo.
 
+- **Its game's speed:** the game counts 120 frames a second (its logic follows its pictures: drawn 60 a second it ran at half speed). hiraku-pc counts its time in those ticks: on a display under 100 Hz it lets the game draw two pictures for each frame shown (the first neither shown nor read back: the link's `not_shown`, v6), so display sync's grid fits 60 Hz; on 120 and 240 Hz one; on others the core paces itself at 120. Its sound comes 367.5 samples a tick. Checked by the game's own countdown: 5 seconds for every 300 frames shown at 59.87 Hz, 119.7 pictures a second.
+
 ## M0 steps (all done)
 
 1. ~~`git init` HIRAKU and add `.gitignore` for `dumps/` and `build/`~~ Done.
