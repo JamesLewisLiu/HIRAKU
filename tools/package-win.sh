@@ -69,6 +69,7 @@ if [ -f "$build/libchdr_mini.dll" ]; then mkdir -p "$d/build" && cp "$build/libc
 cp -r "$root/tools/data" "$d/tools/"
 cp "$root/LICENSE" "$d/" 2>/dev/null || true
 for f in $(grep -o '"third_party/[^"]*"' "$root/launcher/aboutdialog.cpp" | tr -d '"'); do
+  [ -f "$root/$f" ] || continue   # one only the Linux package brings (DXVK's)
   mkdir -p "$d/$(dirname "$f")" && cp "$root/$f" "$d/$f"
 done
 sed 's/$/\r/' > "$d/README.txt" <<'EOF'
