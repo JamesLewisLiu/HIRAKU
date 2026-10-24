@@ -44,8 +44,10 @@ linux)
     libxcb-render-util0 libxcb-shape0 libxcb-xinerama0 libxcb-xkb1 libxcb-randr0 libxcb-util1 libxcb-ewmh2 \
     libssl3 libglib2.0-0
   # mingw-w64's i686 CRT for the PC games' 32-bit DLLs (runtime/pc/, built by clang), and its gcc
-  # for libgcc (clang links it, and finds the CRT's headers by that gcc)
-  $sudo apt-get install -y -q --no-install-recommends mingw-w64-i686-dev gcc-mingw-w64-i686
+  # for libgcc (clang links it, and finds the CRT's headers by that gcc); its x86_64 CRT and gcc for
+  # the 64-bit PC pop'n's loader (runtime/pc64/, hiraku-pc64.exe)
+  $sudo apt-get install -y -q --no-install-recommends mingw-w64-i686-dev gcc-mingw-w64-i686 \
+    mingw-w64-x86-64-dev gcc-mingw-w64-x86-64
   ;;
 python)
   # PCSX2 Reliquary's build (tools/release-python-linux.sh), on top of linux's: what PCSX2's own

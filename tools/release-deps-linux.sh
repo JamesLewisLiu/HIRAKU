@@ -13,7 +13,9 @@
 #   - Qt 6.12 for the launcher, from the Qt Company's binaries (aqtinstall), bundled by
 #     tools/package.sh;
 #   - 7-Zip's 7zz, static, for .7z sets (tools/mameset.py looks in the package's bin/ first);
-#   - Python 3.14 for adding games (python-build-standalone), in the package's python/.
+#   - Python 3.14 for adding games (python-build-standalone), in the package's python/;
+#   - DXVK's 64-bit d3d9.dll (zlib licence) for the 64-bit PC games under Wine (Wine's own
+#     Direct3D 9 misplaces its pictures: PLAN.md section 32), in the package's bin/pc/.
 # Each step is skipped when its result is already there (the workflow caches PREFIX). The source
 # tarballs are kept in PREFIX/src (the LGPL ones are published beside the packages).
 set -euo pipefail
@@ -27,6 +29,7 @@ QT_VER=6.12.0
 SEVENZIP=2602
 PY_VER=3.14.8
 PY_BUILD=20261013
+DXVK_VER=2.6.2
 jobs=$(nproc)
 
 fetch() {   # URL FILE: into PREFIX/src, once
@@ -85,5 +88,13 @@ if [ ! -x "$prefix/bin/7zz" ]; then
   tar -xf "$prefix/src/7z$SEVENZIP-linux-x64.tar.xz" -C "$work/7z"
   cp "$work/7z/7zzs" "$prefix/bin/7zz"   # the static build
   cp "$work/7z/License.txt" "$prefix/src/7-Zip-License.txt"
+fi
+if [ ! -f "$prefix/dxvk/d3d9.dll" ]; then
+  fetch "https://github.com/doitsujin/dxvk/releases/download/v$DXVK_VER/dxvk-$DXVK_VER.tar.gz" "dxvk-$DXVK_VER.tar.gz"
+  fetch "https://raw.githubusercontent.com/doitsujin/dxvk/v$DXVK_VER/LICENSE" "dxvk-$DXVK_VER-LICENSE"
+  tar -xf "$prefix/src/dxvk-$DXVK_VER.tar.gz" -C "$work"
+  mkdir -p "$prefix/dxvk"
+  cp "$work/dxvk-$DXVK_VER/x64/d3d9.dll" "$prefix/dxvk/"
+  cp "$prefix/src/dxvk-$DXVK_VER-LICENSE" "$prefix/dxvk/LICENSE"
 fi
 echo "release-deps-linux: in $prefix"

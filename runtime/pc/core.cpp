@@ -238,6 +238,7 @@ public:
         };
         exe_ = m["exe"];
         program_ = path_of("program");
+        if (m["loader"] == "pc64") return init_pc64(o, m, path_of("contents"));
         const std::string data = path_of("data");
         const std::string drive = m.count("drive") ? m["drive"] : "D:\\" + game_;
         const std::string save_drive = m.count("save_drive") ? m["save_drive"] : "E:\\";
@@ -280,7 +281,23 @@ public:
         // a bare pop'n board's firmware: the game's own ezusb.dll, unless --popn-io-dll gave one
         hk::host::popnio_default_dll(program_ + "/ezusb.dll");
 
-        // The link: a file both map. Linux: in /dev/shm (memory); Windows: in the save folder
+        if (!make_link()) return false;
+
+        // What the DLLs are told (runtime/pc/cabinet.h)
+        set_env("HK_PC_MAP", drive + "\\data=" + win_path(data) + ";" + drive + "\\prog=" + win_path(save_ + "/prog") + ";" +
+                                 save_drive + "=" + win_path(run_e_) + "\\");
+        set_env("HK_PC_HZ", "0");   // the shell paces
+        set_env("HK_PC_PRESS_TIME", press_time_ ? "1" : "");
+        set_env("HK_PC_JUDGE_OFFSET", judge_offset_ ? std::to_string(judge_offset_) : "");
+        set_env("HK_PC_LOG", win_path(save_ + "/pc.log"));
+        { std::ofstream(save_ + "/pc.log", std::ios::trunc); }
+        printf("hiraku-pc: %s, %s from %s; saves in %s\n", game_.c_str(), exe_.c_str(), program_.c_str(), save_.c_str());
+        fflush(stdout);
+        return true;
+    }
+
+    // The link: a file both map. Linux: in /dev/shm (memory); Windows: in the save folder
+    bool make_link() {
 #ifdef _WIN32
         link_path_ = save_ + "/link.bin";
         HANDLE lf = CreateFileA(link_path_.c_str(), GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr,
@@ -302,20 +319,43 @@ public:
         }
         memset((void *)link_, 0, sizeof *link_);
         link_->host_shows = 1;
+        if (ea_.card[0].size() == 16)   // player 1's card, for a card key the game's DLL sees itself
+            for (int i = 0; i < 8; i++) link_->card_uid[i] = (uint8_t)std::stoul(ea_.card[0].substr(2 * i, 2), nullptr, 16);
         link_->version = HK_PC_LINK_VERSION;
         link_->magic = HK_PC_LINK_MAGIC;
         black_.assign(640 * 480, 0);
-
-        // What the DLLs are told (runtime/pc/cabinet.h)
         set_env("HK_PC_LINK", win_path(link_path_));
-        set_env("HK_PC_MAP", drive + "\\data=" + win_path(data) + ";" + drive + "\\prog=" + win_path(save_ + "/prog") + ";" +
-                                 save_drive + "=" + win_path(run_e_) + "\\");
-        set_env("HK_PC_HZ", "0");   // the shell paces
-        set_env("HK_PC_PRESS_TIME", press_time_ ? "1" : "");
-        set_env("HK_PC_JUDGE_OFFSET", judge_offset_ ? std::to_string(judge_offset_) : "");
-        set_env("HK_PC_LOG", win_path(save_ + "/pc.log"));
+        return true;
+    }
+
+    // The 64-bit PC pop'n (PLAN.md section 32): hiraku-pc64.exe (runtime/pc64/) starts Konami's AVS2
+    // and the game's DLL from the game's folder (contents=PATH, only read) and runs it in the save
+    // folder's run/; the same link. machine.txt: core=pc, loader=pc64, contents=PATH, family=pcpopnhc
+    bool init_pc64(const Options &o, std::map<std::string, std::string> &m, const std::string &contents) {
+        pc64_ = true;
+        contents_ = contents;
+        if (contents_.empty() || !hk::sys::is_dir(contents_ + "/modules")) {
+            fprintf(stderr, "hiraku-pc: %s isn't the game's folder (modules/, prop/, its data)\n", contents_.c_str());
+            return false;
+        }
+        family_ = m.count("family") ? m["family"] : "pcpopnhc";
+        save_ = o.nvram_dir.empty() ? hk::user_data_dir(o.root) + "/" + game_ : o.nvram_dir;
+        mkdirs(save_ + "/run");
+        const std::string bin_dir = hk::sys::exe_path().substr(0, hk::sys::exe_path().rfind('/'));
+        loader_ = bin_dir + "/pc/hiraku-pc64.exe";
+        if (file_size(loader_) == UINT64_MAX) {
+            fprintf(stderr, "hiraku-pc: no %s\n", loader_.c_str());
+            return false;
+        }
+        std::string error;
+        ea_.read_card_files(save_, &error);
+        if (!error.empty()) fprintf(stderr, "%s\n", error.c_str());
+        if (!start_eamuse(o.root)) return false;
+        if (!make_link()) return false;
+        set_env("HK_PC64_SAVE", win_path(save_ + "/run"));
+        set_env("HK_PC64_LOG", win_path(save_ + "/pc.log"));
         { std::ofstream(save_ + "/pc.log", std::ios::trunc); }
-        printf("hiraku-pc: %s, %s from %s; saves in %s\n", game_.c_str(), exe_.c_str(), program_.c_str(), save_.c_str());
+        printf("hiraku-pc: %s from %s; saves in %s\n", game_.c_str(), contents_.c_str(), save_.c_str());
         fflush(stdout);
         return true;
     }
@@ -328,6 +368,7 @@ public:
     void set_on_fatal(std::function<void()> f) override { on_fatal_ = std::move(f); }
     double native_rate() const override { return HZ; }
     int monitor_khz() const override { return 31; }   // a PC's VGA monitor
+    double display_aspect() const override { return pc64_ ? 0.0 : 4.0 / 3.0; }   // the 64-bit PC pop'n: 1920x1080, square pixels
     double seconds() const override { return (double)frame_ / HZ; }
     const uint8_t *mem(uint32_t, uint32_t) const override { return nullptr; }
     uint64_t frame_count() const override { return frame_; }
@@ -464,6 +505,10 @@ public:
                 std::atomic_thread_fence(std::memory_order_release);
                 link_->pad_ev_seq = n + 1;
             }
+        } else if (name == "P1 Big Red") {
+            bit(link_->pad, HK_PC_PAD_RED);
+        } else if (name == "P1 Big Blue") {
+            bit(link_->pad, HK_PC_PAD_BLUE);
         } else if (name == "Test") {
             bit(link_->pad, HK_PC_PAD_TEST);
         } else if (name == "Service") {
@@ -844,7 +889,9 @@ private:
         STARTUPINFOA si{};
         si.cb = sizeof si;
         std::string cmd = "\"" + win_path(run_prog_ + "/" + exe_) + "\"";
-        if (CreateProcessA(nullptr, cmd.data(), nullptr, nullptr, FALSE, 0, nullptr, win_path(run_prog_).c_str(), &si, &pi_))
+        std::string dir = win_path(run_prog_);
+        if (pc64_) cmd = "\"" + win_path(loader_) + "\" \"" + win_path(contents_) + "\"", dir = win_path(save_ + "/run");
+        if (CreateProcessA(nullptr, cmd.data(), nullptr, nullptr, FALSE, 0, nullptr, dir.c_str(), &si, &pi_))
             return started_ = true;
         fprintf(stderr, "hiraku-pc: can't start %s (error %lu)\n", cmd.c_str(), GetLastError());
         return false;
@@ -873,12 +920,27 @@ private:
             unsetenv("WINEDLLOVERRIDES");
             if (r != 0) fprintf(stderr, "hiraku-pc: wineboot said %d\n", r);
         }
-        const std::string exe_path = run_prog_ + "/" + exe_;
-        char *args[] = {(char *)wine_.c_str(), (char *)exe_path.c_str(), nullptr};
+        const std::string exe_path = pc64_ ? loader_ : run_prog_ + "/" + exe_, game_dir = win_path(contents_);
+        const std::string dir = pc64_ ? save_ + "/run" : run_prog_;
+        char *args[] = {(char *)wine_.c_str(), (char *)exe_path.c_str(), pc64_ ? (char *)game_dir.c_str() : nullptr, nullptr};
+        // The 64-bit pop'n's environment: Japanese (its text is Shift-JIS: Wine's code page 932), and
+        // DXVK's Direct3D 9 when it is beside the loader (bin/pc/d3d9.dll: Wine's own misplaces its
+        // pictures, PLAN.md section 32)
+        std::vector<std::string> env_own;
+        std::vector<char *> env;
+        for (char **e = environ; *e; e++)
+            if (!pc64_ || (strncmp(*e, "LC_ALL=", 7) && strncmp(*e, "WINEDLLOVERRIDES=", 17))) env.push_back(*e);
+        if (pc64_) {
+            env_own.push_back("LC_ALL=ja_JP.UTF-8");
+            const std::string dxvk = loader_.substr(0, loader_.rfind('/')) + "/d3d9.dll";
+            env_own.push_back(std::string("WINEDLLOVERRIDES=mscoree=;mshtml=") + (file_size(dxvk) != UINT64_MAX ? ";d3d9=n,b" : ""));
+            for (std::string &e : env_own) env.push_back(e.data());
+        }
+        env.push_back(nullptr);
         posix_spawn_file_actions_t fa;
         posix_spawn_file_actions_init(&fa);
-        posix_spawn_file_actions_addchdir_np(&fa, run_prog_.c_str());
-        const int r = posix_spawnp(&pid_, wine_.c_str(), &fa, nullptr, args, environ);
+        posix_spawn_file_actions_addchdir_np(&fa, dir.c_str());
+        const int r = posix_spawnp(&pid_, wine_.c_str(), &fa, nullptr, args, env.data());
         posix_spawn_file_actions_destroy(&fa);
         if (r == 0) return true;
         pid_ = 0;
@@ -903,6 +965,8 @@ private:
 #endif
 
     std::string game_, family_ = "pcpopn", exe_, program_, save_, run_prog_, run_e_, link_path_, wine_ = "wine";
+    bool pc64_ = false;               // the 64-bit loader runs the game (init_pc64)
+    std::string contents_, loader_;   // its game folder, hiraku-pc64.exe
     hk::EaOptions ea_;
     std::unique_ptr<hk::py::EamuseServer> server_;
     hk::py::RelayServer relay_;

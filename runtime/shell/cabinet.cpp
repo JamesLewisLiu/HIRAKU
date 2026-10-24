@@ -55,6 +55,14 @@ std::vector<Control> make_pypopn() {
     return c;
 }
 
+// the 64-bit PC pop'n's cabinet (runtime/pc64/): pop'n's, with its two big buttons either side
+std::vector<Control> make_pcpopnhc() {
+    std::vector<Control> c = make_pypopn();
+    c.push_back({"P1 Big Red", "Big red button (left)", "Player", false, "key:Left Shift"});
+    c.push_back({"P1 Big Blue", "Big blue button (right)", "Player", false, "key:Right Shift"});
+    return c;
+}
+
 // ParaParaParadise: the five sensor bars left to right, plus the two buttons
 std::vector<Control> make_ppp() {
     std::vector<Control> c;
@@ -548,7 +556,8 @@ const std::vector<Control> &controls(const std::string &family) {
         {"bm3", make_bm3()}, {"popn", make_popn()}, {"ppp", make_ppp()}, {"kbm", make_kbm()},
         {"djbm", make_djbm()}, {"djpopn", make_djpopn()}, {"djpstage", make_djpstage()}, {"ddr", make_ddr()}, {"ddrsolo", make_ddrsolo()},
         {"dmx", make_dmx()}, {"mambo", make_mambo()}, {"drmn", make_drmn()}, {"gtrf", make_gtrf()}, {"iidx", make_iidx()}, {"pypopn", make_pypopn()},
-        {"pcpopn", make_pypopn()}};   // the PC pop'n music games (runtime/pc/): the same controls
+        {"pcpopn", make_pypopn()},   // the PC pop'n music games (runtime/pc/): the same controls
+        {"pcpopnhc", make_pcpopnhc()}};
     auto f = all.find(family);
     return f != all.end() ? f->second : all.at("bm3");
 }
@@ -558,7 +567,7 @@ const std::vector<Lamp> &lamps(const std::string &family) {
         {"bm3", make_bm3_lamps()}, {"popn", make_popn_lamps()}, {"ppp", make_ppp_lamps()}, {"kbm", make_kbm_lamps()},
         {"djbm", make_djbm_lamps()}, {"djpopn", make_djpopn_lamps()}, {"djpstage", make_djpstage_lamps()},
         {"ddr", make_ddr_lamps()}, {"ddrsolo", make_ddrsolo_lamps()}, {"dmx", make_dmx_lamps()}, {"mambo", make_mambo_lamps()}, {"drmn", make_drmn_lamps()}, {"gtrf", make_gtrf_lamps()}, {"iidx", make_iidx_lamps()},
-        {"pypopn", make_pypopn_lamps()}, {"pcpopn", make_pypopn_lamps()}};
+        {"pypopn", make_pypopn_lamps()}, {"pcpopn", make_pypopn_lamps()}, {"pcpopnhc", make_pypopn_lamps()}};
     auto f = all.find(family);
     return f != all.end() ? f->second : all.at("bm3");
 }

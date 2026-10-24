@@ -3,7 +3,7 @@
 // controls, lamps, coins and card, a few words each way, and the game's pictures, which HIRAKU's
 // window shows. hiraku-pc makes it a file and the DLLs map that file (runtime/pc/cabinet.c), which
 // works the same under Wine on Linux, where the file is in /dev/shm, and on Windows. Plain C: the
-// DLLs are C, built 32-bit.
+// DLLs are C, built 32-bit (and hiraku-pc64.exe, runtime/pc64/, 64-bit: the same layout).
 //
 // The pictures go in step: the game draws one, the DLL copies it to the pixels, counts it in
 // frame_seq and waits for frame_go = frame_seq. hiraku-pc shows the picture, and gives that when
@@ -22,6 +22,10 @@
 #define HK_PC_PAD_SERVICE (1u << 6)
 #define HK_PC_PAD_TEST (1u << 7)
 #define HK_PC_PAD_BUTTON(n) (1u << (7 + (n)))   // buttons 1-9: bits 8-16
+// the 64-bit PC pop'n's cabinet (runtime/pc64/): its big red and blue buttons, its headphones
+#define HK_PC_PAD_RED (1u << 17)
+#define HK_PC_PAD_BLUE (1u << 18)
+#define HK_PC_PAD_HEADPHONES (1u << 19)
 
 // The reader's 10-key: bits 0-9 its digits, then these
 #define HK_PC_KEY_00 (1u << 10)

@@ -39,7 +39,7 @@ linux)
   py=${HK_PYTHON_WORK:+$HK_PYTHON_WORK/pcsx2-reliquary/build/bin/hiraku-python}
   rm -f "$build/hiraku-python"
   if [ -n "$py" ] && [ -x "$py" ]; then ln -s "$py" "$build/hiraku-python"; fi
-  HK_QT_DIR=$qt HK_PACKAGE_BIN="$deps/bin/7zz" HK_PYTHON_DIR="$deps/python" \
+  HK_QT_DIR=$qt HK_PACKAGE_BIN="$deps/bin/7zz" HK_PYTHON_DIR="$deps/python" HK_PACKAGE_DXVK="$deps/dxvk" \
     HK_PYTHON_LIBS=${HK_PYTHON_WORK:+$HK_PYTHON_WORK/deps/lib} \
     HK_PACKAGE_LIBS=${HK_PYTHON_WORK:+$HK_PYTHON_WORK/deps/lib/libshaderc_shared.so.1} \
     "$root/tools/package.sh" "$build" "$out/hiraku-linux-x86_64.tar.xz" portable

@@ -40,6 +40,7 @@ const Licence kLicences[] = {
     {"Blur Busters CRT Beam Simulator: MIT", "third_party/crt-beam-simulator/LICENSE", 0},
     {"Wayland presentation-time: MIT", "third_party/wayland/presentation-time.xml", 26},
     {"Wayland fifo-v1: MIT", "third_party/wayland/fifo-v1.xml", 24},
+    {"DXVK: zlib (Linux packages)", "third_party/dxvk/LICENSE", 0},
 };
 
 QString readLicence(const Licence &l) {
@@ -104,6 +105,10 @@ QString softwareHtml() {
          "</b> (MIT, Mark Rejhon and Timothy Lottes): a CRT's rolling scan on a fast display.</li>";
     h += "<li><b>" + link("https://gitlab.freedesktop.org/wayland/wayland-protocols", "wayland-protocols") +
          "</b> (MIT): presentation-time (Collabora) and fifo-v1 (Valve), for frame pacing.</li>";
+    h += "<li><b>" + link("https://spice2x.github.io", "spice2x") +
+         "</b> (GPL-3.0, the sp2xdev team and the SpiceTools contributors): the 64-bit PC loader's start-up "
+         "of AVS2 games, its two-screen Direct3D 9, its board, card reader and licence-key stand-ins and "
+         "its touch screen, written after spice2x's.</li>";
     h += "<li><b>" + link("https://github.com/mon/kbinxml", "kbinxml") +
          "</b> (MIT, mon): the binary XML of pop'n music 17 and 18's e-AMUSEMENT, written from its "
          "description of the format.</li>";
@@ -121,6 +126,9 @@ QString softwareHtml() {
     h += "<li><b>" + link("https://www.fluidsynth.org", "FluidSynth") +
          "</b> (LGPL-2.1-or-later): Keyboardmania's SoundFont stand-in for the XT446, when found at build time.</li>";
     h += "<li><b>" + link("https://wayland.freedesktop.org", "libwayland-client") + "</b> (MIT).</li>";
+    h += "<li><b>" + link("https://github.com/doitsujin/dxvk", "DXVK") +
+         "</b> (zlib, Philip Rebohle and contributors): Direct3D 9 on Vulkan for the 64-bit PC games "
+         "under Wine, in the Linux packages.</li>";
     h += "</ul>";
 
     h += "<h3>References</h3><ul>";

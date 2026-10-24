@@ -13,6 +13,7 @@
 #include <QCloseEvent>
 #include <QDragEnterEvent>
 #include <QDropEvent>
+#include <QKeyEvent>
 #include <QFileDialog>
 #include <QMimeData>
 #include <QRegularExpression>
@@ -489,6 +490,33 @@ MainWindow::MainWindow() {
     // no layout of this version saved: the panel beside the list starts at about a third of the window
     if (!restoreState(cfg::settings().value("ui/state").toByteArray(), kLayout))
         QTimer::singleShot(0, this, [this] { resizeDocks({m_detailsDock}, {std::max(300, width() / 3)}, Qt::Horizontal); });
+    qApp->installEventFilter(this);
+    refresh();
+}
+
+bool MainWindow::eventFilter(QObject *o, QEvent *e) {
+    if (e->type() == QEvent::KeyPress) {
+        // where the key is first given (the focus), not again on its way up to the parents
+        auto *w = qobject_cast<QWidget *>(o);
+        auto *k = static_cast<QKeyEvent *>(e);
+        QWidget *focus = QApplication::focusWidget();
+        if (w && w->window() == this && (w == focus || (!focus && w == this)) && !k->isAutoRepeat()) secretKeys(k->key());
+    }
+    return QMainWindow::eventFilter(o, e);
+}
+
+// The newest games (the 64-bit PC ones) aren't listed until the window
+// has been typed the Konami code; typed again, they are hidden again (ui/pc64)
+void MainWindow::secretKeys(int key) {
+    static const int code[] = {Qt::Key_Up,   Qt::Key_Up,    Qt::Key_Down, Qt::Key_Down, Qt::Key_Left,
+                               Qt::Key_Right, Qt::Key_Left, Qt::Key_Right, Qt::Key_B,    Qt::Key_A};
+    const int n = (int)(sizeof code / sizeof code[0]);
+    if (key == code[m_secret]) m_secret++;
+    else m_secret = key != Qt::Key_Up ? 0 : m_secret == 2 ? 2 : 1;   // a third ↑: still the first two
+    if (m_secret < n) return;
+    m_secret = 0;
+    const bool on = !cfg::settings().value("ui/pc64").toBool();
+    cfg::settings().setValue("ui/pc64", on);
     refresh();
 }
 
@@ -512,6 +540,8 @@ void MainWindow::closeEvent(QCloseEvent *e) {
 void MainWindow::refresh() {
     QString keep = selected() ? selected()->id : cfg::settings().value("ui/lastGame").toString();
     m_games = scanGames();
+    if (!cfg::settings().value("ui/pc64").toBool())   // the 64-bit PC games: only once unlocked (secretKeys)
+        m_games.erase(std::remove_if(m_games.begin(), m_games.end(), [](const Game &g) { return g.hidden; }), m_games.end());
     // series by series, each system's games by year and title
     QList<Shelf> shelves;
     QMap<QString, QSet<QString>> systemsOf;

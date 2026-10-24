@@ -22,6 +22,7 @@ void readManifest(const QString &path, Game &g) {
     static const QRegularExpression kv(R"(^\s*([A-Za-z_]+)\s*=\s*"([^"]*)\")");
     // "# Title (CODE), Konami 2002", maybe with more after a colon ("Konami 1998: generated from ...")
     static const QRegularExpression head(R"(^#\s*.*\),\s*([^:]+?)\s+(\d{4})(?:/\d{4})?\s*(?::.*)?$)");
+    QString section;   // "": the top; the rest only for [pc] loader
     while (!in.atEnd()) {
         QString line = in.readLine();
         if (first) {
@@ -32,10 +33,17 @@ void readManifest(const QString &path, Game &g) {
                 g.year = m.captured(2);
             }
         }
-        if (line.trimmed().startsWith('[')) break;
+        if (line.trimmed().startsWith('[')) {
+            section = line.trimmed().mid(1).section(']', 0, 0).trimmed();
+            continue;
+        }
         auto m = kv.match(line);
         if (!m.hasMatch()) continue;
         QString k = m.captured(1), v = m.captured(2);
+        if (!section.isEmpty()) {
+            if (section == "pc" && k == "loader" && v == "pc64") g.hidden = true;
+            continue;
+        }
         if (k == "id") g.id = v;
         else if (k == "title") g.title = v;
         else if (k == "family") g.family = v;
@@ -209,7 +217,7 @@ Shelf shelf(const Game &g) {
     static const QList<QPair<QString, QStringList>> series = {
         {"beatmania", {"djbm", "bm3"}},
         {"beatmania IIDX", {"iidx"}},
-        {"pop'n music", {"djpopn", "djpstage", "popn", "pypopn", "pcpopn"}},
+        {"pop'n music", {"djpopn", "djpstage", "popn", "pypopn", "pcpopn", "pcpopnhc"}},
         {"Dance Dance Revolution", {"ddr", "ddrsolo"}},
         {"GuitarFreaks", {"gtrf"}},
         {"DrumMania", {"drmn"}},
@@ -238,7 +246,7 @@ QIcon familyIcon(const QString &family) {
            : family == "djbm" ? Look{QColor(0x22, 0x2a, 0x5a), "bm"}
            : family == "djpopn" ? Look{QColor(0xf0, 0xb4, 0x1e), "pop'n"}
            : family == "pypopn" ? Look{QColor(0x3c, 0xb4, 0xdc), "pop'n"}
-           : family == "pcpopn" ? Look{QColor(0x7c, 0xc8, 0x3c), "pop'n"}
+           : family == "pcpopn" || family == "pcpopnhc" ? Look{QColor(0x7c, 0xc8, 0x3c), "pop'n"}
            : family == "djpstage" ? Look{QColor(0xe0, 0x50, 0x90), "stage"}
            : family == "ppp"  ? Look{QColor(0xf0, 0x8a, 0x24), "PPP"}
            : family == "kbm"  ? Look{QColor(0x2e, 0x9e, 0x6a), "KBM"}

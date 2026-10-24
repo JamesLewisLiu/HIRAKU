@@ -33,7 +33,9 @@ protected:
     void closeEvent(QCloseEvent *e) override;
     void dragEnterEvent(QDragEnterEvent *e) override;
     void dropEvent(QDropEvent *e) override;
+    bool eventFilter(QObject *o, QEvent *e) override;   // the keys typed in the window (secretKeys)
 private:
+    void secretKeys(int key);   // ↑↑↓↓←→←→ B A: the 64-bit PC games listed, or hidden again
     void refresh();
     void applyFilter();
     void updateActions();
@@ -60,6 +62,7 @@ private:
     QWidget *m_detailsPane;        // the details beside the list (in m_detailsDock; hidden with that page)
     QStringList m_collapsed;     // the series and systems the player closed (ui/collapsed)
     bool m_arranging = false;    // the list being filled or filtered: not the player opening a series
+    int m_secret = 0;            // how far into secretKeys' sequence the last keys were
     QLabel *m_details;
     QLineEdit *m_filter;
     QPlainTextEdit *m_log;

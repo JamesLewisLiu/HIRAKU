@@ -167,7 +167,8 @@ find_package(Threads REQUIRED)
 target_link_libraries(hiraku_eamuse PUBLIC hiraku_sys Threads::Threads)
 add_library(hiraku_easerver STATIC runtime/python/easerver.cpp runtime/python/easerver_rank.cpp
             runtime/python/easerver_gfdm.cpp runtime/python/easerver_popn.cpp runtime/python/easerver_share.cpp
-            runtime/python/easerver_pc.cpp runtime/python/kbin.cpp runtime/python/lobby.cpp runtime/python/netrelay.cpp)
+            runtime/python/easerver_pc.cpp runtime/python/easerver_hc.cpp runtime/python/kbin.cpp runtime/python/lobby.cpp
+            runtime/python/netrelay.cpp)
 target_link_libraries(hiraku_easerver PUBLIC hiraku_eamuse)
 
 # --- cabinet tables, lights file formats (shared with the launcher) -------------
@@ -271,6 +272,34 @@ if(HK_PC_DLL_CC)
   add_custom_target(hiraku-pc-test-vsock ALL DEPENDS ${CMAKE_BINARY_DIR}/pc/test_vsock.exe)
 else()
   message(STATUS "No 32-bit Windows compiler (clang, lld and mingw-w64's i686 libraries): no PC games' DLLs")
+endif()
+# The 64-bit PC pop'n (runtime/pc64/, PLAN.md section 32): hiraku-pc64.exe, the loader that starts
+# Konami's AVS2 and the game's DLL with the cabinet around them, 64-bit like them. Into pc/.
+set(HK_PC64_CC "")
+set(HK_PC64_SYS "")
+if(WIN32 AND CMAKE_C_COMPILER_ID MATCHES "Clang" AND NOT MSVC AND CMAKE_SIZEOF_VOID_P EQUAL 8)
+  set(HK_PC64_CC ${CMAKE_C_COMPILER})
+elseif(NOT WIN32 AND EXISTS /usr/x86_64-w64-mingw32/lib/libkernel32.a)
+  find_program(HK_CLANG clang)
+  find_program(HK_LLD ld.lld)
+  if(HK_CLANG AND HK_LLD)
+    set(HK_PC64_CC ${HK_CLANG})
+    set(HK_PC64_SYS -isystem /usr/x86_64-w64-mingw32/include -L/usr/x86_64-w64-mingw32/lib)
+  endif()
+endif()
+if(HK_PC64_CC)
+  set(HK_PC64_SOURCES main.c log.c imports.c files.c link.c display.c board.c net.c touch.c sound.c script.c)
+  list(TRANSFORM HK_PC64_SOURCES PREPEND ${CMAKE_SOURCE_DIR}/runtime/pc64/ OUTPUT_VARIABLE HK_PC64_PATHS)
+  add_custom_command(OUTPUT ${CMAKE_BINARY_DIR}/pc/hiraku-pc64.exe
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_BINARY_DIR}/pc
+    COMMAND ${HK_PC64_CC} --target=x86_64-w64-mingw32 ${HK_PC64_SYS} -O2 -Wall -Wextra -fuse-ld=lld -static
+            -o ${CMAKE_BINARY_DIR}/pc/hiraku-pc64.exe ${HK_PC64_PATHS}
+            -ld3d9 -lsetupapi -lws2_32 -liphlpapi -lole32 -luuid
+    DEPENDS ${HK_PC64_PATHS} runtime/pc64/pc64.h runtime/pc/link.h
+    COMMENT "pc/hiraku-pc64.exe (64-bit)")
+  add_custom_target(hiraku-pc64 ALL DEPENDS ${CMAKE_BINARY_DIR}/pc/hiraku-pc64.exe)
+else()
+  message(STATUS "No 64-bit Windows compiler (clang, lld and mingw-w64's x86_64 libraries): no hiraku-pc64")
 endif()
 # NFC card readers through PC/SC (runtime/host/readers.h, --scard): optional
 find_package(PkgConfig QUIET)

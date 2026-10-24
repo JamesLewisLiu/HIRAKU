@@ -32,6 +32,7 @@ import copy
 import glob
 import hashlib
 import os
+import re
 import shutil
 import struct
 import subprocess
@@ -1269,6 +1270,20 @@ def main() -> int:
                 print("NEXT     add a Konami Python game: it will use them")
             return rc
         print()
+    # 64-bit PC games: their contents/ folder (modules/, prop/, data), read where it is
+    pc64s = [(f, found) for f in args.inputs if os.path.isdir(f) and (found := contents_folder(f)) is not None]
+    if pc64s:
+        rc = 0
+        for f, (game, contents, soft) in pc64s:
+            if args.place == "move":   # the contents folder, into dumps/<game>/
+                to = os.path.join(args.out, game["id"], "contents")
+                print(f"folder   contents ({move_file(contents, to)} into {game['id']}/)")
+                contents = to
+            rc |= ingest_pc64(args, game, contents, soft)
+            args.inputs.remove(f)
+        if not args.inputs:
+            return rc
+        print()
     # PC games: their folder (prog/ and data/), read where it is
     pcs = [(f, found) for f in args.inputs if os.path.isdir(f) and (found := pc_folder(f)) is not None]
     if pcs:
@@ -1331,6 +1346,43 @@ def pc_folder(folder: str) -> tuple[dict, str, str] | None:
                 if f.lower() in by_exe:
                     return by_exe[f.lower()], os.path.abspath(d), os.path.abspath(data)
     return None
+
+
+def contents_folder(folder: str) -> tuple[dict, str, dict] | None:
+    """A 64-bit PC game's folder (PLAN.md section 32): contents/ with modules/<dll> and
+    prop/ea3-config.xml, as the cabinet's drive holds it (the 64-bit PC pop'n: modules/popn.dll,
+    model M39), or the folder above it. The game is the one whose game.toml names the DLL and the
+    model. (game, contents folder, the config's soft: model, dest, spec, rev, ext)."""
+    games = [g for g in all_games() if g.get("pc", {}).get("loader") == "pc64"]
+    for top in [folder, os.path.join(folder, "contents")]:
+        config = os.path.join(top, "prop", "ea3-config.xml")
+        if not os.path.isfile(config):
+            continue
+        with open(config, "rb") as fh:
+            text = fh.read().decode("shift_jis", "replace")
+        soft = {k: m.group(1).strip() for k in ("model", "dest", "spec", "rev", "ext")
+                if (m := re.search(rf"<{k}\b[^>]*>([^<]*)</{k}>", text))}
+        for g in games:
+            dll = g["pc"].get("dll", "")
+            if soft.get("model") == g["pc"].get("model") and os.path.isfile(os.path.join(top, "modules", dll)):
+                return g, os.path.abspath(top), soft
+    return None
+
+
+def ingest_pc64(args, game: dict, contents: str, soft: dict) -> int:
+    """A 64-bit PC game: its contents folder is read where it is (tens of GB); hiraku-pc runs it in
+    the save folder with hiraku-pc64.exe (runtime/pc64/), its data mounted from the folder."""
+    gid, pc = game["id"], game["pc"]
+    outdir = os.path.join(args.out, gid)
+    os.makedirs(outdir, exist_ok=True)
+    lines = ["core=pc", "loader=pc64", f"family={game.get('family', 'pcpopnhc')}", f"exe={pc['dll']}", f"contents={contents}"]
+    with open(os.path.join(outdir, "machine.txt"), "w") as fh:
+        fh.write("\n".join(lines) + "\n")
+    code = ":".join(soft.get(k, "?") for k in ("model", "dest", "spec", "rev", "ext"))
+    print(f"game     {gid}: {game.get('title', gid)} (a 64-bit PC game, {code})")
+    print(f"contents {contents} (read where it is{'' if contents.startswith(os.path.abspath(args.out)) else ': keep it there'})")
+    print(f"OK       dumps/{gid}/machine.txt")
+    return 0
 
 
 def ingest_pc(args, game: dict, program: str, data: str) -> int:

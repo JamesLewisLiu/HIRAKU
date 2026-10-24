@@ -135,8 +135,18 @@ done
 # HK_PACKAGE_BIN: more programs for bin/ (a release's 7-Zip, bin/7zz: tools/mameset.py looks there first)
 for f in ${HK_PACKAGE_BIN:-}; do cp -L "$f" "$d/bin/"; done
 # the PC games' DLLs (runtime/pc/), 32-bit Windows ones that hiraku-pc puts beside the game's
-# program under Wine
-[ -d "$build/pc" ] && mkdir -p "$d/bin/pc" && cp "$build"/pc/*.dll "$d/bin/pc/"
+# program under Wine, and the 64-bit games' loader (runtime/pc64/)
+if [ -d "$build/pc" ]; then
+  mkdir -p "$d/bin/pc"
+  cp "$build"/pc/ezusb.dll "$build"/pc/libacio.dll "$d/bin/pc/"
+  cp "$build"/pc/hiraku-pc64.exe "$d/bin/pc/" 2>/dev/null || true
+fi
+# HK_PACKAGE_DXVK: a folder with DXVK's 64-bit d3d9.dll and its LICENSE, beside the loader (hiraku-pc
+# has Wine load it for the 64-bit PC games: Wine's own Direct3D 9 misplaces its pictures)
+if [ -n "${HK_PACKAGE_DXVK:-}" ] && [ -d "$d/bin/pc" ]; then
+  cp "$HK_PACKAGE_DXVK/d3d9.dll" "$d/bin/pc/"
+  mkdir -p "$d/third_party/dxvk" && cp "$HK_PACKAGE_DXVK/LICENSE" "$d/third_party/dxvk/LICENSE"
+fi
 # HK_PACKAGE_LIBS: libraries for bin/lib that the binaries load themselves (dlopen: ldd doesn't
 # see them), a release's PCSX2 shader compiler (libshaderc_shared.so.1)
 for f in ${HK_PACKAGE_LIBS:-}; do
@@ -163,6 +173,7 @@ done
 cp "$root/LICENSE" "$d/" 2>/dev/null || true
 # the licences of the code taken from other projects, where Help > About HIRAKU reads them
 for f in $(grep -o '"third_party/[^"]*"' "$root/launcher/aboutdialog.cpp" | tr -d '"'); do
+	[ -f "$root/$f" ] || continue   # one the package brings (DXVK's, above)
 	mkdir -p "$d/$(dirname "$f")" && cp "$root/$f" "$d/$f"
 done
 # the oldest glibc the binaries and their libraries run with, from their symbol versions
