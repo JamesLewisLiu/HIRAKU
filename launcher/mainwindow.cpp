@@ -54,6 +54,7 @@
 #include "aboutdialog.h"
 #include "config.h"
 #include "controlsdialog.h"
+#include "dipsdialog.h"
 #include "lightsdialog.h"
 #include "modsdialog.h"
 #include "picturedialog.h"
@@ -685,6 +686,7 @@ static QString statusOf(const Game &g, bool *notable) {
     else if (firstBoot(g)) notes << "First boot", *notable = true;
     if (const int n = cfg::modsOn(g.id).size()) notes << (n == 1 ? QString("1 mod") : QString("%1 mods").arg(n));
     if (!cfg::settings().value("gameArgs/" + g.id).toString().isEmpty()) notes << "own arguments";
+    if (cfg::settings().contains("dips/" + g.id)) notes << "DIP switches set";
     return notes.isEmpty() ? QString("Ready") : notes.join(", ");
 }
 
@@ -806,6 +808,8 @@ void MainWindow::showDetails() {
         QString m = picture::mode(g->id);
         bool own = cfg::settings().contains("picture/" + g->id) || QFileInfo::exists(picture::configDir(g->id));
         if (UnlocksDialog::available(g->id)) h += "<p>Unlocks and codes: Game &gt; Unlocks… (or right-click the game).</p>";
+        if (const QString dips = DipsDialog::summary(g->id); !dips.isEmpty())
+            h += "<p><b>DIP switches:</b> " + dips.toHtmlEscaped() + " (Game &gt; DIP switches…)</p>";
         if (const QString own = cfg::settings().value("gameArgs/" + g->id).toString(); !own.isEmpty())
             h += "<p>Its own arguments: <tt>" + own.toHtmlEscaped() + "</tt> (Game &gt; Arguments…)</p>";
         h += QString("<p>Picture: %1%2</p>")
@@ -942,6 +946,7 @@ QStringList MainWindow::arguments(const Game &g) const {
     else if (!cfg::nvramBase().isEmpty()) a << "--nvram" << cfg::nvramDir(g.id);
     if (installCassette(g)) a << "--cassette" << "install";
     if (installCd(g)) a << "--cd" << "install";
+    a << DipsDialog::arguments(g.id);            // the board's DIP switches (Game > DIP switches)
     a << UnlocksDialog::macroArguments(g.id);   // codes typed at every start
     a << QProcess::splitCommand(s.value("game/extraArgs").toString());   // every game's (Settings > General)
     a << QProcess::splitCommand(s.value("gameArgs/" + g.id).toString());  // ... then this one's (Game menu)
@@ -1049,6 +1054,11 @@ void MainWindow::fillGameMenu(QMenu *menu, const Game &g) {
         PictureDialog d(id, title, true, this);
         if (d.exec() == QDialog::Accepted) showDetails();
     });
+    if (DipsDialog::available(id))
+        menu->addAction("DIP switches…", this, [this, id, title] {
+            DipsDialog d(id, title, this);
+            if (d.exec() == QDialog::Accepted) gameChanged();
+        })->setToolTip("The board's switches: coinage (Free Play), difficulty, demo sounds, hidden modes");
     if (UnlocksDialog::available(id))
         menu->addAction(QIcon::fromTheme("unlock", QIcon::fromTheme("object-unlocked")), "Unlocks…", this, [this, id, title] {
             UnlocksDialog d(id, title, m_running == id, this);

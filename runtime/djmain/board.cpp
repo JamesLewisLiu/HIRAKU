@@ -894,6 +894,13 @@ const uint8_t *mem(uint32_t addr, uint32_t len) {
     return nullptr;
 }
 
+bool set_dip(const std::string &bank, uint8_t value) {
+    const int port = bank == "DSW1" ? 4 : bank == "DSW2" ? 5 : bank == "DSW3" ? 0 : -1;   // input_r's order
+    if (port < 0) return false;
+    g_in[port] = value;
+    return true;
+}
+
 bool set_input(const std::string &name, int value) {
     struct Bit { const char *name; int port, mask; };
     // ports: 0 DSW3, 1 BTN3, 2 BTN2, 3 BTN1, 4 DSW1, 5 DSW2

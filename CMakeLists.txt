@@ -483,6 +483,7 @@ if(Qt6_FOUND AND TARGET hiraku_hidout)
     launcher/capturedialog.cpp
     launcher/controlsdialog.cpp
     launcher/lightsdialog.cpp
+    launcher/dipsdialog.cpp
     launcher/modsdialog.cpp
     launcher/settingsdialog.cpp
     launcher/fit.cpp

@@ -1,0 +1,91 @@
+# beatmania complete MIX 2's DIP switches, from MAME's -listxml bmcompm2 (tools/mamedips.py): port, mask, default, where, name; then each setting's value and name
+DSW1 0x1f 0x1f SW1:8,7,6,5,4 Coinage
+  0x00 1P 8C / 2P 16C / Continue 8C
+  0x01 1P 8C / 2P 16C / Continue 7C
+  0x02 1P 8C / 2P 16C / Continue 6C
+  0x03 1P 7C / 2P 14C / Continue 7C
+  0x04 1P 7C / 2P 14C / Continue 6C
+  0x05 1P 7C / 2P 14C / Continue 5C
+  0x06 1P 6C / 2P 12C / Continue 6C
+  0x07 1P 6C / 2P 12C / Continue 5C
+  0x08 1P 6C / 2P 12C / Continue 4C
+  0x09 1P 5C / 2P 10C / Continue 5C
+  0x0b 1P 5C / 2P 10C / Continue 3C
+  0x0a 1P 5C / 2P 10C / Continue 4C
+  0x0c 1P 4C / 2P 8C / Continue 4C
+  0x0d 1P 4C / 2P 8C / Continue 3C
+  0x0e 1P 4C / 2P 8C / Continue 2C
+  0x0f 1P 3C / 2P 6C / Continue 3C
+  0x10 1P 3C / 2P 6C / Continue 2C
+  0x11 1P 3C / 2P 6C / Continue 1C
+  0x12 1P 3C / 2P 4C / Continue 3C
+  0x13 1P 3C / 2P 4C / Continue 2C
+  0x14 1P 3C / 2P 4C / Continue 1C
+  0x15 1P 3C / 2P 3C / Continue 3C
+  0x16 1P 3C / 2P 3C / Continue 2C
+  0x17 1P 3C / 2P 3C / Continue 1C
+  0x1a 1P 2C / 2P 3C / Continue 2C
+  0x1b 1P 2C / 2P 3C / Continue 1C
+  0x18 1P 2C / 2P 4C / Continue 2C
+  0x1f 1P 2C / 2P 4C / Continue 1C
+  0x1c 1P 2C / 2P 2C / Continue 2C
+  0x1d 1P 2C / 2P 2C / Continue 1C
+  0x1e 1P 1C / 2P 2C / Continue 1C
+  0x19 1P 1C / 2P 1C / Continue 1C
+DSW1 0x20 0x20 SW1:3 Free Play (Ignore Coinage)
+  0x20 Off
+  0x00 On
+DSW1 0x40 0x40 SW1:2 Unknown
+  0x40 Off
+  0x00 On
+DSW1 0x80 0x80 SW1:1 Unknown
+  0x80 Off
+  0x00 On
+DSW2 0x03 0x03 SW2:8,7 Expert Mode Difficulty
+  0x02 Level 0
+  0x03 Level 1
+  0x01 Level 2
+  0x00 Level 3
+DSW2 0x0c 0x0c SW2:6,5 Basic / Hard Mode Difficulty
+  0x08 Level 0
+  0x0c Level 1
+  0x04 Level 2
+  0x00 Level 3
+DSW2 0x10 0x10 SW2:4 Level Display
+  0x00 Off
+  0x10 On
+DSW2 0x60 0x60 SW2:3,2 Demo Sounds
+  0x60 Loud
+  0x20 Medium
+  0x40 Low
+  0x00 Silent
+DSW2 0x80 0x80 SW2:1 Score Display
+  0x00 Off
+  0x80 On
+DSW3 0x01 0x01 SW3:6 Unknown
+  0x01 Off
+  0x00 On
+DSW3 0x02 0x02 SW3:5 Unknown
+  0x02 Off
+  0x00 On
+DSW3 0x1c 0x1c SW3:4,3,2 Event Mode Stages
+  0x0c 1 Stage
+  0x14 2 Stages
+  0x10 3 Stages
+  0x1c 4 Stages
+  0x04 4 Stages
+  0x18 4 Stages
+  0x00 4 Stages
+  0x08 5 Stages
+DSW3 0x1c 0x1c SW3:4,3,2 Basic / Hard Mode Stages
+  0x10 3 / 3 Stages
+  0x1c 4 / 4 Stages
+  0x0c 4 / 4 Stages
+  0x14 4 / 4 Stages
+  0x04 4 / 4 Stages
+  0x18 4 / 4 Stages
+  0x00 4 / 4 Stages
+  0x08 5 / 5 Stages
+DSW3 0x20 0x20 SW3:1 Event Mode (Ignore Coinage)
+  0x20 Off
+  0x00 On

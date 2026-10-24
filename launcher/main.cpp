@@ -27,6 +27,7 @@
 #include "config.h"
 #include "fit.h"
 #include "mainwindow.h"
+#include "dipsdialog.h"
 #include "modsdialog.h"
 
 // A package with its own Qt (tools/package.sh) starts the launcher through bin/hiraku, a script
@@ -70,6 +71,7 @@ int main(int argc, char **argv) {
         else if (what == "picture") win = new PictureDialog("bmiidx", "beatmania IIDX", true, &w);
         else if (what == "unlocks") win = new UnlocksDialog("popn12", "pop'n music 12 Iroha", false, &w);
         else if (what == "mods") win = new ModsDialog("popn14", "pop'n music 14 FEVER!", &w);
+        else if (what == "dips") win = new DipsDialog("popn1j", "pop'n music", &w);
         else if (what == "about") win = new AboutDialog(&w);
         if (win != &w) win->show();
         if (args.size() >= 4 && args[2] == "--shot")

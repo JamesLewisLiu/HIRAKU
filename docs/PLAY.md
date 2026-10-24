@@ -660,6 +660,13 @@ The disk each set needs is its `[hdd] chd`; clones may share their parent's disk
 - **complete MIX and later lock their hard disk with an ATA password.** HIRAKU unlocks it as MAME does: the passwords from MAME's driver are in the `game.toml`, and the game sends them itself.
 - **The UA/KA/AA versions and pop'n music 1 TA/AA/KA use other address maps** (`map = "u"` / `"a"`).
 - **pop'n stage EX** has ten buttons and three selection buttons (left, OK, right).
+- **DIP switches:** the board's three banks of switches, which the operator sets: the coinage
+  (Free Play among them), difficulty and gauge levels, demo sounds, and some games' hidden modes
+  (pop'n music 1's All Song Mode, RAVE and Bonus Track; 2 and 3's All Song Mode). In the launcher:
+  **Game > DIP switches…** (or right-click the game), each switch named as MAME names it; the game
+  reads them when it starts. On the command line: `--dip DSW1=0x00` (a whole bank as MAME's port
+  reads it, active low; 0xff, every switch off, is MAME's default for every DJ Main game). The
+  switches come from MAME's `-listxml` (`games/<set>/dips.txt`, written by `tools/mamedips.py`).
 - **Run so far:** bm1stmix, bm2ndmix, bm3rdmix (and EA), 4th–7th MIX, complete MIX (AA), complete MIX 2, CORE REMIX, DCT, THE FINAL, pop'n 1–3. All reach attract mode. 1st–3rd MIX and pop'n 1 match MAME clock for clock; the later ones drift from MAME after about 75 s (PLAN M13).
 
 **Status:** HIRAKU runs both games in step with MAME, clock for clock (`oracle/scripts/*-boot.his`, 155 s):

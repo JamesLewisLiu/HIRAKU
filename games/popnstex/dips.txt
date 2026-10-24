@@ -1,0 +1,69 @@
+# pop'n stage EX's DIP switches, from MAME's -listxml popnstex (tools/mamedips.py): port, mask, default, where, name; then each setting's value and name
+DSW1 0x01 0x01 SW1:8 Unknown
+  0x01 Off
+  0x00 On
+DSW1 0x1e 0x1e SW1:7,6,5,4 Coinage (10 Buttons)
+  0x02 1P 5C / Continue 5C
+  0x04 1P 5C / Continue 4C
+  0x06 1P 5C / Continue 3C
+  0x08 1P 5C / Continue 2C
+  0x0c 1P 5C / Continue 1C
+  0x0a 1P 4C / Continue 4C
+  0x0e 1P 4C / Continue 3C
+  0x10 1P 4C / Continue 2C
+  0x12 1P 4C / Continue 1C
+  0x14 1P 3C / Continue 3C
+  0x1e 1P 3C / Continue 2C
+  0x16 1P 3C / Continue 1C
+  0x18 1P 2C / Continue 2C
+  0x1a 1P 2C / Continue 1C
+  0x1c 1P 1C / Continue 1C
+  0x00 Free Play
+DSW1 0xe0 0xe0 SW1:3,2,1 Coinage (6 Buttons)
+  0x20 1P 4C / Continue 2C
+  0x40 1P 3C / Continue 3C
+  0x60 1P 3C / Continue 2C
+  0x80 1P 3C / Continue 1C
+  0xa0 1P 2C / Continue 2C
+  0xe0 1P 2C / Continue 1C
+  0xc0 1P 1C / Continue 1C
+  0x00 Free Play
+DSW2 0x01 0x01 SW2:8 Unknown
+  0x01 Off
+  0x00 On
+DSW2 0x02 0x02 SW1:7 Score Display
+  0x00 Off
+  0x02 On
+DSW2 0x0c 0x0c SW1:6,5 Gauge Increment Level
+  0x08 0
+  0x0c 1
+  0x04 2
+  0x00 3
+DSW2 0x30 0x30 SW1:4,3 Gauge Decrement Level
+  0x20 0
+  0x30 1
+  0x10 2
+  0x00 3
+DSW2 0xc0 0xc0 SW1:2,1 Demo Sounds
+  0xc0 Loud
+  0x80 Medium
+  0x40 Low
+  0x00 Silent
+DSW3 0x01 0x01 SW3:6 Unknown
+  0x01 Off
+  0x00 On
+DSW3 0x02 0x02 SW3:5 Enable Secret Mode (step3of3)
+  0x02 Off
+  0x00 On
+DSW3 0x04 0x04 SW3:4 Unknown
+  0x04 Off
+  0x00 On
+DSW3 0x08 0x08 SW3:3 Enable Secret Mode (step2of3)
+  0x08 Off
+  0x00 On
+DSW3 0x10 0x10 SW3:2 Unknown
+  0x10 Off
+  0x00 On
+DSW3 0x20 0x20 SW3:1 Enable Secret Mode (step1of3)
+  0x20 Off
+  0x00 On

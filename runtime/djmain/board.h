@@ -52,6 +52,9 @@ void set_frame_rate(double hz);
 const uint32_t *render_between(double t);
 const std::string &family();
 bool set_input(const std::string &name, int value);
+// A DIP switch bank (DSW1, DSW2, DSW3) as MAME's port reads it: active low, 0xff all off, MAME's
+// default for every DJ Main game (games/<id>/dips.txt names the switches). false: no such bank
+bool set_dip(const std::string &bank, uint8_t value);
 void turntable_add(int player, int delta);
 const std::vector<uint8_t> &lamp_state();
 uint64_t lamp_changes();

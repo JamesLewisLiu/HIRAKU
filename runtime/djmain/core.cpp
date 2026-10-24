@@ -3,6 +3,7 @@
 // The machine comes from dumps/<game>/machine.txt (tools/ingest.py): the family,
 // the ROM file lists and the raw hard disk image.
 #include <cstdio>
+#include <cstdlib>
 #include <fstream>
 #include <map>
 #include <sstream>
@@ -27,6 +28,26 @@ std::vector<std::string> split(const std::string &s) {
 
 class DjMainCore final : public Core {
 public:
+    // --dip DSW1=0xNN: a DIP switch bank as MAME's port reads it (the launcher's DIP switches,
+    // from games/<id>/dips.txt)
+    bool option(const std::string &name, const std::function<std::string()> &value) override {
+        if (name != "--dip") return false;
+        const std::string v = value();
+        const size_t eq = v.find('=');
+        char *end = nullptr;
+        const unsigned long byte = eq == std::string::npos ? 256 : strtoul(v.c_str() + eq + 1, &end, 0);
+        const std::string bank = v.substr(0, eq);
+        if (byte > 255 || (end && *end) || (bank != "DSW1" && bank != "DSW2" && bank != "DSW3"))
+            fprintf(stderr, "--dip %s: not DSW1, DSW2 or DSW3 = a byte (0xff: all off)\n", v.c_str());
+        else
+            dips_.push_back({bank, (uint8_t)byte});
+        return true;
+    }
+    std::string options_help() const override {
+        return "  --dip BANK=VALUE     a DIP switch bank as MAME's port reads it: DSW1, DSW2 or DSW3, 0xff all\n"
+               "                       off (the default); games/<id>/dips.txt names the switches\n";
+    }
+
     bool init(const Options &o) override {
         auto machine = read_kv(o.root + "/dumps/" + o.game + "/machine.txt");
         if (machine.empty() || machine["core"] != "djmain") {
@@ -55,6 +76,10 @@ public:
         cfg.ata_user_password = hex(machine["ata_user_password"]);
         cfg.ata_log = o.ata_log;
         if (!dj::init(cfg)) return false;
+        for (const auto &[bank, byte] : dips_) {
+            dj::set_dip(bank, byte);
+            printf("DIP switches: %s = 0x%02x\n", bank.c_str(), byte);
+        }
         printf("hiraku %s: DJ Main, 68EC020 interpreted\n", o.game.c_str());
         return true;
     }
@@ -99,6 +124,7 @@ public:
 
 private:
     std::function<void()> on_fatal_;
+    std::vector<std::pair<std::string, uint8_t>> dips_;   // --dip, set once the board is up
 };
 
 }  // namespace
