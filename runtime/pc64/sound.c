@@ -6,9 +6,9 @@
 // converts).
 // Linked to hiraku-pc, the loader is the sound device, as runtime/pc/dsound.c is for pop'n 15-18:
 // Wine's stream is set up but never started, the game's IAudioRenderClient is the loader's, and
-// what it writes waits in a buffer of BUF_FRAMES (its padding) until hiraku-pc asks for it
-// (audio_want: a frame's sound for each frame shown), when it goes into the link's ring and the
-// game's event says there is room. The game uses only IAudioClient and IAudioRenderClient.
+// what it writes waits in a buffer (its padding) until the device's clock plays it into the link's
+// ring (to_ring), and the game's event says there is room. The game uses only IAudioClient and
+// IAudioRenderClient.
 #define COBJMACROS
 #define CINTERFACE
 #include "pc64.h"
@@ -17,14 +17,13 @@
 #include <initguid.h>
 #include <mmdeviceapi.h>
 #include <audioclient.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 static const GUID float_format = {0x00000003, 0x0000, 0x0010, {0x80, 0x00, 0x00, 0xaa, 0x00, 0x38, 0x9b, 0x71}};   // KSDATAFORMAT_SUBTYPE_IEEE_FLOAT
 
-// The buffer: at least two of hiraku-pc's frames (735 frames each), whatever the game asks (10 ms)
-#define BUF_FRAMES 2048u   // a power of two
-#define MIN_FRAMES 1024u
+#define BUF_FRAMES 2048u   // the buffer's most (a power of two)
 
 static struct {
     int on;                          // the link takes the sound
@@ -51,6 +50,13 @@ static HRESULT WINAPI GetMixFormat_(IAudioClient *c, WAVEFORMATEX **f) {
     }
     return h;
 }
+// The device's clock (to_ring): its frequency and start, frames played, the event's period
+static LARGE_INTEGER g_freq, g_t0;
+static uint64_t g_clock;      // frames the device has played
+static uint32_t g_period;
+static uint32_t g_late;       // times the game hadn't written what the device played
+static int g_clock_on;
+
 static void start_mixer(void);
 
 static HRESULT WINAPI Initialize_(IAudioClient *c, AUDCLNT_SHAREMODE m, DWORD flags, REFERENCE_TIME d, REFERENCE_TIME p, const WAVEFORMATEX *f,
@@ -62,12 +68,17 @@ static HRESULT WINAPI Initialize_(IAudioClient *c, AUDCLNT_SHAREMODE m, DWORD fl
         is_float = IsEqualGUID(&((const WAVEFORMATEXTENSIBLE *)f)->SubFormat, &float_format);
     const int fits = f->nSamplesPerSec == HK_PC_AUDIO_RATE && f->nChannels >= 1 && f->nChannels <= 8 &&
                      ((is_float && f->wBitsPerSample == 32) || (!is_float && (f->wBitsPerSample == 16 || f->wBitsPerSample == 32)));
-    if (SUCCEEDED(h) && pc64_link() && fits && !g_s.on) {
+    if (SUCCEEDED(h) && pc64_link() && fits && !g_s.on && !getenv("HK_PC64_WINE_SOUND")) {   // (tests: Wine's device)
         InitializeCriticalSection(&g_s.lock);
         g_s.on = 1;
         g_s.channels = f->nChannels, g_s.bytes = f->wBitsPerSample / 8, g_s.is_float = is_float;
-        const UINT32 asked = (UINT32)(d * HK_PC_AUDIO_RATE / 10000000);
-        g_s.size = asked < MIN_FRAMES ? MIN_FRAMES : asked > BUF_FRAMES ? BUF_FRAMES : asked;
+        // the device's period: 2.5 ms (HK_PC64_PERIOD_US), which the game takes (GetDevicePeriod) and
+        // mixes in; its buffer four periods (10 ms), which the game keeps full: the sound's latency
+        const char *us = getenv("HK_PC64_PERIOD_US");
+        g_period = (uint32_t)((us ? atoi(us) : 2500) * (long long)HK_PC_AUDIO_RATE / 1000000);
+        if (g_period < 32) g_period = 32;
+        if (g_period > BUF_FRAMES / 4) g_period = BUF_FRAMES / 4;
+        g_s.size = 4 * g_period;
         start_mixer();
     }
     pc64_log("sound: %s, %u Hz, %u channels, %u bits%s, %lld ms%s: %s", m ? "exclusive" : "shared", (unsigned)f->nSamplesPerSec, f->nChannels,
@@ -89,6 +100,14 @@ static HRESULT WINAPI GetCurrentPadding_(IAudioClient *c, UINT32 *n) {
     *n = g_s.written - g_s.played;
     return S_OK;
 }
+// The device's period: HK_PC64_PERIOD_US (tests), else the game's own (10 ms)
+static HRESULT WINAPI GetDevicePeriod_(IAudioClient *c, REFERENCE_TIME *def, REFERENCE_TIME *min) {
+    if (!g_s.on) return r_client.GetDevicePeriod(c, def, min);
+    const REFERENCE_TIME p = (REFERENCE_TIME)g_period * 10000000 / HK_PC_AUDIO_RATE;
+    if (def) *def = p;
+    if (min) *min = p;
+    return S_OK;
+}
 static HRESULT WINAPI SetEventHandle_(IAudioClient *c, HANDLE e) {
     if (!g_s.on) return r_client.SetEventHandle(c, e);
     g_s.event = e;
@@ -97,7 +116,14 @@ static HRESULT WINAPI SetEventHandle_(IAudioClient *c, HANDLE e) {
 static HRESULT WINAPI Start_(IAudioClient *c) {
     if (!g_s.on) return r_client.Start(c);
     if (g_s.started) return AUDCLNT_E_NOT_STOPPED;
+    EnterCriticalSection(&g_s.lock);
     g_s.started = 1;
+    if (!g_clock_on) {
+        QueryPerformanceFrequency(&g_freq);
+        QueryPerformanceCounter(&g_t0);
+        g_clock_on = 1;
+    }
+    LeaveCriticalSection(&g_s.lock);
     struct hk_pc_link *l = pc64_link();
     if (!l->sound_on) {
         l->sound_on = 1;
@@ -161,6 +187,11 @@ static HRESULT WINAPI rc_ReleaseBuffer(IAudioRenderClient *r, UINT32 n, DWORD fl
         o[0] = sample(in);
         o[1] = g_s.channels > 1 ? sample(in + g_s.bytes) : o[0];
     }
+    if (getenv("HK_PC64_SOUND_DUMP")) {   // tests: what the game writes, as float stereo, to that file
+        static FILE *dump;
+        if (!dump) dump = fopen(getenv("HK_PC64_SOUND_DUMP"), "wb");
+        for (UINT32 i = 0; dump && i < n; i++) fwrite(g_s.fifo + 2 * ((g_s.written + i) & (BUF_FRAMES - 1)), sizeof(float), 2, dump);
+    }
     g_s.written += n;
     LeaveCriticalSection(&g_s.lock);
     g_asked = 0;
@@ -173,8 +204,8 @@ static HRESULT WINAPI rc_ReleaseBuffer(IAudioRenderClient *r, UINT32 n, DWORD fl
         }
         if (g_s.written - said >= 5 * HK_PC_AUDIO_RATE) {
             struct hk_pc_link *l = pc64_link();
-            pc64_log("sound: written %u, played %u, peak %.3f; ring made %u, taken %u, asked %u", g_s.written, g_s.played, (double)peak,
-                     l->audio_made, l->audio_taken, l->audio_want);
+            pc64_log("sound: written %u, played %u, peak %.3f; ring made %u, taken %u; the game late %u times", g_s.written, g_s.played,
+                     (double)peak, l->audio_made, l->audio_taken, g_late);
             said = g_s.written, peak = 0;
         }
     }
@@ -183,30 +214,62 @@ static HRESULT WINAPI rc_ReleaseBuffer(IAudioRenderClient *r, UINT32 n, DWORD fl
 static IAudioRenderClientVtbl g_rc_vtbl = {rc_QueryInterface, rc_AddRef, rc_Release, rc_GetBuffer, rc_ReleaseBuffer};
 static IAudioRenderClient g_rc = {&g_rc_vtbl};
 
+// HK_PC64_SOUND_DUMP without hiraku-pc (tests): what the game writes to Wine's own device
+static IAudioRenderClientVtbl r_wine_rc;
+static BYTE *g_wine_data;
+static HRESULT WINAPI wine_GetBuffer(IAudioRenderClient *r, UINT32 n, BYTE **data) {
+    const HRESULT h = r_wine_rc.GetBuffer(r, n, data);
+    g_wine_data = SUCCEEDED(h) && data ? *data : NULL;
+    return h;
+}
+static HRESULT WINAPI wine_ReleaseBuffer(IAudioRenderClient *r, UINT32 n, DWORD flags) {
+    static FILE *dump;
+    if (!dump) dump = fopen(getenv("HK_PC64_SOUND_DUMP"), "wb");
+    if (dump && g_wine_data && !(flags & AUDCLNT_BUFFERFLAGS_SILENT)) fwrite(g_wine_data, 8, n, dump);   // float stereo
+    return r_wine_rc.ReleaseBuffer(r, n, flags);
+}
+
 static HRESULT WINAPI GetService_(IAudioClient *c, REFIID iid, void **out) {
     if (g_s.on && IsEqualIID(iid, &IID_IAudioRenderClient)) {
         if (!out) return E_POINTER;
         *out = &g_rc;
         return S_OK;
     }
-    return r_client.GetService(c, iid, out);
+    const HRESULT h = r_client.GetService(c, iid, out);
+    if (SUCCEEDED(h) && out && *out && IsEqualIID(iid, &IID_IAudioRenderClient) && getenv("HK_PC64_SOUND_DUMP") && !r_wine_rc.GetBuffer) {
+        IAudioRenderClientVtbl *v = ((IAudioRenderClient *)*out)->lpVtbl;
+        r_wine_rc = *v;
+        pc64_patch(&v->GetBuffer, wine_GetBuffer);
+        pc64_patch(&v->ReleaseBuffer, wine_ReleaseBuffer);
+    }
+    return h;
 }
 
-// What hiraku-pc asks for (audio_want) and the buffer has, into the link's ring (with the lock
-// held). Where the game is two frames behind what is asked, the rest is silence, so its sound
-// doesn't fall behind the pictures; a stopped stream is silence. The frames given
+// The device's clock: the PC's (QueryPerformanceCounter), 44.1 kHz from the stream's first Start,
+// played a period at a time (the game's 10 ms): each period's frames go from the buffer into the
+// link's ring, where hiraku-pc takes them, and the game's event says there is room, as a real
+// device's. Whole periods matter: the game mixes in periods and stretches its mix to the space it
+// is given, so space freed in other amounts (a frame's sound as hiraku-pc asked for it, or a
+// millisecond's) made it resample its music all the time, its high notes a fizzle (a song through
+// the game compared with the decoded .2dx, PLAN.md section 32). The device plays silence where the game is late,
+// or stopped; frames the ring has no room for (hiraku-pc not taking them) are played and lost.
+
 static uint32_t to_ring(void) {
+    if (!g_clock_on) return 0;
+    LARGE_INTEGER now;
+    QueryPerformanceCounter(&now);
+    // whole periods, as a real device plays (WASAPI's shared mode: the game's 10 ms, 441 frames):
+    // the game fills what each frees, and space of another size it fills by stretching its mix
+    uint64_t due = (uint64_t)(now.QuadPart - g_t0.QuadPart) * HK_PC_AUDIO_RATE / (uint64_t)g_freq.QuadPart;
+    due -= due % g_period;
+    if (due <= g_clock) return 0;
+    uint32_t n = due - g_clock > 8 * g_period ? 8 * g_period : (uint32_t)(due - g_clock);
     struct hk_pc_link *l = pc64_link();
     float *ring = (float *)((char *)l + HK_PC_AUDIO);
-    const uint32_t want = l->audio_want, made = l->audio_made, taken = l->audio_taken;
-    if ((int32_t)(want - made) <= 0) return 0;
-    uint32_t n = want - made;
-    const uint32_t room = HK_PC_AUDIO_FRAMES - (made - taken), have = g_s.written - g_s.played;
-    if (n > room) n = room;
-    uint32_t from_game = n < have ? n : have, quiet = 0;
-    if (!g_s.started) from_game = 0, quiet = n;
-    else if (n - from_game > 2 * (HK_PC_AUDIO_RATE / 60)) quiet = n - from_game - HK_PC_AUDIO_RATE / 60;
-    for (uint32_t i = 0; i < from_game + quiet; i++) {
+    const uint32_t made = l->audio_made, taken = l->audio_taken, room = HK_PC_AUDIO_FRAMES - (made - taken);
+    const uint32_t have = g_s.written - g_s.played, from_game = !g_s.started ? 0 : n < have ? n : have;
+    const uint32_t kept = n < room ? n : room;
+    for (uint32_t i = 0; i < kept; i++) {
         const uint32_t at = (made + i) & (HK_PC_AUDIO_FRAMES - 1);
         if (i < from_game) {
             const float *f = g_s.fifo + 2 * ((g_s.played + i) & (BUF_FRAMES - 1));
@@ -215,38 +278,24 @@ static uint32_t to_ring(void) {
             ring[2 * at] = ring[2 * at + 1] = 0.0f;
         }
     }
+    if (g_s.started && from_game < n) g_late++;   // the game late: silence played
     g_s.played += from_game;
+    g_clock += n;
     MemoryBarrier();
-    l->audio_made = made + from_game + quiet;
-    if (from_game && g_s.event) SetEvent(g_s.event);   // room in the buffer
-    return from_game + quiet;
+    l->audio_made = made + kept;
+    if (g_s.started && g_s.event) SetEvent(g_s.event);   // a period played: room in the buffer
+    return n;
 }
 
-// A picture counted: the sound up to its frame's end asked for (as dsound.c's), and given
-void pc64_sound_picture(void) {
-    struct hk_pc_link *l = pc64_link();
-    const uint32_t end = l ? l->audio_frame_end : 0;
-    if (!g_s.on || !end) return;
-    for (;;) {   // audio_want moved on to `end` (hiraku-pc may move it too, never back)
-        const uint32_t want = l->audio_want;
-        if ((int32_t)(end - want) <= 0 ||
-            (uint32_t)InterlockedCompareExchange((volatile LONG *)&l->audio_want, (LONG)end, (LONG)want) == want)
-            break;
-    }
-    EnterCriticalSection(&g_s.lock);
-    to_ring();
-    LeaveCriticalSection(&g_s.lock);
-}
-
-// As far as hiraku-pc asks; a nap when it has all it asked for
+// The device, from the stream's first Start
 static DWORD WINAPI mixer(void *unused) {
     (void)unused;
     SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_TIME_CRITICAL);
     for (;;) {
         EnterCriticalSection(&g_s.lock);
-        const uint32_t n = to_ring();
+        to_ring();
         LeaveCriticalSection(&g_s.lock);
-        if (!n) pc64_nap();
+        pc64_nap();
     }
     return 0;
 }
@@ -263,6 +312,7 @@ static HRESULT WINAPI Activate_(IMMDevice *d, REFIID iid, DWORD ctx, PROPVARIANT
         pc64_patch(&v->GetBufferSize, GetBufferSize_);
         pc64_patch(&v->GetCurrentPadding, GetCurrentPadding_);
         pc64_patch(&v->SetEventHandle, SetEventHandle_);
+        pc64_patch(&v->GetDevicePeriod, GetDevicePeriod_);
         pc64_patch(&v->Start, Start_);
         pc64_patch(&v->Stop, Stop_);
         pc64_patch(&v->Reset, Reset_);
@@ -289,6 +339,9 @@ static HRESULT WINAPI GetDevice_(IMMDeviceEnumerator *e, LPCWSTR id, IMMDevice *
 static HRESULT(WINAPI *r_CoCreateInstance)(REFCLSID, LPUNKNOWN, DWORD, REFIID, LPVOID *);
 static HRESULT WINAPI CoCreateInstance_(REFCLSID c, LPUNKNOWN outer, DWORD ctx, REFIID iid, LPVOID *out) {
     HRESULT h = r_CoCreateInstance(c, outer, ctx, iid, out);
+    if (getenv("HK_PC64_SOUND_LOG"))
+        pc64_log("CoCreateInstance {%08lx-%04x-%04x-%02x%02x-%02x%02x%02x%02x%02x%02x}: %08lx", (unsigned long)c->Data1, c->Data2, c->Data3,
+                 c->Data4[0], c->Data4[1], c->Data4[2], c->Data4[3], c->Data4[4], c->Data4[5], c->Data4[6], c->Data4[7], (unsigned long)h);
     if (SUCCEEDED(h) && IsEqualCLSID(c, &CLSID_MMDeviceEnumerator) && !r_enumerator.GetDefaultAudioEndpoint) {
         IMMDeviceEnumeratorVtbl *v = ((IMMDeviceEnumerator *)*out)->lpVtbl;
         r_enumerator = *v;

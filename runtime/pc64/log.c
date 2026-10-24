@@ -4,6 +4,7 @@
 // violation, ...: under Wine an unhandled one waits in its debugger, the game stopped and silent)
 #include "pc64.h"
 
+#include <ctype.h>
 #include <stdarg.h>
 #include <stdlib.h>
 #include <string.h>
@@ -121,4 +122,113 @@ void pc64_trace_install(HMODULE game) {
     r_search = pc64_import_ordinal(game, "avs2-core.dll", 162, (void *)search_);
     r_struct = pc64_import_ordinal(game, "avs2-core.dll", 179, (void *)struct_);
     pc64_log("tracing the answers' nodes and structs");
+}
+
+// HK_PC64_TRACE_D3DX (tests): the game's D3DX textures, effects and shaders, each with its result
+// (d3dx9_43, Wine's own under Wine): what didn't come out as the game meant it
+#include <d3d9.h>
+typedef HRESULT(WINAPI *tex_mem_ex_t)(IDirect3DDevice9 *, const void *, UINT, UINT, UINT, UINT, DWORD, D3DFORMAT, D3DPOOL, DWORD, DWORD,
+                                      D3DCOLOR, void *, PALETTEENTRY *, IDirect3DTexture9 **);
+typedef HRESULT(WINAPI *tex_mem_t)(IDirect3DDevice9 *, const void *, UINT, IDirect3DTexture9 **);
+typedef HRESULT(WINAPI *effect_t)(IDirect3DDevice9 *, const void *, UINT, const void *, void *, DWORD, void *, void **, void **);
+typedef HRESULT(WINAPI *compile_t)(const char *, UINT, const void *, void *, const char *, const char *, DWORD, void **, void **, void **);
+static tex_mem_ex_t r_tex_mem_ex;
+static tex_mem_t r_tex_mem;
+static effect_t r_effect;
+static compile_t r_compile;
+static void tex_said(const char *what, HRESULT h, IDirect3DTexture9 *t, UINT size, DWORD filter, D3DFORMAT asked) {
+    D3DSURFACE_DESC d = {0};
+    if (SUCCEEDED(h) && t) t->lpVtbl->GetLevelDesc(t, 0, &d);
+    const unsigned char *b = NULL;
+    (void)b;
+    pc64_log("d3dx: %s (%u bytes, format asked %u, filter %#lx): %08lx, %ux%u format %u, %lu levels", what, size, (unsigned)asked,
+             (unsigned long)filter, (unsigned long)h, d.Width, d.Height, (unsigned)d.Format, SUCCEEDED(h) && t ? (unsigned long)t->lpVtbl->GetLevelCount(t) : 0ul);
+}
+static HRESULT WINAPI tex_mem_ex_(IDirect3DDevice9 *dev, const void *src, UINT size, UINT w, UINT hgt, UINT mips, DWORD usage, D3DFORMAT fmt,
+                                  D3DPOOL pool, DWORD filter, DWORD mipfilter, D3DCOLOR key, void *info, PALETTEENTRY *pal, IDirect3DTexture9 **out) {
+    const HRESULT h = r_tex_mem_ex(dev, src, size, w, hgt, mips, usage, fmt, pool, filter, mipfilter, key, info, pal, out);
+    char what[96];
+    snprintf(what, sizeof what, "texture %ux%u, %u levels, key %08lx, magic %.4s", w, hgt, mips, (unsigned long)key, (const char *)src);
+    tex_said(what, h, out ? *out : NULL, size, filter, fmt);
+    return h;
+}
+static HRESULT WINAPI tex_mem_(IDirect3DDevice9 *dev, const void *src, UINT size, IDirect3DTexture9 **out) {
+    const HRESULT h = r_tex_mem(dev, src, size, out);
+    char what[64];
+    snprintf(what, sizeof what, "texture, magic %.4s", (const char *)src);
+    tex_said(what, h, out ? *out : NULL, size, 0, D3DFMT_UNKNOWN);
+    return h;
+}
+static HRESULT WINAPI effect_(IDirect3DDevice9 *dev, const void *src, UINT size, const void *defs, void *inc, DWORD flags, void *pool, void **fx,
+                              void **errors) {
+    const HRESULT h = r_effect(dev, src, size, defs, inc, flags, pool, fx, errors);
+    pc64_log("d3dx: effect (%u bytes, flags %#lx): %08lx", size, (unsigned long)flags, (unsigned long)h);
+    return h;
+}
+// sin() and cos() in a pixel shader for ps_2_x: Wine's HLSL compiler (vkd3d-shader) makes them its
+// sincos instruction, which it can't write for those targets, and fails the shader (one of the
+// game's effects then draws as white squares). Retried with both as a polynomial: the angle into
+// [-pi, pi) (frac), then sin's odd series to x^11 (at most 5e-4 off)
+static const char HK_SIN[] =
+    "float hk_sin(float x) { float t = frac(x * 0.15915494 + 0.5) * 6.2831853 - 3.1415927; float t2 = t * t;\n"
+    "  return -t * (1.0 + t2 * (-0.16666667 + t2 * (0.0083333333 + t2 * (-0.00019841270 + t2 * (2.7557319e-6 + t2 * -2.5052108e-8))))); }\n"
+    "float2 hk_sin(float2 x) { return float2(hk_sin(x.x), hk_sin(x.y)); }\n"
+    "float3 hk_sin(float3 x) { return float3(hk_sin(x.x), hk_sin(x.y), hk_sin(x.z)); }\n"
+    "float4 hk_sin(float4 x) { return float4(hk_sin(x.x), hk_sin(x.y), hk_sin(x.z), hk_sin(x.w)); }\n"
+    "float hk_cos(float x) { return hk_sin(x + 1.5707963); }\n"
+    "float2 hk_cos(float2 x) { return hk_sin(x + 1.5707963); }\n"
+    "float3 hk_cos(float3 x) { return hk_sin(x + 1.5707963); }\n"
+    "float4 hk_cos(float4 x) { return hk_sin(x + 1.5707963); }\n";
+static char *without_sincos(const char *src, UINT len, UINT *out_len) {
+    char *out = malloc(sizeof HK_SIN + 2 * (size_t)len + 1), *o = out;
+    memcpy(o, HK_SIN, sizeof HK_SIN - 1), o += sizeof HK_SIN - 1;
+    for (UINT i = 0; i < len; i++) {
+        const int word_start = i == 0 || !(isalnum((unsigned char)src[i - 1]) || src[i - 1] == '_');
+        if (word_start && i + 3 < len && (!strncmp(src + i, "sin", 3) || !strncmp(src + i, "cos", 3))) {
+            UINT j = i + 3;
+            while (j < len && (src[j] == ' ' || src[j] == '\t')) j++;
+            if (j < len && src[j] == '(') {
+                memcpy(o, "hk_", 3), o += 3;
+            }
+        }
+        *o++ = src[i];
+    }
+    *out_len = (UINT)(o - out);
+    return out;
+}
+static HRESULT WINAPI compile_(const char *src, UINT len, const void *defs, void *inc, const char *fn, const char *profile, DWORD flags,
+                               void **shader, void **errors, void **consts) {
+    HRESULT h = r_compile(src, len, defs, inc, fn, profile, flags, shader, errors, consts);
+    if (FAILED(h) && errors && *errors && src) {
+        typedef struct { struct { void *qi, *addref; ULONG(WINAPI *release)(void *); void *(WINAPI *ptr)(void *); DWORD(WINAPI *size)(void *); } *v; } buf_t;
+        buf_t *e = (buf_t *)*errors;
+        const char *text = (const char *)e->v->ptr(e);
+        if (text && strstr(text, "sincos")) {
+            UINT n;
+            char *fixed = without_sincos(src, len, &n);
+            e->v->release(e);
+            *errors = NULL;
+            h = r_compile(fixed, n, defs, inc, fn, profile, flags, shader, errors, consts);
+            free(fixed);
+            pc64_log("d3dx: shader %s %s without sincos (Wine's compiler can't): %08lx", fn ? fn : "?", profile ? profile : "?", (unsigned long)h);
+        }
+    }
+    if (!getenv("HK_PC64_TRACE_D3DX")) return h;
+    pc64_log("d3dx: shader %s %s (%u bytes): %08lx", fn ? fn : "?", profile ? profile : "?", len, (unsigned long)h);
+    if (FAILED(h)) {   // why, and its source (the game's: for the log only)
+        typedef struct { struct { void *qi, *addref, *release; void *(WINAPI *ptr)(void *); DWORD(WINAPI *size)(void *); } *v; } buf_t;
+        if (errors && *errors) pc64_log("d3dx: compiler: %.*s", (int)((buf_t *)*errors)->v->size(*errors), (const char *)((buf_t *)*errors)->v->ptr(*errors));
+        FILE *f = pc64_log_file();
+        fprintf(f, "--- %s source ---\n%.*s\n--- end ---\n", fn ? fn : "?", (int)len, src);
+        fflush(f);
+    }
+    return h;
+}
+void pc64_trace_d3dx_install(HMODULE game) {
+    r_compile = (compile_t)pc64_import(game, "d3dx9_43.dll", "D3DXCompileShader", (void *)compile_);   // always: sin, cos
+    if (!getenv("HK_PC64_TRACE_D3DX")) return;
+    r_tex_mem_ex = (tex_mem_ex_t)pc64_import(game, "d3dx9_43.dll", "D3DXCreateTextureFromFileInMemoryEx", (void *)tex_mem_ex_);
+    r_tex_mem = (tex_mem_t)pc64_import(game, "d3dx9_43.dll", "D3DXCreateTextureFromFileInMemory", (void *)tex_mem_);
+    r_effect = (effect_t)pc64_import(game, "d3dx9_43.dll", "D3DXCreateEffect", (void *)effect_);
+    pc64_log("tracing D3DX");
 }

@@ -136,7 +136,6 @@ void pc64_nap(void) {
 void pc64_link_picture(unsigned w, unsigned h) {
     struct hk_pc_link *l = pc64_link();
     l->frame_w = w, l->frame_h = h;
-    pc64_sound_picture();   // the sound of the frame it is shown in, with it
     MemoryBarrier();
     l->frame_seq = l->frame_seq + 1;
     l->frames++;

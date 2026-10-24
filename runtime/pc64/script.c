@@ -3,7 +3,8 @@
 // CSequence::Attach) or by seconds after its first read of the board:
 //   HK_SCRIPT="s12+2:service,s12+4:touch:640:470,s35+1:up:service,..."
 //   STEP = sSCENE+SECONDS:ACTION (when scene SCENE is entered, SECONDS later) or SECONDS:ACTION
-//   ACTION = touch:X:Y (the sub screen, 1280x800) | click:X:Y (a mouse click there) | card (the card,
+//   ACTION = touch:X:Y (the sub screen, 1280x800) | click:X:Y (a mouse click there) |
+//   mash:INPUT+INPUT:SECONDS:MS (the two pressed in turn, each for half of MS, for SECONDS) | card (the card,
 //   the link's or HK_PC64_CARD's, held to the reader) | [down:|up:]INPUT (held 300 ms, or held, or let go)
 //   INPUT = test | service | coin | b1..b9 | red | blue | headphones
 // The scenes seen so far (PLAN.md section 32): 12 title, 26 entry, 20 mode select, 21 character
@@ -42,6 +43,20 @@ static DWORD WINAPI run(void *arg) {
         if (sscanf(action, "touch:%d:%d", &x, &y) == 2) {
             pc64_log("script: touch %d,%d (scene %d, picture %u)", x, y, pc64_scene, pc64_frames);
             pc64_touch(x, y);
+            continue;
+        }
+        char a[16], b[16];
+        int secs, ms;
+        if (sscanf(action, "mash:%15[a-z0-9]+%15[a-z0-9]:%d:%d", a, b, &secs, &ms) == 4 && input_bit(a) && input_bit(b) && ms > 0) {
+            pc64_log("script: mash %s and %s for %d s (scene %d, picture %u)", a, b, secs, pc64_scene, pc64_frames);
+            const DWORD until = GetTickCount() + (DWORD)secs * 1000;
+            for (int k = 0; GetTickCount() < until; k++) {   // each pressed for half the period, in turn
+                const unsigned bit = input_bit(k & 1 ? b : a);
+                pc64_held |= bit;
+                Sleep((DWORD)ms / 2);
+                pc64_held &= ~bit;
+                Sleep((DWORD)ms / 2);
+            }
             continue;
         }
         if (!strcmp(action, "card")) {

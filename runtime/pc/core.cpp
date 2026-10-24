@@ -339,6 +339,9 @@ public:
             return false;
         }
         family_ = m.count("family") ? m["family"] : "pcpopnhc";
+        // the controllers go on while the touch screen's window has the focus (a click there takes it
+        // under Wine, whatever the window asks): SDL's joystick events in the background too
+        set_env("SDL_JOYSTICK_ALLOW_BACKGROUND_EVENTS", "1");
         save_ = o.nvram_dir.empty() ? hk::user_data_dir(o.root) + "/" + game_ : o.nvram_dir;
         mkdirs(save_ + "/run");
         const std::string bin_dir = hk::sys::exe_path().substr(0, hk::sys::exe_path().rfind('/'));
@@ -821,6 +824,7 @@ private:
     // The sound mixed at least to `end`: the DLL's mixer asked (audio_want moved on, never back),
     // and given a few milliseconds (it naps a millisecond)
     void sound_until(uint32_t end) {
+        if (pc64_) return;   // the 64-bit loader's sound runs on its own device clock: taken as it comes
         for (uint32_t want = link_->audio_want; (int32_t)(end - want) > 0;)
             if (__atomic_compare_exchange_n(&link_->audio_want, &want, end, false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST)) break;
         const auto until = std::chrono::steady_clock::now() + std::chrono::milliseconds(3);
