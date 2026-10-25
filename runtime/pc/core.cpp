@@ -25,6 +25,9 @@
 //   data=PATH               the game's data, read where it is
 //   drive=D:\popn15         where the game looks for its folders (program: <drive>\prog\<date>)
 //   save_drive=E:\          its backup drive, a folder in the save folder
+//   save_drive2=F:\         a second backup drive (beatmania IIDX 9th style), another folder there
+//   data_as=..\data         the name the game gives its data folder (default <drive>\data)
+//   board=c02               the C02 cabinet's board (runtime/pc/ezusb_c02.c, IIDX: family=iidx), not pop'n's
 #include <algorithm>
 #include <atomic>
 #include <chrono>
@@ -33,6 +36,7 @@
 #include <cstring>
 #include <fstream>
 #include <ctime>
+#include <filesystem>
 #include <map>
 #include <memory>
 #include <string>
@@ -253,6 +257,8 @@ public:
             return false;
         }
         if (m.count("family")) family_ = m["family"];
+        c02_ = m["board"] == "c02";
+        data_as_ = m.count("data_as") ? m["data_as"] : drive + "\\data";
 
         // The save folder: the program's copy (HIRAKU's DLLs for Konami's), the backup drive (e/)
         save_ = o.nvram_dir.empty() ? hk::user_data_dir(o.root) + "/" + game_ : o.nvram_dir;
@@ -261,12 +267,13 @@ public:
         run_e_ = save_ + "/e";
         mkdirs(run_prog_);
         mkdirs(run_e_);
+        if (m.count("save_drive2")) mkdirs(save_ + "/f");
         const std::string bin_dir = hk::sys::exe_path().substr(0, hk::sys::exe_path().rfind('/'));
         for (const std::string &f : list_files(program_)) {
             std::string lower = f;
             for (char &c : lower) c = (char)std::tolower((unsigned char)c);
             std::string from = program_ + "/" + f;
-            if (lower == "ezusb.dll" || lower == "libacio.dll") from = bin_dir + "/pc/" + lower;
+            if (lower == "ezusb.dll" || lower == "libacio.dll") from = bin_dir + "/pc/" + (c02_ && lower == "ezusb.dll" ? "c02/" : "") + lower;
             const std::string to = run_prog_ + "/" + f;
             if (file_size(from) == UINT64_MAX) {
                 fprintf(stderr, "hiraku-pc: no %s (HIRAKU's PC DLLs belong in a pc folder beside hiraku-pc)\n", from.c_str());
@@ -279,19 +286,21 @@ public:
                     return false;
                 }
         }
+        if (!link_data(data)) return false;
         if (!hand_mods(drive, data, prog_name)) return false;
         std::string error;
         ea_.read_card_files(save_, &error);
         if (!error.empty()) fprintf(stderr, "%s\n", error.c_str());
         if (!start_eamuse(o.root)) return false;
         // a bare pop'n board's firmware: the game's own ezusb.dll, unless --popn-io-dll gave one
-        hk::host::popnio_default_dll(program_ + "/ezusb.dll");
+        if (!c02_) hk::host::popnio_default_dll(program_ + "/ezusb.dll");
 
         if (!make_link()) return false;
 
         // What the DLLs are told (runtime/pc/cabinet.h)
-        set_env("HK_PC_MAP", drive + "\\data=" + win_path(data) + ";" + drive + "\\prog=" + win_path(save_ + "/prog") + ";" +
-                                 save_drive + "=" + win_path(run_e_) + "\\");
+        set_env("HK_PC_MAP", data_as_ + "=" + win_path(data) + ";" + drive + "\\prog=" + win_path(save_ + "/prog") + ";" +
+                                 save_drive + "=" + win_path(run_e_) + "\\" +
+                                 (m.count("save_drive2") ? ";" + m["save_drive2"] + "=" + win_path(save_ + "/f") + "\\" : ""));
         set_env("HK_PC_HZ", "0");   // the shell paces
         set_env("HK_PC_PRESS_TIME", press_time_ ? "1" : "");
         set_env("HK_PC_JUDGE_OFFSET", judge_offset_ ? std::to_string(judge_offset_) : "");
@@ -299,6 +308,28 @@ public:
         { std::ofstream(save_ + "/pc.log", std::ios::trunc); }
         printf("hiraku-pc: %s, %s from %s; saves in %s\n", game_.c_str(), exe_.c_str(), program_.c_str(), save_.c_str());
         fflush(stdout);
+        return true;
+    }
+
+    // The game's data where the game names it from its program folder (data_as=..\data, IIDX 9th
+    // style), beside the program's copy: HIRAKU's path map (HK_PC_MAP) sees only the game's own
+    // modules, and Windows' DirectShow opens the movies itself. Linux: a symbolic link; Windows: a
+    // junction (no rights needed)
+    bool link_data(const std::string &data) {
+        if (data_as_.rfind("..\\", 0) != 0) return true;
+        const std::string at = save_ + "/prog/" + data_as_.substr(3);
+#ifdef _WIN32
+        if (hk::sys::is_dir(at)) return true;   // made before (a junction to the data)
+        hk::sys::run_quiet({"cmd", "/c", "mklink", "/J", win_path(at), win_path(data)});
+#else
+        std::error_code ec;
+        if (std::filesystem::is_symlink(at, ec)) std::filesystem::remove(at, ec);   // the data may have moved
+        std::filesystem::create_directory_symlink(data, at, ec);
+#endif
+        if (!hk::sys::is_dir(at)) {
+            fprintf(stderr, "hiraku-pc: can't make %s, the game's data (%s) where it looks for it\n", at.c_str(), data_as_.c_str());
+            return false;
+        }
         return true;
     }
 
@@ -388,7 +419,21 @@ public:
     double seconds() const override { return (double)tick_ / ghz(); }
     const uint8_t *mem(uint32_t, uint32_t) const override { return nullptr; }
     uint64_t frame_count() const override { return frame_; }
-    void turntable_add(int, int) override {}
+    // The C02 cabinet's turntables: the host's counts (1024 a turn) to the board's 0-255
+    void turntable_add(int player, int delta) override {
+        if (!c02_ || !link_ || player < 0 || player > 1) return;
+        tt_frac_[player] += delta;
+        const int whole = tt_frac_[player] / 4;
+        tt_frac_[player] -= whole * 4;
+        link_->turntable[player] = (uint8_t)(link_->turntable[player] + whole);
+    }
+    // The C02 cabinet's 16-segment ticker
+    std::string display_text() const override {
+        if (!c02_ || !link_) return {};
+        std::string t((const char *)link_->ticker, 9);
+        t.erase(std::find(t.begin(), t.end(), '\0'), t.end());
+        return t;
+    }
     void report() override {
         printf("hiraku-pc: %llu frames shown, %llu of them again while the game drew none\n", (unsigned long long)frame_,
                (unsigned long long)repeats_);
@@ -421,7 +466,7 @@ public:
         if (!start_game()) fatal();
         // A new save folder: the game makes its backup files and asks to be switched off and on
         // (BACKUP ERROR 5-1502); that is done for it, once, when they've been there a few seconds
-        bool first_boot = list_files(run_e_ + "/settings").empty();
+        bool first_boot = !c02_ && list_files(run_e_ + "/settings").empty();
         auto backup_made = std::chrono::steady_clock::time_point{};
         auto last = std::chrono::steady_clock::now(), rate_from = last;
         uint32_t seen = link_->frame_seq, rate_pictures = seen;
@@ -516,6 +561,7 @@ public:
             if (value) w = w | b;
             else w = w & ~b;
         };
+        if (c02_) return c02_input(name, value, bit);
         if (name.rfind("P1 Button ", 0) == 0) {
             const int k = std::atoi(name.c_str() + 10);
             if (k < 1 || k > 9) return false;
@@ -561,11 +607,33 @@ public:
     }
 
     // usbLamp's bits in the family's lamp order (shell/cabinet.cpp): the buttons' bits 23-31, the
-    // top (HI-LAMP 1-5) bits 0-4, the sides (LEFT 1-2, RIGHT 1-2) bits 8-11, as spice2x has them
+    // top (HI-LAMP 1-5) bits 0-4, the sides (LEFT 1-2, RIGHT 1-2) bits 8-11, as spice2x has them.
+    // The C02 cabinet's: the keys in usbLamp's bits 0-13 (player 1's first), the starts, VEFX and
+    // Effect in usbLed's bits 0-3, the spotlights in the top unit's lamps, its neon
     const std::vector<uint8_t> &lamp_state() const override {
         const auto &l = hk::cab::lamps(family_);
         lamps_.resize(l.size());
         const uint32_t b = link_ ? link_->lamps : 0;
+        if (c02_) {
+            const uint32_t led = link_ ? link_->led : 0, top = link_ ? link_->top_lamp : 0, neon = link_ ? link_->top_neon : 0;
+            const uint32_t all = b | led << 16 | top << 20 | neon << 28;
+            for (size_t i = 0; i < l.size(); i++) {
+                const std::string &n = l[i].name;
+                const int k = std::atoi(n.c_str() + n.find_last_of(' ') + 1);
+                int v = 0;
+                if (n.rfind("P1 Key Lamp", 0) == 0) v = b >> (k - 1) & 1;
+                else if (n.rfind("P2 Key Lamp", 0) == 0) v = b >> (6 + k) & 1;
+                else if (n == "P1 Start Lamp") v = led & 1;
+                else if (n == "P2 Start Lamp") v = led >> 1 & 1;
+                else if (n == "VEFX Lamp") v = led >> 2 & 1;
+                else if (n == "Effect Lamp") v = led >> 3 & 1;
+                else if (n.rfind("Spotlight", 0) == 0) v = top >> (k - 1) & 1;
+                else if (n == "Neon") v = neon != 0;
+                lamps_[i] = (uint8_t)v;
+            }
+            if (all != last_lamps_) last_lamps_ = all, changes_++;
+            return lamps_;
+        }
         for (size_t i = 0; i < l.size(); i++) {
             const std::string &n = l[i].name;
             const int k = std::atoi(n.c_str() + n.find_last_of(' ') + 1);
@@ -585,6 +653,28 @@ public:
 
 private:
     static constexpr double HZ = 60.0;   // the cabinet's VGA monitor
+
+    // The C02 cabinet's controls (the family iidx's names, shell/cabinet.cpp) to its pad (link.h)
+    template <class Bit> bool c02_input(const std::string &name, int value, Bit &bit) {
+        int k = 0;
+        if ((name.rfind("P1 Button ", 0) == 0 || name.rfind("P2 Button ", 0) == 0) && (k = std::atoi(name.c_str() + 10)) >= 1 && k <= 7)
+            bit(link_->pad, HK_PC_C02_KEY(name[1] - '0', k));
+        else if (name == "1 Player Start") bit(link_->pad, HK_PC_C02_START(1));
+        else if (name == "2 Players Start") bit(link_->pad, HK_PC_C02_START(2));
+        else if (name == "VEFX") bit(link_->pad, HK_PC_C02_VEFX);
+        else if (name == "Effect") bit(link_->pad, HK_PC_C02_EFFECT);
+        else if (name == "Test") bit(link_->pad, HK_PC_C02_TEST);
+        else if (name == "Service") bit(link_->pad, HK_PC_C02_SERVICE);
+        else if (name == "Coin 1") {
+            if (value) link_->coins = link_->coins + 1;
+        } else if (name == "P1 Turntable" || name == "P2 Turntable") {   // a position (scripts' `set`)
+            link_->turntable[name[1] - '1'] = (uint8_t)value;
+        } else if (name.rfind("Volume ", 0) == 0 && (k = std::atoi(name.c_str() + 7)) >= 1 && k <= 5)
+            link_->slider[k - 1] = (uint8_t)std::clamp(value, 0, 15);
+        else
+            return false;
+        return true;
+    }
 
     // e-AMUSEMENT: -url's server, or HIRAKU's own on this machine; the DLL is told where (HK_PC_EA)
     bool start_eamuse(const std::string &root) {
@@ -745,7 +835,7 @@ private:
         for (const auto &[game_file, mod_file] : hk::mods::folder_files()) {
             const std::string g = slashes(game_file);
             std::string as;
-            for (const auto &[dir, name] : {std::pair{slashes(data), drive + "\\data"}, std::pair{slashes(program_), drive + "\\prog\\" + prog_name}})
+            for (const auto &[dir, name] : {std::pair{slashes(data), data_as_}, std::pair{slashes(program_), drive + "\\prog\\" + prog_name}})
                 if (g.size() > dir.size() && g.compare(0, dir.size(), dir) == 0 && g[dir.size()] == '/') as = name + g.substr(dir.size());
             if (as.empty()) continue;
             for (char &c : as)
@@ -1005,6 +1095,9 @@ private:
 
     std::string game_, family_ = "pcpopn", exe_, program_, save_, run_prog_, run_e_, link_path_, wine_ = "wine";
     bool pc64_ = false;               // the 64-bit loader runs the game (init_pc64)
+    bool c02_ = false;                // the C02 cabinet's board (beatmania IIDX 9th style, PLAN.md section 33)
+    std::string data_as_;             // the name the game gives its data folder (HK_PC_MAP)
+    int tt_frac_[2] = {};             // turntable_add's counts not yet a whole step
     bool crt_ = false;                // --single-screen: the 64-bit loader's single-screen mode
     std::string contents_, loader_;   // its game folder, hiraku-pc64.exe
     hk::EaOptions ea_;

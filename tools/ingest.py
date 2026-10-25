@@ -1293,7 +1293,8 @@ def main() -> int:
                 top = os.path.dirname(os.path.normpath(data))
                 to = os.path.join(args.out, game["id"], os.path.basename(top))
                 print(f"folder   {os.path.basename(top)} ({move_file(top, to)} into {game['id']}/)")
-                program, data = os.path.join(to, os.path.relpath(program, top)), os.path.join(to, "data")
+                inside = os.path.commonpath([program, top]) == top   # a revision's folder may be elsewhere
+                program, data = os.path.join(to, os.path.relpath(program, top)) if inside else program, os.path.join(to, "data")
             rc |= ingest_pc(args, game, program, data)
             args.inputs.remove(f)
         if not args.inputs:
@@ -1345,7 +1346,31 @@ def pc_folder(folder: str) -> tuple[dict, str, str] | None:
             for f in os.listdir(d):
                 if f.lower() in by_exe:
                     return by_exe[f.lower()], os.path.abspath(d), os.path.abspath(data)
-    return None
+    return revisions_folder(folder, by_exe)
+
+
+def revisions_folder(folder: str, by_exe: dict) -> tuple[dict, str, str] | None:
+    """A PC game kept as program folders by revision beside its data (PLAN.md section 33: beatmania
+    IIDX 9th style's C02/JAA ... C02/JAH/bm2dx.exe and C02/data/), found a few folders down (a dump
+    can hold the newer revisions apart from the drive's copy). The newest revision is run: the last
+    by name (JAH after JAG). (game, program folder, data)."""
+    programs, datas = [], []
+    base = os.path.normpath(folder).count(os.sep)
+    for d, dirs, files in os.walk(folder):
+        if os.path.normpath(d).count(os.sep) - base >= 4:
+            dirs[:] = []
+        for f in files:
+            g = by_exe.get(f.lower())
+            if g and g["pc"].get("layout") == "revisions":
+                programs.append((os.path.basename(d).upper(), d, g))
+        datas += [os.path.join(d, x) for x in dirs if x.lower() == "data"]
+    if not programs or not datas:
+        return None
+    _, program, game = max(programs, key=lambda p: p[0])
+    # the data folder beside a program folder, else the only one
+    beside = [x for x in datas if any(os.path.dirname(x) == os.path.dirname(p[1]) for p in programs)]
+    data = (beside or datas)[0]
+    return game, os.path.abspath(program), os.path.abspath(data)
 
 
 def contents_folder(folder: str) -> tuple[dict, str, dict] | None:
@@ -1393,6 +1418,7 @@ def ingest_pc(args, game: dict, program: str, data: str) -> int:
     os.makedirs(outdir, exist_ok=True)
     lines = ["core=pc", f"family={game.get('family', 'pcpopn')}", f"exe={pc['exe']}", f"program={program}",
              f"data={data}", f"drive={pc.get('drive', 'D:' + chr(92) + gid)}", f"save_drive={pc.get('save_drive', 'E:' + chr(92))}"]
+    lines += [f"{k}={pc[k]}" for k in ("save_drive2", "data_as", "board") if k in pc]
     with open(os.path.join(outdir, "machine.txt"), "w") as fh:
         fh.write("\n".join(lines) + "\n")
     print(f"game     {gid}: {game.get('title', gid)} (a PC game)")

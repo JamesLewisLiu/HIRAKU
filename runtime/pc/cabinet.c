@@ -462,6 +462,8 @@ static void *patch_slot(void **slot, void *to) {
 
 // HIRAKU's window shows the pictures (hiraku-pc's link says so): the game's stays hidden
 static int host_shows(void) { return hk_link()->host_shows != 0; }
+int hk_host_shows(void) { return host_shows(); }
+void *hk_patch_slot(void **slot, void *to) { return patch_slot(slot, to); }
 
 static void windowed(D3DPRESENT_PARAMETERS *pp) {
     if (!g_win_w && !g_win_full && !host_shows()) return;
@@ -500,8 +502,35 @@ static IDirect3DSurface9 *g_readback;
 static UINT g_rb_w, g_rb_h;
 static D3DFORMAT g_rb_fmt;
 
-static int capture(IDirect3DDevice9 *d) {
+// A picture's pixels into the link's (0x00RRGGBB), from a surface of D3DFORMAT `format` (the same
+// numbers in Direct3D 8 and 9)
+void hk_put_pixels(const void *bits, int pitch, unsigned w, unsigned h, int format) {
     struct hk_pc_link *l = hk_link();
+    uint32_t *out = (uint32_t *)((char *)l + HK_PC_PIXELS);
+    for (UINT y = 0; y < h; y++) {
+        const uint8_t *row = (const uint8_t *)bits + (size_t)y * pitch;
+        uint32_t *o = out + (size_t)y * w;
+        if (format == D3DFMT_X8R8G8B8 || format == D3DFMT_A8R8G8B8) {
+            const uint32_t *p = (const uint32_t *)row;
+            for (UINT x = 0; x < w; x++) o[x] = p[x] & 0xffffff;
+        } else if (format == D3DFMT_R5G6B5) {
+            const uint16_t *p = (const uint16_t *)row;
+            for (UINT x = 0; x < w; x++) {
+                const uint32_t v = p[x], r = v >> 11, g = v >> 5 & 63, b = v & 31;
+                o[x] = (r << 3 | r >> 2) << 16 | (g << 2 | g >> 4) << 8 | (b << 3 | b >> 2);
+            }
+        } else if (format == D3DFMT_X1R5G5B5 || format == D3DFMT_A1R5G5B5) {
+            const uint16_t *p = (const uint16_t *)row;
+            for (UINT x = 0; x < w; x++) {
+                const uint32_t v = p[x], r = v >> 10 & 31, g = v >> 5 & 31, b = v & 31;
+                o[x] = (r << 3 | r >> 2) << 16 | (g << 3 | g >> 2) << 8 | (b << 3 | b >> 2);
+            }
+        }
+    }
+    l->frame_w = w, l->frame_h = h;
+}
+
+static int capture(IDirect3DDevice9 *d) {
     IDirect3DSurface9 *bb = NULL;
     int ok = 0;
     if (FAILED(IDirect3DDevice9_GetBackBuffer(d, 0, 0, D3DBACKBUFFER_TYPE_MONO, &bb))) return 0;
@@ -526,29 +555,8 @@ static int capture(IDirect3DDevice9 *d) {
     D3DLOCKED_RECT lr;
     if (SUCCEEDED(IDirect3DDevice9_GetRenderTargetData(d, bb, g_readback)) &&
         SUCCEEDED(IDirect3DSurface9_LockRect(g_readback, &lr, NULL, D3DLOCK_READONLY))) {
-        uint32_t *out = (uint32_t *)((char *)l + HK_PC_PIXELS);
-        for (UINT y = 0; y < desc.Height; y++) {
-            const uint8_t *row = (const uint8_t *)lr.pBits + (size_t)y * lr.Pitch;
-            uint32_t *o = out + (size_t)y * desc.Width;
-            if (desc.Format == D3DFMT_X8R8G8B8 || desc.Format == D3DFMT_A8R8G8B8) {
-                const uint32_t *p = (const uint32_t *)row;
-                for (UINT x = 0; x < desc.Width; x++) o[x] = p[x] & 0xffffff;
-            } else if (desc.Format == D3DFMT_R5G6B5) {
-                const uint16_t *p = (const uint16_t *)row;
-                for (UINT x = 0; x < desc.Width; x++) {
-                    const uint32_t v = p[x], r = v >> 11, g = v >> 5 & 63, b = v & 31;
-                    o[x] = (r << 3 | r >> 2) << 16 | (g << 2 | g >> 4) << 8 | (b << 3 | b >> 2);
-                }
-            } else if (desc.Format == D3DFMT_X1R5G5B5 || desc.Format == D3DFMT_A1R5G5B5) {
-                const uint16_t *p = (const uint16_t *)row;
-                for (UINT x = 0; x < desc.Width; x++) {
-                    const uint32_t v = p[x], r = v >> 10 & 31, g = v >> 5 & 31, b = v & 31;
-                    o[x] = (r << 3 | r >> 2) << 16 | (g << 3 | g >> 2) << 8 | (b << 3 | b >> 2);
-                }
-            }
-        }
+        hk_put_pixels(lr.pBits, lr.Pitch, desc.Width, desc.Height, (int)desc.Format);
         IDirect3DSurface9_UnlockRect(g_readback);
-        l->frame_w = desc.Width, l->frame_h = desc.Height;
         ok = 1;
     }
     IDirect3DSurface9_Release(bb);
@@ -641,20 +649,32 @@ static void dbg_records(void) {
     }
 }
 
-static HRESULT WINAPI my_Present(IDirect3DDevice9 *d, const RECT *src, const RECT *dst, HWND wnd, const RGNDATA *dirty) {
-    if (g_npatches) apply_patches();   // before the next frame runs
+// Each Present, Direct3D 9's or 8's (d3d8.c): the mods' patches and the debug watch first, before
+// the next frame runs
+void hk_present_begin(void) {
+    if (g_npatches) apply_patches();
     dbg_records();
+}
+
+// A picture the game has drawn, in HIRAKU's window (its pixels in the link if `captured`): counted
+// with its frame's sound, then the game waits for hiraku-pc's next frame
+void hk_picture_drawn(int captured) {
+    struct hk_pc_link *l = hk_link();
+    if (captured) {
+        hk_dsound_picture();   // the frame's sound, with its picture
+        l->drawn_us = l->go_count ? us_since_go(l) : 0;
+        MemoryBarrier();
+        l->frame_seq = l->frame_seq + 1;
+    }
+    l->frames++;
+    if (g_waitlog > 0) waits_report();
+    wait_for_go();
+}
+
+static HRESULT WINAPI my_Present(IDirect3DDevice9 *d, const RECT *src, const RECT *dst, HWND wnd, const RGNDATA *dirty) {
+    hk_present_begin();
     if (host_shows()) {   // HIRAKU's window shows it, at the time its pacing chooses
-        struct hk_pc_link *l = hk_link();
-        if (capture(d)) {
-            hk_dsound_picture();   // the frame's sound, with its picture
-            l->drawn_us = l->go_count ? us_since_go(l) : 0;
-            MemoryBarrier();
-            l->frame_seq = l->frame_seq + 1;
-        }
-        l->frames++;
-        if (g_waitlog > 0) waits_report();
-        wait_for_go();
+        hk_picture_drawn(capture(d));
         return D3D_OK;
     }
     RECT fit;
@@ -742,6 +762,8 @@ static BOOL WINAPI my_ShowWindow(HWND w, int how) {
     return ShowWindow(w, how);
 }
 
+void hk_place_window(void *w) { place_window((HWND)w); }
+
 // --- HK_PC_WAITLOG: where the game waits between frame_go and its Present (finding its frame clock)
 
 static struct { void *site; DWORD calls; double ms; } g_waits[16];
@@ -764,6 +786,16 @@ static void waits_report(void) {
     for (int i = 0; i < 16 && g_waits[i].site; i++)
         hk_log("waitlog: site %p: %lu calls, %.1f ms a frame", g_waits[i].site, g_waits[i].calls, g_waits[i].ms / 600);
     memset(g_waits, 0, sizeof g_waits);
+}
+
+// --- HK_PC_THREADLOG: the threads the game's modules start (where, and from where), for bringing a game up
+static HANDLE WINAPI my_CreateThread(LPSECURITY_ATTRIBUTES sa, SIZE_T stack, LPTHREAD_START_ROUTINE fn, LPVOID arg, DWORD flags,
+                                     LPDWORD id) {
+    DWORD tid = 0;
+    HANDLE h = CreateThread(sa, stack, fn, arg, flags, &tid);
+    hk_log("hiraku-pc: thread %04lx starts at %p (arg %p), from %p", (unsigned long)tid, (void *)fn, arg, __builtin_return_address(0));
+    if (id) *id = tid;
+    return h;
 }
 
 static void WINAPI my_Sleep(DWORD ms) {
@@ -875,6 +907,7 @@ static void *hook_for(const char *dll, const char *fn) {
     if (g_waitlog && !_stricmp(dll, "kernel32.dll") && !strcmp(fn, "Sleep")) return (void *)my_Sleep;
     if (g_waitlog && !_stricmp(dll, "kernel32.dll") && !strcmp(fn, "WaitForSingleObject")) return (void *)my_WaitForSingleObject;
     if (g_waitlog && !_stricmp(dll, "user32.dll") && !strcmp(fn, "MsgWaitForMultipleObjects")) return (void *)my_MsgWaitForMultipleObjects;
+    if (!_stricmp(dll, "kernel32.dll") && !strcmp(fn, "CreateThread") && getenv("HK_PC_THREADLOG")) return (void *)my_CreateThread;
     static const struct { const char *dll, *fn; void *to; } hooks[] = {
         {"kernel32.dll", "CreateFileA", (void *)my_CreateFileA},
         {"kernel32.dll", "CreateDirectoryA", (void *)my_CreateDirectoryA},
@@ -885,6 +918,7 @@ static void *hook_for(const char *dll, const char *fn) {
         {"kernel32.dll", "MoveFileA", (void *)my_MoveFileA},
         {"kernel32.dll", "GetFullPathNameA", (void *)my_GetFullPathNameA},
         {"d3d9.dll", "Direct3DCreate9", (void *)my_Direct3DCreate9},
+        {"d3d8.dll", "Direct3DCreate8", (void *)hk_Direct3DCreate8},   // d3d8.c
         {"user32.dll", "ShowWindow", (void *)my_ShowWindow},
         {"dsound.dll", "DirectSoundCreate8", (void *)hk_DirectSoundCreate8},
         {"dsound.dll", "DirectSoundCreate", (void *)hk_DirectSoundCreate},
@@ -892,6 +926,7 @@ static void *hook_for(const char *dll, const char *fn) {
     for (size_t i = 0; i < sizeof hooks / sizeof *hooks; i++)
         if (!_stricmp(dll, hooks[i].dll) && !strcmp(fn, hooks[i].fn)) {
             if (hooks[i].to == (void *)my_Direct3DCreate9 && !g_win_w && !g_win_full && g_hz <= 0 && !host_shows()) return NULL;
+            if (hooks[i].to == (void *)hk_Direct3DCreate8 && !host_shows()) return NULL;   // HIRAKU's window only
             if (hooks[i].dll[0] == 'k' && !g_nmap && !g_nfiles) return NULL;
             // the window and the sound are HIRAKU's only when its window shows the game
             if ((!_stricmp(hooks[i].dll, "user32.dll") || !_stricmp(hooks[i].dll, "dsound.dll")) && !host_shows()) return NULL;

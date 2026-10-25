@@ -98,7 +98,7 @@ QString Game::howTo() const {
     if (core == "pc") {   // a PC game: Konami's own program in HIRAKU's cabinet (hiraku-pc)
         if (status == NotInstalled)
             return QString("HIRAKU has no data for %1 yet. You need the game's own folder, as the cabinet's "
-                           "drive holds it: prog (its programs, by date) and data.\n\n"
+                           "drive holds it: %3.\n\n"
                            "Drop that folder on this window, or File > Add game files. HIRAKU reads it where it "
                            "is (it is large), so keep it there.%2")
                 .arg(title, QString(
@@ -107,7 +107,10 @@ QString Game::howTo() const {
 #else
                     " On Linux the game runs under Wine, which needs to be installed."
 #endif
-                    ));
+                    ),
+                     family == "iidx" ? QString("C02 with data and its programs, a folder each by revision (JAA, JAB...: "
+                                                "the last is run)")
+                                      : QString("prog (its programs, by date) and data"));
         if (status == NotBuilt || status == Unavailable)
             return QString("This HIRAKU has no hiraku-pc, which runs the PC games. Is the binaries folder right (Settings)?");
         return {};

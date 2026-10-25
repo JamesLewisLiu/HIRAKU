@@ -19,6 +19,8 @@
 //                 memory patches put in place as docs/MODS.md says, before each picture
 //   HK_PC_CRASHLOG for bringing a game up: a fault's place, registers and the program's return
 //                 addresses on the stack, to the log
+//   HK_PC_THREADLOG for bringing a game up: each thread the game's modules start (its routine,
+//                 and where it was started from), to the log
 //   HK_PC_PRESS_TIME 1: presses judged by when they happened, not by the frame the game read them
 //                 in (pop'n 15-18; press.c)
 //   HK_PC_JUDGE_OFFSET milliseconds taken off each press's time before it's judged (positive: the
@@ -58,6 +60,15 @@ void *hk_vsock_hook(const char *fn);
 void *hk_comm_hook(const char *fn);   // libcomm's, for HK_PC_NET_LOG
 // pop'n 16-18: libsocket built into the program, its calls made jumps to the relay's (vsock.c)
 void hk_vsock_patch_program(void);
+// The pictures, in HIRAKU's window: what the Direct3D 9 hooks (cabinet.c) and the Direct3D 8 ones
+// (d3d8.c) share
+int hk_host_shows(void);                     // hiraku-pc's window shows the game (the link says so)
+void *hk_patch_slot(void **slot, void *to);  // a pointer (a vtable's, an import's) set; what it was, or NULL
+void hk_place_window(void *hwnd);            // the game's window, hidden while HIRAKU's shows it
+void hk_put_pixels(const void *bits, int pitch, unsigned w, unsigned h, int format);   // D3DFORMAT's numbers
+void hk_present_begin(void);                 // each Present: the mods' patches, the debug watch
+void hk_picture_drawn(int captured);         // a picture (in the link if captured): counted, then wait for the next frame
+void *__stdcall hk_Direct3DCreate8(unsigned sdk);   // d3d8.c: the game's Direct3D 8 (beatmania IIDX 9th style)
 // HIRAKU's DirectSound (dsound.c): the game's, when HIRAKU's window shows it
 long __stdcall hk_DirectSoundCreate8(const void *device, void **out, void *outer);
 long __stdcall hk_DirectSoundCreate(const void *device, void **out, void *outer);

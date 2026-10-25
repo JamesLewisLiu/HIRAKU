@@ -15,8 +15,8 @@
 //
 // Step 1 (bring-up): each call is logged the first times it's made (all of them with
 // HK_PC_USB_LOG), the security plug answers as bm2dx.exe checks it, a new cabinet's settings pass
-// (set_up_cabinet), the turntables and sliders rest. The card readers, the 10-keys and the ticker
-// come later.
+// (set_up_cabinet). The turntables, sliders, ticker and lamps go through the link (link.h, v7). The
+// card readers and the 10-keys come later.
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <stdint.h>
@@ -121,12 +121,14 @@ CALL4(usbPadRead) {
 // A turntable's position, 0-255 (player 1: 0, player 2: 1)
 CALL4(usbGetTurnTable) {
     static int n_;
-    return usb_log() ? SAID(0) : 0;
+    const int v = hk_link()->turntable[a & 1];
+    return usb_log() ? SAID(v) : v;
 }
 // An effect slider's position, 0-15 (0-4)
 CALL4(usbGetSlide) {
     static int n_;
-    return usb_log() ? SAID(8) : 8;
+    const int v = a >= 0 && a < 5 ? hk_link()->slider[a] & 15 : 0;
+    return usb_log() ? SAID(v) : v;
 }
 // The coins put in so far (usbCoinGet(0); the game counts the new ones)
 CALL4(usbCoinGet) {
@@ -150,19 +152,34 @@ CALL4(usbLamp) {
     hk_link()->lamps = (uint32_t)a;
     return usb_log() ? SAID(0) : 0;
 }
-CALL4(usbLed) { static int n_; return usb_log() ? SAID(0) : 0; }
-CALL4(usbTopUnitLamp) { static int n_; return usb_log() ? SAID(0) : 0; }
-CALL4(usbTopUnitNeon) { static int n_; return usb_log() ? SAID(0) : 0; }
+CALL4(usbLed) {
+    static int n_;
+    hk_link()->led = (uint8_t)(a & 15);
+    return usb_log() ? SAID(0) : 0;
+}
+CALL4(usbTopUnitLamp) {
+    static int n_;
+    hk_link()->top_lamp = (uint8_t)a;
+    return usb_log() ? SAID(0) : 0;
+}
+CALL4(usbTopUnitNeon) {
+    static int n_;
+    hk_link()->top_neon = (uint8_t)(a & 1);
+    return usb_log() ? SAID(0) : 0;
+}
 
 // --- the 16-segment ticker: 9 characters, sent when they change (bm2dx.exe 0x421a40)
 CALL4(usb16Seg) {
     static int n_;
     (void)b, (void)c, (void)d;
-    if (a && (n_ < 3 || usb_log())) {
-        char text[10];
-        memcpy(text, (const void *)(intptr_t)a, 9);
-        text[9] = 0;
-        hk_log("usb: usb16Seg \"%s\"", text);
+    if (a) {
+        memcpy((void *)hk_link()->ticker, (const void *)(intptr_t)a, 9);
+        if (n_ < 3 || usb_log()) {
+            char text[10];
+            memcpy(text, (const void *)(intptr_t)a, 9);
+            text[9] = 0;
+            hk_log("usb: usb16Seg \"%s\"", text);
+        }
     }
     n_++;
     return 0;

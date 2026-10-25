@@ -1,0 +1,14 @@
+# beatmania IIDX 9th style (C02 J:A:x), Konami 2003: a Windows PC, the C02 cabinet
+id = "iidx9"
+title = "beatmania IIDX 9th style"
+family = "iidx"         # IIDX cabinet: 7 keys and a turntable per player, VEFX, Effect, 5 effector sliders
+core = "pc"             # Konami's own program in HIRAKU's cabinet (runtime/pc/, PLAN.md section 33)
+
+[pc]
+exe = "bm2dx.exe"       # in C02/JAx/, a folder by revision: the last (JAH) is run
+layout = "revisions"
+board = "c02"           # the C02 cabinet's EZ-USB board (runtime/pc/ezusb_c02.c)
+drive = 'D:\C02'        # where the game is: its program in JAx, its data beside it
+data_as = '..\data'     # the game names its data from the program's folder
+save_drive = 'E:\'      # its two backup drives (bkeep.dat, the AVS NVRAM)
+save_drive2 = 'F:\'

@@ -16,7 +16,7 @@
 #include <stdint.h>
 
 #define HK_PC_LINK_MAGIC 0x4b50484bu   // "HKPK"
-#define HK_PC_LINK_VERSION 6u
+#define HK_PC_LINK_VERSION 7u
 
 // The pad's bits, as Konami's ezusb.dll gives them to pop'n music (usbPadRead)
 #define HK_PC_PAD_SERVICE (1u << 6)
@@ -26,6 +26,15 @@
 #define HK_PC_PAD_RED (1u << 17)
 #define HK_PC_PAD_BLUE (1u << 18)
 #define HK_PC_PAD_HEADPHONES (1u << 19)
+
+// The C02 cabinet's pad (beatmania IIDX 9th style, runtime/pc/ezusb_c02.c), as its usbPadRead gives
+// it: the keys 1-7 of player 1 (p 1) and 2, the starts, VEFX, Effect, test and service
+#define HK_PC_C02_KEY(p, k) (1u << (7 + 7 * ((p) - 1) + (k)))   // player 1: bits 8-14, player 2: 15-21
+#define HK_PC_C02_START(p) (1u << (23 + (p)))                    // 24, 25
+#define HK_PC_C02_VEFX (1u << 26)
+#define HK_PC_C02_EFFECT (1u << 27)
+#define HK_PC_C02_TEST (1u << 28)
+#define HK_PC_C02_SERVICE (1u << 29)
 
 // The reader's 10-key: bits 0-9 its digits, then these
 #define HK_PC_KEY_00 (1u << 10)
@@ -96,6 +105,12 @@ struct hk_pc_link {
     // hiraku-pc, with frame_go: the picture the game draws next won't be shown (a 120 Hz game's
     // first of two on a slower display): the 64-bit loader doesn't read it back
     volatile uint32_t not_shown;
+    // The C02 cabinet's (v7): hiraku-pc's turntables (0-255, players 1 and 2) and effector sliders
+    // (0-15); the game's 16-segment ticker (9 characters), its top unit's lamps (spotlights 1-8) and
+    // neon, and the LEDs (bits 0-3: the starts, VEFX, Effect; usbLamp's keys are in lamps)
+    volatile uint8_t turntable[2], slider[5];
+    volatile char ticker[9];
+    volatile uint8_t top_lamp, top_neon, led;
 };
 
 #define HK_PC_PIXELS 4096u                         // where the pixels start in the file

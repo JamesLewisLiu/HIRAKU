@@ -254,10 +254,11 @@ if(HK_PC_DLL_CC)
               -o ${CMAKE_BINARY_DIR}/pc/${dll}.dll ${CMAKE_SOURCE_DIR}/runtime/pc/${dll}.c
               ${CMAKE_SOURCE_DIR}/runtime/pc/cabinet.c ${CMAKE_SOURCE_DIR}/runtime/pc/dsound.c
               ${CMAKE_SOURCE_DIR}/runtime/pc/net.c ${CMAKE_SOURCE_DIR}/runtime/pc/vsock.c ${CMAKE_SOURCE_DIR}/runtime/pc/press.c
+              ${CMAKE_SOURCE_DIR}/runtime/pc/d3d8.c
               ${CMAKE_SOURCE_DIR}/runtime/pc/${dll}.def
               -lpsapi -lgdi32 -ldxguid -lws2_32 -liphlpapi
       DEPENDS runtime/pc/${dll}.c runtime/pc/${dll}.def runtime/pc/cabinet.c runtime/pc/cabinet.h runtime/pc/link.h
-              runtime/pc/dsound.c runtime/pc/net.c runtime/pc/vsock.c runtime/pc/press.c
+              runtime/pc/dsound.c runtime/pc/net.c runtime/pc/vsock.c runtime/pc/press.c runtime/pc/d3d8.c
       COMMENT "pc/${dll}.dll (32-bit)")
     list(APPEND HK_PC_DLLS ${CMAKE_BINARY_DIR}/pc/${dll}.dll)
   endforeach()
@@ -268,10 +269,10 @@ if(HK_PC_DLL_CC)
             -o ${CMAKE_BINARY_DIR}/pc/c02/ezusb.dll ${CMAKE_SOURCE_DIR}/runtime/pc/ezusb_c02.c
             ${CMAKE_SOURCE_DIR}/runtime/pc/cabinet.c ${CMAKE_SOURCE_DIR}/runtime/pc/dsound.c
             ${CMAKE_SOURCE_DIR}/runtime/pc/net.c ${CMAKE_SOURCE_DIR}/runtime/pc/vsock.c ${CMAKE_SOURCE_DIR}/runtime/pc/press.c
-            ${CMAKE_SOURCE_DIR}/runtime/pc/ezusb_c02.def
+            ${CMAKE_SOURCE_DIR}/runtime/pc/d3d8.c ${CMAKE_SOURCE_DIR}/runtime/pc/ezusb_c02.def
             -lpsapi -lgdi32 -ldxguid -lws2_32 -liphlpapi
     DEPENDS runtime/pc/ezusb_c02.c runtime/pc/ezusb_c02.def runtime/pc/cabinet.c runtime/pc/cabinet.h runtime/pc/link.h
-            runtime/pc/dsound.c runtime/pc/net.c runtime/pc/vsock.c runtime/pc/press.c
+            runtime/pc/dsound.c runtime/pc/net.c runtime/pc/vsock.c runtime/pc/press.c runtime/pc/d3d8.c
     COMMENT "pc/c02/ezusb.dll (32-bit)")
   list(APPEND HK_PC_DLLS ${CMAKE_BINARY_DIR}/pc/c02/ezusb.dll)
   add_custom_target(hiraku-pc-dlls ALL DEPENDS ${HK_PC_DLLS})
