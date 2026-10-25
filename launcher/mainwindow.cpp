@@ -687,6 +687,7 @@ static QString statusOf(const Game &g, bool *notable) {
     if (const int n = cfg::modsOn(g.id).size()) notes << (n == 1 ? QString("1 mod") : QString("%1 mods").arg(n));
     if (!cfg::settings().value("gameArgs/" + g.id).toString().isEmpty()) notes << "own arguments";
     if (cfg::settings().contains("dips/" + g.id)) notes << "DIP switches set";
+    if (g.hidden && cfg::settings().value("singleScreen/" + g.id).toBool()) notes << "one 4:3 screen";
     return notes.isEmpty() ? QString("Ready") : notes.join(", ");
 }
 
@@ -922,6 +923,7 @@ QStringList MainWindow::arguments(const Game &g) const {
         if (QString ac = s.value("eamuse/autocard", "off").toString(); ac != "off") a << "-autocard" << ac;
         if (s.value("eamuse/autopin", false).toBool()) a << "-autopin";
     }
+    if (g.hidden && s.value("singleScreen/" + g.id).toBool()) a << "--single-screen";   // (Game menu)
     if (g.core == "pc") {   // pop'n music 15-18's presses (runtime/pc/press.c)
         if (s.value("game/pressTime", false).toBool()) a << "--press-time";
         if (int ms = s.value("game/judgeOffset", 0).toInt(); ms) a << "--judge-offset" << QString::number(ms);
@@ -1083,6 +1085,17 @@ void MainWindow::fillGameMenu(QMenu *menu, const Game &g) {
         cd->setCheckable(true);
         cd->setChecked(cfg::settings().value("cd/" + id).toString() == "install");
         cd->setToolTip("To install again, or finish an install that stopped before it was done");
+    }
+    if (g.hidden) {   // the 64-bit PC games ([pc] loader = "pc64"): on one 4:3 screen (runtime/pc64/crt.c)
+        auto *one = menu->addAction("One 4:3 screen, nine buttons", this, [this, id](bool on) {
+            if (on) cfg::settings().setValue("singleScreen/" + id, true);
+            else cfg::settings().remove("singleScreen/" + id);
+            gameChanged();
+        });
+        one->setCheckable(true);
+        one->setChecked(cfg::settings().value("singleScreen/" + id).toBool());
+        one->setToolTip("For an older cabinet: the main screen at 640x480, no touch screen or big buttons; "
+                        "the save folder's single-screen/ layout when there is one");
     }
     menu->addSeparator();
     QString nv = cfg::nvramDir(id);
