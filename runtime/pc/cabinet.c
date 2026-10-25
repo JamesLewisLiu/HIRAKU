@@ -832,13 +832,15 @@ static int printable(const void *p) {
 
 static void avs_said(const char *fn, void *const *a, intptr_t r) {
     // the status calls a game polls every frame: said when their result changes
-    static const char *const polled[] = {"ea3_get_status", "avs_keepalive_get_status", "ea3_get_boot_status", "avs_net_ctrl"};
-    static intptr_t last[4] = {-12345, -12345, -12345, -12345};
-    for (int i = 0; i < 4; i++)
+    static const char *const polled[] = {"ea3_get_status", "avs_keepalive_get_status", "ea3_get_boot_status", "avs_net_ctrl",
+                                         "sonet_finish"};
+    static intptr_t last[5] = {-12345, -12345, -12345, -12345, -12345};
+    for (int i = 0; i < 5; i++)
         if (!strcmp(fn, polled[i])) {
             intptr_t v = r;
             if (i == 0 && present((const uint8_t *)a[0], 4) && present((const uint8_t *)a[1], 4))
                 v = r * 1000003 + *(const int *)a[0] * 1009 + *(const int *)a[1];
+            if (i == 4) v = r * 1000003 + (intptr_t)a[1];   // sonet_finish: each request's result
             if (last[i] == v) return;
             last[i] = v;
         }
@@ -864,22 +866,25 @@ typedef intptr_t(__cdecl *avs6_t)(void *, void *, void *, void *, void *, void *
     }
 AVS_LOGGED(0) AVS_LOGGED(1) AVS_LOGGED(2) AVS_LOGGED(3) AVS_LOGGED(4) AVS_LOGGED(5) AVS_LOGGED(6) AVS_LOGGED(7)
 AVS_LOGGED(8) AVS_LOGGED(9) AVS_LOGGED(10) AVS_LOGGED(11) AVS_LOGGED(12) AVS_LOGGED(13) AVS_LOGGED(14)
+AVS_LOGGED(15) AVS_LOGGED(16)
 
 static void *avs_logged(const char *dll, const char *fn) {
     static const char *const names[] = {"avs_fs_mount", "avs_fs_open", "avs_fs_lstat", "avs_fs_opendir", "avs_fs_umount",
                                         "ea3_pkglist_open", "ea3_pkglist_get", "ea3_pkglist_next", "ea3_pkg_open_by_name",
                                         "ea3_pkg_read", "ea3_boot", "ea3_get_boot_status", "ea3_get_status",
-                                        "avs_keepalive_get_status", "avs_keepalive_find_by_name"};
+                                        "avs_keepalive_get_status", "avs_keepalive_find_by_name",
+                                        "sonet_request", "sonet_finish"};   // IIDX 9th style's network glue
     static avs6_t *const real[] = {&g_avs_real0, &g_avs_real1, &g_avs_real2, &g_avs_real3, &g_avs_real4, &g_avs_real5,
                                    &g_avs_real6, &g_avs_real7, &g_avs_real8, &g_avs_real9, &g_avs_real10, &g_avs_real11,
-                                   &g_avs_real12, &g_avs_real13, &g_avs_real14};
+                                   &g_avs_real12, &g_avs_real13, &g_avs_real14, &g_avs_real15, &g_avs_real16};
     static const char **const name[] = {&g_avs_name0, &g_avs_name1, &g_avs_name2, &g_avs_name3, &g_avs_name4, &g_avs_name5,
                                         &g_avs_name6, &g_avs_name7, &g_avs_name8, &g_avs_name9, &g_avs_name10, &g_avs_name11,
-                                        &g_avs_name12, &g_avs_name13, &g_avs_name14};
+                                        &g_avs_name12, &g_avs_name13, &g_avs_name14, &g_avs_name15, &g_avs_name16};
     static void *const wrap[] = {(void *)avs_wrap0, (void *)avs_wrap1, (void *)avs_wrap2, (void *)avs_wrap3,
                                  (void *)avs_wrap4, (void *)avs_wrap5, (void *)avs_wrap6, (void *)avs_wrap7,
                                  (void *)avs_wrap8, (void *)avs_wrap9, (void *)avs_wrap10, (void *)avs_wrap11,
-                                 (void *)avs_wrap12, (void *)avs_wrap13, (void *)avs_wrap14};
+                                 (void *)avs_wrap12, (void *)avs_wrap13, (void *)avs_wrap14, (void *)avs_wrap15,
+                                 (void *)avs_wrap16};
     static int on = -1;
     if (on < 0) on = getenv("HK_PC_AVS_LOG") != NULL;
     if (!on) return NULL;
@@ -903,6 +908,7 @@ static void *hook_for(const char *dll, const char *fn) {
         return v ? v : avs_logged(dll, fn);
     }
     if (!_stricmp(dll, "libcomm.dll")) return hk_comm_hook(fn);
+    if (!_stricmp(dll, "sonet.dll")) return avs_logged(dll, fn);
     if (g_waitlog < 0) g_waitlog = getenv("HK_PC_WAITLOG") != NULL;
     if (g_waitlog && !_stricmp(dll, "kernel32.dll") && !strcmp(fn, "Sleep")) return (void *)my_Sleep;
     if (g_waitlog && !_stricmp(dll, "kernel32.dll") && !strcmp(fn, "WaitForSingleObject")) return (void *)my_WaitForSingleObject;

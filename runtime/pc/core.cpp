@@ -293,6 +293,14 @@ public:
         ea_.read_card_files(save_, &error);
         if (!error.empty()) fprintf(stderr, "%s\n", error.c_str());
         if (!start_eamuse(o.root)) return false;
+        if (c02_) {
+            // the C02 cabinet's e-AMUSEMENT (PLAN.md section 33): its domain, which its library
+            // asks "services." of (runtime/pc/net.c), and the board's PCB id (-p's, else HIRAKU's)
+            set_env("HK_PC_EA_DOMAIN", "eamuse.konami.fun");
+            set_env("HK_PC_PCBID", ea_.pcbid.empty() ? "01201000000000C02001" : ea_.pcbid);
+            set_env("HK_PC_CARD1", win_path(save_ + "/card.bin"));   // the magnetic cards (ezusb_c02.c)
+            set_env("HK_PC_CARD2", win_path(save_ + "/card2.bin"));
+        }
         // a bare pop'n board's firmware: the game's own ezusb.dll, unless --popn-io-dll gave one
         if (!c02_) hk::host::popnio_default_dll(program_ + "/ezusb.dll");
 
@@ -712,6 +720,15 @@ private:
         else if (name == "Service") bit(link_->pad, HK_PC_C02_SERVICE);
         else if (name == "Coin 1") {
             if (value) link_->coins = link_->coins + 1;
+        } else if (name == "Card") {   // player 1's card held to the slot
+            if (value) link_->card_seq = link_->card_seq + 1;
+        } else if (name.rfind("Keypad ", 0) == 0) {   // player 1's 10-key
+            const std::string k = name.substr(7);
+            if (k.size() == 1 && k[0] >= '0' && k[0] <= '9') bit(link_->keypad, 1u << (k[0] - '0'));
+            else if (k == "Enter" || k == "00") bit(link_->keypad, HK_PC_KEY_00);
+            else if (k == ".") bit(link_->keypad, HK_PC_KEY_DECIMAL);
+            else if (k == "Clear") bit(link_->keypad, HK_PC_KEY_CLEAR);
+            else return false;
         } else if (name == "P1 Turntable" || name == "P2 Turntable") {   // a position (scripts' `set`)
             link_->turntable[name[1] - '1'] = (uint8_t)value;
         } else if (name.rfind("Volume ", 0) == 0 && (k = std::atoi(name.c_str() + 7)) >= 1 && k <= 5)

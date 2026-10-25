@@ -20,6 +20,7 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -103,7 +104,18 @@ STUB(usbSecurityReadDone, 0)
 STUB(usbSecurityWrite, 0)
 STUB(usbSecurityWriteDone, 0)
 STUB(usbSecurityTest, 0)
-STUB(usbGetPCBID, 0)   // 10 bytes, left as the game zeroed them (e-AMUSEMENT will want one)
+// The PCB id (10 bytes; e-AMUSEMENT's srcid): hiraku-pc's (HK_PC_PCBID, 20 hex digits: -p's or
+// HIRAKU's own), else left as the game zeroed it
+CALL4(usbGetPCBID) {
+    static int n_;
+    const char *id = getenv("HK_PC_PCBID");
+    if (a && id && strlen(id) == 20)
+        for (int i = 0; i < 10; i++) {
+            unsigned v;
+            if (sscanf(id + 2 * i, "%2x", &v) == 1) ((uint8_t *)(intptr_t)a)[i] = (uint8_t)v;
+        }
+    return SAID(0);
+}
 STUB(usbGetKEYID, 0)
 STUB(usbEepRead, 0)
 STUB(usbEepReadDone, 0)
@@ -191,7 +203,7 @@ STUB(usb16SegScrollStop, 0)
 
 // --- the H8 behind the board: the magnetic card readers and the 10-keys
 STUB(usbH8UartInit, 0)
-STUB(usbH8IdConfirm, 0)
+STUB(usbH8IdConfirm, 2)   // the card units behind the H8: 1 or 2 (bm2dx.exe 0x468e69; else both NG)
 STUB(usbH8GetVersion, 0)
 STUB(usbH8ProgExec, 0)
 STUB(usbH8Init, 0)
@@ -202,31 +214,185 @@ STUB(usbH8CardCtrl, 0)
 STUB(usbH8CardFormat, 0)
 STUB(usbH8KeyboardInit, 0)
 STUB(usbH8KeyboardGetStatus, 0)
-STUB(usbH8KeyboardReadData, 0)
-STUB(usbH8KeyboardGetSize, 0)
-STUB(usbH8KeyboardGetSizeDone, 0)
-STUB(usbCardOpen, 0)
-STUB(usbCardClose, 0)
-STUB(usbCardGetStatus, 0)
-STUB(usbCardRead, 0)
-STUB(usbCardWrite, 0)
-STUB(usbCardFormat, 0)
-STUB(usbCardEject, 0)
+
+// The 10-keys: their keys as PS/2 set 2 scan codes (the code down, f0 and the code up), as the game
+// decodes them (bm2dx.exe 0x469630: the keypad's digits, Enter, Backspace for Clear, the decimal
+// point; Enter without its e0, which the game skips). Player 1's from hiraku-pc's keypad bits (the
+// link) and the keys bound to them; the game asks how many bytes wait (GetSize, then GetSizeDone)
+// and reads them (ReadData)
+static uint8_t g_keys[2][64];
+static int g_nkeys[2], g_key_unit;
+static uint32_t g_keypad_was;
+
+static void keypad_poll(void) {
+    static const uint8_t scan[13] = {0x70, 0x69, 0x72, 0x7a, 0x6b, 0x73, 0x74, 0x6c, 0x75, 0x7d, 0x5a, 0x71, 0x66};
+    const uint32_t now = hk_keypad_now(), changed = now ^ g_keypad_was;
+    g_keypad_was = now;
+    for (int k = 0; k < 13; k++) {
+        if (!(changed >> k & 1) || g_nkeys[0] + 2 > (int)sizeof g_keys[0]) continue;
+        if (!(now >> k & 1)) g_keys[0][g_nkeys[0]++] = 0xf0;
+        g_keys[0][g_nkeys[0]++] = scan[k];
+    }
+}
+CALL4(usbH8KeyboardGetSize) {
+    static int n_;
+    keypad_poll();
+    g_key_unit = a >= 1 && a <= 2 ? a - 1 : 0;
+    return usb_log() ? SAID(0) : 0;
+}
+CALL4(usbH8KeyboardGetSizeDone) {
+    static int n_;
+    const int r = g_nkeys[g_key_unit] > 32 ? 32 : g_nkeys[g_key_unit];
+    return usb_log() || r ? SAID(r) : r;
+}
+// (unit, the count's size class (bm2dx.exe 0x4694b0: 1, 2, 3 up to 4, 4 up to 8...), the buffer)
+CALL4(usbH8KeyboardReadData) {
+    static int n_;
+    const int u = a >= 1 && a <= 2 ? a - 1 : 0, n = g_nkeys[u] > 32 ? 32 : g_nkeys[u];
+    if (c && n) {
+        memcpy((void *)(intptr_t)c, g_keys[u], (size_t)n);
+        memmove(g_keys[u], g_keys[u] + n, (size_t)(g_nkeys[u] - n));
+        g_nkeys[u] -= n;
+    }
+    return SAID(0);
+}
+
+// --- the magnetic card readers (units 1 and 2: players 1 and 2). A card is 128 bytes, kept in a file
+// (HK_PC_CARD1 / HK_PC_CARD2, from hiraku-pc: the save folder's card.bin and card2.bin): what the
+// game writes is kept, and a card never written is a new e-AMUSEMENT card (new_card). Player 1's card is offered with the
+// card control (the link's card_seq) and taken in when the game opens the slot; the game reads it,
+// writes or formats it, and gives it back (eject). Each call is done at once (Konami's answer 0x60
+// while the H8 works). usbCardGetStatus: 0 no card, 3 a card in (bm2dx.exe 0x4342b8)
+struct card {
+    int open, inside, offered;
+    uint32_t seq_seen;
+    uint8_t data[128];
+};
+static struct card g_cards[2];
+
+static const char *card_file(int u) { return getenv(u == 0 ? "HK_PC_CARD1" : "HK_PC_CARD2"); }
+
+// A card nobody has written yet: a new e-AMUSEMENT card, the arcades' common one. The game knows a
+// card by its first 5 bytes (bm2dx.exe 0x469880, the header 0x469740 makes for each kind, its 5th
+// byte a CRC-8 of the 4): 48 23 41 21 ba registered to 9th style (the player's number in bytes
+// 6-13, a CRC-16 of bytes 5-0x3e in 0x3f-0x40), 08 23 41 21 5a a new 9th style card, 08 1f 7d f1 08
+// Konami's and 08 20 82 01 7c e-AMUSEMENT's common cards (both taken as new); others are refused
+static const uint8_t new_card[5] = {0x08, 0x20, 0x82, 0x01, 0x7c};
+
+static void card_load(int u) {
+    memset(g_cards[u].data, 0, 128);
+    memcpy(g_cards[u].data, new_card, sizeof new_card);
+    const char *f = card_file(u);
+    FILE *fh = f && *f ? fopen(f, "rb") : NULL;
+    if (fh) {
+        if (fread(g_cards[u].data, 1, 128, fh) != 128) {
+            memset(g_cards[u].data, 0, 128);
+            memcpy(g_cards[u].data, new_card, sizeof new_card);
+        }
+        fclose(fh);
+    }
+}
+
+static void card_save(int u) {
+    const char *f = card_file(u);
+    FILE *fh = f && *f ? fopen(f, "wb") : NULL;
+    if (fh) {
+        fwrite(g_cards[u].data, 1, 128, fh);
+        fclose(fh);
+    }
+}
+
+// The unit (1 or 2) as an index, or -1; a card offered since the last look goes in if the slot is open
+static int card_unit(int unit) {
+    if (unit < 1 || unit > 2) return -1;
+    struct card *c = &g_cards[unit - 1];
+    if (unit == 1) {
+        const uint32_t seq = hk_card_seq();
+        if (seq != c->seq_seen) {
+            c->seq_seen = seq;
+            if (!c->inside) c->offered = 1, hk_log("hiraku-pc: C02: player 1's card held to the slot");
+        }
+    }
+    if (c->open && c->offered && !c->inside) {
+        card_load(unit - 1);
+        c->inside = 1, c->offered = 0;
+        hk_log("hiraku-pc: C02: player %d's card taken in", unit);
+    }
+    return unit - 1;
+}
+
+CALL4(usbCardOpen) {
+    static int n_;
+    const int u = card_unit(a);
+    if (u >= 0) g_cards[u].open = 1, card_unit(a);
+    return SAID(0);
+}
+CALL4(usbCardClose) {
+    static int n_;
+    const int u = card_unit(a);
+    if (u >= 0) g_cards[u].open = 0;
+    return SAID(0);
+}
+CALL4(usbCardGetStatus) {
+    static int n_;
+    const int u = card_unit(a);
+    const int r = u >= 0 && g_cards[u].inside ? 3 : 0;
+    return usb_log() ? SAID(r) : r;
+}
+CALL4(usbCardRead) {
+    static int n_;
+    const int u = card_unit(a);
+    if (u < 0 || !g_cards[u].inside || !b) return SAID(-33);
+    memcpy((void *)(intptr_t)b, g_cards[u].data, 128);
+    return SAID(0);
+}
+CALL4(usbCardWrite) {
+    static int n_;
+    const int u = card_unit(a);
+    if (u < 0 || !g_cards[u].inside || !b) return SAID(-33);
+    memcpy(g_cards[u].data, (const void *)(intptr_t)b, 128);
+    card_save(u);
+    hk_log("hiraku-pc: C02: player %d's card written", a);
+    return SAID(0);
+}
+CALL4(usbCardFormat) {
+    static int n_;
+    const int u = card_unit(a);
+    if (u < 0 || !g_cards[u].inside || !b) return SAID(-33);
+    memcpy(g_cards[u].data, (const void *)(intptr_t)b, 128);
+    card_save(u);
+    hk_log("hiraku-pc: C02: player %d's card formatted", a);
+    return SAID(0);
+}
+CALL4(usbCardEject) {
+    static int n_;
+    const int u = card_unit(a);
+    if (u >= 0 && g_cards[u].inside) g_cards[u].inside = 0, hk_log("hiraku-pc: C02: player %d's card given back", a);
+    return SAID(0);
+}
 STUB(usbCardWaitEnd, 0)
 
 // --- a new cabinet. The operator settings (bm2dx.exe JAH: 0xb4c bytes at 0x1916fb8, a checksum at
 // +0x68) are loaded at start-up (0x437f10) over the game's defaults, from a copy on each backup
 // drive. On a cabinet with none saved yet the start-up says BACKUP DATA ERROR, and the settings'
 // check (0x438550) CLOCK ERROR: their "clock set" word (+0x64) is 0 until the operator's CLOCK
-// SETUP saves it as 1. Both send the game to its operator menu. HIRAKU's cabinet comes set up: when
+// SETUP saves it as 1. Both send the game to its operator menu, as e-AMUSEMENT on without a shop's
+// name or prefecture does (SHOP NAME / PREFECTURE ERROR). HIRAKU's cabinet comes set up: when
 // nothing loads, the defaults are saved, the clock set, by the game's own routine (0x438080, which
-// ALL FACTORY SETTINGS and CLOCK SETUP use), and the start-up goes on as if they had loaded; from
-// then on they load as on a cabinet, and the operator's changes are kept. All found by shape, one
+// ALL FACTORY SETTINGS and CLOCK SETUP use), and the start-up goes on as if they had loaded; a
+// shop with no name or prefecture gets HIRAKU's (saved the same way). From then on they load as on
+// a cabinet, and the operator's changes are kept. All found by shape, one
 // each in all eight revisions (JAA to JAH); a program without them has both checks' branches made
 // to go on instead (the defaults, never saved).
 
 #define C02_SETTINGS_SIZE 0xb4c
 #define C02_CLOCK_SET 0x64
+// e-AMUSEMENT's (0x438150 makes their defaults): on/off (a byte), the shop's prefecture and name
+#define C02_EAMUSE_ON 0x44
+#define C02_PREFECTURE 0x46      // a word: 0-46, 47 = none set
+#define C02_PREFECTURES 47
+#define C02_SHOP_NAME 0x48       // Shift-JIS, 未設定 when none, to the e-AMUSEMENT block's end
+#define C02_SHOP_NAME_SIZE 26
 
 // The first place `pat` matches in the program's code (0xff in `mask`: that byte as it is), or NULL
 static uint8_t *find(const uint8_t *pat, const uint8_t *mask, size_t n) {
@@ -271,12 +437,29 @@ static uint8_t *g_settings;
 // defaults it left are saved, the clock set
 static int __cdecl load_or_set_up(void) {
     const int r = g_load_settings();
-    if (r == 0) return 0;
     static uint8_t s[C02_SETTINGS_SIZE];
     memcpy(s, g_settings, sizeof s);
-    *(uint32_t *)(s + C02_CLOCK_SET) = 1;
+    const char *why = NULL;
+    if (r != 0) {
+        *(uint32_t *)(s + C02_CLOCK_SET) = 1;
+        why = "no operator settings saved: the game's defaults saved, the clock set";
+    }
+    // e-AMUSEMENT's shop (the settings' check: SHOP NAME / PREFECTURE ERROR while e-AMUSEMENT is on):
+    // HIRAKU's arcade in Tokyo where the operator has set none
+    static const char unset[] = "\x96\xa2\x90\xdd\x92\xe8";   // 未設定, Shift-JIS
+    if (!s[C02_SHOP_NAME] || !memcmp(s + C02_SHOP_NAME, unset, sizeof unset)) {
+        static const char name[] = "\x82\x67\x82\x68\x82\x71\x82\x60\x82\x6a\x82\x74";   // ＨＩＲＡＫＵ
+        memset(s + C02_SHOP_NAME, 0, C02_SHOP_NAME_SIZE);
+        memcpy(s + C02_SHOP_NAME, name, sizeof name);
+        if (!why) why = "the shop's name set";
+    }
+    if (*(uint16_t *)(s + C02_PREFECTURE) >= C02_PREFECTURES) {
+        *(uint16_t *)(s + C02_PREFECTURE) = 12;   // Tokyo (Hokkaido 0, in the usual order)
+        if (!why) why = "the shop's prefecture set";
+    }
+    if (!why) return 0;
     const int saved = g_save_settings(s);
-    hk_log("hiraku-pc: C02: no operator settings saved: the game's defaults saved, the clock set (%s)", saved == 0 ? "done" : "failed");
+    hk_log("hiraku-pc: C02: %s (%s)", why, saved == 0 ? "saved" : "not saved");
     return saved == 0 ? 0 : r;
 }
 

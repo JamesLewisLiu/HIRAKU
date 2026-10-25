@@ -10,6 +10,8 @@
 //   - The cabinet's network card (GetAdaptersInfo): one of its own, 192.168.0.2/24 behind a router
 //     at 192.168.0.1, whatever the PC has (under Wine the library read nonsense, and kept its
 //     network off); and the addresses the cabinet would set on its card (AddIPAddress) left alone.
+//   - The cabinet's domain (GetNetworkParams), with HK_PC_EA_DOMAIN: beatmania IIDX 9th style's
+//     library asks for "services.<its domain>", so the domain is one the name lookup above answers.
 #include <winsock2.h>
 #include <windows.h>
 #include <iphlpapi.h>
@@ -102,6 +104,12 @@ static SOCKET WSAAPI my_socket(int af, int type, int proto) {
     const SOCKET s = my_socket_(af, type, proto);
     if (net_log()) hk_log("net: socket(%d, %d, %d) = %d (%d)", af, type, proto, (int)s, s == INVALID_SOCKET ? WSAGetLastError() : 0);
     return s;
+}
+
+// The same through WSASocketA (IIDX 9th style's pings)
+static SOCKET WSAAPI my_WSASocketA(int af, int type, int proto, LPWSAPROTOCOL_INFOA info, GROUP g, DWORD flags) {
+    if (ea() && af == AF_INET && type == SOCK_RAW && proto == IPPROTO_ICMP) return my_socket(af, type, proto);
+    return WSASocketA(af, type, proto, info, g, flags);
 }
 
 static SOCKET WSAAPI my_socket_(int af, int type, int proto) {
@@ -251,6 +259,17 @@ static DWORD WINAPI my_GetAdaptersInfo(PIP_ADAPTER_INFO info, PULONG size) {
     return NO_ERROR;
 }
 
+// The machine's names: the host's, with the cabinet's domain (HK_PC_EA_DOMAIN) in place of its own
+static DWORD WINAPI my_GetNetworkParams(PFIXED_INFO info, PULONG size) {
+    const DWORD r = GetNetworkParams(info, size);
+    const char *d = getenv("HK_PC_EA_DOMAIN");
+    if (r == NO_ERROR && info && d && *d) {
+        snprintf(info->DomainName, sizeof info->DomainName, "%s", d);
+        snprintf(info->HostName, sizeof info->HostName, "%s", "cabinet");
+    }
+    return r;
+}
+
 static DWORD WINAPI my_AddIPAddress(IPAddr a, IPMask m, DWORD index, PULONG context, PULONG instance) {
     (void)a, (void)m, (void)index;
     if (context) *context = 1;
@@ -269,6 +288,7 @@ void *hk_net_card_hook(const char *fn) {
     if (!strcmp(fn, "GetAdaptersInfo")) return (void *)my_GetAdaptersInfo;
     if (!strcmp(fn, "AddIPAddress")) return (void *)my_AddIPAddress;
     if (!strcmp(fn, "DeleteIPAddress")) return (void *)my_DeleteIPAddress;
+    if (!strcmp(fn, "GetNetworkParams") && getenv("HK_PC_EA_DOMAIN")) return (void *)my_GetNetworkParams;
     return NULL;
 }
 
@@ -278,6 +298,7 @@ void *hk_net_hook(const char *fn) {
     if (!strcmp(fn, "gethostbyname")) return (void *)my_gethostbyname;
     if (!strcmp(fn, "connect")) return (void *)my_connect;
     if (!strcmp(fn, "socket")) return (void *)my_socket;
+    if (!strcmp(fn, "WSASocketA")) return (void *)my_WSASocketA;
     if (!strcmp(fn, "bind")) return (void *)my_bind;
     if (!strcmp(fn, "sendto")) return (void *)my_sendto;
     if (!strcmp(fn, "recvfrom")) return (void *)my_recvfrom;

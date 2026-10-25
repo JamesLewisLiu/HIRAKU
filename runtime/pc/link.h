@@ -39,6 +39,7 @@
 // The reader's 10-key: bits 0-9 its digits, then these
 #define HK_PC_KEY_00 (1u << 10)
 #define HK_PC_KEY_DECIMAL (1u << 11)
+#define HK_PC_KEY_CLEAR (1u << 12)     // the C02 cabinet's 10-key
 
 #define HK_PC_PAD_EVENTS 64u   // a power of two
 

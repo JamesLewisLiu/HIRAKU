@@ -132,8 +132,29 @@ std::string EamuseServer::answer(const Call &c, const Request &r, const std::str
     const std::string &m = r.module, &f = r.method;
     // pop'n 10 on (model C20, D11, E12, ...): their own calls and answer formats; pop'n 9 (C00)
     // and anything not handled there go on below
-    if (const std::string game = c.model.substr(0, 3); !game.empty() && game != "C00")
+    const std::string game = c.model.substr(0, 3);
+    // beatmania IIDX 9th style (model C02, the PC's e-AMUSE3, PLAN.md section 33): pop'n 9's calls
+    // (numbering, userid, ntp, posevent, package: below) and two of its own
+    if (game == "C02") {
+        // its module: method ranking / music / weekly with a command line ("getinfo", "getranking
+        // 20", "getmid", "getrank CARD 120"...); the status a word, SOK for done (sonet.dll
+        // 0x10003840; ENOTFOUND, ENOCARDID, EPARAM..., anything else an error the game shows as a
+        // network error). Nothing kept yet: every answer is an empty SOK
+        if (m == "C02") return "<C02 status=\"SOK\"/>";
+        // the player: the card's record as the game wrote it (its DJ name, PIN, ...), its own file
+        const std::string card = attr(r.attrs, "card");
+        if (m == "userdata" && f == "read") {
+            const std::string data = safe_name(card) ? read_file("userdata-C02-" + card) : "";
+            return data.empty() ? "<userdata status=\"109\"/>" : data;   // 109: none
+        }
+        if (m == "userdata" && f == "write") {
+            if (!safe_name(card)) return "<userdata status=\"1\"/>";
+            write_file("userdata-C02-" + card, "<userdata status=\"0\" time=\"" + esc(attr(r.attrs, "time")) + "\">" + r.inner + "</userdata>");
+            return "<userdata status=\"0\"/>";
+        }
+    } else if (!game.empty() && game != "C00") {
         if (std::string a = answer_later(game, r, host); !a.empty()) return a;
+    }
     if (m == "numbering" && f == "assign")   // a new card's number (0x197530): 16 digits
         return "<numbering status=\"0\" number=\"" + next_number() + "\"/>";
     if (m == "userdata" && f == "read") {   // 109: not registered (0x184ca0)
