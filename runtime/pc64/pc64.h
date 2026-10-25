@@ -52,6 +52,9 @@ extern volatile unsigned pc64_held;
 struct hk_pc_link *pc64_link(void);
 int pc64_host_shows(void);             // HIRAKU's window shows the main screen
 unsigned pc64_link_inputs(void);       // the inputs it holds (PC64_IN_*), coins as pulses
+unsigned pc64_link_buttons(void);      // the buttons alone held now (PC64_IN_BUTTON), nothing counted
+unsigned pc64_link_keypad(void);       // player 1's 10-key held (link.h: bits 0-9 the digits, HK_PC_KEY_*)
+extern volatile unsigned pc64_keys_held;   // ... and HK_SCRIPT's
 uint32_t *pc64_link_pixels(void);      // where the main screen's picture goes (0x00RRGGBB)
 void pc64_link_picture(unsigned w, unsigned h);   // it's there: counted, then wait for the next frame
 
@@ -63,15 +66,20 @@ void pc64_click(int x, int y);
 // "card" adds one
 uint32_t pc64_card(uint8_t uid[8]);
 extern volatile unsigned pc64_card_presses;
+extern volatile unsigned pc64_cards_given;   // board.c: cards given to the game
 // log.c: HK_PC64_TRACE_STRUCTS's trace of the game's answer nodes and struct reads (tests)
 void pc64_trace_install(HMODULE game);
 // log.c: HK_PC64_TRACE_D3DX's trace of the game's D3DX textures, effects and shaders (tests)
 void pc64_trace_d3dx_install(HMODULE game);
 // link.c: the picture being drawn won't be shown by hiraku-pc (no need to read it back)
 int pc64_link_not_shown(void);
-// crt.c: the single-screen mode (HK_PC64_OUTPUT=crt): on; the board's inputs for its touches
+// crt.c: the single-screen mode (HK_PC64_OUTPUT=crt): on; the board's inputs for its touches (those
+// the game gets back: none of the buttons while the touch screen is shown); the touch screen shown
+// instead of the main screen, and its cursor (1280x800)
 int pc64_crt(void);
-void pc64_crt_inputs(unsigned in);
+unsigned pc64_crt_inputs(unsigned in);
+int pc64_crt_view(int *x, int *y);
+void pc64_crt_cursor(int x, int y);   // (HK_SCRIPT's cursor:X:Y)
 void pc64_crt_install(HMODULE game);   // crt.c: its play screen's characters, scaled to the 4:3 picture
 // link.c: a fifth of a millisecond's nap
 void pc64_nap(void);

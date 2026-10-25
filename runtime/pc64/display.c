@@ -226,9 +226,64 @@ static HRESULT WINAPI StretchRect_(IDirect3DDevice9Ex *d, IDirect3DSurface9 *src
 // surface in system memory, X8R8G8B8 (the desktop's, windowed)
 // The single-screen mode's picture (crt.c): the main screen's middle 4:3 scaled down on the GPU in
 // two linear steps (1440x1080 to 960x720 to 640x480: each 1.5 times, no pixel skipped), read back
+// The touch screen's view (crt.c): its picture copied at each of its presents, at half its size
+// (640x400), and shown instead with black above and below and the cursor drawn on it
+static IDirect3DSurface9 *g_sub_small, *g_sub_readback;
+static void keep_sub(IDirect3DSwapChain9 *s) {
+    if (!pc64_crt() || !pc64_crt_view(NULL, NULL)) return;
+    IDirect3DSurface9 *bb = NULL;
+    if (FAILED(IDirect3DSwapChain9_GetBackBuffer(s, 0, D3DBACKBUFFER_TYPE_MONO, &bb))) return;
+    D3DSURFACE_DESC d;
+    IDirect3DSurface9_GetDesc(bb, &d);
+    if (!g_sub_small &&
+        (FAILED(IDirect3DDevice9_CreateRenderTarget((IDirect3DDevice9 *)g_dev, d.Width / 2, d.Height / 2, d.Format, D3DMULTISAMPLE_NONE, 0, FALSE,
+                                                    &g_sub_small, NULL)) ||
+         FAILED(IDirect3DDevice9_CreateOffscreenPlainSurface((IDirect3DDevice9 *)g_dev, d.Width / 2, d.Height / 2, d.Format, D3DPOOL_SYSTEMMEM,
+                                                             &g_sub_readback, NULL))))
+        g_sub_small = NULL;
+    if (g_sub_small) rdev.StretchRect(g_dev, bb, NULL, g_sub_small, NULL, D3DTEXF_LINEAR);
+    IDirect3DSurface9_Release(bb);
+}
+
+// The cursor: an arrow's point at (x, y), white with a black edge
+static void draw_cursor(uint32_t *out, int w, int h, int x, int y) {
+    static const char *const ARROW[] = {"X", "XX", "XoX", "XooX", "XoooX", "XooooX", "XoooooX", "XooooooX", "XoooooooX",
+                                        "XooooXXXXX", "XooXoX", "XoX XoX", "XX  XoX", "X    XoX", "     XoX", "      XX"};
+    for (int r = 0; r < 16; r++)
+        for (int c = 0; ARROW[r][c]; c++) {
+            const int px = x + c, py = y + r;
+            if (ARROW[r][c] == ' ' || px < 0 || py < 0 || px >= w || py >= h) continue;
+            out[(size_t)py * w + px] = ARROW[r][c] == 'X' ? 0x000000 : 0xffffff;
+        }
+}
+
+static int to_link_view(uint32_t *out) {
+    enum { W = 640, H = 480 };
+    D3DSURFACE_DESC sd;
+    D3DLOCKED_RECT lr;
+    if (!g_sub_small || FAILED(IDirect3DSurface9_GetDesc(g_sub_small, &sd)) || sd.Width != W || sd.Height > H ||
+        FAILED(IDirect3DDevice9_GetRenderTargetData((IDirect3DDevice9 *)g_dev, g_sub_small, g_sub_readback)) ||
+        FAILED(IDirect3DSurface9_LockRect(g_sub_readback, &lr, NULL, D3DLOCK_READONLY)))
+        return 0;
+    const UINT top = (H - sd.Height) / 2;
+    memset(out, 0, sizeof(uint32_t) * W * H);
+    for (UINT y = 0; y < sd.Height; y++) {
+        const uint32_t *p = (const uint32_t *)((const uint8_t *)lr.pBits + (size_t)y * lr.Pitch);
+        uint32_t *o = out + (size_t)(y + top) * W;
+        for (UINT x = 0; x < W; x++) o[x] = p[x] & 0xffffff;
+    }
+    IDirect3DSurface9_UnlockRect(g_sub_readback);
+    int cx, cy;
+    pc64_crt_view(&cx, &cy);
+    draw_cursor(out, W, H, cx / 2, cy / 2 + (int)top);
+    pc64_link_picture(W, H);
+    return 1;
+}
+
 static int to_link_crt(IDirect3DSurface9 *bb, const D3DSURFACE_DESC *d, uint32_t *out) {
     enum { W = 640, H = 480 };
     static IDirect3DSurface9 *half, *small, *readback;
+    if (pc64_crt_view(NULL, NULL) && !pc64_link_not_shown() && to_link_view(out)) return 1;
     if (!readback) {
         IDirect3DDevice9 *dev = (IDirect3DDevice9 *)g_dev;
         if (FAILED(IDirect3DDevice9_CreateRenderTarget(dev, W * 3 / 2, H * 3 / 2, d->Format, D3DMULTISAMPLE_NONE, 0, FALSE, &half, NULL)) ||
@@ -306,6 +361,7 @@ static int to_link(IDirect3DSwapChain9 *s) {
 static HRESULT WINAPI SwapChainPresent_(IDirect3DSwapChain9Ex *s, const RECT *a, const RECT *b, HWND w, const RGNDATA *r, DWORD f) {
     if ((void *)s == (void *)g_sub) {
         pc64_sub_frames++;
+        keep_sub((IDirect3DSwapChain9 *)s);
     } else {
         pc64_frames++;
         snapshot();

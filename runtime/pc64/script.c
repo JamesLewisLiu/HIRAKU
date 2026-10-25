@@ -6,7 +6,8 @@
 //   ACTION = touch:X:Y (the sub screen, 1280x800) | click:X:Y (a mouse click there) |
 //   mash:INPUT+INPUT:SECONDS:MS (the two pressed in turn, each for half of MS, for SECONDS) | card (the card,
 //   the link's or HK_PC64_CARD's, held to the reader) | [down:|up:]INPUT (held 300 ms, or held, or let go)
-//   INPUT = test | service | coin | b1..b9 | red | blue | headphones
+//   INPUT = test | service | coin | b1..b9 | red | blue | headphones | key0..key9 | key00 | keydot (the
+//   10-key) | cursor:X:Y (the single-screen mode's touch screen cursor put there, crt.c)
 // The scenes seen so far (PLAN.md section 32): 12 title, 26 entry, 20 mode select, 21 character
 // select, 28 music select, 34 play, 23 result, 35 test menu, 36 I/O check, 37 input check.
 #include "pc64.h"
@@ -69,8 +70,23 @@ static DWORD WINAPI run(void *arg) {
             pc64_click(x, y);
             continue;
         }
+        if (sscanf(action, "cursor:%d:%d", &x, &y) == 2) {
+            pc64_log("script: cursor %d,%d (scene %d, picture %u)", x, y, pc64_scene, pc64_frames);
+            pc64_crt_cursor(x, y);
+            continue;
+        }
         const int down = !strncmp(action, "down:", 5), up = !strncmp(action, "up:", 3);
-        const unsigned bit = input_bit(action + (down ? 5 : up ? 3 : 0));
+        const char *name = action + (down ? 5 : up ? 3 : 0);
+        const unsigned key = !strcmp(name, "key00") ? 1u << 10 : !strcmp(name, "keydot") ? 1u << 11
+                           : !strncmp(name, "key", 3) && name[3] >= '0' && name[3] <= '9' && !name[4] ? 1u << (name[3] - '0') : 0;
+        if (key) {
+            pc64_log("script: %s (scene %d, picture %u)", action, pc64_scene, pc64_frames);
+            if (!up) pc64_keys_held |= key;
+            if (!down && !up) Sleep(300);
+            if (!down) pc64_keys_held &= ~key;
+            continue;
+        }
+        const unsigned bit = input_bit(name);
         if (!bit) {
             pc64_log("script: what is %s?", action);
             continue;

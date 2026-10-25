@@ -62,8 +62,8 @@ static void Bi3a_GetDeviceStatus_(void *c, uint8_t *st) {
     if (!pc64_board_t0) pc64_board_t0 = GetTickCount();
     memset(st, 0, 0x288);
     st[62] = st[63] = st[67] = st[68] = 1;
-    const unsigned h = pc64_held | pc64_link_inputs();
-    pc64_crt_inputs(h);   // the single-screen mode: button 5 for the touches (crt.c)
+    // the single-screen mode (crt.c): button 5 for the touches, the touch screen's view takes the buttons
+    const unsigned h = pc64_crt_inputs(pc64_held | pc64_link_inputs());
     st[44] = (h & PC64_IN_TEST) != 0;
     st[45] = (h & PC64_IN_SERVICE) != 0;
     st[46] = (h & PC64_IN_COIN) != 0;
@@ -145,6 +145,7 @@ static int Ami_zero(void) { return 0; }
 static const char *Ami_rom(void) { return "HIRAKU"; }
 static int g_card_type;
 static uint32_t g_card_seen;
+volatile unsigned pc64_cards_given;
 static int Ami_type(void) { return g_card_type; }
 static uint64_t Ami_card(void) {
     uint8_t uid[8];
@@ -154,6 +155,7 @@ static uint64_t Ami_card(void) {
         return 0;
     }
     g_card_seen = seq;
+    pc64_cards_given++;
     g_card_type = uid[0] == 0xe0 && uid[1] == 0x04 ? 1 : 2;
     uint64_t id = 0;
     for (int i = 0; i < 8; i++) id = id << 8 | uid[i];

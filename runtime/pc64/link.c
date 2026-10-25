@@ -91,6 +91,33 @@ unsigned pc64_link_inputs(void) {
     return in;
 }
 
+// The buttons held now (PC64_IN_BUTTON), the link's and the keys bound to them, with nothing else
+// done (pc64_link_inputs counts coins and the game's polls: the game's board reads only)
+unsigned pc64_link_buttons(void) {
+    struct hk_pc_link *l = pc64_link();
+    if (!l) return 0;
+    uint32_t pad = l->pad;
+    for (int b = 1; b <= 9; b++) {
+        const int i = __builtin_ctz(HK_PC_PAD_BUTTON(b));
+        if (key_down(l->keys[i][0]) || key_down(l->keys[i][1])) pad |= HK_PC_PAD_BUTTON(b);
+    }
+    unsigned in = 0;
+    for (int b = 1; b <= 9; b++)
+        if (pad & HK_PC_PAD_BUTTON(b)) in |= PC64_IN_BUTTON(b);
+    return in;
+}
+
+// Player 1's 10-key: the link's, and the keys bound to it (the game's window may have the keyboard)
+volatile unsigned pc64_keys_held;
+unsigned pc64_link_keypad(void) {
+    struct hk_pc_link *l = pc64_link();
+    if (!l) return pc64_keys_held;
+    unsigned k = l->keypad | pc64_keys_held;
+    for (int i = 0; i < 12; i++)
+        if (key_down(l->keypad_keys[i][0]) || key_down(l->keypad_keys[i][1])) k |= 1u << i;
+    return k;
+}
+
 // The card held to the reader: a count that moves on with each (the link's, a key bound to it,
 // HK_SCRIPT's "card"), and its UID (the link's, else HK_PC64_CARD's 16 hex digits)
 volatile unsigned pc64_card_presses;

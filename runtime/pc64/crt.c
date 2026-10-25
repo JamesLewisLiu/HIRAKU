@@ -6,6 +6,16 @@
 //   - The touches the game waits for, made by button 5: in each of these scenes its presses touch
 //     the scene's places in turn (title: START; entry: START without a pass; mode select: OK, then
 //     CREDIT START).
+//   - The touch screen, shown instead (the 10-key's decimal point, or buttons 1 and 9 together, in
+//     and out): its picture at 640x400 with a cursor, moved by the 10-key's 8, 2, 4, 6 (and 7, 9,
+//     1, 3) or buttons 4, 6, 3, 7 (up, down, left, right), touching with the 10-key's 5 or button 5.
+//     The game gets none of the buttons meanwhile. Whatever the touch screen asks for (the options,
+//     the PIN, a name, events) can be done there.
+//   - A new card's terms (after its PIN): button 5 touches YES, then OK, and the touch screen is
+//     shown for the name. Leaving a scene hides it.
+//   - The PIN, typed on the 10-key: the game's pad (on the touch screen) always in its digits'
+//     order (it picks one of fourteen orders; the loader has it pick the plain one), each digit a
+//     touch on its button, 00 the pad's clear.
 //   - The music select in nine-button mode: on entering it, once a credit, its category list is
 //     opened (the "play with 9 buttons" panel) and "by title" chosen: every category but "giant
 //     pop-kun" (the big buttons' charts, which can't be played here) uses the nine buttons.
@@ -31,6 +41,12 @@ static const struct { int scene; int count; struct place at[3]; } SCENES[] = {
 #define BY_TITLE_X 755                   // ... and in its list, "by title"
 #define BY_TITLE_Y 192
 #define TITLE 12
+#define ENTRY 26                         // the entry: the card, its PIN
+#define PIN_ORDER 12                     // of the game's fourteen pad orders, the digits in order: a phone's
+static const short PIN_X[3] = {496, 636, 776}, PIN_Y[4] = {126, 264, 406, 544};   // 7-9, 4-6, 1-3, 0 (rows)
+#define PIN_CLEAR_X 704
+#define PIN_CLEAR_Y 544
+static const struct place TERMS[2] = {{393, 450}, {650, 747}};   // a new card's terms: YES, then OK
 
 // The characters (1080-line coordinates): scaled by CHARA_SCALE about a point at the bottom of the
 // 16:9 picture's side columns (x 300 and 1620), that point moved into the 4:3 picture's (x 427 and
@@ -80,24 +96,96 @@ static void touch_soon(int count, struct place a, struct place b) {
     SetEvent(g_wake);
 }
 
-// The board's inputs as the game reads them (board.c, each status read): button 5's presses in the
-// scenes above made touches, and the music select's nine buttons chosen
-void pc64_crt_inputs(unsigned in) {
-    static int was_down, scene_seen = -1, step, nine_done;
+// The touch screen's view: on, and its cursor in the touch screen's 1280x800
+static volatile int g_view, g_cx = 640, g_cy = 400;
+int pc64_crt_view(int *x, int *y) {
+    if (x) *x = g_cx;
+    if (y) *y = g_cy;
+    return g_view;
+}
+
+void pc64_crt_cursor(int x, int y) {
+    g_cx = x < 0 ? 0 : x > 1279 ? 1279 : x;
+    g_cy = y < 0 ? 0 : y > 799 ? 799 : y;
+}
+
+#define KEY(n) (1u << (n))           // the 10-key's digits (runtime/pc/link.h)
+#define KEY_DECIMAL (1u << 11)
+#define VIEW_BUTTONS (PC64_IN_BUTTON(1) | PC64_IN_BUTTON(2) | PC64_IN_BUTTON(3) | PC64_IN_BUTTON(4) | PC64_IN_BUTTON(5) | \
+                      PC64_IN_BUTTON(6) | PC64_IN_BUTTON(7) | PC64_IN_BUTTON(8) | PC64_IN_BUTTON(9))
+
+// The cursor moved by what's held: a step at once, then on every 16 ms after a quarter of a
+// second, faster the longer it's held
+static void move_cursor(unsigned in, unsigned keys) {
+    static DWORD since, last;
+    const int up = (keys & (KEY(8) | KEY(7) | KEY(9))) || (in & PC64_IN_BUTTON(4));
+    const int down = (keys & (KEY(2) | KEY(1) | KEY(3))) || (in & PC64_IN_BUTTON(6));
+    const int left = (keys & (KEY(4) | KEY(7) | KEY(1))) || (in & PC64_IN_BUTTON(3));
+    const int right = (keys & (KEY(6) | KEY(9) | KEY(3))) || (in & PC64_IN_BUTTON(7));
+    const DWORD now = GetTickCount();
+    if (!(up | down | left | right)) {
+        since = 0;
+        return;
+    }
+    int step;
+    if (!since) since = now, last = now, step = 4;
+    else if (now - since < 250 || now - last < 16) return;
+    else last = now, step = now - since < 750 ? 6 : now - since < 1500 ? 12 : 24;
+    int x = g_cx + (right - left) * step, y = g_cy + (down - up) * step;
+    g_cx = x < 0 ? 0 : x > 1279 ? 1279 : x;
+    g_cy = y < 0 ? 0 : y > 799 ? 799 : y;
+}
+
+// What the player does, watched on a thread of its own every 2 ms (a tap the game's board reads
+// would miss, when it's busy, is seen): button 5's presses in the scenes above made touches, the
+// music select's nine buttons chosen, the touch screen's view
+static void watch(unsigned in, unsigned keys) {
+    static int scene_seen = -1, step, nine_done;
+    static unsigned cards_seen;
+    static unsigned in_was = ~0u, keys_was = ~0u;   // nothing pressed at the start
     static DWORD scene_at;
-    if (!pc64_crt()) return;
+    const unsigned in_down = in & ~in_was, keys_down = keys & ~keys_was;
+    in_was = in, keys_was = keys;
+    // the view, in and out: the decimal point, or buttons 1 and 9 together
+    const unsigned both = PC64_IN_BUTTON(1) | PC64_IN_BUTTON(9);
+    if ((keys_down & KEY_DECIMAL) || ((in & both) == both && (in_down & both))) {
+        g_view = !g_view;
+        pc64_log("crt: the touch screen %s", g_view ? "shown" : "hidden");
+        return;
+    }
     const int scene = pc64_scene;
-    if (scene != scene_seen) {   // a new scene: its first place first
-        scene_seen = scene, step = 0, scene_at = GetTickCount();
+    if (scene != scene_seen) {   // a new scene: its first place first, the touch screen hidden
+        scene_seen = scene, step = 0, scene_at = GetTickCount(), cards_seen = pc64_cards_given;
         if (scene == TITLE) nine_done = 0;   // a new credit
+        if (g_view) g_view = 0, pc64_log("crt: the touch screen hidden (scene %d)", scene);
+    }
+    if (g_view) {
+        move_cursor(in, keys);
+        if ((keys_down & KEY(5)) || (in_down & PC64_IN_BUTTON(5))) {
+            pc64_log("crt: the touch screen touched at %d,%d", g_cx, g_cy);
+            touch_soon(1, (struct place){g_cx, g_cy}, (struct place){g_cx, g_cy});
+        }
+        return;
     }
     if (scene == MUSIC_SELECT && !nine_done && GetTickCount() - scene_at > 1500) {   // once it has come in
         nine_done = 1;
         pc64_log("crt: the music select in nine-button mode (its songs by title)");
         touch_soon(2, (struct place){CATEGORIES_X, CATEGORIES_Y}, (struct place){BY_TITLE_X, BY_TITLE_Y});
     }
-    const int down = (in & PC64_IN_BUTTON(5)) != 0;
-    if (down && !was_down)
+    if (scene == ENTRY && (keys_down & 0x7ffu)) {   // the PIN pad's buttons
+        struct place p = {PIN_CLEAR_X, PIN_CLEAR_Y};
+        for (int d = 0; d <= 9; d++)
+            if (keys_down & KEY(d)) p = d ? (struct place){PIN_X[(d - 1) % 3], PIN_Y[2 - (d - 1) / 3]} : (struct place){PIN_X[0], PIN_Y[3]};
+        touch_soon(1, p, p);
+    }
+    if ((in_down & PC64_IN_BUTTON(5)) && scene == ENTRY && pc64_cards_given != cards_seen) {   // a card's: its terms
+        const struct place p = TERMS[step % 2];
+        pc64_log("crt: button 5 touches %d,%d (a new card's terms)", p.x, p.y);
+        touch_soon(1, p, p);
+        if (step++ % 2) g_cx = 640, g_cy = 400, g_view = 1, pc64_log("crt: the touch screen shown (the name)");
+        return;
+    }
+    if (in_down & PC64_IN_BUTTON(5))
         for (size_t i = 0; i < sizeof SCENES / sizeof SCENES[0]; i++)
             if (SCENES[i].scene == scene) {
                 const struct place p = SCENES[i].at[step % SCENES[i].count];
@@ -105,7 +193,24 @@ void pc64_crt_inputs(unsigned in) {
                 pc64_log("crt: button 5 touches %d,%d (scene %d)", p.x, p.y, scene);
                 touch_soon(1, p, p);
             }
-    was_down = down;
+}
+
+static DWORD WINAPI watcher(void *unused) {
+    (void)unused;
+    for (;;) {
+        watch(pc64_held | pc64_link_buttons(), pc64_link_keypad());
+        Sleep(2);
+    }
+    return 0;
+}
+
+// The board's inputs as the game reads them (board.c, each status read): none of the buttons while
+// the touch screen is shown
+unsigned pc64_crt_inputs(unsigned in) {
+    if (!pc64_crt()) return in;
+    static int started;
+    if (!started) started = 1, CreateThread(NULL, 0, watcher, NULL, 0, NULL);
+    return g_view ? in & ~VIEW_BUTTONS : in;
 }
 
 // The play screen's characters. The game keeps its two players' characters in a table (0xe0 bytes
@@ -189,6 +294,30 @@ void pc64_crt_install(HMODULE game) {
                 g_players = p + *(const int32_t *)(p - 4);
                 break;
             }
+    }
+    // The PIN pad's order: the game's pick (a random number modulo 14: imul eax,eax,14; sub r8d,eax;
+    // movsxd rax,r8d; lea rcx,[rax+rax*4]; lea rax,[orders]) made PIN_ORDER (mov eax,PIN_ORDER)
+    static const BYTE pick[] = {0x6b, 0xc0, 0x0e, 0x44, 0x2b, 0xc0, 0x49, 0x63, 0xc0, 0x48, 0x8d, 0x0c, 0x80, 0x48, 0x8d, 0x05};
+    BYTE *pin = NULL;
+    sec = IMAGE_FIRST_SECTION(nt);
+    for (int i = 0; i < nt->FileHeader.NumberOfSections && !pin; i++, sec++) {
+        if (!(sec->Characteristics & IMAGE_SCN_CNT_CODE)) continue;
+        BYTE *p = base + sec->VirtualAddress, *end = p + sec->Misc.VirtualSize - sizeof pick;
+        for (; p < end; p++)
+            if (!memcmp(p, pick, sizeof pick)) {
+                pin = p + 3;
+                break;
+            }
+    }
+    if (pin) {
+        static const BYTE order[] = {0xb8, PIN_ORDER, 0x00, 0x00, 0x00, 0x90};   // mov eax,PIN_ORDER; nop
+        DWORD old;
+        VirtualProtect(pin, sizeof order, PAGE_EXECUTE_READWRITE, &old);
+        memcpy(pin, order, sizeof order);
+        VirtualProtect(pin, sizeof order, old, &old);
+        FlushInstructionCache(GetCurrentProcess(), pin, sizeof order);
+    } else {
+        pc64_log("crt: the PIN pad's order not found: the 10-key can't type on it");
     }
     HMODULE afp = GetModuleHandleA("afp-core.dll");
     g_set_params = afp ? (set_params_fn)(void *)GetProcAddress(afp, MAKEINTRESOURCEA(41)) : NULL;
