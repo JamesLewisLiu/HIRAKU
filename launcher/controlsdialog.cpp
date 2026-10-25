@@ -307,8 +307,16 @@ ControlsDialog::ControlsDialog(const QString &family, QWidget *parent) : QDialog
     });
     connect(&joys, &Joysticks::axis, this, [this](int j, int a, int val) {
         QString base = QString("joy%1:axis%2").arg(j).arg(a);
-        source(base + "+", val > 16384);
-        source(base + "-", val < -16384);
+        // as the game reads it (runtime/host/input.cpp): an axis whose first report is past a
+        // threshold rests there, and isn't pressed that way until it has come back
+        if (!Joysticks::instance().axisKnown(j, a)) {   // its first report (axisKnown turns after this signal)
+            if (val < -16384) m_restNeg << base;
+            if (val > 16384) m_restPos << base;
+        }
+        if (val >= -16384) m_restNeg.remove(base);
+        if (val <= 16384) m_restPos.remove(base);
+        source(base + "+", val > 16384 && !m_restPos.contains(base));
+        source(base + "-", val < -16384 && !m_restNeg.contains(base));
         m_flashUntil[base] = m_clock.elapsed() + 200;
         source(base, true);
     });

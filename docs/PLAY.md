@@ -224,6 +224,8 @@ IIDX-style controllers differ in which button and axis numbers they use. The eas
 - **Controllers by name.** The dialog binds a controller by its name (`joy[DAO FPS]:button3`), so it keeps its bindings whichever order controllers are plugged in. Older bindings by number (`joy0`) still work; the dialog offers to tie them to the controllers connected.
 - **Set up**: *Bind all in turn* asks for each control in order (Back and Skip as you go). Each controller can take the cabinet's default layout or a layout you saved for it, as player 1 or 2, and player 1's controller can be copied to player 2's. Saved layouts live in `controls/layouts/` in the settings folder, so they carry to another PC.
 - **Turntables**: a binding's menu sets the speed (×0.5 to ×3) and can reverse the direction; the dial beside it turns as the game will see it.
+- **Analog controls** that take a position: Keyboardmania's wheels, GuitarFreaks' effect knobs, the IIDX effector sliders. An axis bound to one sets it from one end to the other (reversed with a negative speed). Keyboardmania's wheels can also go up and down on keys or buttons (P and M, the keypad's + and -); the wheel stays where it's left.
+- **An axis as a button** (`axis2+`, `axis2-`, a trigger): some USB controllers, PS2 adapters among them, report their axes only once something changes, so the first press of a key also brings every axis's resting value. HIRAKU takes an axis's first report as where it rests: one that rests at an end (an adapter's unused axis, a trigger) isn't pressed that way until it has moved back. The Controls dialog binds the button such a press sends, not the resting axis. The game's log says `input: joy0 axis 2 first reads -32768: it rests there` when it sees one; `HK_INPUT_LOG=1` logs every button, hat and axis a controller sends, for finding out what one does.
 - **Try in a game** saves and starts one of the cabinet's games; press Test there for its I/O check.
 
 The dialog saves `~/.config/hiraku/controls/<cabinet>.txt`, which the launcher passes as `--bindings`. The beatmania cabinets (DJ Main, IIDX, III) share one file, `beatmania.txt`, and the pop'n music ones (DJ Main, Firebeat, Python) share `popn.txt`: each game uses the controls it has and ignores the rest.
@@ -593,6 +595,8 @@ Each game needs its two discs (the program CD and a second disc with CD audio) a
 tools/ingest.py gq974-ja-c01.cue --cd2 gq974-ja-a02.cue --romset kbm.7z
 analyze/ghidra.sh kbm && analyze/prep.py kbm && ninja -C build/cmake hiraku-kbm
 ```
+
+**Wheels:** each keyboard's modulation wheel is `P1 Wheel` / `P2 Wheel` in Controls: an analog axis, or **Wheel up** and **Wheel down** on keys or buttons (by default P and M for player 1, the keypad's + and - for player 2).
 
 **Screens:** both portrait monitors are shown side by side (MAME's ROT270), at their shape: 3:2 together.
 With two displays, **Settings > Display > each player's monitor in its own window** (or `--split-screens`) opens player 2's in a second window on the next display; with fullscreen, each fills its own display. F11 toggles the window with the keyboard. The sound, the inputs and the update banner stay with player 1's window. On Wayland the compositor places windows itself: drag player 2's to its display, then F11.

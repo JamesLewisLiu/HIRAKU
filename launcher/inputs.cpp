@@ -194,6 +194,7 @@ void Joysticks::reopen() {
     for (void *j : m_joys) SDL_CloseJoystick((SDL_Joystick *)j);
     m_joys.clear();
     m_pads.clear();
+    m_known.clear();
     int n = 0;
     SDL_JoystickID *ids = SDL_GetJoysticks(&n);
     for (int k = 0; k < n; k++)
@@ -267,7 +268,10 @@ void Joysticks::poll() {
             if (int j = index(e.jbutton.which); j >= 0) emit button(j, e.jbutton.button, e.type == SDL_EVENT_JOYSTICK_BUTTON_DOWN);
             break;
         case SDL_EVENT_JOYSTICK_AXIS_MOTION:
-            if (int j = index(e.jaxis.which); j >= 0) emit axis(j, e.jaxis.axis, e.jaxis.value);
+            if (int j = index(e.jaxis.which); j >= 0) {
+                emit axis(j, e.jaxis.axis, e.jaxis.value);
+                m_known.insert(QString("%1:%2").arg(j).arg(e.jaxis.axis));
+            }
             break;
         case SDL_EVENT_JOYSTICK_HAT_MOTION:
             if (int j = index(e.jhat.which); j >= 0) emit hat(j, e.jhat.hat, e.jhat.value);

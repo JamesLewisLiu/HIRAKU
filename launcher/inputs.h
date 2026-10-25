@@ -5,6 +5,7 @@
 #pragma once
 
 #include <QObject>
+#include <QSet>
 #include <QString>
 #include <QStringList>
 #include <QTimer>
@@ -45,6 +46,9 @@ public:
     int indexOf(const QString &pad) const;   // "joy0" or "joy[DAO FPS]" -> 0, or -1 (not plugged in)
     int count() const { return (int)m_joys.size(); }
     int axisValue(int joy, int axis) const;
+    // the axis has reported a value since it was opened: until then SDL says 0, whatever it really
+    // reads (some USB controllers report only once something changes)
+    bool axisKnown(int joy, int axis) const { return m_known.contains(QString("%1:%2").arg(joy).arg(axis)); }
     int axisCount(int joy) const;
 signals:
     void devicesChanged();
@@ -58,4 +62,5 @@ private:
     QTimer m_timer;
     QVector<void *> m_joys;             // SDL_Joystick *
     QStringList m_pads;                 // pad() of each
+    QSet<QString> m_known;              // "joy:axis" that have reported (axisKnown)
 };

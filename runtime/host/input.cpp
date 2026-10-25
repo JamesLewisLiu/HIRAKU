@@ -3,6 +3,7 @@
 
 #include <SDL3/SDL.h>
 
+#include <algorithm>
 #include <cmath>
 #include <cstdlib>
 #include <cstdio>
@@ -102,8 +103,29 @@ void press(const std::string &name, bool down) {
     n = std::max(0, n + (down ? 1 : -1));
     if ((before > 0) == (n > 0)) return;
     if (name.find("Turntable") != std::string::npos) return;   // handled in input_update
+    if (name.find(" Wheel Up") != std::string::npos || name.find(" Wheel Down") != std::string::npos) return;   // likewise
     core().set_input(name, n > 0 ? 1 : 0);
 }
+
+// An analog control that takes a position (an axis's, from one end to the other): its highest
+// value, as the core takes it; -1: not one (the turntables turn, handled in input_update)
+int analog_max(const std::string &name) {
+    if (name.size() > 6 && name.compare(name.size() - 6, 6, " Wheel") == 0) return 255;   // Keyboardmania's wheels
+    if (name.find("Effect Knob") != std::string::npos) return 3;                            // GuitarFreaks
+    if (name.rfind("Volume ", 0) == 0) return 15;                                            // IIDX's effector sliders
+    return -1;
+}
+std::map<std::string, double> g_analog;   // each such control's position (keys move it too)
+
+// Each axis's state as a button (axisN+ / axisN-): an axis whose first report is already past a
+// threshold rests there (a trigger, or an adapter's unused axis at one end), so it doesn't count
+// as pressed that way until it has come back. Some USB controllers report an axis only once
+// something changes: until then SDL gives 0, and the first key pressed brings the resting values.
+bool g_axis_known[16][16], g_rest_neg[16][16], g_rest_pos[16][16];
+const bool g_input_log = [] {
+    const char *e = getenv("HK_INPUT_LOG");
+    return e && *e && *e != '0';
+}();
 
 int joy_index(SDL_JoystickID id) {
     for (size_t k = 0; k < g_joys.size(); k++)
@@ -187,6 +209,32 @@ void input_event(const SDL_Event &e) {
     struct Clear {
         ~Clear() { g_event_time = {}; }
     } clear;
+    if (e.type == SDL_EVENT_JOYSTICK_AXIS_MOTION) {
+        const int j = joy_index(e.jaxis.which), a = e.jaxis.axis;
+        if (j >= 0 && j < 16 && a < 16) {
+            const int v = e.jaxis.value;
+            if (!g_axis_known[j][a]) {
+                g_axis_known[j][a] = true;
+                g_rest_neg[j][a] = v < -16384, g_rest_pos[j][a] = v > 16384;
+                if (g_rest_neg[j][a] || g_rest_pos[j][a])
+                    fprintf(stderr, "input: joy%d axis %d first reads %d: it rests there (not pressed as axis%d%c)\n", j, a, v, a,
+                            v < 0 ? '-' : '+');
+            } else {
+                if (v >= -16384) g_rest_neg[j][a] = false;
+                if (v <= 16384) g_rest_pos[j][a] = false;
+            }
+        }
+    }
+    if (g_input_log && (e.type == SDL_EVENT_JOYSTICK_AXIS_MOTION || e.type == SDL_EVENT_JOYSTICK_BUTTON_DOWN ||
+                        e.type == SDL_EVENT_JOYSTICK_BUTTON_UP || e.type == SDL_EVENT_JOYSTICK_HAT_MOTION)) {
+        if (e.type == SDL_EVENT_JOYSTICK_AXIS_MOTION)
+            fprintf(stderr, "input log: joy%d axis%d %d\n", joy_index(e.jaxis.which), e.jaxis.axis, e.jaxis.value);
+        else if (e.type == SDL_EVENT_JOYSTICK_HAT_MOTION)
+            fprintf(stderr, "input log: joy%d hat%d 0x%x\n", joy_index(e.jhat.which), e.jhat.hat, e.jhat.value);
+        else
+            fprintf(stderr, "input log: joy%d button%d %s\n", joy_index(e.jbutton.which), e.jbutton.button,
+                    e.type == SDL_EVENT_JOYSTICK_BUTTON_DOWN ? "down" : "up");
+    }
     for (auto &[name, list] : g_bind)
         for (auto &b : list) {
             switch (e.type) {
@@ -207,8 +255,20 @@ void input_event(const SDL_Event &e) {
                 break;
             case SDL_EVENT_JOYSTICK_AXIS_MOTION:
                 if ((b.src == Src::axis_neg || b.src == Src::axis_pos) && from(b, e.jaxis.which) && e.jaxis.axis == b.index) {
-                    bool down = b.src == Src::axis_neg ? e.jaxis.value < -16384 : e.jaxis.value > 16384;
+                    const int j = joy_index(e.jaxis.which), a = e.jaxis.axis;
+                    const bool rests = j >= 0 && j < 16 && a < 16 && (b.src == Src::axis_neg ? g_rest_neg[j][a] : g_rest_pos[j][a]);
+                    bool down = !rests && (b.src == Src::axis_neg ? e.jaxis.value < -16384 : e.jaxis.value > 16384);
                     if (down != (g_held[name] > 0)) press(name, down);
+                }
+                // an analog control's position: the axis from one end to the other (reversed with a
+                // negative speed)
+                if (b.src == Src::axis && from(b, e.jaxis.which) && e.jaxis.axis == b.index) {
+                    if (const int max = analog_max(name); max > 0) {
+                        int v = (int)(((long)e.jaxis.value + 32768) * (max + 1) / 65536);
+                        v = std::clamp(b.scale < 0 ? max - v : v, 0, max);
+                        if (g_analog.count(name) == 0 || (int)std::lround(g_analog[name]) != v) core().set_input(name, v);
+                        g_analog[name] = v;
+                    }
                 }
                 break;
             default: break;
@@ -240,6 +300,17 @@ int input_binding_event(const std::string &binding, const SDL_Event &e) {
 }
 
 void input_update(double ms) {
+    // Keyboardmania's wheels on keys or buttons: up and down move it (about MAME's KEYDELTA, 10 a
+    // 60 Hz frame); it stays where it's left, as a modulation wheel does
+    for (const char *w : {"P1 Wheel", "P2 Wheel"}) {
+        const std::string n = w;
+        const int dir = (g_held[n + " Up"] > 0 ? 1 : 0) - (g_held[n + " Down"] > 0 ? 1 : 0);
+        if (!dir) continue;
+        double &pos = g_analog.try_emplace(n, 128.0).first->second;
+        const int before = (int)std::lround(pos);
+        pos = std::clamp(pos + dir * ms * 0.6, 0.0, 255.0);
+        if ((int)std::lround(pos) != before) core().set_input(n, (int)std::lround(pos));
+    }
     for (int p = 0; p < 2; p++) {
         std::string base = p == 0 ? "P1 Turntable" : "P2 Turntable";
         // keys: about MAME's KEYDELTA (15 counts per 60 Hz frame)

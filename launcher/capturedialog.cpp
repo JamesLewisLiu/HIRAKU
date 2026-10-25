@@ -66,7 +66,8 @@ CaptureDialog::CaptureDialog(const QString &what, bool analog, QWidget *parent, 
 
     auto &joys = Joysticks::instance();
     for (int j = 0; j < joys.count(); j++)
-        for (int a = 0; a < joys.axisCount(j); a++) m_base[QString("%1:%2").arg(j).arg(a)] = joys.axisValue(j, a);
+        for (int a = 0; a < joys.axisCount(j); a++)
+            if (joys.axisKnown(j, a)) m_base[QString("%1:%2").arg(j).arg(a)] = joys.axisValue(j, a);
     connect(&joys, &Joysticks::button, this, [this](int j, int b, bool down) {
         if (down && !m_analog) finish(QString("%1:button%2").arg(Joysticks::instance().pad(j)).arg(b));
     });
@@ -112,7 +113,14 @@ void CaptureDialog::showText() {
 }
 
 void CaptureDialog::onAxis(int j, int a, int v) {
-    int base = m_base.value(QString("%1:%2").arg(j).arg(a), 0);
+    // an axis that hadn't reported yet: this is where it rests (the report a key's press brought
+    // with it), not the axis moving; it's bound once it moves from there
+    const QString key = QString("%1:%2").arg(j).arg(a);
+    if (!m_base.contains(key)) {
+        m_base[key] = v;
+        return;
+    }
+    int base = m_base.value(key);
     int d = v - base;
     if (d > 32768) d -= 65536;   // turntable encoders wrap
     if (d < -32768) d += 65536;

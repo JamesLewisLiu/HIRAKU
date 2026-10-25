@@ -81,7 +81,8 @@ std::vector<Control> make_ppp() {
 
 // Keyboardmania: player 1's 24 keys (C1..B2) on two letter rows, as MAME maps them;
 // player 2's octave 1 on the keypad (7 8 9 4 5 6 1 2 3 0 . Enter), octave 2 on
-// Insert Home PageUp Delete End PageDown, the arrows (Left Down Right Up), / and *
+// Insert Home PageUp Delete End PageDown, the arrows (Left Down Right Up), / and *;
+// the wheels up and down on P and M, the keypad's + and -
 std::vector<Control> make_kbm() {
     std::vector<Control> c;
     static const char *notes[12] = {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"};
@@ -96,6 +97,11 @@ std::vector<Control> make_kbm() {
                          "Key " + std::to_string(k + 1) + " (" + notes[k % 12] + std::to_string(k / 12 + 1) + ")", g, false,
                          p == 1 ? std::string("key:") + p1[k] : std::string("key:") + p2[k]});
         c.push_back({p == 1 ? "1 Player Start" : "2 Players Start", "Start", g, false, p == 1 ? "key:1" : "key:2"});
+        // the modulation wheel beside the keys (MAME's WHEEL_P1/P2, 0-255): on an analog axis, or
+        // moved up and down by keys or buttons (runtime/host/input.cpp)
+        c.push_back({P + " Wheel", "Wheel (analog axis)", g, true, ""});
+        c.push_back({P + " Wheel Up", "Wheel up", g, false, p == 1 ? "key:P" : "key:Keypad +"});
+        c.push_back({P + " Wheel Down", "Wheel down", g, false, p == 1 ? "key:M" : "key:Keypad -"});
     }
     c.push_back({"Coin 1", "Coin", "Cabinet", false, "key:5"});
     c.push_back({"Test", "Test", "Cabinet", false, "key:F2"});

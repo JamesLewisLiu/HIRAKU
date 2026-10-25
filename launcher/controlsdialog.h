@@ -99,6 +99,7 @@ private:
     QString m_tryGame;
     QHash<QString, qint64> m_flashUntil;            // analog axes: lit briefly after motion
     QHash<QString, int> m_hats;                     // "joyN:hatK" -> SDL hat bits
+    QSet<QString> m_restNeg, m_restPos;             // axes resting past a button threshold, as the game takes them
     QElapsedTimer m_clock;
     QTimer m_flashTimer;
     bool m_capturing = false;
