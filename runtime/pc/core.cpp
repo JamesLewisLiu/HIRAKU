@@ -49,6 +49,7 @@
 #define NOMINMAX
 #endif
 #include <windows.h>
+#include <winioctl.h>
 #else
 #include <csignal>
 #include <dirent.h>
@@ -319,8 +320,7 @@ public:
         if (data_as_.rfind("..\\", 0) != 0) return true;
         const std::string at = save_ + "/prog/" + data_as_.substr(3);
 #ifdef _WIN32
-        if (hk::sys::is_dir(at)) return true;   // made before (a junction to the data)
-        hk::sys::run_quiet({"cmd", "/c", "mklink", "/J", win_path(at), win_path(data)});
+        make_junction(at, data);
 #else
         std::error_code ec;
         if (std::filesystem::is_symlink(at, ec)) std::filesystem::remove(at, ec);   // the data may have moved
@@ -332,6 +332,51 @@ public:
         }
         return true;
     }
+
+#ifdef _WIN32
+    // A junction at `at` to the folder `to` (made again each time: the data may have moved): the
+    // folder made, then a mount point set on it (no rights needed, unlike a symbolic link). Never
+    // over a real folder
+    static std::wstring wide(const std::string &utf8) {
+        std::string p = utf8;
+        for (char &c : p)
+            if (c == '/') c = '\\';
+        const int n = MultiByteToWideChar(CP_UTF8, 0, p.c_str(), (int)p.size(), nullptr, 0);
+        std::wstring w((size_t)n, L'\0');
+        MultiByteToWideChar(CP_UTF8, 0, p.c_str(), (int)p.size(), w.data(), n);
+        return w;
+    }
+    static void make_junction(const std::string &at, const std::string &to) {
+        const std::wstring a = wide(at), t = wide(to);
+        const DWORD attr = GetFileAttributesW(a.c_str());
+        if (attr != INVALID_FILE_ATTRIBUTES) {
+            if (!(attr & FILE_ATTRIBUTE_REPARSE_POINT)) return;   // a folder of the player's own
+            RemoveDirectoryW(a.c_str());                          // the junction, not what it leads to
+        }
+        if (!CreateDirectoryW(a.c_str(), nullptr)) return;
+        wchar_t full[MAX_PATH];
+        if (!GetFullPathNameW(t.c_str(), MAX_PATH, full, nullptr)) return;
+        const std::wstring print = full, subst = L"\\??\\" + print;
+        struct {
+            DWORD tag;
+            WORD data_length, reserved, subst_offset, subst_length, print_offset, print_length;
+            wchar_t path[2 * MAX_PATH + 8];
+        } rp{};
+        rp.tag = IO_REPARSE_TAG_MOUNT_POINT;
+        rp.subst_length = (WORD)(subst.size() * 2);
+        rp.print_offset = (WORD)(rp.subst_length + 2);
+        rp.print_length = (WORD)(print.size() * 2);
+        memcpy(rp.path, subst.c_str(), rp.subst_length);
+        memcpy((char *)rp.path + rp.print_offset, print.c_str(), rp.print_length);
+        rp.data_length = (WORD)(8 + rp.print_offset + rp.print_length + 2);
+        HANDLE h = CreateFileW(a.c_str(), GENERIC_WRITE, 0, nullptr, OPEN_EXISTING,
+                               FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT, nullptr);
+        DWORD got = 0;
+        const bool ok = h != INVALID_HANDLE_VALUE && DeviceIoControl(h, FSCTL_SET_REPARSE_POINT, &rp, 8 + rp.data_length, nullptr, 0, &got, nullptr);
+        if (h != INVALID_HANDLE_VALUE) CloseHandle(h);
+        if (!ok) RemoveDirectoryW(a.c_str());
+    }
+#endif
 
     // The link: a file both map. Linux: in /dev/shm (memory); Windows: in the save folder
     bool make_link() {
