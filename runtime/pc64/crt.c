@@ -11,7 +11,9 @@
 //     pop-kun" (the big buttons' charts, which can't be played here) uses the nine buttons.
 //   - The play screen's characters, smaller and in the 4:3 picture's side columns (as pop'n's 4:3
 //     games have them): the game moves each to its place each frame (AFP's layer position, which
-//     popn.dll imports by ordinal); for its characters' layers the whole matrix is set instead.
+//     popn.dll imports by ordinal); for its characters' layers the whole matrix is set instead. Their
+//     windows are made smaller in the layout (hiraku-pc's single-screen/); the songs' pictures the
+//     game puts in them, fitted to them.
 #include "pc64.h"
 
 #include <stdlib.h>
@@ -144,6 +146,35 @@ static int set_position(unsigned layer, const float *at) {
     return g_set_position(layer, at);
 }
 
+// The songs' pictures in the characters' windows: the game looks up the background layout's clips
+// for them by name (AFP: the first of a layer's clips named so, then the next), then gives them their
+// texture at its own size; fitted to the clip instead (the layout made the clip smaller)
+typedef int (*find_clip_fn)(unsigned layer, const char *name);
+typedef int (*next_clip_fn)(int clip, int how);
+typedef int (*set_texture_fn)(int clip, const void *texture, char fit);
+static find_clip_fn g_find_clip;
+static next_clip_fn g_next_clip;
+static set_texture_fn g_set_texture;
+#define WINDOW_CLIPS 16
+static volatile LONG g_window_clips[WINDOW_CLIPS], g_window_next;
+
+static int find_clip(unsigned layer, const char *name) {
+    const int first = g_find_clip(layer, name);
+    const char *bare = name && *name == '/' ? name + 1 : name;
+    if (bare && first >= 0 && (!strcmp(bare, "bg_l_usr") || !strcmp(bare, "bg_r_usr")))
+        for (int clip = first, n = 0; clip >= 0 && n < 4; clip = g_next_clip(clip, 6), n++) {
+            int known = 0;
+            for (int i = 0; i < WINDOW_CLIPS; i++) known |= g_window_clips[i] == clip;
+            if (!known) g_window_clips[(InterlockedIncrement(&g_window_next) - 1) % WINDOW_CLIPS] = clip;
+        }
+    return first;
+}
+
+static int set_texture(int clip, const void *texture, char fit) {
+    for (int i = 0; i < WINDOW_CLIPS && !fit; i++) fit = g_window_clips[i] == clip;
+    return g_set_texture(clip, texture, fit);
+}
+
 void pc64_crt_install(HMODULE game) {
     if (!pc64_crt()) return;
     static const BYTE code[] = {0x0f, 0xb6, 0xf9, 0x48, 0x69, 0xdf, 0xe0, 0x00, 0x00, 0x00, 0x41, 0xbe, 0x52, 0x03, 0x00, 0x00};
@@ -170,6 +201,13 @@ void pc64_crt_install(HMODULE game) {
         pc64_log("crt: the game's layer positions not found: its characters left as they are");
         return;
     }
+    for (int i = 0; i < WINDOW_CLIPS; i++) g_window_clips[i] = -1;
+    g_find_clip = (find_clip_fn)(void *)GetProcAddress(afp, MAKEINTRESOURCEA(103));
+    g_next_clip = (next_clip_fn)(void *)GetProcAddress(afp, MAKEINTRESOURCEA(106));
+    g_set_texture = (set_texture_fn)(void *)GetProcAddress(afp, MAKEINTRESOURCEA(137));
+    if (!g_find_clip || !g_next_clip || !g_set_texture || !pc64_import_ordinal(game, "afp-core.dll", 137, (void *)set_texture) ||
+        !pc64_import_ordinal(game, "afp-core.dll", 103, (void *)find_clip))
+        pc64_log("crt: the game's clip lookups not found: the songs' pictures left at their size");
     pc64_log("crt: the play screen's characters (table at +0x%llx) scaled by %.2f",
              (unsigned long long)(g_players - base), CHARA_SCALE);
 }
