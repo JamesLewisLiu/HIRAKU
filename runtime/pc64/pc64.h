@@ -72,5 +72,6 @@ int pc64_link_not_shown(void);
 // crt.c: the single-screen mode (HK_PC64_OUTPUT=crt): on; the board's inputs for its touches
 int pc64_crt(void);
 void pc64_crt_inputs(unsigned in);
+void pc64_crt_install(HMODULE game);   // crt.c: its play screen's characters, scaled to the 4:3 picture
 // link.c: a fifth of a millisecond's nap
 void pc64_nap(void);

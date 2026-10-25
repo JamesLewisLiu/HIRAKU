@@ -207,6 +207,7 @@ int main(int argc, char **argv) {
     pc64_sound_install(game);
     pc64_trace_install(game);
     pc64_trace_d3dx_install(game);
+    pc64_crt_install(game);
     int (*entry_init)(char *, node_t) = need(game, game_dll, "dll_entry_init");
     int (*entry_main)(void) = need(game, game_dll, "dll_entry_main");
 

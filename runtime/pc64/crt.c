@@ -9,6 +9,9 @@
 //   - The music select in nine-button mode: on entering it, once a credit, its category list is
 //     opened (the "play with 9 buttons" panel) and "by title" chosen: every category but "giant
 //     pop-kun" (the big buttons' charts, which can't be played here) uses the nine buttons.
+//   - The play screen's characters, smaller and in the 4:3 picture's side columns (as pop'n's 4:3
+//     games have them): the game moves each to its place each frame (AFP's layer position, which
+//     popn.dll imports by ordinal); for its characters' layers the whole matrix is set instead.
 #include "pc64.h"
 
 #include <stdlib.h>
@@ -26,6 +29,16 @@ static const struct { int scene; int count; struct place at[3]; } SCENES[] = {
 #define BY_TITLE_X 755                   // ... and in its list, "by title"
 #define BY_TITLE_Y 192
 #define TITLE 12
+
+// The characters (1080-line coordinates): scaled by CHARA_SCALE about a point at the bottom of the
+// 16:9 picture's side columns (x 300 and 1620), that point moved into the 4:3 picture's (x 427 and
+// 1493: between its edges at 240 and 1680 and the lanes at 614 and 1306), a little up
+#define CHARA_SCALE 0.8f
+#define CHARA_SCALE_LOST 0.64f   // the lost move (a close-up, wider than the others)
+#define CHARA_LOST 2
+#define CHARA_FROM_Y 1080.0f
+#define CHARA_TO_Y 1052.0f
+static const float CHARA_FROM_X[2] = {300, 1620}, CHARA_TO_X[2] = {427, 1493};
 
 int pc64_crt(void) {
     static int on = -1;
@@ -91,4 +104,72 @@ void pc64_crt_inputs(unsigned in) {
                 touch_soon(1, p, p);
             }
     was_down = down;
+}
+
+// The play screen's characters. The game keeps its two players' characters in a table (0xe0 bytes
+// each): from +8 the layers (BM2D::CLayer *, its AFP layer number at +8) of the character's ten
+// moves (win, win, lost, neutral, neutral, fever, great, good, miss, neutral), at +0xb4 and +0xb8
+// the places (two shorts each) it puts them. Found by the code that draws them: lea rax,[table];
+// movzx edi,cl; imul rbx,rdi,0xe0; mov r14d,0x352.
+typedef int (*set_position_fn)(unsigned layer, const float *at);
+typedef int (*set_params_fn)(unsigned layer, unsigned which, const float *values);
+static set_position_fn g_set_position;
+static set_params_fn g_set_params;
+static const BYTE *g_players;
+
+// The move (0-9) LAYER shows of a player's character, or -1
+static int character(unsigned layer, const float *at) {
+    for (int p = 0; p < 2; p++) {
+        const BYTE *player = g_players + p * 0xe0;
+        const short *places = (const short *)(player + 0xb4);
+        if (!((at[0] == places[0] && at[1] == places[1]) || (at[0] == places[2] && at[1] == places[3])))
+            continue;   // (a pooled layer of another scene)
+        for (int i = 0; i < 10; i++) {
+            const BYTE *l = *(const BYTE *const *)(player + 8 + 8 * i);
+            if (l && *(const unsigned *)(l + 8) == layer) return i;
+        }
+    }
+    return -1;
+}
+
+static int set_position(unsigned layer, const float *at) {
+    const int move = at && layer ? character(layer, at) : -1;
+    if (move >= 0) {
+        const int right = at[0] >= 960;
+        const float s = move == CHARA_LOST ? CHARA_SCALE_LOST : CHARA_SCALE;
+        const float m[6] = {s, 0, 0, s, CHARA_TO_X[right] + s * (at[0] - CHARA_FROM_X[right]),
+                            CHARA_TO_Y + s * (at[1] - CHARA_FROM_Y)};
+        return g_set_params(layer, 0x20, m);   // the matrix: a, b, c, d, tx, ty
+    }
+    return g_set_position(layer, at);
+}
+
+void pc64_crt_install(HMODULE game) {
+    if (!pc64_crt()) return;
+    static const BYTE code[] = {0x0f, 0xb6, 0xf9, 0x48, 0x69, 0xdf, 0xe0, 0x00, 0x00, 0x00, 0x41, 0xbe, 0x52, 0x03, 0x00, 0x00};
+    BYTE *base = (BYTE *)game;
+    IMAGE_NT_HEADERS *nt = (IMAGE_NT_HEADERS *)(base + ((IMAGE_DOS_HEADER *)base)->e_lfanew);
+    IMAGE_SECTION_HEADER *sec = IMAGE_FIRST_SECTION(nt);
+    for (int i = 0; i < nt->FileHeader.NumberOfSections && !g_players; i++, sec++) {
+        if (!(sec->Characteristics & IMAGE_SCN_CNT_CODE)) continue;
+        const BYTE *p = base + sec->VirtualAddress, *end = p + sec->Misc.VirtualSize - sizeof code;
+        for (p += 7; p < end; p++)
+            if (p[-7] == 0x48 && p[-6] == 0x8d && p[-5] == 0x05 && !memcmp(p, code, sizeof code)) {
+                g_players = p + *(const int32_t *)(p - 4);
+                break;
+            }
+    }
+    HMODULE afp = GetModuleHandleA("afp-core.dll");
+    g_set_params = afp ? (set_params_fn)(void *)GetProcAddress(afp, MAKEINTRESOURCEA(41)) : NULL;
+    if (!g_players || !g_set_params) {
+        pc64_log("crt: the play screen's characters not found: left as they are");
+        return;
+    }
+    g_set_position = afp ? (set_position_fn)(void *)GetProcAddress(afp, MAKEINTRESOURCEA(47)) : NULL;
+    if (!g_set_position || !pc64_import_ordinal(game, "afp-core.dll", 47, (void *)set_position)) {
+        pc64_log("crt: the game's layer positions not found: its characters left as they are");
+        return;
+    }
+    pc64_log("crt: the play screen's characters (table at +0x%llx) scaled by %.2f",
+             (unsigned long long)(g_players - base), CHARA_SCALE);
 }
